@@ -304,6 +304,169 @@ async def test_current_identity_can_enroll_passkey_then_issue_offline_recovery_c
 
 
 @pytest.mark.asyncio
+async def test_second_platform_owner_requires_prepared_identity_and_preserves_last_owner(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        first_authenticator = await _claim_owner(client)
+        _, first_owner_token = await _webauthn_login(client, first_authenticator)
+        first_headers = {
+            "Authorization": f"Bearer {first_owner_token}",
+            "Idempotency-Key": "promote-second-owner",
+        }
+
+        candidate_login = "second-platform-owner@example.test"
+        candidate_password = "second platform owner password"
+        enrollment = await client.post(
+            "/auth/native/identities",
+            json={"login_handle": candidate_login, "password": candidate_password},
+        )
+        assert enrollment.status_code == 201
+        candidate_identity_id = UUID(enrollment.json()["native_identity_id"])
+
+        # Password alone is intentionally insufficient for owner promotion.
+        unprepared = await client.post(
+            "/v1/platform/owners",
+            headers=first_headers,
+            json={
+                "native_identity_id": str(candidate_identity_id),
+                "provenance_reference": "e2e:unprepared-owner",
+            },
+        )
+        assert unprepared.status_code == 422
+        assert unprepared.json()["error"]["code"] == "platform_owner_invalid"
+
+        candidate_login_response = await client.post(
+            "/auth/native/sessions",
+            json={"login_handle": candidate_login, "password": candidate_password},
+        )
+        assert candidate_login_response.status_code == 201
+        candidate_token = candidate_login_response.json()["access_token"]
+        candidate_headers = {"Authorization": f"Bearer {candidate_token}"}
+
+        registration_options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/registration-options",
+                headers=candidate_headers,
+            )
+        ).json()["public_key"]
+        candidate_authenticator = SoftwareAuthenticator(
+            rp_id=registration_options["rp"]["id"],
+            origin=ORIGIN,
+        )
+        registration = candidate_authenticator.registration_credential(
+            challenge=websafe_decode(registration_options["challenge"]),
+            user_verified=True,
+        )
+        registered = await client.post(
+            "/auth/native/sessions/current/webauthn/registrations",
+            headers=candidate_headers,
+            json={"credential": registration},
+        )
+        assert registered.status_code == 201, registered.text
+
+        step_options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/step-up-options",
+                headers=candidate_headers,
+            )
+        ).json()["public_key"]
+        step_assertion = candidate_authenticator.authentication_credential(
+            challenge=websafe_decode(step_options["challenge"]),
+            user_verified=True,
+        )
+        assert (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/step-up",
+                headers=candidate_headers,
+                json={"credential": step_assertion},
+            )
+        ).status_code == 200
+        recovery = await client.post(
+            "/auth/native/sessions/current/recovery-codes",
+            headers=candidate_headers,
+        )
+        assert recovery.status_code == 201
+        assert len(recovery.json()["codes"]) == 10
+
+        promoted = await client.post(
+            "/v1/platform/owners",
+            headers={
+                **first_headers,
+                "Idempotency-Key": "promote-second-owner-prepared",
+            },
+            json={
+                "native_identity_id": str(candidate_identity_id),
+                "provenance_reference": "e2e:prepared-owner",
+            },
+        )
+        assert promoted.status_code == 201, promoted.text
+        second_owner_id = UUID(promoted.json()["principal_id"])
+
+        owner_caps = {
+            row[0]
+            for row in e2e_admin_conn.execute(
+                "SELECT capability_key FROM request_engine.principal_authority_grants "
+                "WHERE principal_id = %s AND status = 'active'",
+                (second_owner_id,),
+            ).fetchall()
+        }
+        assert "platform.owner.provision" in owner_caps
+        assert "platform.owner.manage_lifecycle" in owner_caps
+
+        second_revision = e2e_admin_conn.execute(
+            "SELECT authority_revision FROM request_engine.principals WHERE id = %s",
+            (second_owner_id,),
+        ).fetchone()
+        assert second_revision is not None
+        suspended = await client.post(
+            f"/v1/platform/owners/{second_owner_id}:suspend",
+            headers={
+                "Authorization": f"Bearer {first_owner_token}",
+                "Idempotency-Key": "suspend-second-owner",
+            },
+            json={
+                "expected_revision": second_revision[0],
+                "reason_code": "security_investigation",
+            },
+        )
+        assert suspended.status_code == 200, suspended.text
+        assert suspended.json()["binding_status"] == "suspended"
+
+        first_owner_id = e2e_admin_conn.execute(
+            "SELECT initial_owner_principal_id FROM request_engine.platform_instance "
+            "WHERE singleton_key = 1"
+        ).fetchone()
+        assert first_owner_id is not None
+        first_revision = e2e_admin_conn.execute(
+            "SELECT authority_revision FROM request_engine.principals WHERE id = %s",
+            (first_owner_id[0],),
+        ).fetchone()
+        assert first_revision is not None
+        last_owner_denied = await client.post(
+            f"/v1/platform/owners/{first_owner_id[0]}:suspend",
+            headers={
+                "Authorization": f"Bearer {first_owner_token}",
+                "Idempotency-Key": "cannot-suspend-last-owner",
+            },
+            json={
+                "expected_revision": first_revision[0],
+                "reason_code": "security_investigation",
+            },
+        )
+        assert last_owner_denied.status_code == 422
+        assert last_owner_denied.json()["error"]["code"] == "platform_owner_invalid"
+
+
+@pytest.mark.asyncio
 async def test_webauthn_challenge_is_single_use(
     private_runtime_configuration: UUID,
     e2e_admin_conn: PgConnection,
