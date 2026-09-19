@@ -64,18 +64,18 @@ def build_recovery_secret_delivery(
     if resolved.recovery_delivery_factory is not None:
         return _factory_delivery(resolved.recovery_delivery_factory)
 
-    openbao_configured = (
-        resolved.openbao_addr is not None or resolved.openbao_token is not None
+    openbao_configured = _has_text(resolved.openbao_addr) or _has_secret(
+        resolved.openbao_token
     )
-    vault_configured = resolved.vault_addr is not None or resolved.vault_token is not None
+    vault_configured = _has_text(resolved.vault_addr) or _has_secret(resolved.vault_token)
     if openbao_configured and vault_configured:
         raise RuntimeError(
             "configure exactly one recovery secret-store backend: OpenBao or Vault"
         )
     smtp_configured = (
-        resolved.smtp_host is not None
-        or resolved.smtp_sender is not None
-        or resolved.smtp_password is not None
+        _has_text(resolved.smtp_host)
+        or _has_text(resolved.smtp_sender)
+        or _has_secret(resolved.smtp_password)
     )
     secret_store_configured = openbao_configured or vault_configured
     if not secret_store_configured and not smtp_configured:
@@ -132,6 +132,16 @@ def build_recovery_secret_delivery(
     )
     return ComposedRecoverySecretDelivery(store=store, channel=channel)
 
+
+
+
+
+def _has_text(value: str | None) -> bool:
+    return value is not None and bool(value.strip())
+
+
+def _has_secret(value: SecretStr | None) -> bool:
+    return value is not None and bool(value.get_secret_value().strip())
 
 def _missing_configuration(
     *,
