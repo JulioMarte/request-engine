@@ -42,6 +42,7 @@ def upgrade() -> None:
             v_code_id uuid;
             v_set_id uuid;
             v_native_identity_id uuid;
+            v_authority_id uuid;
             v_identity_status text;
             v_authority_status text;
         BEGIN
@@ -72,18 +73,33 @@ def upgrade() -> None:
                 RETURN NULL;
             END IF;
 
-            SELECT identity.status, authority.status
-              INTO v_identity_status, v_authority_status
+            -- Resolve first, then acquire the canonical authority -> identity ->
+            -- credential order used by native authentication mutations.
+            SELECT identity.identity_authority_id
+              INTO v_authority_id
               FROM request_engine.native_identities AS identity
-              JOIN request_engine.identity_authorities AS authority
-                ON authority.id = identity.identity_authority_id
-             WHERE identity.id = v_native_identity_id
+             WHERE identity.id = v_native_identity_id;
+            IF NOT FOUND THEN
+                RETURN NULL;
+            END IF;
+
+            SELECT authority.status
+              INTO v_authority_status
+              FROM request_engine.identity_authorities AS authority
+             WHERE authority.id = v_authority_id
                AND authority.kind = 'native'
-             FOR UPDATE OF identity, authority;
-            IF NOT FOUND
-               OR v_identity_status <> 'active'
-               OR v_authority_status <> 'active'
-            THEN
+             FOR UPDATE;
+            IF NOT FOUND OR v_authority_status <> 'active' THEN
+                RETURN NULL;
+            END IF;
+
+            SELECT identity.status
+              INTO v_identity_status
+              FROM request_engine.native_identities AS identity
+             WHERE identity.id = v_native_identity_id
+               AND identity.identity_authority_id = v_authority_id
+             FOR UPDATE;
+            IF NOT FOUND OR v_identity_status <> 'active' THEN
                 RETURN NULL;
             END IF;
 
