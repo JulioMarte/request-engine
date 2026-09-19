@@ -69,3 +69,28 @@ triggers = [
 ]
 required_docs = ["docs/architecture/instance-claim-platform-owner-plan.md"]
 required_docs_mode = "all"
+
+
+[[rules]]
+id = "platform-configuration-secrets-recovery"
+description = "Self-hosted platform secret storage, OpenBao deployment and offline administrative recovery"
+triggers = [
+  "migrations/versions/0068_recovery_code_password_reset.py",
+  "migrations/versions/0069_platform_configuration*.py",
+  "src/request_engine/platform/secrets/platform_store.py",
+  "src/request_engine/platform/secrets/openbao_*.py",
+  "src/request_engine/bootstrap/recovery_delivery.py",
+  "src/request_engine/platform/security/recovery_code*.py",
+  "src/request_engine/platform/db/recovery_code*.py",
+  "src/request_engine/entrypoints/http/native_auth.py",
+  "deploy/openbao/**",
+  "deploy/reference/compose.e2e.yaml",
+  "tests/unit/platform/secrets/test_openbao*.py",
+  "tests/db/test_recovery_code_persistence.py",
+  "tests/e2e/test_instance_setup_http.py",
+]
+required_docs = [
+  "docs/adr/0015-platform-configuration-secrets-recovery.md",
+  "docs/architecture/platform-configuration-secrets-recovery-plan.md",
+]
+required_docs_mode = "all"
