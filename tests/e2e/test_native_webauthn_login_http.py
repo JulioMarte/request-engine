@@ -315,28 +315,68 @@ async def test_second_platform_owner_requires_prepared_identity_and_preserves_la
     ):
         first_authenticator = await _claim_owner(client)
         _, first_owner_token = await _webauthn_login(client, first_authenticator)
-        first_headers = {
-            "Authorization": f"Bearer {first_owner_token}",
-            "Idempotency-Key": "promote-second-owner",
-        }
+        owner_auth = {"Authorization": f"Bearer {first_owner_token}"}
+
+        # Claimed platform control no longer permits anonymous generic enrollment.
+        closed_enrollment = await client.post(
+            "/auth/native/identities",
+            json={
+                "login_handle": "bypass-owner@example.test",
+                "password": "bypass owner password",
+            },
+        )
+        assert closed_enrollment.status_code == 404
+
+        invited = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**owner_auth, "Idempotency-Key": "invite-second-owner"},
+            json={"provenance_reference": "e2e:second-owner"},
+        )
+        assert invited.status_code == 201, invited.text
+        invitation_id = invited.json()["invitation_id"]
+        invitation_token = invited.json()["invitation_token"]
+        assert invited.json()["token_available"] is True
+        assert isinstance(invitation_token, str)
+
+        # Exact create replay never replays the bearer secret.
+        replay = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**owner_auth, "Idempotency-Key": "invite-second-owner"},
+            json={"provenance_reference": "e2e:second-owner"},
+        )
+        assert replay.status_code == 201
+        assert replay.json()["invitation_id"] == invitation_id
+        assert replay.json()["invitation_token"] is None
+        assert replay.json()["token_available"] is False
 
         candidate_login = "second-platform-owner@example.test"
         candidate_password = "second platform owner password"
         enrollment = await client.post(
-            "/auth/native/identities",
-            json={"login_handle": candidate_login, "password": candidate_password},
+            "/v1/platform/owner-invitations:enroll",
+            json={
+                "invitation_token": invitation_token,
+                "login_handle": candidate_login,
+                "password": candidate_password,
+            },
         )
-        assert enrollment.status_code == 201
+        assert enrollment.status_code == 201, enrollment.text
         candidate_identity_id = UUID(enrollment.json()["native_identity_id"])
 
-        # Password alone is intentionally insufficient for owner promotion.
-        unprepared = await client.post(
-            "/v1/platform/owners",
-            headers=first_headers,
+        # The invitation bearer is single-use.
+        token_replay = await client.post(
+            "/v1/platform/owner-invitations:enroll",
             json={
-                "native_identity_id": str(candidate_identity_id),
-                "provenance_reference": "e2e:unprepared-owner",
+                "invitation_token": invitation_token,
+                "login_handle": "replay@example.test",
+                "password": candidate_password,
             },
+        )
+        assert token_replay.status_code == 422
+
+        # Password alone is intentionally insufficient for owner activation.
+        unprepared = await client.post(
+            f"/v1/platform/owner-invitations/{invitation_id}:activate",
+            headers={**owner_auth, "Idempotency-Key": "activate-unprepared-owner"},
         )
         assert unprepared.status_code == 422
         assert unprepared.json()["error"]["code"] == "platform_owner_invalid"
@@ -395,15 +435,8 @@ async def test_second_platform_owner_requires_prepared_identity_and_preserves_la
         assert len(recovery.json()["codes"]) == 10
 
         promoted = await client.post(
-            "/v1/platform/owners",
-            headers={
-                **first_headers,
-                "Idempotency-Key": "promote-second-owner-prepared",
-            },
-            json={
-                "native_identity_id": str(candidate_identity_id),
-                "provenance_reference": "e2e:prepared-owner",
-            },
+            f"/v1/platform/owner-invitations/{invitation_id}:activate",
+            headers={**owner_auth, "Idempotency-Key": "activate-prepared-owner"},
         )
         assert promoted.status_code == 201, promoted.text
         second_owner_id = UUID(promoted.json()["principal_id"])
@@ -419,6 +452,13 @@ async def test_second_platform_owner_requires_prepared_identity_and_preserves_la
         assert "platform.owner.provision" in owner_caps
         assert "platform.owner.manage_lifecycle" in owner_caps
 
+        invitation_state = e2e_admin_conn.execute(
+            "SELECT status, native_identity_id FROM request_engine.platform_owner_invitations "
+            "WHERE id = %s",
+            (UUID(invitation_id),),
+        ).fetchone()
+        assert invitation_state == ("consumed", candidate_identity_id)
+
         second_revision = e2e_admin_conn.execute(
             "SELECT authority_revision FROM request_engine.principals WHERE id = %s",
             (second_owner_id,),
@@ -427,7 +467,7 @@ async def test_second_platform_owner_requires_prepared_identity_and_preserves_la
         suspended = await client.post(
             f"/v1/platform/owners/{second_owner_id}:suspend",
             headers={
-                "Authorization": f"Bearer {first_owner_token}",
+                **owner_auth,
                 "Idempotency-Key": "suspend-second-owner",
             },
             json={
@@ -451,7 +491,7 @@ async def test_second_platform_owner_requires_prepared_identity_and_preserves_la
         last_owner_denied = await client.post(
             f"/v1/platform/owners/{first_owner_id[0]}:suspend",
             headers={
-                "Authorization": f"Bearer {first_owner_token}",
+                **owner_auth,
                 "Idempotency-Key": "cannot-suspend-last-owner",
             },
             json={
