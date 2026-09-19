@@ -151,7 +151,8 @@ class OpenBaoPlatformSecretStore:
         versions = data.get("versions")
         current: dict[str, Any] | None = None
         if isinstance(versions, dict):
-            candidate = versions.get(str(version))
+            version_map = cast(dict[str, object], versions)
+            candidate = version_map.get(str(version))
             if isinstance(candidate, dict):
                 current = cast(dict[str, Any], candidate)
         return PlatformSecretMetadata(
@@ -178,12 +179,16 @@ class OpenBaoPlatformSecretStore:
 
 def _response_data(response: httpx.Response) -> dict[str, Any]:
     try:
-        body = response.json()
+        raw_body: object = response.json()
     except ValueError as exc:
         raise PlatformSecretStoreUnavailable("OpenBao returned malformed JSON") from exc
-    if not isinstance(body, dict) or not isinstance(body.get("data"), dict):
+    if not isinstance(raw_body, dict):
         raise PlatformSecretStoreUnavailable("OpenBao returned malformed response data")
-    return cast(dict[str, Any], body["data"])
+    body = cast(dict[str, object], raw_body)
+    raw_data = body.get("data")
+    if not isinstance(raw_data, dict):
+        raise PlatformSecretStoreUnavailable("OpenBao returned malformed response data")
+    return cast(dict[str, Any], raw_data)
 
 
 def _is_cas_conflict(response: httpx.Response) -> bool:
