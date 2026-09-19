@@ -30,7 +30,7 @@ def test_production_openbao_reference_is_not_dev_mode_or_root_token_bootstrap() 
 
     # Request Engine-facing proxy authenticates as a workload and injects its
     # auto-auth token; Request Engine itself does not need a static OpenBao token.
-    assert 'method "approle"' in proxy
+    assert 'type = "approle"' in proxy
     assert 'use_auto_auth_token = "force"' in proxy
     assert "remove_secret_id_file_after_reading = true" in proxy
     assert "secret_id_response_wrapping_path" in proxy
