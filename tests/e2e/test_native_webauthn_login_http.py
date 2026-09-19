@@ -208,6 +208,101 @@ async def test_platform_owner_authenticates_with_passkey_and_steps_up(
         assert "webauthn" in raised[2]
 
 
+
+
+
+@pytest.mark.asyncio
+async def test_current_identity_can_enroll_passkey_then_issue_offline_recovery_codes(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        enrollment = await client.post(
+            "/auth/native/identities",
+            json={
+                "login_handle": "second-owner-candidate@example.test",
+                "password": "second owner candidate password",
+            },
+        )
+        assert enrollment.status_code == 201
+        native_identity_id = enrollment.json()["native_identity_id"]
+        login = await client.post(
+            "/auth/native/sessions",
+            json={
+                "login_handle": "second-owner-candidate@example.test",
+                "password": "second owner candidate password",
+            },
+        )
+        assert login.status_code == 201
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # A password-only session cannot mint offline break-glass material.
+        denied = await client.post(
+            "/auth/native/sessions/current/recovery-codes",
+            headers=headers,
+        )
+        assert denied.status_code == 403
+        assert denied.json()["error"]["code"] == "phishing_resistant_auth_required"
+
+        options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/registration-options",
+                headers=headers,
+            )
+        ).json()["public_key"]
+        authenticator = SoftwareAuthenticator(rp_id=options["rp"]["id"], origin=ORIGIN)
+        credential = authenticator.registration_credential(
+            challenge=websafe_decode(options["challenge"]), user_verified=True
+        )
+        registered = await client.post(
+            "/auth/native/sessions/current/webauthn/registrations",
+            headers=headers,
+            json={"credential": credential},
+        )
+        assert registered.status_code == 201, registered.text
+
+        step_options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/step-up-options",
+                headers=headers,
+            )
+        ).json()["public_key"]
+        assertion = authenticator.authentication_credential(
+            challenge=websafe_decode(step_options["challenge"]), user_verified=True
+        )
+        stepped = await client.post(
+            "/auth/native/sessions/current/webauthn/step-up",
+            headers=headers,
+            json={"credential": assertion},
+        )
+        assert stepped.status_code == 200
+        assert stepped.json()["authentication_assurance"] == "phishing_resistant"
+
+        issued = await client.post(
+            "/auth/native/sessions/current/recovery-codes",
+            headers=headers,
+        )
+        assert issued.status_code == 201, issued.text
+        codes = issued.json()["codes"]
+        assert len(codes) == 10
+        assert all(isinstance(code, str) and len(code) >= 16 for code in codes)
+
+        summary = e2e_admin_conn.execute(
+            "SELECT status, native_identity_id FROM request_engine.recovery_code_sets "
+            "WHERE native_identity_id = %s ORDER BY version DESC LIMIT 1",
+            (UUID(native_identity_id),),
+        ).fetchone()
+        assert summary == ("active", UUID(native_identity_id))
+
+
 @pytest.mark.asyncio
 async def test_webauthn_challenge_is_single_use(
     private_runtime_configuration: UUID,

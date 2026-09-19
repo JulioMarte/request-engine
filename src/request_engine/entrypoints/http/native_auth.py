@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -15,7 +15,12 @@ from request_engine.entrypoints.http.native_auth_errors import (
 )
 from request_engine.platform.http.errors import ErrorEnvelope
 from request_engine.platform.security.authentication import AuthenticatedSubject
-from request_engine.platform.security.freshness import REAUTHENTICATION_WINDOW
+from request_engine.platform.security.assurance import AuthenticationAssurance
+from request_engine.platform.security.freshness import (
+    REAUTHENTICATION_WINDOW,
+    PhishingResistantAuthenticationRequired,
+    RecentAuthenticationRequired,
+)
 from request_engine.platform.security.native_auth import (
     CredentialInvalid,
     NativeAuthenticationError,
@@ -171,6 +176,20 @@ class NativeWebAuthnStepUpView(BaseModel):
     user_verified: bool
 
 
+class NativeWebAuthnRegistrationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    credential: dict[str, Any]
+
+
+class NativeWebAuthnRegistrationView(BaseModel):
+    credential_id: UUID
+
+
+class NativeRecoveryCodesView(BaseModel):
+    codes: list[str]
+
+
 def create_native_auth_router(
     *,
     service: NativeHumanAuthService,
@@ -322,6 +341,53 @@ def create_native_auth_router(
             user_verified=subject.metadata["user_verified"] == "true",
             recovery_derived=subject.metadata["recovery_derived"] == "true",
         )
+
+    async def webauthn_registration_options(
+        request: Request,
+        response: Response,
+    ) -> NativeWebAuthnOptionsView:
+        assert webauthn_auth is not None
+        raw_token = bearer_token(request)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        started = await webauthn_auth.begin_registration(
+            native_identity_id=UUID(subject.subject_id)
+        )
+        _prevent_secret_caching(response)
+        return NativeWebAuthnOptionsView(public_key=public_key_to_json(dict(started.public_key)))
+
+    async def webauthn_register_current_identity(
+        payload: NativeWebAuthnRegistrationBody,
+        request: Request,
+        response: Response,
+    ) -> NativeWebAuthnRegistrationView:
+        assert webauthn_auth is not None
+        raw_token = bearer_token(request)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        native_identity_id = UUID(subject.subject_id)
+        try:
+            credential_id = await webauthn_auth.complete_registration(
+                credential=payload.credential,
+                native_identity_id=native_identity_id,
+            )
+        except (WebAuthnCeremonyError, WebAuthnInputError) as exc:
+            raise CredentialInvalid("native WebAuthn registration was rejected") from exc
+        _prevent_secret_caching(response)
+        return NativeWebAuthnRegistrationView(credential_id=credential_id)
+
+    async def issue_current_recovery_codes(
+        request: Request,
+        response: Response,
+    ) -> NativeRecoveryCodesView:
+        if recovery_codes is None:
+            raise RuntimeError("recovery-code lifecycle is not composed")
+        raw_token = bearer_token(request)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        _require_recent_phishing_resistant_subject(subject)
+        codes = await recovery_codes.issue_for_identity(
+            native_identity_id=UUID(subject.subject_id)
+        )
+        _prevent_secret_caching(response)
+        return NativeRecoveryCodesView(codes=list(codes))
 
     async def webauthn_authentication_options(
         payload: NativeWebAuthnLoginRequest,
@@ -540,22 +606,87 @@ def create_native_auth_router(
     if webauthn_login is not None:
         _register_webauthn_routes(
             router,
+            registration_options=webauthn_registration_options,
+            register_current_identity=webauthn_register_current_identity,
             authentication_options=webauthn_authentication_options,
             create_session=webauthn_create_session,
             step_up_options=webauthn_step_up_options,
             step_up=webauthn_step_up,
         )
+        if recovery_codes is not None:
+            router.add_api_route(
+                "/sessions/current/recovery-codes",
+                issue_current_recovery_codes,
+                methods=["POST"],
+                operation_id="nativeCurrentRecoveryCodesIssue",
+                response_model=NativeRecoveryCodesView,
+                status_code=status.HTTP_201_CREATED,
+                summary="Issue offline recovery codes for the current native identity",
+                description=(
+                    "Requires a recent phishing-resistant session. The authenticated "
+                    "bearer determines the native identity; no identity selector is accepted. "
+                    "Plaintext codes are returned once and only digests are persisted."
+                ),
+                responses={
+                    401: {"model": ErrorEnvelope, "description": "Session is invalid"},
+                    403: {"model": ErrorEnvelope, "description": "Strong recent proof required"},
+                },
+            )
+            router.add_api_route(
+                "/sessions/current/recovery-codes:regenerate",
+                issue_current_recovery_codes,
+                methods=["POST"],
+                operation_id="nativeCurrentRecoveryCodesRegenerate",
+                response_model=NativeRecoveryCodesView,
+                status_code=status.HTTP_201_CREATED,
+                summary="Regenerate offline recovery codes for the current native identity",
+                responses={
+                    401: {"model": ErrorEnvelope, "description": "Session is invalid"},
+                    403: {"model": ErrorEnvelope, "description": "Strong recent proof required"},
+                },
+            )
     return router
 
 
 def _register_webauthn_routes(
     router: APIRouter,
     *,
+    registration_options: Any,
+    register_current_identity: Any,
     authentication_options: Any,
     create_session: Any,
     step_up_options: Any,
     step_up: Any,
 ) -> None:
+    router.add_api_route(
+        "/sessions/current/webauthn/registration-options",
+        registration_options,
+        methods=["POST"],
+        operation_id="nativeWebAuthnCurrentRegistrationOptions",
+        response_model=NativeWebAuthnOptionsView,
+        status_code=status.HTTP_200_OK,
+        summary="Begin passkey registration for the current native identity",
+        description=(
+            "The bearer session determines the identity. The client cannot select another "
+            "identity, and the one-time challenge is bound to that identity."
+        ),
+        responses={
+            401: {"model": ErrorEnvelope, "description": "Session is invalid"},
+        },
+    )
+    router.add_api_route(
+        "/sessions/current/webauthn/registrations",
+        register_current_identity,
+        methods=["POST"],
+        operation_id="nativeWebAuthnCurrentRegistrationComplete",
+        response_model=NativeWebAuthnRegistrationView,
+        status_code=status.HTTP_201_CREATED,
+        summary="Verify and store a passkey for the current native identity",
+        responses={
+            401: {"model": ErrorEnvelope, "description": "Session or ceremony is invalid"},
+            422: {"model": ErrorEnvelope, "description": "Invalid WebAuthn input"},
+        },
+    )
     router.add_api_route(
         "/webauthn/authentication-options",
         authentication_options,
@@ -635,6 +766,33 @@ def _register_webauthn_routes(
             422: {"model": ErrorEnvelope, "description": "Invalid input"},
         },
     )
+
+
+def _require_recent_phishing_resistant_subject(subject: AuthenticatedSubject) -> None:
+    assurance = subject.metadata.get("authentication_assurance")
+    user_verified = subject.metadata.get("user_verified") == "true"
+    recovery_derived = subject.metadata.get("recovery_derived") == "true"
+    if (
+        recovery_derived
+        or assurance != AuthenticationAssurance.PHISHING_RESISTANT.value
+        or not user_verified
+    ):
+        raise PhishingResistantAuthenticationRequired(
+            "recent phishing-resistant authentication is required"
+        )
+    raw_authenticated_at = subject.metadata.get("authenticated_at")
+    if raw_authenticated_at is None:
+        raise RecentAuthenticationRequired("recent strong authentication is required")
+    try:
+        authenticated_at = datetime.fromisoformat(raw_authenticated_at)
+    except ValueError as exc:
+        raise RecentAuthenticationRequired(
+            "recent strong authentication is required"
+        ) from exc
+    if authenticated_at.tzinfo is None:
+        raise RecentAuthenticationRequired("recent strong authentication is required")
+    if datetime.now(UTC) - authenticated_at > REAUTHENTICATION_WINDOW:
+        raise RecentAuthenticationRequired("recent strong authentication is required")
 
 
 def _prevent_secret_caching(response: Response) -> None:

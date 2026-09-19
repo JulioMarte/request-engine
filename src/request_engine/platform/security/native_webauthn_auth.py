@@ -204,11 +204,18 @@ class NativeWebAuthnAuthService:
         )
         return WebAuthnCeremonyStarted(challenge=options.challenge, public_key=options.public_key)
 
-    async def complete_registration(self, *, credential: Mapping[str, Any]) -> UUID:
+    async def complete_registration(
+        self,
+        *,
+        credential: Mapping[str, Any],
+        native_identity_id: UUID | None = None,
+    ) -> UUID:
         challenge = extract_registration_challenge(credential)
         digest = challenge_digest(challenge)
         scope = await self._store.read_challenge(challenge_digest=digest, purpose="registration")
         if scope is None or scope.native_identity_id is None:
+            raise WebAuthnCeremonyError("webauthn_challenge_unknown")
+        if native_identity_id is not None and scope.native_identity_id != native_identity_id:
             raise WebAuthnCeremonyError("webauthn_challenge_unknown")
 
         verified = self._webauthn.verify_registration(
