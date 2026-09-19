@@ -540,3 +540,8 @@ evidence = ["contract", "adversarial", "security"]
 guarantee = "INV-PLATFORM-SECRET-STORE-001"
 path = "tests/unit/platform/secrets/test_openbao_secret_store.py"
 evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-REVISION-001"
+path = "tests/db/test_platform_configuration_foundation.py"
+evidence = ["invariant", "adversarial", "security"]
