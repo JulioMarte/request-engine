@@ -15,8 +15,10 @@ from psycopg import Connection
 from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.security.native_auth import CredentialInvalid
 from request_engine.platform.security.recovery_codes import (
     NativeRecoveryCodeService,
+    RecoveryCodeInvalid,
     recovery_code_digest,
 )
 
@@ -81,6 +83,79 @@ async def test_issue_persists_digests_only_and_is_single_use(
     assert len(summary) == 1
     assert summary[0].total_codes == 4
     assert summary[0].remaining_codes == 3
+
+
+@pytest.mark.asyncio
+async def test_offline_code_atomically_resets_password_and_revokes_sessions(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    authority_id = uuid4()
+    login_handle = f"offline-recovery-{uuid4().hex}@example.test"
+    admin_conn.execute(
+        "INSERT INTO request_engine.identity_authorities(id, kind, issuer_or_environment) "
+        "VALUES (%s, 'native', %s)",
+        (authority_id, f"offline-recovery-{uuid4().hex}"),
+    )
+    runtime = build_native_auth_runtime(command_session_factory)
+    enrollment = await runtime.service.enroll_password_identity(
+        identity_authority_id=authority_id,
+        login_handle=login_handle,
+        password=PASSWORD,
+    )
+    old_session = await runtime.service.authenticate_password(
+        identity_authority_id=authority_id,
+        login_handle=login_handle,
+        password=PASSWORD,
+    )
+    service = _service(command_session_factory)
+    codes = await service.issue_for_identity(
+        native_identity_id=enrollment.native_identity_id
+    )
+
+    new_password = "new offline recovery password"
+    recovered_identity = await service.recover_password(
+        code=codes[0],
+        new_password=new_password,
+    )
+    assert recovered_identity == enrollment.native_identity_id
+
+    with pytest.raises(CredentialInvalid):
+        await runtime.service.authenticate_password(
+            identity_authority_id=authority_id,
+            login_handle=login_handle,
+            password=PASSWORD,
+        )
+    new_session = await runtime.service.authenticate_password(
+        identity_authority_id=authority_id,
+        login_handle=login_handle,
+        password=new_password,
+    )
+    assert new_session.native_identity_id == enrollment.native_identity_id
+
+    assert admin_conn.execute(
+        "SELECT status FROM request_engine.native_sessions WHERE id = %s",
+        (old_session.session_id,),
+    ).fetchone() == ("revoked",)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.native_credentials "
+        "WHERE native_identity_id = %s AND kind = 'password' AND status = 'active'",
+        (enrollment.native_identity_id,),
+    ).fetchone() == (1,)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.recovery_codes "
+        "WHERE code_digest = %s AND used_at IS NOT NULL",
+        (recovery_code_digest(codes[0]),),
+    ).fetchone() == (1,)
+    assert admin_conn.execute(
+        "SELECT capability_key FROM request_engine.platform_recovery_code_facts "
+        "WHERE native_identity_id = %s AND event_kind = 'code_consumed' "
+        "ORDER BY created_at DESC LIMIT 1",
+        (enrollment.native_identity_id,),
+    ).fetchone() == ("platform.recovery_codes.password_reset",)
+
+    with pytest.raises(RecoveryCodeInvalid):
+        await service.recover_password(code=codes[0], new_password="another valid password")
 
 
 @pytest.mark.asyncio
@@ -179,6 +254,7 @@ def test_recovery_tables_are_not_directly_readable(admin_conn: PgConnection) -> 
 _RECOVERY_FUNCTIONS = (
     "create_recovery_code_set(uuid, uuid, uuid, bytea[])",
     "consume_recovery_code(bytea)",
+    "consume_recovery_code_and_rotate_password(bytea, uuid, text)",
     "promote_recovery_code_set(uuid, uuid)",
     "revoke_recovery_code_set(uuid, text)",
     "read_recovery_code_set_summary(uuid)",
