@@ -3,6 +3,7 @@ import hashlib
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import Never
 from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import text
@@ -360,7 +361,7 @@ def _digest_json(value: object) -> str:
     ).hexdigest()
 
 
-def _raise_mapped(exc: DBAPIError) -> None:
+def _raise_mapped(exc: DBAPIError) -> Never:
     error_type = _DATABASE_ERRORS.get(str(getattr(exc.orig, "sqlstate", "")))
     if error_type is None:
         raise exc
