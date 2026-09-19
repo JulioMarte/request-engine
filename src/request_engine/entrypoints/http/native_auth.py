@@ -39,6 +39,10 @@ from request_engine.platform.security.native_webauthn_auth import (
     WebAuthnCeremonyError,
 )
 from request_engine.platform.security.native_webauthn_login import NativeWebAuthnLoginService
+from request_engine.platform.security.recovery_codes import (
+    NativeRecoveryCodeService,
+    RecoveryCodeInvalid,
+)
 from request_engine.platform.security.webauthn import WebAuthnInputError, public_key_to_json
 
 
@@ -99,6 +103,13 @@ class NativePasswordRecoveryBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     recovery_token: str = Field(min_length=1, max_length=1024, repr=False)
+    new_password: str = Field(min_length=1, max_length=1024, repr=False)
+
+
+class NativeRecoveryCodePasswordResetBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recovery_code: str = Field(min_length=16, max_length=256, repr=False)
     new_password: str = Field(min_length=1, max_length=1024, repr=False)
 
 
@@ -167,6 +178,7 @@ def create_native_auth_router(
     identity_authority_id: UUID,
     webauthn_login: NativeWebAuthnLoginService | None = None,
     webauthn_auth: NativeWebAuthnAuthService | None = None,
+    recovery_codes: NativeRecoveryCodeService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/auth/native", tags=["Native authentication"])
     if (webauthn_login is None) != (webauthn_auth is None):
@@ -249,6 +261,24 @@ def create_native_auth_router(
         except PasswordPolicyViolation as exc:
             return native_identity_input_error_response(exc)
         except (RecoveryIntentInvalid, NativeAuthenticationError):
+            return native_recovery_error_response()
+        response = Response(status_code=status.HTTP_204_NO_CONTENT)
+        _prevent_secret_caching(response)
+        return response
+
+    async def recover_password_with_code(
+        payload: NativeRecoveryCodePasswordResetBody,
+    ) -> Response | JSONResponse:
+        if recovery_codes is None:
+            raise RuntimeError("offline recovery-code reset is not composed")
+        try:
+            await recovery_codes.recover_password(
+                code=payload.recovery_code,
+                new_password=payload.new_password,
+            )
+        except PasswordPolicyViolation as exc:
+            return native_identity_input_error_response(exc)
+        except RecoveryCodeInvalid:
             return native_recovery_error_response()
         response = Response(status_code=status.HTTP_204_NO_CONTENT)
         _prevent_secret_caching(response)
@@ -485,6 +515,28 @@ def create_native_auth_router(
             422: {"model": ErrorEnvelope, "description": "Invalid input or password policy"},
         },
     )
+    if recovery_codes is not None:
+        router.add_api_route(
+            "/password:recover-with-code",
+            recover_password_with_code,
+            methods=["POST"],
+            operation_id="nativePasswordRecoverWithRecoveryCode",
+            status_code=status.HTTP_204_NO_CONTENT,
+            response_model=None,
+            summary="Replace a native password using an offline recovery code",
+            description=(
+                "Consumes one previously issued recovery code and atomically replaces "
+                "the owning native identity's password. The code itself identifies the "
+                "identity; callers cannot select a user. All active native sessions and "
+                "pending recovery intents are revoked. The operation does not require "
+                "SMTP, OpenBao/Vault, the previous password or a live WebAuthn credential, "
+                "and never returns the previous password or a new session."
+            ),
+            responses={
+                401: {"model": ErrorEnvelope, "description": "Recovery code is invalid or used"},
+                422: {"model": ErrorEnvelope, "description": "Invalid input or password policy"},
+            },
+        )
     if webauthn_login is not None:
         _register_webauthn_routes(
             router,
