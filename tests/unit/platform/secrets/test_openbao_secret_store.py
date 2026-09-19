@@ -110,9 +110,7 @@ async def test_metadata_never_returns_plaintext() -> None:
                 "data": {
                     "current_version": 4,
                     "updated_time": "2026-09-19T10:00:00Z",
-                    "versions": {
-                        "4": {"created_time": "2026-09-19T09:00:00Z"}
-                    },
+                    "versions": {"4": {"created_time": "2026-09-19T09:00:00Z"}},
                 }
             },
         )

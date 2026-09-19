@@ -65,9 +65,7 @@ async def test_agent_mode_stages_with_cas_and_no_static_token() -> None:
 @pytest.mark.asyncio
 async def test_read_rejects_reference_outside_configured_prefix() -> None:
     with pytest.raises(RecoveryDeliveryPermanent, match="outside OpenBao scope"):
-        await _store(lambda _: httpx.Response(500)).read(
-            reference="other-tenant/secret"
-        )
+        await _store(lambda _: httpx.Response(500)).read(reference="other-tenant/secret")
 
 
 @pytest.mark.asyncio

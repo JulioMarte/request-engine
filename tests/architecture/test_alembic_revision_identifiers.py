@@ -37,7 +37,6 @@ def test_revision_ids_fit_alembic_version_column_and_are_unique() -> None:
             f"{ALEMBIC_VERSION_NUM_MAX_LENGTH}"
         )
         assert revision not in revisions, (
-            f"duplicate Alembic revision {revision!r}: "
-            f"{revisions[revision]} and {path}"
+            f"duplicate Alembic revision {revision!r}: {revisions[revision]} and {path}"
         )
         revisions[revision] = path

@@ -109,9 +109,7 @@ async def test_offline_code_atomically_resets_password_and_revokes_sessions(
         password=PASSWORD,
     )
     service = _service(command_session_factory)
-    codes = await service.issue_for_identity(
-        native_identity_id=enrollment.native_identity_id
-    )
+    codes = await service.issue_for_identity(native_identity_id=enrollment.native_identity_id)
 
     new_password = "new offline recovery password"
     recovered_identity = await service.recover_password(
