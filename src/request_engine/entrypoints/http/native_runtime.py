@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 
 from request_engine.entrypoints.http.security import build_identity_principal_resolver
@@ -139,9 +140,28 @@ def build_identity_link_verifier(
     )
 
 
+def resolve_webauthn_decoy_key(explicit: bytes | None) -> bytes:
+    """Resolve the deployment-owned WebAuthn decoy key, failing closed.
+
+    The decoy credential id must be stable for a handle and impossible for an
+    unauthenticated caller to precompute, so it is keyed by a deployment secret
+    rather than a public constant or per-process random value.
+    """
+
+    if explicit is not None:
+        return explicit
+    configured = os.environ.get("REQUEST_ENGINE_WEBAUTHN_DECOY_KEY")
+    if not configured:
+        raise RuntimeError(
+            "REQUEST_ENGINE_WEBAUTHN_DECOY_KEY must be configured for WebAuthn login"
+        )
+    return configured.encode("utf-8")
+
+
 __all__ = [
     "OidcAuthRuntime",
     "build_identity_link_verifier",
     "build_native_auth_runtime",
     "build_oidc_subject_resolver",
+    "resolve_webauthn_decoy_key",
 ]

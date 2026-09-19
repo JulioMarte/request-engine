@@ -22,6 +22,7 @@ class HttpSettings(BaseSettings):
     native_identity_authority_id: UUID
     appointment_option_signing_key: SecretStr
     identity_exchange_fingerprint_key: SecretStr
+    webauthn_decoy_key: SecretStr
     oidc_enabled: bool = False
     database_probe_timeout_seconds: float = Field(default=5, gt=0, le=30)
 
@@ -35,7 +36,11 @@ class HttpSettings(BaseSettings):
             raise ValueError("HTTP requires a dedicated least-privilege runtime login")
         return value
 
-    @field_validator("appointment_option_signing_key", "identity_exchange_fingerprint_key")
+    @field_validator(
+        "appointment_option_signing_key",
+        "identity_exchange_fingerprint_key",
+        "webauthn_decoy_key",
+    )
     @classmethod
     def validate_signing_key(cls, value: SecretStr) -> SecretStr:
         if len(value.get_secret_value().encode()) < 32:
@@ -53,6 +58,7 @@ class PlatformControlSettings(BaseSettings):
     platform_read_database_url: SecretStr
     platform_control_database_url: SecretStr
     native_identity_authority_id: UUID
+    webauthn_decoy_key: SecretStr
     database_probe_timeout_seconds: float = Field(default=5, gt=0, le=30)
     webauthn_rp_id: str = "localhost"
     webauthn_rp_name: str = "Request Engine"
@@ -63,6 +69,13 @@ class PlatformControlSettings(BaseSettings):
     def validate_webauthn_setting(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("WebAuthn relying-party settings cannot be empty")
+        return value
+
+    @field_validator("webauthn_decoy_key")
+    @classmethod
+    def validate_webauthn_decoy_key(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value().encode()) < 32:
+            raise ValueError("the WebAuthn decoy key must contain at least 32 bytes")
         return value
 
     @field_validator("database_url", "platform_read_database_url", "platform_control_database_url")

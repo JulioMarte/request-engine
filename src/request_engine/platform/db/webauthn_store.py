@@ -118,6 +118,25 @@ class PostgresWebAuthnStore:
             return None
         return _record(dict(row))
 
+    async def read_active_webauthn_identity(
+        self, *, identity_authority_id: UUID, login_handle: str
+    ) -> UUID | None:
+        async with self._session_factory() as session, session.begin():
+            value = await session.scalar(
+                text(
+                    """
+                    SELECT request_auth.read_active_webauthn_identity(
+                        :identity_authority_id, :login_handle
+                    )
+                    """
+                ),
+                {
+                    "identity_authority_id": identity_authority_id,
+                    "login_handle": login_handle,
+                },
+            )
+        return None if value is None else UUID(str(value))
+
     async def read_credentials(
         self, *, native_identity_id: UUID
     ) -> tuple[WebAuthnCredentialRecord, ...]:

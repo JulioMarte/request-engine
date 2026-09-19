@@ -206,6 +206,7 @@ class IdentityPrincipalResolver:
             authentication_assurance=_authentication_assurance(subject),
             user_verified=_metadata_flag(subject, "user_verified"),
             recovery_derived=_metadata_flag(subject, "recovery_derived"),
+            authenticated_at=_authenticated_at(subject),
         )
 
 

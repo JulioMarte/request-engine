@@ -132,6 +132,10 @@ class InstanceSetupStore(Protocol):
         self, *, idempotency_key_digest: str, intent_digest: str
     ) -> InstanceClaimResult | None: ...
 
+    async def read_installation_claim_intent_digest(
+        self, *, idempotency_key_digest: str
+    ) -> str | None: ...
+
 
 class InstanceSetupService:
     """Drive the first-run setup ceremony and the atomic Instance claim."""
@@ -277,6 +281,33 @@ class InstanceSetupService:
         return await self._store.read_installation_claim(
             idempotency_key_digest=key_digest, intent_digest=intent_digest
         )
+
+    async def is_claim_conflict(
+        self,
+        *,
+        setup_session_id: UUID,
+        idempotency_key: str,
+        claim_provenance: str,
+    ) -> bool:
+        """Return whether the key was used for a different finalize fingerprint.
+
+        This is the consumed-SetupSession replay path only. It reads a single
+        non-secret fingerprint (never another claim's receipt) so the caller can
+        distinguish "same key, different content" from "key never used / new
+        claim against a closed instance". The fingerprint is compared in Python
+        and the original value is never returned to the transport.
+        """
+
+        key_digest = hashlib.sha256(idempotency_key.strip().encode("utf-8")).hexdigest()
+        stored = await self._store.read_installation_claim_intent_digest(
+            idempotency_key_digest=key_digest
+        )
+        if stored is None:
+            return False
+        expected = claim_intent_digest(
+            setup_session_id=setup_session_id, claim_provenance=claim_provenance
+        )
+        return stored != expected
 
 
 def claim_intent_digest(*, setup_session_id: UUID, claim_provenance: str) -> str:

@@ -11,12 +11,14 @@ x-public-env: &public-env
   REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
   REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY: ci-only-appointment-signing-key-32-bytes-minimum
   REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY: ci-only-fingerprint-key-32-bytes-minimum
+  REQUEST_ENGINE_WEBAUTHN_DECOY_KEY: ci-only-webauthn-decoy-key-32-bytes-minimum
 
 x-platform-env: &platform-env
   REQUEST_ENGINE_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
   REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL: postgresql+psycopg://request_e2e_read:ci-read-only@postgres:5432/request_engine
   REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL: postgresql+psycopg://request_e2e_control:ci-control-only@postgres:5432/request_engine
   REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
+  REQUEST_ENGINE_WEBAUTHN_DECOY_KEY: ci-only-webauthn-decoy-key-32-bytes-minimum
 
 services:
   postgres:

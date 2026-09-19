@@ -18,6 +18,7 @@ from request_engine.platform.db.session import (
 )
 
 os.environ.setdefault("REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY", "x" * 64)
+os.environ.setdefault("REQUEST_ENGINE_WEBAUTHN_DECOY_KEY", "w" * 64)
 
 PgConnection = Connection[Any]
 APPLICATION_SCHEMAS = ("request_engine", "request_read", "request_cmd", "request_admin")

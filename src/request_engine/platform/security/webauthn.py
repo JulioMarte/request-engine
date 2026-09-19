@@ -193,6 +193,27 @@ def _jsonable(value: object) -> object:
     return value
 
 
+def public_key_to_json(value: object) -> Any:
+    """Recursively encode a WebAuthn public-key option tree for JSON transport.
+
+    Raw ``bytes`` (challenge, credential ids) become websafe base64; mappings and
+    sequences are preserved. The HTTP layer uses this for both setup and login so
+    the wire shape stays identical across ceremonies.
+    """
+
+    if isinstance(value, Mapping):
+        mapping = cast("Mapping[object, object]", value)
+        return {str(key): public_key_to_json(item) for key, item in mapping.items()}
+    if isinstance(value, (list, tuple)):
+        sequence = cast("Sequence[object]", value)
+        return [public_key_to_json(item) for item in sequence]
+    if isinstance(value, (bytes, bytearray)):
+        return websafe_encode(bytes(value))
+    if isinstance(value, memoryview):
+        return websafe_encode(value.tobytes())
+    return value
+
+
 def _user_verification(policy: WebAuthnPolicy) -> UserVerificationRequirement:
     if policy.user_verification_required:
         return UserVerificationRequirement.REQUIRED

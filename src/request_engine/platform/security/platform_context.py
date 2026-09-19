@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from request_engine.platform.security.assurance import AuthenticationAssurance
@@ -30,6 +31,7 @@ class PlatformActorContext:
     authentication_assurance: AuthenticationAssurance | None = None
     user_verified: bool = False
     recovery_derived: bool = False
+    authenticated_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.authority_revision <= 0:

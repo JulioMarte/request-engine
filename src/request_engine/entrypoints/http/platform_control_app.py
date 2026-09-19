@@ -6,7 +6,10 @@ from fastapi import FastAPI, Request, Response
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
 from request_engine.entrypoints.http.instance_setup import install_instance_setup_http
 from request_engine.entrypoints.http.native_auth import create_native_auth_router
-from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
+from request_engine.entrypoints.http.native_runtime import (
+    build_native_auth_runtime,
+    resolve_webauthn_decoy_key,
+)
 from request_engine.modules.tenancy.api.identity_recovery import install_identity_recovery_http
 from request_engine.modules.tenancy.api.native_platform_provisioning import (
     install_native_platform_provisioning_http,
@@ -24,6 +27,7 @@ from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
 from request_engine.platform.security.instance_setup import InstanceSetupService
 from request_engine.platform.security.native_webauthn_auth import NativeWebAuthnAuthService
+from request_engine.platform.security.native_webauthn_login import NativeWebAuthnLoginService
 from request_engine.platform.security.recovery_codes import NativeRecoveryCodeService
 from request_engine.platform.security.webauthn import WebAuthnPolicy
 
@@ -42,6 +46,7 @@ def create_platform_control_app(
     native_authority_id: UUID,
     recovery_delivery: RecoverySecretDelivery | None = None,
     webauthn_policy: WebAuthnPolicy | None = None,
+    webauthn_decoy_key: bytes | None = None,
 ) -> FastAPI:
     """Explicit private control-plane composition; caller owns pool lifecycles.
 
@@ -53,6 +58,16 @@ def create_platform_control_app(
     )
     if runtime.platform_actor_resolver is None:
         raise RuntimeError("Platform control requires an explicit authority read connection")
+    webauthn_store = PostgresWebAuthnStore(auth_session_factory)
+    webauthn_auth = NativeWebAuthnAuthService(
+        policy=webauthn_policy or _DEFAULT_WEBAUTHN_POLICY,
+        store=webauthn_store,
+    )
+    webauthn_login = NativeWebAuthnLoginService(
+        webauthn=webauthn_auth,
+        identities=webauthn_store,
+        decoy_key=resolve_webauthn_decoy_key(webauthn_decoy_key),
+    )
     app = FastAPI(title="Request Engine platform control", version="1.0.0")
 
     async def uncached_control_response(
@@ -69,6 +84,8 @@ def create_platform_control_app(
             service=runtime.service,
             authenticator=runtime.authenticator,
             identity_authority_id=native_authority_id,
+            webauthn_login=webauthn_login,
+            webauthn_auth=webauthn_auth,
         )
     )
     install_native_platform_provisioning_http(
@@ -100,10 +117,7 @@ def create_platform_control_app(
         app,
         service=InstanceSetupService(
             store=PostgresInstanceSetupStore(platform_write_session_factory),
-            webauthn=NativeWebAuthnAuthService(
-                policy=webauthn_policy or _DEFAULT_WEBAUTHN_POLICY,
-                store=PostgresWebAuthnStore(auth_session_factory),
-            ),
+            webauthn=webauthn_auth,
             recovery_codes=NativeRecoveryCodeService(
                 store=PostgresRecoveryCodeStore(auth_session_factory)
             ),

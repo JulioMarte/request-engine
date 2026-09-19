@@ -16,7 +16,7 @@ replay yields exactly one winner.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -241,6 +241,23 @@ class NativeWebAuthnAuthService:
             purpose="authentication",
             challenge=options.challenge,
             native_identity_id=native_identity_id,
+        )
+        return WebAuthnCeremonyStarted(challenge=options.challenge, public_key=options.public_key)
+
+    async def begin_authentication_decoy(
+        self, *, allow_credential_ids: Sequence[bytes]
+    ) -> WebAuthnCeremonyStarted:
+        """Return non-persisted authentication options for an unknown identity.
+
+        The challenge is never stored, so it can never be completed. It exists
+        only so that an authentication-options response for an unknown or
+        credential-less login handle is structurally indistinguishable from a
+        real ceremony for a credential this authenticator does not hold. Without
+        it, an empty allow-list would be a reliable account-enumeration oracle.
+        """
+
+        options = self._webauthn.begin_authentication(
+            allow_credential_ids=list(allow_credential_ids)
         )
         return WebAuthnCeremonyStarted(challenge=options.challenge, public_key=options.public_key)
 

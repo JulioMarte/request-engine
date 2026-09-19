@@ -19,6 +19,62 @@ revisions 0045-0051. The real secret store and delivery channel (Block C-02) are
 implemented and production-wired; operational acceptance of the chosen environment
 and secret manager remains under D6.
 
+## WebAuthn HTTP login and step-up (2026-09-19, migration head 0067)
+
+On branch `cohesion/system-optimization` at the P4 hardening head `ece83dcd`,
+the post-claim administrative authentication surface was added before P5. It
+reuses the existing internal WebAuthn primitives; no second ceremony path exists.
+
+Production change:
+
+- Migration `0067_webauthn_login` appends from `0066`. It adds
+  `request_platform.read_installation_claim_intent_digest(text)` (exposes only the
+  stored request fingerprint, never a foreign receipt) and
+  `request_auth.read_active_webauthn_identity(uuid, text)` (resolves an active
+  native identity that owns an active WebAuthn credential). No table or column was
+  added.
+- `instance_setup.py` now distinguishes `409 idempotency_conflict` (same key,
+  different fingerprint) from `instance_setup_closed` (new key after claim) using
+  the new fingerprint reader.
+- `platform/security/native_webauthn_login.py` composes the existing
+  `NativeWebAuthnAuthService` for a login handle. Unknown or credential-less
+  handles receive a non-persisted decoy with an HMAC-keyed decoy credential id
+  (`REQUEST_ENGINE_WEBAUTHN_DECOY_KEY`, ≥32 bytes), so the options response is not
+  a reliable account-enumeration oracle. Completion of a decoy challenge fails
+  opaquely.
+- HTTP: `POST /auth/native/webauthn/authentication-options`,
+  `POST /auth/native/webauthn/sessions`,
+  `POST /auth/native/sessions/current/webauthn/step-up-options`,
+  `POST /auth/native/sessions/current/webauthn/step-up` (operationIds
+  `nativeWebAuthnAuthenticationOptions`, `nativeWebAuthnSessionCreate`,
+  `nativeWebAuthnStepUpOptions`, `nativeWebAuthnStepUp`). They are mounted on the
+  platform control plane; the data-plane app is not yet composed with the WebAuthn
+  login policy.
+- `platform/security/freshness.py` adds `require_phishing_resistant_authentication`
+  and the distinct errors `PhishingResistantAuthenticationRequired` /
+  `RecentAuthenticationRequired`, mapped to `phishing_resistant_auth_required` and
+  `recent_authentication_required`. `PlatformActorContext` now carries
+  `authenticated_at`. The guard is not yet applied to product operations.
+
+Executed evidence (real PostgreSQL 18.6, `request_engine_current` at 0067):
+
+- `tests/e2e/test_native_webauthn_login_http.py`: claim → passkey login →
+  `PHISHING_RESISTANT` session (DB oracle), password session `SINGLE_FACTOR`,
+  session-bound step-up to `PHISHING_RESISTANT`, single-use challenge replay 401,
+  cross-session step-up 401, and indistinguishable unknown-handle options.
+- `tests/e2e/test_instance_setup_http.py`: key misuse now asserts
+  `idempotency_conflict`; a new key after claim asserts `instance_setup_closed`.
+- `tests/db/test_webauthn_persistence.py`: recovery-derived session cannot escape
+  `RECOVERY` through a valid WebAuthn step-up.
+- `tests/unit/platform/security/test_privileged_authentication.py`: the guard
+  distinguishes insufficient assurance from stale strong authentication.
+- Existing concurrency proof `test_webauthn_concurrency.py` covers one-winner
+  challenge finalization; existing revocation proof covers session invalidation.
+
+Honest limits: the public data-plane app does not yet expose WebAuthn login; the
+guard is not yet wired to P5/P7 operations; Docker exact-head E2E and GitHub
+exact-head CI for this block have not been run locally.
+
 ## Current position and remaining work (2026-09-18)
 
 Identity blocks A-E and F-02 are implemented and locally validated with green

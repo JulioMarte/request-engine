@@ -256,6 +256,22 @@ class PostgresInstanceSetupStore:
             )
         return None if row is None else _claim_result(dict(row))
 
+    async def read_installation_claim_intent_digest(
+        self, *, idempotency_key_digest: str
+    ) -> str | None:
+        async with self._session_factory() as session, session.begin():
+            value = await session.scalar(
+                text(
+                    """
+                    SELECT request_platform.read_installation_claim_intent_digest(
+                        :idempotency_key_digest
+                    )
+                    """
+                ),
+                {"idempotency_key_digest": idempotency_key_digest},
+            )
+        return None if value is None else str(value)
+
 
 def _claim_result(row: Mapping[str, Any]) -> InstanceClaimResult:
     return InstanceClaimResult(

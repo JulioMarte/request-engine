@@ -448,6 +448,62 @@ async def test_step_up_upgrades_password_session_to_phishing_resistant(
 
 
 @pytest.mark.asyncio
+async def test_recovery_derived_session_cannot_escape_recovery_by_step_up(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    """A recovery-derived session stays RECOVERY even after a valid WebAuthn step-up."""
+
+    authority_id = uuid4()
+    admin_conn.execute(
+        "INSERT INTO request_engine.identity_authorities(id, kind, issuer_or_environment) "
+        "VALUES (%s, 'native', %s)",
+        (authority_id, f"webauthn-proof-{uuid4().hex}"),
+    )
+    runtime = build_native_auth_runtime(command_session_factory)
+    enrollment = await runtime.service.enroll_password_identity(
+        identity_authority_id=authority_id,
+        login_handle="recovery-step-up@example.test",
+        password=PASSWORD,
+    )
+    identity_id = enrollment.native_identity_id
+    store = PostgresWebAuthnStore(command_session_factory)
+    service = _service(store)
+    authenticator = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
+    await _register_passkey(store, service, identity_id, authenticator)
+
+    # Valid precondition: a recovery-code-derived session (recovery reset the
+    # password). Direct SQL creates only the state under test, not the outcome.
+    session_id = uuid4()
+    token = issue_opaque_token(token_id=session_id)
+    admin_conn.execute(
+        "INSERT INTO request_engine.native_sessions "
+        "(id, native_identity_id, password_credential_id, token_digest, token_fingerprint, "
+        " session_epoch, authentication_methods, authentication_assurance, user_verified, "
+        " recovery_derived, expires_at) "
+        "SELECT %s, i.id, %s, %s, %s, i.session_epoch, ARRAY['recovery_code'], 'recovery', "
+        "false, true, clock_timestamp() + interval '1 hour' "
+        "FROM request_engine.native_identities i WHERE i.id = %s",
+        (session_id, enrollment.credential_id, token.digest, token.fingerprint, identity_id),
+    )
+
+    options = await service.begin_step_up(session_id=session_id)
+    assertion = authenticator.authentication_credential(challenge=options.challenge)
+    await service.complete_step_up(
+        session_id=session_id,
+        native_identity_id=identity_id,
+        credential=assertion,
+    )
+
+    subject = await _session_authenticator(command_session_factory).authenticate(
+        NativeSessionEvidence(token.raw_token)
+    )
+    assert subject.metadata["authentication_assurance"] == AuthenticationAssurance.RECOVERY.value
+    assert subject.metadata["recovery_derived"] == "true"
+    assert "webauthn" in subject.metadata["authentication_methods"]
+
+
+@pytest.mark.asyncio
 async def test_step_up_then_revoke_invalidates_stepped_up_session(
     admin_conn: PgConnection,
     command_session_factory: SessionFactory,
@@ -536,6 +592,7 @@ _LEAST_PRIVILEGE_FUNCTIONS = (
     "read_webauthn_challenge(bytea, text)",
     "read_webauthn_credential(bytea)",
     "read_webauthn_credentials(uuid)",
+    "read_active_webauthn_identity(uuid, text)",
     (
         "finalize_webauthn_registration(bytea, uuid, bytea, bytea, bigint, text, "
         "boolean, boolean, boolean)"

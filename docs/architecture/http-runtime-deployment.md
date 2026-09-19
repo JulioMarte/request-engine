@@ -24,6 +24,7 @@ commit a populated environment file. No development credentials are defaulted.
 | `REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID` | UUID of the active native authority established by bootstrap |
 | `REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY` | Independently generated secret, at least 32 bytes |
 | `REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY` | Independently generated secret, at least 32 bytes |
+| `REQUEST_ENGINE_WEBAUTHN_DECOY_KEY` | Independently generated secret, at least 32 bytes; keys the enumeration-resistant WebAuthn login decoy |
 | `REQUEST_ENGINE_OIDC_ENABLED` | Defaults to `false`; enabling it reads current trusted authority configuration from PostgreSQL |
 | `REQUEST_ENGINE_DATABASE_PROBE_TIMEOUT_SECONDS` | Positive timeout, defaults to 5 seconds, maximum 30 |
 

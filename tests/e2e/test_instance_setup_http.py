@@ -157,6 +157,16 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
             json={"claim_provenance": "e2e:different-provenance"},
         )
         assert conflicting.status_code == 409
+        assert conflicting.json()["error"]["code"] == "idempotency_conflict"
+
+        # A brand-new key against the closed instance is not a key conflict.
+        closed = await client.post(
+            "/v1/setup:finalize",
+            headers={**setup_headers, "Idempotency-Key": "claim-e2e-other"},
+            json={"claim_provenance": "e2e:instance-setup-http"},
+        )
+        assert closed.status_code == 409
+        assert closed.json()["error"]["code"] == "instance_setup_closed"
 
         assert (await client.get("/v1/setup")).json() == {"setup_required": False}
         assert (await client.post("/v1/setup/sessions")).status_code == 409

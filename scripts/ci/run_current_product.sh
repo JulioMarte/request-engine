@@ -183,6 +183,13 @@ uv run pytest \
   -q --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/live-capacity-contract.xml"
 
+# The reusable privileged-authentication guard is a pure policy contract. Run it
+# in the current-product packet so its guarantee is backed by executed evidence.
+uv run pytest \
+  tests/unit/platform/security/test_privileged_authentication.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/privileged-authentication.xml"
+
 # Tenant RLS catalog isolation is current-product truth. Run the adversarial
 # catalog enumeration against the accepted Alembic head so post-baseline tenant
 # tables cannot silently ship without FORCE RLS and a tenant-bound policy.

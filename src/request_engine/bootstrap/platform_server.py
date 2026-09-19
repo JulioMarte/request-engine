@@ -49,6 +49,7 @@ _SETUP = (
     "request_platform.read_setup_pending_identity(uuid)",
     "request_platform.read_claim_readiness(uuid)",
     "request_platform.read_installation_claim(text,text)",
+    "request_platform.read_installation_claim_intent_digest(text)",
     "request_platform.finalize_instance_claim(uuid,text,text,text,text,uuid)",
 )
 
@@ -183,6 +184,7 @@ def create_app() -> FastAPI:
                 if origin.strip()
             ),
         ),
+        webauthn_decoy_key=settings.webauthn_decoy_key.get_secret_value().encode(),
     )
     original_lifespan = app.router.lifespan_context
 

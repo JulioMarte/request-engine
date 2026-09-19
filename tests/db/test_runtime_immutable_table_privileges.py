@@ -110,6 +110,11 @@ _EXACT_DEFINER_OWNERS = {
     ): "request_platform_control_definer",
     (
         "request_platform",
+        "read_installation_claim_intent_digest",
+        "p_idempotency_key_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
         "finalize_instance_claim",
         "p_setup_session_id uuid, p_idempotency_key_digest text, p_intent_digest text, "
         "p_claim_provenance text, p_actor_authentication_method text, p_correlation_id uuid",

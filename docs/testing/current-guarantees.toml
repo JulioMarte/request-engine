@@ -411,3 +411,38 @@ statement = "A SetupSession is a bounded, single-use installation bearer that is
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-NATIVE-WEBAUTHN-LOGIN-001"
+statement = "A valid native WebAuthn assertion completes a bounded one-time challenge and issues a brand-new normal native session whose trusted evidence (initial authenticator, proven methods, user verification and derived assurance) reflects only the verified ceremony; the caller cannot supply assurance, user verification or methods, and a decoy options response for an unknown or credential-less login handle is indistinguishable in shape from a real ceremony so the endpoint is not a reliable account-enumeration oracle."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-PHISHING-RESISTANT-ASSURANCE-001"
+statement = "PHISHING_RESISTANT assurance is derived only from a verified WebAuthn ceremony that accepted user verification; a WebAuthn method without accepted UV is a possession factor, a recovery-derived session is always RECOVERY, and no caller-supplied value can raise a session's assurance."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-WEBAUTHN-STEP-UP-001"
+statement = "A native session can acquire stronger assurance only through a valid WebAuthn step-up whose challenge belongs to that exact session and whose credential belongs to the session's native identity; another session or identity cannot elevate it, and a recovery-derived session cannot escape RECOVERY through step-up."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-WEBAUTHN-CHALLENGE-SINGLE-USE-001"
+statement = "Authentication and step-up challenges are bounded, single-purpose and single-consumption: a completed or expired challenge cannot be replayed, a failed verification does not consume it, and concurrent completions of one challenge produce at most one authoritative effect with the loser failing closed."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-PRIVILEGED-AUTH-FRESHNESS-001"
+statement = "The reusable privileged-authentication guard fails closed on trusted session evidence and distinguishes insufficient assurance (including any recovery-derived session) from stale strong authentication, so a sensitive operation can require recent phishing-resistant authentication without hard-coding checks in individual routers."
+severity = "high"
+required_evidence = ["contract"]
+risk = ["security"]

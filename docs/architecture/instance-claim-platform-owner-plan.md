@@ -4,7 +4,7 @@ Date: 2026-09-18
 Branch of reference: `cohesion/system-optimization`  
 Status: **accepted architecture and implementation handoff; not production certification.**
 
-Implementation status (2026-09-19, migration head `0065_instance_claim`):
+Implementation status (2026-09-19, migration head `0067_webauthn_login`):
 
 ```text
 P0  contract reconciliation                    delivered (reconnaissance)
@@ -82,8 +82,47 @@ The P4 surface was hardened before starting P5:
   `INV-SETUP-SESSION-ISOLATION-001` are now registered in
   `docs/testing/current-guarantees.toml`.
 
-Normal post-claim WebAuthn login over HTTP remains the immediate next step
-(before P5); the owner currently logs in with a `SINGLE_FACTOR` password session.
+Normal post-claim WebAuthn login and WebAuthn step-up are now delivered over
+HTTP (see "P4.1 WebAuthn login and step-up" below); the owner can authenticate
+with the passkey registered during the claim and a password session can be
+raised to `PHISHING_RESISTANT` only by a session-bound WebAuthn step-up.
+
+### P4.1 WebAuthn login and step-up (0067)
+
+The final P4 gap (key-misuse conflict semantics) and the post-claim WebAuthn
+login/step-up surface are delivered before P5:
+
+- **Key-misuse conflict is explicit.** A consumed SetupSession whose
+  Idempotency-Key exists with a different request fingerprint now returns
+  `409 idempotency_conflict`, distinct from `instance_setup_closed` for a new key
+  against a closed instance. The reader
+  `request_platform.read_installation_claim_intent_digest(text)` exposes only the
+  stored fingerprint, never another claim's receipt.
+- **HTTP WebAuthn login** (`POST /auth/native/webauthn/authentication-options`,
+  `POST /auth/native/webauthn/sessions`) reuses the existing
+  `NativeWebAuthnAuthService` ceremony. `read_active_webauthn_identity` resolves
+  the handle; an unknown or credential-less handle returns a structurally
+  identical decoy challenge (HMAC-keyed decoy credential id, never persisted) so
+  the options endpoint is not a reliable account-enumeration oracle. Assurance,
+  user verification and methods are derived only from the verified ceremony.
+- **HTTP WebAuthn step-up**
+  (`POST /auth/native/sessions/current/webauthn/step-up-options`,
+  `POST /auth/native/sessions/current/webauthn/step-up`) binds the challenge to
+  the bearer's session and the credential to the session's native identity; a
+  password `SINGLE_FACTOR` session becomes `PHISHING_RESISTANT` only through a
+  valid step-up. A recovery-derived session stays `RECOVERY`.
+- **Reusable privileged-auth guard**
+  (`require_phishing_resistant_authentication`) distinguishes insufficient
+  assurance (`phishing_resistant_auth_required`) from stale strong
+  authentication (`recent_authentication_required`). It is not yet applied
+  massively; P5/P7 operations will consume it.
+- New guarantees `INV-NATIVE-WEBAUTHN-LOGIN-001`,
+  `INV-PHISHING-RESISTANT-ASSURANCE-001`, `INV-WEBAUTHN-STEP-UP-001`,
+  `INV-WEBAUTHN-CHALLENGE-SINGLE-USE-001` and
+  `INV-PRIVILEGED-AUTH-FRESHNESS-001` are registered with executed proofs.
+- `REQUEST_ENGINE_WEBAUTHN_DECOY_KEY` is a new required deployment secret
+  (≥32 bytes) for the enumeration-resistant decoy. The public data-plane app is
+  not yet composed with the WebAuthn login policy; the control plane is.
 
 ### P2 decisions
 

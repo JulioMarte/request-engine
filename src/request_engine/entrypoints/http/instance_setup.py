@@ -12,14 +12,12 @@ Recovery codes are one-time secrets: they are returned once and never replayed.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import JSONResponse
-from fido2.utils import websafe_encode
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from request_engine.entrypoints.http.errors import render_error_response
@@ -32,7 +30,7 @@ from request_engine.platform.security.instance_setup import (
 )
 from request_engine.platform.security.native_auth import normalize_login_handle
 from request_engine.platform.security.native_webauthn_auth import WebAuthnCeremonyError
-from request_engine.platform.security.webauthn import WebAuthnInputError
+from request_engine.platform.security.webauthn import WebAuthnInputError, public_key_to_json
 
 _SETUP_SCHEME = "setup"
 
@@ -143,7 +141,7 @@ def install_instance_setup_http(app: Any, *, service: InstanceSetupService) -> N
         except (WebAuthnCeremonyError, WebAuthnInputError):
             return _step_invalid()
         _prevent_secret_caching(response)
-        return SetupWebAuthnOptionsView(public_key=_public_key_json(dict(started.public_key)))
+        return SetupWebAuthnOptionsView(public_key=public_key_to_json(dict(started.public_key)))
 
     async def webauthn_register(
         request: Request, payload: SetupWebAuthnRegistrationBody
@@ -192,6 +190,16 @@ def install_instance_setup_http(app: Any, *, service: InstanceSetupService) -> N
                 claim_provenance=payload.claim_provenance,
             )
             if receipt is None:
+                # The key exists but for a different request fingerprint: a
+                # machine-readable idempotency conflict, not a generic closed
+                # setup. A key that was never used is a new claim against a
+                # closed instance.
+                if await service.is_claim_conflict(
+                    setup_session_id=session.setup_session_id,
+                    idempotency_key=idempotency_key,
+                    claim_provenance=payload.claim_provenance,
+                ):
+                    return _idempotency_conflict()
                 return _setup_closed()
             return await _claim_view(service, receipt)
         if not session.is_usable:
@@ -387,6 +395,15 @@ def _setup_closed() -> JSONResponse:
     )
 
 
+def _idempotency_conflict() -> JSONResponse:
+    return _error(
+        status.HTTP_409_CONFLICT,
+        "idempotency_conflict",
+        "the Idempotency-Key was already used for a different finalize request",
+        ErrorResolution.FIX_REQUEST,
+    )
+
+
 def _step_invalid() -> JSONResponse:
     return _error(
         status.HTTP_409_CONFLICT,
@@ -412,20 +429,6 @@ def _error(
 def _prevent_secret_caching(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
-
-
-def _public_key_json(value: object) -> Any:
-    if isinstance(value, Mapping):
-        mapping = cast("Mapping[object, object]", value)
-        return {str(key): _public_key_json(item) for key, item in mapping.items()}
-    if isinstance(value, (list, tuple)):
-        sequence = cast("Sequence[object]", value)
-        return [_public_key_json(item) for item in sequence]
-    if isinstance(value, (bytes, bytearray)):
-        return websafe_encode(bytes(value))
-    if isinstance(value, memoryview):
-        return websafe_encode(value.tobytes())
-    return value
 
 
 __all__ = ["install_instance_setup_http", "SetupAuthenticationRequired"]

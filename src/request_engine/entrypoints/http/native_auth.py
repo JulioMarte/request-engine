@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response, status
@@ -33,6 +34,12 @@ from request_engine.platform.security.native_session import (
     NativeSessionAuthenticator,
     NativeSessionEvidence,
 )
+from request_engine.platform.security.native_webauthn_auth import (
+    NativeWebAuthnAuthService,
+    WebAuthnCeremonyError,
+)
+from request_engine.platform.security.native_webauthn_login import NativeWebAuthnLoginService
+from request_engine.platform.security.webauthn import WebAuthnInputError, public_key_to_json
 
 
 class NativeEnrollmentBody(BaseModel):
@@ -106,13 +113,56 @@ class NativeSessionReauthView(BaseModel):
     reauth_expires_at: datetime
 
 
+class NativeWebAuthnLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    login_handle: str = Field(min_length=1, max_length=320)
+
+    @field_validator("login_handle")
+    @classmethod
+    def validate_handle(cls, value: str) -> str:
+        return normalize_login_handle(value)
+
+
+class NativeWebAuthnOptionsView(BaseModel):
+    public_key: dict[str, Any]
+
+
+class NativeWebAuthnLoginBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    login_handle: str = Field(min_length=1, max_length=320)
+    credential: dict[str, Any]
+
+    @field_validator("login_handle")
+    @classmethod
+    def validate_handle(cls, value: str) -> str:
+        return normalize_login_handle(value)
+
+
+class NativeWebAuthnStepUpBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    credential: dict[str, Any]
+
+
+class NativeWebAuthnStepUpView(BaseModel):
+    authenticated_at: datetime
+    authentication_assurance: str
+    user_verified: bool
+
+
 def create_native_auth_router(
     *,
     service: NativeHumanAuthService,
     authenticator: NativeSessionAuthenticator,
     identity_authority_id: UUID,
+    webauthn_login: NativeWebAuthnLoginService | None = None,
+    webauthn_auth: NativeWebAuthnAuthService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/auth/native", tags=["Native authentication"])
+    if (webauthn_login is None) != (webauthn_auth is None):
+        raise ValueError("WebAuthn login and step-up must be composed together")
 
     async def enroll_identity(
         payload: NativeEnrollmentBody,
@@ -213,6 +263,76 @@ def create_native_auth_router(
         return NativeSessionReauthView(
             authenticated_at=authenticated_at,
             reauth_expires_at=authenticated_at + REAUTHENTICATION_WINDOW,
+        )
+
+    async def webauthn_authentication_options(
+        payload: NativeWebAuthnLoginRequest,
+        response: Response,
+    ) -> NativeWebAuthnOptionsView:
+        assert webauthn_login is not None
+        started = await webauthn_login.begin_login(
+            identity_authority_id=identity_authority_id,
+            login_handle=payload.login_handle,
+        )
+        _prevent_secret_caching(response)
+        return NativeWebAuthnOptionsView(public_key=public_key_to_json(dict(started.public_key)))
+
+    async def webauthn_create_session(
+        payload: NativeWebAuthnLoginBody,
+        response: Response,
+    ) -> NativeSessionResponse:
+        assert webauthn_login is not None
+        try:
+            issued = await webauthn_login.complete_login(
+                identity_authority_id=identity_authority_id,
+                login_handle=payload.login_handle,
+                credential=payload.credential,
+            )
+        except (WebAuthnCeremonyError, WebAuthnInputError) as exc:
+            raise CredentialInvalid("native WebAuthn authentication was rejected") from exc
+        _prevent_secret_caching(response)
+        return NativeSessionResponse(
+            access_token=issued.raw_token,
+            expires_at=issued.expires_at,
+        )
+
+    async def webauthn_step_up_options(
+        request: Request,
+        response: Response,
+    ) -> NativeWebAuthnOptionsView:
+        assert webauthn_auth is not None
+        raw_token = bearer_token(request)
+        parsed = parse_opaque_token(raw_token)
+        await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        started = await webauthn_auth.begin_step_up(session_id=parsed.token_id)
+        _prevent_secret_caching(response)
+        return NativeWebAuthnOptionsView(public_key=public_key_to_json(dict(started.public_key)))
+
+    async def webauthn_step_up(
+        payload: NativeWebAuthnStepUpBody,
+        request: Request,
+        response: Response,
+    ) -> NativeWebAuthnStepUpView:
+        assert webauthn_auth is not None
+        raw_token = bearer_token(request)
+        parsed = parse_opaque_token(raw_token)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        try:
+            await webauthn_auth.complete_step_up(
+                session_id=parsed.token_id,
+                native_identity_id=UUID(subject.subject_id),
+                credential=payload.credential,
+            )
+        except (WebAuthnCeremonyError, WebAuthnInputError) as exc:
+            raise CredentialInvalid("native WebAuthn step-up was rejected") from exc
+        # Re-read the session so the response reflects the trusted post-step-up
+        # evidence rather than anything the caller supplied.
+        updated = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        _prevent_secret_caching(response)
+        return NativeWebAuthnStepUpView(
+            authenticated_at=datetime.fromisoformat(updated.metadata["authenticated_at"]),
+            authentication_assurance=updated.metadata["authentication_assurance"],
+            user_verified=updated.metadata["user_verified"] == "true",
         )
 
     router.add_api_route(
@@ -317,7 +437,104 @@ def create_native_auth_router(
             422: {"model": ErrorEnvelope, "description": "Invalid input or password policy"},
         },
     )
+    if webauthn_login is not None:
+        _register_webauthn_routes(
+            router,
+            authentication_options=webauthn_authentication_options,
+            create_session=webauthn_create_session,
+            step_up_options=webauthn_step_up_options,
+            step_up=webauthn_step_up,
+        )
     return router
+
+
+def _register_webauthn_routes(
+    router: APIRouter,
+    *,
+    authentication_options: Any,
+    create_session: Any,
+    step_up_options: Any,
+    step_up: Any,
+) -> None:
+    router.add_api_route(
+        "/webauthn/authentication-options",
+        authentication_options,
+        methods=["POST"],
+        operation_id="nativeWebAuthnAuthenticationOptions",
+        response_model=NativeWebAuthnOptionsView,
+        status_code=status.HTTP_200_OK,
+        summary="Begin a native WebAuthn authentication ceremony",
+        description=(
+            "Returns a bounded one-time challenge and a credential allow-list for "
+            "the supplied login handle. An unknown handle, a handle without an "
+            "active passkey and a handle with passkeys all return the same response "
+            "shape, so this endpoint is not a reliable account-enumeration oracle. "
+            "The challenge is single-use and expires; it must be completed with "
+            "POST /auth/native/webauthn/sessions."
+        ),
+        responses={
+            422: {"model": ErrorEnvelope, "description": "Invalid input"},
+        },
+    )
+    router.add_api_route(
+        "/webauthn/sessions",
+        create_session,
+        methods=["POST"],
+        operation_id="nativeWebAuthnSessionCreate",
+        response_model=NativeSessionResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Verify a WebAuthn assertion and issue a native session",
+        description=(
+            "Verifies the assertion against the one-time challenge, the stored "
+            "credential, the relying-party/origin policy and user verification. "
+            "Assurance, user verification and methods are derived only from the "
+            "verified ceremony and cannot be supplied by the caller. A successful "
+            "user-verified assertion issues a fresh session with "
+            "PHISHING_RESISTANT assurance."
+        ),
+        responses={
+            401: {"model": ErrorEnvelope, "description": "Assertion or credential is invalid"},
+            422: {"model": ErrorEnvelope, "description": "Invalid input"},
+        },
+    )
+    router.add_api_route(
+        "/sessions/current/webauthn/step-up-options",
+        step_up_options,
+        methods=["POST"],
+        operation_id="nativeWebAuthnStepUpOptions",
+        response_model=NativeWebAuthnOptionsView,
+        status_code=status.HTTP_200_OK,
+        summary="Begin a WebAuthn step-up for the current native session",
+        description=(
+            "Returns a bounded step-up challenge bound to the bearer's session. "
+            "The session and identity come only from the authenticated bearer; "
+            "callers cannot select a target session or identity."
+        ),
+        responses={
+            401: {"model": ErrorEnvelope, "description": "Session is invalid or unusable"},
+            422: {"model": ErrorEnvelope, "description": "Invalid input"},
+        },
+    )
+    router.add_api_route(
+        "/sessions/current/webauthn/step-up",
+        step_up,
+        methods=["POST"],
+        operation_id="nativeWebAuthnStepUp",
+        response_model=NativeWebAuthnStepUpView,
+        status_code=status.HTTP_200_OK,
+        summary="Complete a WebAuthn step-up for the current native session",
+        description=(
+            "Verifies a session-bound assertion and raises the session's trusted "
+            "authentication evidence. The credential must belong to the session's "
+            "native identity, the challenge must belong to the session, and user "
+            "verification must be accepted. A recovery-derived session stays "
+            "RECOVERY and cannot become phishing-resistant through step-up."
+        ),
+        responses={
+            401: {"model": ErrorEnvelope, "description": "Assertion or credential is invalid"},
+            422: {"model": ErrorEnvelope, "description": "Invalid input"},
+        },
+    )
 
 
 def _prevent_secret_caching(response: Response) -> None:
