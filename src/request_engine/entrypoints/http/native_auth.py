@@ -479,8 +479,14 @@ def create_native_auth_router(
                 "Passwords require at least 12 characters and at most 1024 UTF-8 bytes."
             ),
             responses={
-                409: {"model": ErrorEnvelope, "description": "Native login handle already enrolled"},
-                422: {"model": ErrorEnvelope, "description": "Invalid enrollment input or password"},
+                409: {
+                    "model": ErrorEnvelope,
+                    "description": "Native login handle already enrolled",
+                },
+                422: {
+                    "model": ErrorEnvelope,
+                    "description": "Invalid enrollment input or password",
+                },
                 503: {
                     "model": ErrorEnvelope,
                     "description": "Native identity authority unavailable",
