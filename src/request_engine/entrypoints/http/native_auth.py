@@ -383,9 +383,7 @@ def create_native_auth_router(
         raw_token = bearer_token(request)
         subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
         _require_recent_phishing_resistant_subject(subject)
-        codes = await recovery_codes.issue_for_identity(
-            native_identity_id=UUID(subject.subject_id)
-        )
+        codes = await recovery_codes.issue_for_identity(native_identity_id=UUID(subject.subject_id))
         _prevent_secret_caching(response)
         return NativeRecoveryCodesView(codes=list(codes))
 
@@ -786,9 +784,7 @@ def _require_recent_phishing_resistant_subject(subject: AuthenticatedSubject) ->
     try:
         authenticated_at = datetime.fromisoformat(raw_authenticated_at)
     except ValueError as exc:
-        raise RecentAuthenticationRequired(
-            "recent strong authentication is required"
-        ) from exc
+        raise RecentAuthenticationRequired("recent strong authentication is required") from exc
     if authenticated_at.tzinfo is None:
         raise RecentAuthenticationRequired("recent strong authentication is required")
     if datetime.now(UTC) - authenticated_at > REAUTHENTICATION_WINDOW:
