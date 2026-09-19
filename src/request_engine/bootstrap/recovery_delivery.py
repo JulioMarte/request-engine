@@ -134,8 +134,6 @@ def build_recovery_secret_delivery(
 
 
 
-
-
 def _has_text(value: str | None) -> bool:
     return value is not None and bool(value.strip())
 
@@ -151,9 +149,7 @@ def _missing_configuration(
 ) -> tuple[str, ...]:
     missing: list[str] = []
     if not openbao_configured and not vault_configured:
-        missing.append(
-            "REQUEST_ENGINE_OPENBAO_ADDR (preferred) or REQUEST_ENGINE_VAULT_ADDR/TOKEN"
-        )
+        missing.append("REQUEST_ENGINE_OPENBAO_ADDR (preferred) or REQUEST_ENGINE_VAULT_ADDR/TOKEN")
     if not smtp_configured:
         missing.extend(
             (

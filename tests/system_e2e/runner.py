@@ -1641,7 +1641,6 @@ def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
     )
 
 
-
 def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> None:
     if phase == "prepare-worker":
         _run_f01_foundation(checkpoints, phase)
@@ -1652,12 +1651,8 @@ def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> Non
     state_dir, controller = _handoff()
     foundation = _json_object(state_dir / "f01-foundation.json")
     control_url = "http://control-plane:8001"
-    platform_login = _required_string(
-        controller, "login_handle", "platform-controller secret"
-    )
-    platform_password = _required_string(
-        controller, "password", "platform-controller secret"
-    )
+    platform_login = _required_string(controller, "login_handle", "platform-controller secret")
+    platform_password = _required_string(controller, "password", "platform-controller secret")
     target_identity_id = _required_string(
         foundation, "tenant_native_identity_id", "F01 foundation state"
     )
@@ -1665,9 +1660,7 @@ def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> Non
 
     recovery_login = "f01-recovery-operator@example.invalid"
     recovery_password = _derived_password(platform_password, "f01-recovery-operator")
-    recovery_operator_token = _native_session(
-        control_url, recovery_login, recovery_password
-    )
+    recovery_operator_token = _native_session(control_url, recovery_login, recovery_password)
 
     destination = "e2e-runner@example.invalid"
     case = _http_json(
