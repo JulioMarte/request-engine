@@ -198,6 +198,7 @@ def create_native_auth_router(
     webauthn_login: NativeWebAuthnLoginService | None = None,
     webauthn_auth: NativeWebAuthnAuthService | None = None,
     recovery_codes: NativeRecoveryCodeService | None = None,
+    allow_identity_enrollment: bool = True,
 ) -> APIRouter:
     router = APIRouter(prefix="/auth/native", tags=["Native authentication"])
     if (webauthn_login is None) != (webauthn_auth is None):
@@ -457,34 +458,35 @@ def create_native_auth_router(
             user_verified=updated.metadata["user_verified"] == "true",
         )
 
+    if allow_identity_enrollment:
     router.add_api_route(
-        "/identities",
-        enroll_identity,
-        methods=["POST"],
-        operation_id="nativeIdentityEnroll",
-        response_model=NativeEnrollmentView,
-        status_code=status.HTTP_201_CREATED,
-        summary="Enroll a native human identity without business authority",
-        description=(
-            "Creates a password identity in the server-configured native authority. "
-            "Does not create a Principal, binding, membership, grants or session. "
-            "Authenticate separately with POST /auth/native/sessions. Login handles are "
-            "trimmed and case-folded; an already enrolled handle returns 409 and never "
-            "replaces credentials. Enrollment is not an idempotency-key operation: "
-            "after an uncertain response, attempt login before retrying enrollment. "
-            "If the configured native authority is unavailable, the deployment returns "
-            "503 and an operator must restore it; retrying does not create the identity. "
-            "Passwords require at least 12 characters and at most 1024 UTF-8 bytes."
-        ),
-        responses={
-            409: {"model": ErrorEnvelope, "description": "Native login handle already enrolled"},
-            422: {"model": ErrorEnvelope, "description": "Invalid enrollment input or password"},
-            503: {
-                "model": ErrorEnvelope,
-                "description": "Native identity authority unavailable",
+            "/identities",
+            enroll_identity,
+            methods=["POST"],
+            operation_id="nativeIdentityEnroll",
+            response_model=NativeEnrollmentView,
+            status_code=status.HTTP_201_CREATED,
+            summary="Enroll a native human identity without business authority",
+            description=(
+                "Creates a password identity in the server-configured native authority. "
+                "Does not create a Principal, binding, membership, grants or session. "
+                "Authenticate separately with POST /auth/native/sessions. Login handles are "
+                "trimmed and case-folded; an already enrolled handle returns 409 and never "
+                "replaces credentials. Enrollment is not an idempotency-key operation: "
+                "after an uncertain response, attempt login before retrying enrollment. "
+                "If the configured native authority is unavailable, the deployment returns "
+                "503 and an operator must restore it; retrying does not create the identity. "
+                "Passwords require at least 12 characters and at most 1024 UTF-8 bytes."
+            ),
+            responses={
+                409: {"model": ErrorEnvelope, "description": "Native login handle already enrolled"},
+                422: {"model": ErrorEnvelope, "description": "Invalid enrollment input or password"},
+                503: {
+                    "model": ErrorEnvelope,
+                    "description": "Native identity authority unavailable",
+                },
             },
-        },
-    )
+        )
     router.add_api_route(
         "/sessions",
         create_session,

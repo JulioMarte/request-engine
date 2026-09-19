@@ -93,6 +93,7 @@ def create_platform_control_app(
             webauthn_login=webauthn_login,
             webauthn_auth=webauthn_auth,
             recovery_codes=recovery_codes,
+            allow_identity_enrollment=False,
         )
     )
     install_native_platform_provisioning_http(
