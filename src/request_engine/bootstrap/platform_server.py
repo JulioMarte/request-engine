@@ -41,6 +41,13 @@ _RECOVERY = (
     "uuid,bigint,integer,uuid,bytea,text,timestamp with time zone,uuid,text,text,text,text)",
     "request_platform.revoke_identity_recovery_case(uuid,bigint,text,text,text)",
 )
+_OWNER = (
+    "request_platform.transition_native_platform_owner(uuid,text,bigint,text,text,text,text)",
+    "request_platform.create_platform_owner_invitation("
+    "uuid,bytea,text,timestamp with time zone,text,text,text)",
+    "request_platform.enroll_platform_owner_invitation(bytea,uuid,uuid,text,text)",
+    "request_platform.activate_platform_owner_invitation(uuid,uuid,uuid,text,text)",
+)
 _SETUP = (
     "request_platform.read_platform_instance()",
     "request_platform.create_setup_session(uuid,bytea,text,text,integer)",
@@ -114,6 +121,7 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
                 _POLICY,
                 *_LIFECYCLE,
                 *_RECOVERY,
+                *_OWNER,
                 *_SETUP,
             )
         )
