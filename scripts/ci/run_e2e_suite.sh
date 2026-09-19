@@ -91,7 +91,7 @@ if [[ "${E2E_IMAGES_READY:-0}" != "1" ]]; then build_images; fi
 infra=(postgres)
 for profile in "${profiles[@]}"; do
   case "$profile" in
-    secrets) infra+=(vault) ;;
+    secrets) infra+=(openbao) ;;
     delivery) infra+=(mailpit) ;;
     worker) infra+=(event-sink) ;;
   esac
