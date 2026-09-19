@@ -34,6 +34,10 @@ Native recovery consumption is specified in `architecture/http-runtime-deploymen
 
 The remaining identity/product/operational acceptance content is defined in `architecture/auth-production-completion-plan.md`. **For the initial platform trust root, ADR 0014 and `architecture/instance-claim-platform-owner-plan.md` supersede the older CLI-first bootstrap assumptions:** a fresh self-hosted Instance is claimed over the private control-plane HTTP surface, the first effective Platform Owner is a normal capability-governed HUMAN Principal with phishing-resistant authentication, and setup never reopens after claim. The serialized implementation method for the older completion plan remains `architecture/sequential-completion-plan.md`; the new trust-root work follows the slices in the instance-claim plan.
 
+### External competitive/reference systems
+
+`architecture/external-reference-systems.md` records the open-source systems that materially overlap Request Engine — currently LibreBooking, Cal.diy, Easy!Appointments, Medplum and Marley Health — and the required build-vs-reuse comparison discipline. Treat it as a non-normative design reference: upstream implementations may expose missed edge cases and mature patterns, but they do not override Request Engine's owning contracts, guarantees, authority model or transactional semantics.
+
 ### Canonical system/E2E CI platform
 
 `architecture/docker-e2e-ci-plan.md` is now the **normative architecture for the reusable Docker system/E2E CI platform**, not a one-off F-01 plan.
