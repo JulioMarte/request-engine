@@ -24,9 +24,18 @@ from request_engine.modules.tenancy.application.commands.platform_owner_lifecycl
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
-from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
-from request_engine.platform.security.freshness import require_phishing_resistant_authentication
-from request_engine.platform.security.native_auth import PasswordPolicyViolation, normalize_login_handle
+from request_engine.platform.http.errors import (
+    ErrorBody,
+    ErrorEnvelope,
+    ErrorResolution,
+)
+from request_engine.platform.security.freshness import (
+    require_phishing_resistant_authentication,
+)
+from request_engine.platform.security.native_auth import (
+    PasswordPolicyViolation,
+    normalize_login_handle,
+)
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.platform_http import PlatformActorResolver
 

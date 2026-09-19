@@ -27,7 +27,10 @@ from request_engine.modules.tenancy.application.commands.platform_owner_lifecycl
 )
 from request_engine.platform.db.session import SessionFactory, platform_actor_transaction
 from request_engine.platform.security.context import PrincipalKind
-from request_engine.platform.security.native_auth import hash_password, normalize_login_handle
+from request_engine.platform.security.native_auth import (
+    hash_password,
+    normalize_login_handle,
+)
 from request_engine.platform.security.platform_context import PlatformActorContext
 
 _OWNER_NAMESPACE = UUID("9e24e794-70ff-4b88-b6d5-15c5b315db48")

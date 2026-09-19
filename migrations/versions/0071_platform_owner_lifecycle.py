@@ -93,7 +93,7 @@ def upgrade() -> None:
         LANGUAGE plpgsql
         SECURITY DEFINER
         SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-        AS $
+        AS $$
         BEGIN
             IF OLD.state = 'unclaimed'
                AND NEW.state = 'claimed'
@@ -125,7 +125,7 @@ def upgrade() -> None:
             END IF;
             RETURN NEW;
         END
-        $;
+        $$;
         ALTER FUNCTION request_engine.grant_platform_owner_v2_capabilities_on_claim()
             OWNER TO request_engine_schema_owner;
         REVOKE ALL ON FUNCTION
