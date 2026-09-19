@@ -44,6 +44,11 @@ _SETUP = (
     "request_platform.read_platform_instance()",
     "request_platform.create_setup_session(uuid,bytea,text,text,integer)",
     "request_platform.read_setup_session(bytea)",
+    "request_platform.set_setup_pending_identity(uuid,uuid,text,text)",
+    "request_platform.read_setup_pending_identity(uuid)",
+    "request_platform.read_claim_readiness(uuid)",
+    "request_platform.read_installation_claim(text)",
+    "request_platform.finalize_instance_claim(uuid,text,text,text,text,uuid)",
 )
 
 
