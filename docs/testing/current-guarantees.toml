@@ -21,6 +21,20 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
 
 [[guarantees]]
+id = "INV-CONTROLLER-CONTINUITY-001"
+statement = "A tenant or platform plane cannot lose every effective controller: a controller needs an active Principal, an active membership where the plane is tenant, the current control grants and at least one active binding to an active authority, with an active native identity and at least one currently accepted authentication path where the subject is native. Password credentials are one supported path, not the architectural definition of native reachability."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-PLATFORM-LIFECYCLE-001"
+statement = "Platform provisioner lifecycle transitions are revisioned, idempotent, append-only audited and terminal on revoke; reactivation requires an authenticatable native path and never restores revoked authority."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
 id = "INV-ATOMICITY-001"
 statement = "A failed transactional command cannot leave a partially committed business outcome or partially consumed commitment."
 severity = "critical"
@@ -242,4 +256,200 @@ id = "INV-CONTACT-VERIFICATION-001"
 statement = "Party and staff contact points are created unverified and become verified only through the explicit confirmation command; verification is monotonic (no role can downgrade a verified contact point through direct mutation) and deactivation never rewrites verification provenance."
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-WORKLOAD-AUTH-001"
+statement = "A workload bearer credential authenticates identity only and resolves exclusively to workload-class Principals; subject-class gating prevents HUMAN credentials from activating workload Principals and workload credentials from activating HUMAN Principals, and authentication never confers business authority by itself."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-AUTHORITY-001"
+statement = "An AGENT Principal's standing authority is bounded by the intersection of the provisioner's current active delegable authority and the operational authority plane; possessing a capability never implies delegability and agent-derived grants are never delegable."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-LIFECYCLE-001"
+statement = "Agent suspension or revocation removes effective authorization immediately (fail-closed on identity-binding/principal state, without relying on token expiry), and revocation additionally revokes active workload credentials and disables the workload identity so the bearer token stops authenticating."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-PROVENANCE-001"
+statement = "Agent provisioning provenance (sponsor, established_by, provenance reference) is immutable and append-preserving: lifecycle transitions and authority changes cannot rewrite who created the agent, under whose authority, or from which provisioning operation."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-AGENT-POLICY-001"
+statement = "An AGENT Principal without an explicit tool policy is denied every operation (fail closed, including routes without capability metadata), and effective agent authority is the granted ∩ allowed − denied intersection read fresh from the tenant-scoped policy on every request; policy rows remain tenant-isolated."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-RISK-001"
+statement = "Agent execution is bounded by the policy risk ceiling: unclassified command capabilities deny agents, and AUTHORITY_CHANGE operations are unconditionally denied for agent actors regardless of grants, delegation or ceiling."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-BUDGET-001"
+statement = "Per-minute agent mutation budgets are enforced through a race-safe conditional upsert so concurrent requests cannot exceed the configured limit within one window; exhausted budgets deny further mutations with 429 while read operations and other agents' budgets remain unaffected."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-IDENTITY-TOPOLOGY-GATE-001"
+statement = "Every command that can alter identity bindings, control grants, staff memberships or the reachability they express acquires the transaction-scoped identity-topology advisory gate as its first statement, before any row lock; global disable or global authority modification takes it exclusively, ordinary reads and native login never acquire it, and any unclassified topology writer fails a deterministic inventory proof."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-IDENTITY-RECOVERY-001"
+statement = "Governed native identity recovery requires a distinct HUMAN platform approver, stages the raw proof outside authoritative locks in a dedicated secret-delivery boundary, issues through one authoritative transaction that links case, recovery intent and delivery ticket, revokes intent and ticket atomically, and links consumption to the case in the same transaction; no raw proof reaches tables, audit facts, ordinary outbox or administrative responses. Issuance stages the raw proof create-if-absent in a dedicated secret store and the worker publishes it through a configured channel outside authoritative locks: a pre-transmission connection failure is retryable, an ambiguous post-transmission outcome is recorded unknown and never blindly republished, and a definitive refusal is terminal; each issuance attempt reserves its case generation before staging, so two concurrent issuances of one case reserve and stage distinct generations and a losing issuance discards only its own reserved generation, never the retained secret the winner's delivery ticket references."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-IDENTITY-BINDING-READ-001"
+statement = "Tenant identity-binding inspection requires an explicit current identity.binding.read grant held by a HUMAN actor; the projection is tenant-opaque, so a foreign or absent binding is indistinguishable and never addressable, it never exposes the binding subject or verifier, and a read performs no authoritative mutation."
+severity = "high"
+required_evidence = ["invariant", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-IDENTITY-BINDING-LIFECYCLE-001"
+statement = "A tenant identity-binding suspend/reactivate/revoke command requires an explicit current identity.bind grant held by a HUMAN actor, acquires the identity-topology gate and the ordered active-staff-membership lock root before any specific binding row, increments the binding revision exactly once under idempotency, rejects a stale revision, keeps revoke terminal, never resurrects a revoked binding, cannot remove the tenant's last authenticatable controller, and treats a foreign or absent binding as indistinguishable."
+severity = "high"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-NATIVE-IDENTITY-DISABLE-001"
+statement = "A global native identity disable requires an explicit current platform.identity.disable grant held by a HUMAN platform operator, acquires the identity-topology gate EXCLUSIVE under a bounded lock timeout, terminally disables the identity and revokes its credentials, sessions and pending recovery intents in one transaction, and fails atomically unless every affected tenant and the platform plane retain an effective controller; bindings, grants and provenance remain historical facts and the identity is never re-enabled."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-IDENTITY-LINK-SELF-001"
+statement = "Self-service identity linking is HUMAN-only without delegation and requires a recent reauthentication of the actor's current identity on both the intent-create and intent-confirm operations; the second identity's proof is verified outside authoritative locks against the authority persisted on the intent, never a body-supplied hint, and the binding is created for the SAME tenant Principal, never an administrative or cross-Principal link. The second proof is either the second native identity's password or a verified external OIDC access token (RFC 9068 at+jwt) whose subject is verified against the intent's OIDC authority; native confirmation and subject confirmation are distinct primitives, a subject confirmation rejects a native authority, and an OIDC proof without a composed verifier fails closed. The short-TTL intent is consumed exactly once, at most one live pending intent may exist per actor+authority (enforced by a partial unique index and by expiring stale pending intents before create), a subject already linked in the tenant conflicts instead of being taken over, a foreign or absent intent is opaque, an invalid proof is an opaque 401, and no Principal, Party, staff membership or authority grant is merged, created or modified by linking."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-IDENTITY-PROVIDER-PORTABILITY-001"
+statement = "An external identity provider is an authentication route, not a source of RE identity or authority: a verified external subject resolves only through an explicit active IdentityBinding to an existing Principal, so binding a subject from a second provider or retiring a configured provider changes neither the Principal nor its standing authority grants, and the native authentication path keeps operating when no external provider is configured."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-NATIVE-MULTI-SESSION-001"
+statement = "A native identity may hold multiple concurrent active sessions; each authenticates independently and records its own activity and authentication timestamps. Revoking one session leaves the others authenticating, while a global invalidation (revoke_native_sessions or password rotation) bumps the identity session epoch and invalidates every outstanding session."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-TENANT-IDENTITY-AUDIT-001"
+statement = "Every tenant staff, agent and integration identity command commits exactly one append-only audit row in request_engine.audit_records in the same transaction as its authoritative effect, carrying the acting Principal, the target subject kind/id, the action, a closed reason code, and the real before/after aggregate revisions; an idempotent replay commits no second row, a rejected or rolled-back command commits none, the runtime application role can neither update nor delete audit history, tenant RLS hides another tenant's rows, and no token, verifier, login handle or raw secret ever enters the audit details."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-CONTROLLER-POLICY-UPGRADE-001"
+statement = "A controller-policy upgrade requires an explicit current controller_policy_upgrade grant held by a HUMAN actor, acquires the identity-topology gate and the ordered active-staff-membership lock root before any specific row, resolves both policy keys against the immutable initial-controller-policies catalog, and upgrades a target tenant Principal only by adding the target policy's currently missing capabilities within the actor's current delegable ceiling; it never restores a revoked grant, never upgrades the actor itself, rejects a stale authority revision, is idempotent, treats a foreign or absent target as indistinguishable, and commits exactly one append-only audit row with the source/target policy keys and real before/after revisions and no secret material."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-ONBOARDING-READINESS-001"
+statement = "The onboarding readiness projection is an advisory, tenant-scoped composition of owner-published facts: it exposes identity, tenant_control, staff_administration and recovery sections with an explicit ready/blocked/unknown status, never reports a section ready when its owner reader failed (unknown, ready=false, no fabricated blockers), never derives authority or identity from the response, and never leaks another tenant's or the platform's identities, secrets or global recovery configuration. Identity/control facts are read through a tenant-guarded least-privilege surface that refuses any organization other than the transaction's current tenant, and each command the projection suggests revalidates its own authority."
+severity = "high"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-RESOURCE-AUTHORITY-INSPECTION-001"
+statement = "The self resource-authority inspection query returns an advisory allowed/denied/indeterminate decision about the caller's own effective authority for an explicitly supported operation, computed by the owning module's current authority primitive rather than by Tenancy: the decision agrees with the owner authorization for the same revision, a foreign or absent target is indistinguishable from a random identifier and yields the same opaque 404, the actor organization and principal always come from the trusted ActorContext and never from the request body, and the operation never mutates authority, idempotency, audit or outbox state."
+severity = "high"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-INSTANCE-CLAIM-001"
+statement = "The installation trust root is created by at most one atomic first claim: before finalize no Principal, identity binding, authority grant, native identity or credential exists for the installation, finalize promotes the pending native identity and a verified WebAuthn authenticator, grants the immutable platform-owner-v1 policy, promotes the setup recovery codes, consumes the SetupSession and transitions the instance UNCLAIMED to CLAIMED exactly once, and setup never reopens or admits a second owner."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-INSTANCE-CLAIM-IDEMPOTENCY-001"
+statement = "Finalizing the instance claim is idempotent only for the exact same request: an exact replay sharing both the Idempotency-Key and the request fingerprint over operation, SetupSession and provenance returns the original non-secret receipt and performs no second effect, while reusing the key with different request content is rejected as a conflict and never returns a foreign receipt."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-SETUP-SESSION-ISOLATION-001"
+statement = "A SetupSession is a bounded, single-use installation bearer that is never a Principal session and never confers business authority; completing a setup WebAuthn registration requires the presented SetupSession to own the challenge being consumed, so a valid bearer for another ceremony cannot complete it, and a consumed session is never reactivated."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-NATIVE-WEBAUTHN-LOGIN-001"
+statement = "A valid native WebAuthn assertion completes a bounded one-time challenge and issues a brand-new normal native session whose trusted evidence (initial authenticator, proven methods, user verification and derived assurance) reflects only the verified ceremony; the caller cannot supply assurance, user verification or methods, and a decoy options response for an unknown or credential-less login handle is indistinguishable in shape from a real ceremony so the endpoint is not a reliable account-enumeration oracle."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-PHISHING-RESISTANT-ASSURANCE-001"
+statement = "PHISHING_RESISTANT assurance is derived only from a verified WebAuthn ceremony that accepted user verification; a WebAuthn method without accepted UV is a possession factor, a recovery-derived session is always RECOVERY, and no caller-supplied value can raise a session's assurance."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-WEBAUTHN-STEP-UP-001"
+statement = "A native session can acquire stronger assurance only through a valid WebAuthn step-up whose challenge belongs to that exact session and whose credential belongs to the session's native identity; another session or identity cannot elevate it, and a recovery-derived session cannot escape RECOVERY through step-up."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-WEBAUTHN-CHALLENGE-SINGLE-USE-001"
+statement = "Authentication and step-up challenges are bounded, single-purpose and single-consumption: a completed or expired challenge cannot be replayed, a failed verification does not consume it, and concurrent completions of one challenge produce at most one authoritative effect with the loser failing closed."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-PRIVILEGED-AUTH-FRESHNESS-001"
+statement = "The reusable privileged-authentication guard fails closed on trusted session evidence and distinguishes insufficient assurance (including any recovery-derived session) from stale strong authentication, so a sensitive operation can require recent phishing-resistant authentication without hard-coding checks in individual routers."
+severity = "high"
+required_evidence = ["contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-NATIVE-SESSION-INTROSPECTION-001"
+statement = "Reading the current native session returns only the trusted persisted evidence of the bearer's own session (proven methods, derived assurance, user verification, recovery-derived flag and trusted authentication time); the request cannot select a session, identity, assurance or method, and an unusable session fails closed with the same opaque authentication error as other native routes."
+severity = "high"
+required_evidence = ["contract"]
 risk = ["security"]

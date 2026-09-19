@@ -1,10 +1,14 @@
 from request_engine.platform.security.capability_registry_foundation import FOUNDATION_CAPABILITIES
+from request_engine.platform.security.capability_registry_identity_authority import (
+    IDENTITY_AUTHORITY_CAPABILITIES,
+)
 from request_engine.platform.security.capability_registry_live import LIVE_CAPABILITIES
 from request_engine.platform.security.capability_registry_requests import REQUEST_CAPABILITIES
 from request_engine.platform.security.capability_registry_waitlist import (
     WAITLIST_REMINDER_CAPABILITIES,
 )
 from request_engine.platform.security.capability_types import (
+    AuthorityPlane,
     CapabilityDefinition,
     CapabilityExposure,
     CapabilityKind,
@@ -14,6 +18,7 @@ from request_engine.platform.security.capability_types import (
 
 CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     FOUNDATION_CAPABILITIES
+    + IDENTITY_AUTHORITY_CAPABILITIES
     + LIVE_CAPABILITIES
     + WAITLIST_REMINDER_CAPABILITIES
     + REQUEST_CAPABILITIES
@@ -44,6 +49,7 @@ def canonical_capability_keys() -> frozenset[str]:
 
 __all__ = [
     "CAPABILITIES",
+    "AuthorityPlane",
     "CapabilityDefinition",
     "CapabilityExposure",
     "CapabilityKind",

@@ -1,0 +1,92 @@
+name: request-engine-authentik
+
+# Manual/opt-in OIDC provider PoC for exercising the identity-link second proof.
+# CI never starts this stack. See README.md for the full walkthrough.
+
+services:
+  postgresql:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:?set AUTHENTIK_POSTGRESQL__PASSWORD}
+    volumes:
+      - authentik-postgresql:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d authentik -U authentik"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - authentik
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    restart: unless-stopped
+    command: ["--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - authentik-redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - authentik
+
+  server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12.3}
+    command: server
+    restart: unless-stopped
+    environment: &authentik-environment
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?set AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:?set AUTHENTIK_POSTGRESQL__PASSWORD}
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-}
+      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL:-}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9443:9443"
+    volumes:
+      - authentik-media:/media
+      - authentik-certs:/certs
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - authentik
+
+  worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12.3}
+    command: worker
+    restart: unless-stopped
+    environment: *authentik-environment
+    user: root
+    volumes:
+      - authentik-media:/media
+      - authentik-certs:/certs
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - authentik
+
+networks:
+  authentik:
+    name: request-engine-authentik
+
+volumes:
+  authentik-postgresql:
+  authentik-redis:
+  authentik-media:
+  authentik-certs:

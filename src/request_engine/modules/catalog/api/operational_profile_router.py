@@ -24,8 +24,9 @@ from request_engine.modules.catalog.application.commands.update_location_operati
     UpdateLocationOperationalInfoHandler,
     update_location_operational_info,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 IdempotencyKey = Annotated[
     str,
@@ -50,6 +51,7 @@ def create_operational_profile_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "catalog.manage")
         return await create_location(
             create_handler,
             CreateLocationCommand(
@@ -66,6 +68,7 @@ def create_operational_profile_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "catalog.manage")
         return await update_location_operational_info(
             update_handler,
             UpdateLocationOperationalInfoCommand(
@@ -83,6 +86,7 @@ def create_operational_profile_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "catalog.manage")
         values = tuple(
             LocationPublicContactInput(item.channel, item.value, item.label)
             for item in body.contacts
@@ -99,7 +103,28 @@ def create_operational_profile_router(
             ),
         )
 
-    router.add_api_route("", create, methods=["POST"])
-    router.add_api_route("/{location_id}", update, methods=["PATCH"])
-    router.add_api_route("/{location_id}/contacts", contacts, methods=["PUT"])
+    add_capability_route(
+        router,
+        "",
+        create,
+        capability="catalog.manage",
+        methods=["POST"],
+        operation_id="catalog_location_create",
+    )
+    add_capability_route(
+        router,
+        "/{location_id}",
+        update,
+        capability="catalog.manage",
+        methods=["PATCH"],
+        operation_id="catalog_location_update",
+    )
+    add_capability_route(
+        router,
+        "/{location_id}/contacts",
+        contacts,
+        capability="catalog.manage",
+        methods=["PUT"],
+        operation_id="catalog_location_contacts_update",
+    )
     return router

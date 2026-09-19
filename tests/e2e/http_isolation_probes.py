@@ -51,6 +51,8 @@ def foreign_request(
     objects: ForeignObjects,
 ) -> tuple[str, dict[str, str], dict[str, object] | None, int]:
     name = operation.name
+    if name == "authority.read_self":
+        return "/v1/me/authority", {"organization_id": str(foreign.organization_id)}, None, 422
     if name in _ONBOARDING_OPERATIONS:
         return _onboarding_request(operation, actor, foreign, objects)
     if name == "capabilities.list":

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 from datetime import timedelta
 from typing import cast
@@ -11,7 +12,7 @@ from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
     SlotOfferExpiryScheduledHandler,
 )
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.worker.runtime import WorkerRuntimeConfig
+from request_engine.platform.worker.runtime import WorkerItemOutcome, WorkerRuntimeConfig
 
 
 class _Publisher:
@@ -41,6 +42,33 @@ class _ProviderStore:
     async def reject(self, lease: object, *, error_class: str) -> bool:
         del lease, error_class
         return True
+
+
+class _DeliveryRuntime:
+    def __init__(self) -> None:
+        self.ran = False
+
+    async def run_once(self) -> tuple[WorkerItemOutcome, ...]:
+        self.ran = True
+        return ()
+
+    async def run_forever(self, stop_event: asyncio.Event) -> None:
+        del stop_event
+
+
+def _unused_store_factory(factory: SessionFactory) -> object:
+    del factory
+    return object()
+
+
+def _captured_recovery_sweep(*args: object, **kwargs: object) -> _CapturedRuntime:
+    del args, kwargs
+    return _CapturedRuntime(object(), object())
+
+
+def _provider_store_factory(factory: SessionFactory) -> _ProviderStore:
+    del factory
+    return _ProviderStore()
 
 
 @pytest.mark.unit
@@ -107,6 +135,46 @@ def test_production_assembly_separates_worker_and_domain_factories(
         ("provider", worker_factory),
     ]
     assert runtimes[2].kwargs["rejecter"] is not None
+
+
+@pytest.mark.unit
+def test_production_assembly_includes_supplied_identity_recovery_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker_factory = cast(SessionFactory, object())
+    domain_factory = cast(SessionFactory, object())
+    delivery_runtime = _DeliveryRuntime()
+
+    monkeypatch.setattr(worker_bootstrap, "PostgresScheduledActionWorker", _unused_store_factory)
+    monkeypatch.setattr(worker_bootstrap, "PostgresOutboxWorker", _unused_store_factory)
+    monkeypatch.setattr(worker_bootstrap, "PostgresProviderEventWorker", _provider_store_factory)
+    monkeypatch.setattr(worker_bootstrap, "FencedWorkerRuntime", _CapturedRuntime)
+    monkeypatch.setattr(worker_bootstrap, "build_recovery_sweep", _captured_recovery_sweep)
+
+    process = worker_bootstrap.build_worker_process(
+        worker_session_factory=worker_factory,
+        domain_session_factory=domain_factory,
+        no_show_factory=lambda _: cast(NoShowScheduledHandler, _ScheduledHandler()),
+        slot_offer_expiry_factory=lambda _: cast(
+            SlotOfferExpiryScheduledHandler, _ScheduledHandler()
+        ),
+        communication_providers={},
+        outbox_publisher=_Publisher(),
+        outbox_internal_handlers={},
+        provider_event_handlers={},
+        identity_recovery_delivery=delivery_runtime,
+    )
+
+    assert process.stream_names == (
+        "scheduled_actions",
+        "outbox_messages",
+        "provider_events",
+        "recovery_sweep",
+        "identity_recovery_delivery",
+    )
+    report = asyncio.run(process.run_once())
+    assert report.identity_recovery_delivery == ()
+    assert delivery_runtime.ran is True
 
 
 @pytest.mark.unit

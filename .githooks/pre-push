@@ -4,6 +4,9 @@ set -eu
 hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 certifier="$hook_dir/certify_push.py"
 
+REQUEST_ENGINE_GIT_EXEC_PATH=$(git --exec-path 2>/dev/null || true)
+export REQUEST_ENGINE_GIT_EXEC_PATH
+
 if [ ! -f "$certifier" ]; then
   printf '%s\n' \
     '[LOCAL_PUSH_CERT] FAIL: managed certifier is missing or stale.' \

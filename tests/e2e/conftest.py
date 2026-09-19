@@ -4,7 +4,7 @@ import os
 import secrets
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import quote_plus, unquote, urlsplit
 
 import psycopg
@@ -19,10 +19,35 @@ from request_engine.platform.db.session import (
 )
 
 PgConnection = Connection[Any]
+
+
+class _TestNode(Protocol):
+    def get_closest_marker(self, name: str) -> object | None: ...
+
+
+class _FixtureRequest(Protocol):
+    @property
+    def node(self) -> _TestNode: ...
+
+
 _RUNTIME_DATABASE_URLS = {
     "request_engine_app": "REQUEST_ENGINE_APP_DATABASE_URL",
     "request_engine_worker": "REQUEST_ENGINE_WORKER_DATABASE_URL",
 }
+# Session-level (``set_config(..., false)``) tenant/actor provenance that a proof may
+# bind onto the shared admin connection to exercise runtime roles.  Because
+# ``e2e_admin_conn`` is session-scoped and autocommit, these survive the test that set
+# them unless they are explicitly cleared.
+_TENANT_SESSION_SETTINGS = (
+    "request_engine.organization_id",
+    "request_engine.authenticated_principal_id",
+    "request_engine.principal_kind",
+    "request_engine.authentication_method",
+    "request_engine.correlation_id",
+    "request_engine.credential_id",
+    "request_engine.authority_revision",
+    "request_engine.discovery_handoff_id",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +79,39 @@ def e2e_admin_conn() -> Iterator[PgConnection]:
         yield conn
     finally:
         conn.close()
+
+
+def _reset_shared_admin_session(conn: PgConnection) -> None:
+    """Drop tenant/actor session state a proof may have bound to the shared connection.
+
+    ``e2e_admin_conn`` is session-scoped and autocommit, so a session-level GUC set
+    with ``set_config(..., false)`` or a lingering ``SET ROLE`` outlives the test that
+    created it.  A later proof then runs with foreign tenant authority and trips the
+    ``bump_recovery_source_revision`` guard even though its own rows are internally
+    consistent.  Clearing the session restores the isolation the fixture contract
+    promises without weakening the database invariant.
+    """
+
+    conn.execute("RESET ROLE")
+    for setting in _TENANT_SESSION_SETTINGS:
+        conn.execute("SELECT set_config(%s, '', false)", (setting,))
+
+
+@pytest.fixture(autouse=True)
+def reset_shared_admin_session(
+    request: _FixtureRequest,
+    e2e_admin_conn: PgConnection,
+) -> Iterator[None]:
+    """Reset shared-connection tenant state around every PostgreSQL proof."""
+
+    if request.node.get_closest_marker("postgres") is None:
+        yield
+        return
+    _reset_shared_admin_session(e2e_admin_conn)
+    try:
+        yield
+    finally:
+        _reset_shared_admin_session(e2e_admin_conn)
 
 
 def _preprovisioned_credentials(parent_role: str) -> RuntimeCredentials | None:
@@ -158,3 +216,17 @@ async def e2e_session_factory(
         yield create_session_factory(engine)
     finally:
         await engine.dispose()
+
+
+@pytest.fixture
+def e2e_barrier_conn() -> Iterator[PgConnection]:
+    """Independent non-autocommit connection used to hold deterministic lock barriers."""
+
+    host, port, database, user, password = _pg_values()
+    conn: PgConnection = psycopg.connect(
+        f"host={host} port={port} dbname={database} user={user} password={password}"
+    )
+    try:
+        yield conn
+    finally:
+        conn.close()

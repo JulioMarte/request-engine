@@ -2,7 +2,7 @@
 
 > **Estado:** normativo para la organización física actual del backend Python.
 >
-> Complementa `10-module-ownership-map.md`, `07-database-access-contract.md`, `13-connection-surfaces.md`, `14-architecture-fitness-functions.md` y `architecture/system-optimization-mode.md`. No redefine por sí solo invariantes de dominio, autoridad o locking.
+> Complementa `10-module-ownership-map.md`, `07-database-access-contract.md`, `13-connection-surfaces.md`, `14-architecture-fitness-functions.md` y `architecture/continuous-evolution-policy.md`. No redefine por sí solo invariantes de dominio, autoridad o locking.
 
 ## 1. Decision
 
@@ -18,7 +18,7 @@ src/request_engine/
 └── modules/         # business ownership
 ```
 
-Current business-module inventory:
+Current active business-module inventory:
 
 ```text
 tenancy
@@ -32,35 +32,33 @@ delivery
 live_capacity
 operational_recovery
 operational_copilot
-payments
-dispatch
+onboarding
 ```
 
-`payments` and `dispatch` remain deferred/incubating until a concrete accepted capability gives them real ownership. `delivery` is active current architecture; it owns ReservationAccess and actual execution facts such as ServiceSession/ResourceActivity according to `10-module-ownership-map.md`.
+Payments/reconciliation and field-service dispatch remain possible future domain areas, **not current Python modules**. Do not pre-create empty packages for future capabilities; introduce a module only when accepted product scope gives it real ownership and code.
 
-The names `operational_copilot`, V3 and F1–F7 are historical naming/provenance where applicable. They do not create a separate architectural layer or freeze the module inventory. Module ownership may evolve deliberately under `architecture/system-optimization-mode.md` while preserving HARD guarantees.
+Historical names such as `operational_copilot`, V3 or F1–F7 may remain as provenance where useful. They do not create separate architectural layers or freeze current module shape.
 
-This is not a microservice split. Modules may share one process, one PostgreSQL database and one authoritative transaction when a command invariant requires it.
+This is not a microservice split. Modules may share one process, one PostgreSQL database and one authoritative transaction when an invariant requires it.
 
 ## 2. Current capability ownership summary
 
-Detailed ownership lives in `10-module-ownership-map.md`; this section is only a navigation summary.
+Detailed ownership lives in `10-module-ownership-map.md`.
 
 - `tenancy`: Organization, Principal, Party, Representation and tenant/subject authority truth.
-- `catalog`: Location/Offering/OfferingVersion and reusable service/capability vocabulary/configuration.
+- `catalog`: Location, Offering/OfferingVersion and reusable service/capability configuration vocabulary.
 - `requests`: durable new business demand requiring later processing.
-- `booking`: Resource planning, contextual supply, availability, CapacityHold/CapacityClaim, Reservation and booking commitment/revalidation.
+- `booking`: Resource planning, contextual supply, availability, CapacityHold/CapacityClaim, Reservation and commitment/revalidation.
 - `queue`: ServiceQueue/QueueEntry waiting/calling/no-show plus Waitlist/SlotOpportunity/SlotOffer recovery interest.
-- `communications`: transactional communication intent, delivery facts, reminder/acknowledgement semantics.
+- `communications`: transactional communication intent, delivery facts, reminders and acknowledgements.
 - `discovery`: explicitly published cross-tenant supply projection and opaque Booking handoff.
 - `delivery`: ReservationAccess and actual live service/execution truth.
 - `live_capacity`: advisory live-capacity/ETA/intake projection over published owner facts.
-- `operational_recovery`: immutable recovery proposal/execution composition over owner contracts.
+- `operational_recovery`: recovery proposal/execution/action orchestration over published Booking/Catalog/Communications/Live Capacity/Queue contracts; owns none of those source truths.
 - `operational_copilot`: bounded typed external operational-tool/admission surface; owns no underlying business truth or conversational runtime.
-- `payments`: deferred/incubating.
-- `dispatch`: deferred/incubating.
+- `onboarding`: read-only setup/readiness composition over published Tenancy/Catalog/Booking/Queue/Communications facts.
 
-Do not duplicate detailed ownership rules here. When this summary and `10-module-ownership-map.md` disagree, fix the current documentation defect rather than inventing a third interpretation.
+When this summary and `10-module-ownership-map.md` disagree, reconcile the documentation defect; do not invent a third interpretation.
 
 ## 3. Application semantics
 
@@ -99,7 +97,7 @@ modules/<module>/
 └── README.md
 ```
 
-This is a growth shape, not scaffolding to generate eagerly. A young module may remain a smaller cohesive set of files.
+This is a growth shape, **not scaffolding to generate eagerly**. A young module may remain a smaller cohesive set of files.
 
 Meanings:
 
@@ -126,6 +124,8 @@ The implementation may be a typed function or a small handler object. Do not int
 
 A semantic command may coordinate multiple modules in one database transaction when a current invariant requires atomicity; architecture aesthetics do not justify breaking required consistency.
 
+Read-only cross-domain capabilities such as Onboarding may legitimately fan out to several owner contracts. The fan-out belongs in the owning module rather than in `entrypoints`/`bootstrap` merely to make the graph look smaller.
+
 ## 6. Ports and adapters
 
 Application/domain code defines the capability it requires; technical implementations live outward in adapters.
@@ -143,6 +143,8 @@ adapters/db + adapters/providers
 Repository ports are semantic rather than generic CRUD. SQLAlchemy Session/AsyncSession is already technical transaction/UoW machinery; do not create a universal abstract UoW hierarchy without demonstrated value.
 
 Provider adapters do not own authoritative business state.
+
+An orchestration module may keep a local port and adapt it to another owner's published contract under its own `adapters/` package when translation is genuinely part of the orchestration boundary. Do not place that translation in `bootstrap` to hide the dependency.
 
 ## 7. Cross-module imports
 
@@ -165,7 +167,7 @@ from request_engine.modules.booking.api.responses import ReservationView
 
 `contracts` does not automatically authorize an edge. The current permission map is documented in `14-architecture-fitness-functions.md` and executed by `tests/architecture/dependency_policy.py`.
 
-Do not hide a dependency from the graph with service locators, runtime imports, generic shared helpers or re-export facades.
+Do not hide a dependency from the graph with service locators, runtime imports, generic shared helpers, re-export facades or composition-root adapters.
 
 ## 8. Internal dependency direction
 
@@ -192,7 +194,7 @@ platform/observability
 platform/security
 ```
 
-Platform may own clock/lease/fencing/retry/dead-letter/telemetry mechanics. It does not own why a Reservation, QueueEntry, recovery proposal, reminder or discovery publication exists.
+Platform may own clock/lease/fencing/retry/dead-letter/telemetry mechanics. It does not own why a Reservation, QueueEntry, recovery proposal, reminder, discovery publication or onboarding blocker exists.
 
 Do not move business logic into `platform`, `shared`, `common` or generic helpers to reduce measured module coupling.
 
@@ -203,7 +205,7 @@ Do not move business logic into `platform`, `shared`, `common` or generic helper
 - `entrypoints/cli`: explicit operational/developer process commands.
 - `bootstrap`: settings and composition root; business code never imports it as a service locator.
 
-Cross-domain business policy discovered in composition code must receive an explicit business owner rather than remaining hidden there for graph aesthetics.
+Cross-domain business policy discovered in composition code must receive an explicit business owner rather than remaining hidden there for graph aesthetics. Composition roots may construct and inject module API surfaces; they do not own semantic translation between business capabilities.
 
 ## 11. Persistence and PostgreSQL
 
@@ -216,7 +218,7 @@ Keep the current decisions in `07-database-access-contract.md`:
 - never hide race-critical SQL behind generic repositories;
 - no external/provider I/O while authoritative DB locks are held.
 
-Schema shape itself is CONTROLLED and evolvable during `cohesion/system-optimization`; tenant/authority/atomicity/capacity/provenance/concurrency guarantees remain HARD unless replaced by an equal-or-stronger explicit contract.
+The accepted `0001_initial` is immutable history; current schema evolves through appended `0002+` migrations under `continuous-evolution-policy.md`. Tenant/authority/atomicity/capacity/provenance/concurrency guarantees remain HARD unless replaced by equal-or-stronger explicit semantics and proof.
 
 ## 12. Maintainability and evolution
 
@@ -224,7 +226,7 @@ Architecture fitness functions protect ownership/direction, not arbitrary smalln
 
 LOC, C901, navigation observations and fan-in/fan-out are non-blocking review signals. `HEALTHY_AS_IS` is valid. Never split a cohesive file, create forwarding modules or hide dependencies solely to make a metric smaller.
 
-The current module inventory and approved edges are CONTROLLED rather than immutable. Intentional evolution requires updating:
+The current module inventory and approved edges are CONTROLLED rather than immutable. Intentional evolution requires updating, as applicable:
 
 ```text
 current capability/ownership contract

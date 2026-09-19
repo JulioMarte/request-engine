@@ -9,7 +9,10 @@ BOOKING_OPERATIONAL_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     command_capability(
         "booking.manage_supply",
         CapabilityExposure.OPERATOR,
-        "Create bounded one-day resource availability exceptions.",
+        (
+            "Manage Booking supply, including Resources, Location assignments, availability "
+            "and bounded operational schedule adjustments."
+        ),
         revision=RevisionPolicy.REQUIRED,
     ),
 )

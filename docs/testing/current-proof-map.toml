@@ -23,6 +23,31 @@ path = "tests/e2e/test_discovery_operational_authority_opacity.py"
 evidence = ["contract", "adversarial", "security"]
 
 [[proofs]]
+guarantee = "INV-AUTHORITY-001"
+path = "tests/db/test_native_enrollment_outcomes.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-CONTINUITY-001"
+path = "tests/db/test_staff_membership_lifecycle.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-CONTINUITY-001"
+path = "tests/db/test_platform_provisioner_lifecycle.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-LIFECYCLE-001"
+path = "tests/db/test_platform_provisioner_lifecycle.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-LIFECYCLE-001"
+path = "tests/e2e/test_native_platform_provisioner_lifecycle_http.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
 guarantee = "INV-ATOMICITY-001"
 path = "tests/integration/v3_booking_commitments/test_reservation_races.py"
 evidence = ["invariant", "adversarial", "concurrency"]
@@ -201,3 +226,303 @@ evidence = ["invariant", "adversarial"]
 guarantee = "INV-CONTACT-VERIFICATION-001"
 path = "tests/integration/s0b_party_registry/test_contact_point_verification_guard.py"
 evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WORKLOAD-AUTH-001"
+path = "tests/db/test_workload_authentication.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WORKLOAD-AUTH-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-AUTHORITY-001"
+path = "tests/db/test_agent_governance.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-AUTHORITY-001"
+path = "tests/e2e/test_platform_provisioning_journey.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-LIFECYCLE-001"
+path = "tests/db/test_agent_governance.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-LIFECYCLE-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-PROVENANCE-001"
+path = "tests/db/test_agent_governance.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-PROVENANCE-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-POLICY-001"
+path = "tests/db/test_agent_policy.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-POLICY-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-RISK-001"
+path = "tests/unit/test_agent_policy_enforcement.py"
+evidence = ["invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-RISK-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-BUDGET-001"
+path = "tests/db/test_agent_policy.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-BUDGET-001"
+path = "tests/e2e/test_native_agent_safety_enforcement.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-TOPOLOGY-GATE-001"
+path = "tests/db/test_identity_topology_gate.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-TOPOLOGY-GATE-001"
+path = "tests/e2e/test_identity_topology_gate_login.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-TOPOLOGY-GATE-001"
+path = "tests/db/test_identity_topology_races.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-RECOVERY-001"
+path = "tests/db/test_identity_recovery_governance.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-RECOVERY-001"
+path = "tests/e2e/test_native_identity_recovery_http.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-BINDING-READ-001"
+path = "tests/db/test_identity_binding_reads.py"
+evidence = ["invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-BINDING-READ-001"
+path = "tests/e2e/test_identity_binding_reads_http.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-BINDING-LIFECYCLE-001"
+path = "tests/db/test_identity_binding_lifecycle.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-BINDING-LIFECYCLE-001"
+path = "tests/db/test_identity_topology_races.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-BINDING-LIFECYCLE-001"
+path = "tests/e2e/test_identity_binding_lifecycle_http.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-IDENTITY-DISABLE-001"
+path = "tests/db/test_native_identity_global_disable.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-LINK-SELF-001"
+path = "tests/db/test_identity_link_self.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-LINK-SELF-001"
+path = "tests/db/test_identity_link_hardening.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-LINK-SELF-001"
+path = "tests/e2e/test_identity_link_self_http.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-LINK-SELF-001"
+path = "tests/db/test_identity_link_subject.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-LINK-SELF-001"
+path = "tests/e2e/test_identity_link_self_oidc_http.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-PROVIDER-PORTABILITY-001"
+path = "tests/e2e/test_native_oidc_login.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-MULTI-SESSION-001"
+path = "tests/db/test_native_multi_session.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
+path = "tests/db/test_identity_governance_audit.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
+path = "tests/unit/test_identity_audit_details.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
+path = "tests/e2e/test_native_staff_lifecycle.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
+path = "tests/e2e/test_native_integration_lifecycle.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-UPGRADE-001"
+path = "tests/db/test_controller_policy_upgrade.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-UPGRADE-001"
+path = "tests/e2e/test_controller_policy_upgrade_http.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-ONBOARDING-READINESS-001"
+path = "tests/db/test_identity_onboarding_readiness.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-ONBOARDING-READINESS-001"
+path = "tests/e2e/test_identity_onboarding_readiness_http.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-ONBOARDING-READINESS-001"
+path = "tests/modules/onboarding/test_readiness_projection.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-RESOURCE-AUTHORITY-INSPECTION-001"
+path = "tests/db/test_resource_authority_inspection.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-RESOURCE-AUTHORITY-INSPECTION-001"
+path = "tests/e2e/test_resource_authority_inspection_http.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-INSTANCE-CLAIM-001"
+path = "tests/db/test_instance_claim.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-INSTANCE-CLAIM-001"
+path = "tests/e2e/test_instance_setup_http.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-INSTANCE-CLAIM-IDEMPOTENCY-001"
+path = "tests/db/test_instance_claim.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-INSTANCE-CLAIM-IDEMPOTENCY-001"
+path = "tests/e2e/test_instance_setup_http.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-SETUP-SESSION-ISOLATION-001"
+path = "tests/db/test_instance_claim.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-SETUP-SESSION-ISOLATION-001"
+path = "tests/e2e/test_instance_setup_http.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-WEBAUTHN-LOGIN-001"
+path = "tests/e2e/test_native_webauthn_login_http.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-WEBAUTHN-LOGIN-001"
+path = "tests/db/test_webauthn_persistence.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PHISHING-RESISTANT-ASSURANCE-001"
+path = "tests/unit/platform/security/test_webauthn.py"
+evidence = ["invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-PHISHING-RESISTANT-ASSURANCE-001"
+path = "tests/db/test_webauthn_persistence.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WEBAUTHN-STEP-UP-001"
+path = "tests/e2e/test_native_webauthn_login_http.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WEBAUTHN-STEP-UP-001"
+path = "tests/db/test_webauthn_persistence.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WEBAUTHN-CHALLENGE-SINGLE-USE-001"
+path = "tests/e2e/test_native_webauthn_login_http.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WEBAUTHN-CHALLENGE-SINGLE-USE-001"
+path = "tests/db/test_webauthn_persistence.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PRIVILEGED-AUTH-FRESHNESS-001"
+path = "tests/unit/platform/security/test_privileged_authentication.py"
+evidence = ["contract", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-SESSION-INTROSPECTION-001"
+path = "tests/e2e/test_native_webauthn_login_http.py"
+evidence = ["contract", "security"]

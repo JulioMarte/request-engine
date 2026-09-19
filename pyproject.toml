@@ -6,14 +6,19 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.18.5,<1.19",
+    "argon2-cffi>=23.1",
     "asyncpg>=0.31.0,<1",
     "fastapi[standard]>=0.141.1,<0.142",
+    "fido2>=2.2.1,<3",
+    "httpx>=0.28.1,<0.29",
     "psycopg[binary]>=3.3.4,<4",
     "pydantic-settings>=2.14.2,<3",
+    "pyjwt[crypto]>=2.10,<3",
     "sqlalchemy[asyncio]>=2.0.51,<2.1",
 ]
 
 [project.scripts]
+request-engine-platform-bootstrap = "request_engine.entrypoints.platform_bootstrap_cli:main"
 request-engine-worker = "request_engine.entrypoints.worker.cli:main"
 
 [dependency-groups]
@@ -50,6 +55,10 @@ max-complexity = 10
 "tests/integration/f1_operational_profile/test_contextual_booking.py" = ["E501"]
 "migrations/versions/0002_operational_profile_contextual_supply.py" = ["E501"]
 "migrations/versions/0005_live_service_operations.py" = ["E501"]
+# Mechanically re-emitted from pg_get_functiondef; signatures are single lines.
+"migrations/versions/0044_identity_topology_gate.py" = ["E501"]
+"migrations/versions/0045_identity_recovery_case.py" = ["E501"]
+"migrations/versions/0046_identity_binding_lifecycle.py" = ["E501"]
 "migrations/s0d_steps/step_0030_tables.py" = ["E501"]
 "migrations/s0d_steps/step_0030_hardening.py" = ["E501"]
 "src/request_engine/modules/booking/adapters/db/contextual_reservation_commands.py" = ["E501"]
@@ -58,11 +67,13 @@ max-complexity = 10
 include = ["src", "tests"]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
+extraPaths = ["src", "tests/fixtures"]
 venvPath = "."
 venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests/fixtures"]
 addopts = "-ra --strict-markers --strict-config"
 xfail_strict = true
 markers = [

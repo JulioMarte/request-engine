@@ -1,0 +1,143 @@
+name: request-engine-e2e
+
+x-request-engine: &request-engine
+  build:
+    context: ../..
+    dockerfile: deploy/reference/Dockerfile
+  image: request-engine:${REQUEST_ENGINE_IMAGE_TAG:-e2e}
+
+x-public-env: &public-env
+  REQUEST_ENGINE_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
+  REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
+  REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY: ci-only-appointment-signing-key-32-bytes-minimum
+  REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY: ci-only-fingerprint-key-32-bytes-minimum
+  REQUEST_ENGINE_WEBAUTHN_DECOY_KEY: ci-only-webauthn-decoy-key-32-bytes-minimum
+
+x-platform-env: &platform-env
+  REQUEST_ENGINE_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
+  REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL: postgresql+psycopg://request_e2e_read:ci-read-only@postgres:5432/request_engine
+  REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL: postgresql+psycopg://request_e2e_control:ci-control-only@postgres:5432/request_engine
+  REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
+  REQUEST_ENGINE_WEBAUTHN_DECOY_KEY: ci-only-webauthn-decoy-key-32-bytes-minimum
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: request_engine
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ci-postgres-only
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d request_engine"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [backend]
+
+  vault:
+    image: hashicorp/vault:1.20
+    profiles: [secrets]
+    cap_add: [IPC_LOCK]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ci-root-token
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    command: server -dev
+    networks: [backend]
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    profiles: [delivery]
+    networks: [edge, backend]
+
+  migrate:
+    <<: *request-engine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:ci-postgres-only@postgres:5432/request_engine
+    command: [alembic, upgrade, head]
+    restart: "no"
+    networks: [backend]
+
+  api:
+    <<: *request-engine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *public-env
+    command: [uvicorn, "request_engine.bootstrap.server:create_app", --factory, --host, "0.0.0.0", --port, "8000"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    networks: [edge, backend]
+
+  control-plane:
+    <<: *request-engine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *platform-env
+      # Deterministic WebAuthn relying party for the HTTP Instance Claim flow:
+      # the black-box runner derives its origin as https://<rp_id>.
+      REQUEST_ENGINE_WEBAUTHN_RP_ID: localhost
+      REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS: https://localhost
+    command: [uvicorn, "request_engine.bootstrap.platform_server:create_app", --factory, --host, "0.0.0.0", --port, "8001"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready',timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    networks: [edge, backend]
+
+  event-sink:
+    image: request-engine-e2e-runner:${E2E_RUNNER_IMAGE_TAG:-e2e}
+    profiles: [worker]
+    entrypoint: [python, /e2e/event_sink.py]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health',timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [edge, backend]
+
+  worker:
+    <<: *request-engine
+    profiles: [worker]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      event-sink:
+        condition: service_healthy
+    environment:
+      REQUEST_ENGINE_WORKER_DATABASE_URL: postgresql+psycopg://request_e2e_worker:ci-worker-only@postgres:5432/request_engine
+      REQUEST_ENGINE_APP_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
+      REQUEST_ENGINE_WORKER_FACTORY: request_engine.bootstrap.reference_worker_factory:create_worker
+      REQUEST_ENGINE_WORKER_PRINCIPAL_ID: ${REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-}
+      # The webhook delivery transport is HTTPS-only by contract. External
+      # TLS/ingress is out of scope for this lane, so the worker points at a
+      # reserved non-resolving placeholder. It is never contacted by the
+      # worker-restart journey, whose durable work is the outbox publisher
+      # below; a send would fail closed as an ambiguous provider result.
+      REQUEST_ENGINE_WEBHOOK_BASE_URL: https://webhook.invalid/handoff
+      REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY: request_engine.bootstrap.http_outbox_publisher:create_publisher
+      REQUEST_ENGINE_OUTBOX_PUBLISH_URL: http://event-sink:8090/events
+    command: [request-engine-worker]
+    restart: unless-stopped
+    networks: [backend]
+
+  e2e-runner:
+    build:
+      context: ../..
+      dockerfile: deploy/reference/e2e-runner.Dockerfile
+    image: request-engine-e2e-runner:${E2E_RUNNER_IMAGE_TAG:-e2e}
+    profiles: [runner]
+    networks: [edge]
+
+networks:
+  edge: {}
+  backend:
+    internal: true

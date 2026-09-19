@@ -3,7 +3,19 @@ from typing import cast
 from request_engine.platform.security.capabilities import CapabilityDefinition
 
 _OPERATION_ID_OVERRIDES = {
+    "agent.list": "agent_list",
+    "agent.get": "agent_get",
+    "staff.list": "staff_list",
+    "staff.get": "staff_get",
+    "identity_binding.list": "identity_binding_list",
+    "identity_binding.get": "identity_binding_get",
+    "identity_binding.suspend": "identity_binding_suspend",
+    "identity_binding.reactivate": "identity_binding_reactivate",
+    "identity_binding.revoke": "identity_binding_revoke",
+    "identity_link.intent_create": "identity_link_intent_create",
+    "identity_link.intent_confirm": "identity_link_intent_confirm",
     "live_capacity.scope.update": "live_capacity_configure_scope_update",
+    "agent.policy.replace": "agent_policy_replace",
     "live_capacity.estimate.update": "live_capacity_configure_estimate_update",
     "operational_recovery.intake_control": "operational_recovery_intake_control",
     "operational_recovery.extend_day": "operational_recovery_extend_day",
@@ -31,9 +43,12 @@ _OPERATION_ID_OVERRIDES = {
     "parties.list_administrative_identifiers": "parties_list_administrative_identifiers",
     "staff.register_contact": "staff_manage_own_admin_contact_register",
     "staff.request_contact_verification": "staff_manage_own_admin_contact_request_verification",
+    "organization.bootstrap": "tenancy_operational_authority_bootstrap",
     "catalog.manage.resource_capability": "catalog_manage_resource_capabilities",
     "catalog.manage.offering": "catalog_manage_offerings",
     "catalog.manage.offering_booking_policy": ("catalog_manage_offering_version_booking_policy"),
+    "booking.manage_supply": "booking_resource_create",
+    "queue.configure": "queue_service_queue_create",
     "communications.configure_channel_policy": "communications_configure_channel_policy",
 }
 
@@ -66,4 +81,13 @@ def header_parameters(operation: dict[str, object]) -> dict[str, bool]:
 
 
 def expected_operation_id(name: str, definition: CapabilityDefinition) -> str:
+    if name in {
+        "integration.list",
+        "integration.read",
+        "integration.credential.rotate",
+        "integration.activate.command",
+        "integration.suspend.command",
+        "integration.revoke.command",
+    }:
+        return name.replace(".", "_")
     return _OPERATION_ID_OVERRIDES.get(name, definition.key.replace(".", "_"))

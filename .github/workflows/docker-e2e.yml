@@ -1,0 +1,81 @@
+name: Docker E2E
+
+on:
+  pull_request:
+    branches: [development]
+  push:
+    branches: [development]
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Registered E2E suite name, all, or policy:<name>"
+        required: false
+        default: smoke
+        type: string
+  workflow_call:
+    inputs:
+      suite:
+        description: "Registered E2E suite name, all, or policy:<name>"
+        required: false
+        default: smoke
+        type: string
+
+concurrency:
+  group: docker-e2e-${{ github.ref }}-${{ inputs.suite || github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  docker-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      REQUEST_ENGINE_IMAGE_TAG: ci-${{ github.sha }}
+      E2E_RUNNER_IMAGE_TAG: ci-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Prepare evidence workspace
+        run: mkdir -p .ci/docker-e2e
+
+      - id: suite
+        name: Run reusable Docker E2E platform
+        shell: bash
+        run: |
+          set -o pipefail
+          case '${{ github.event_name }}' in
+            pull_request) suite='policy:pr' ;;
+            push) suite='policy:merge' ;;
+            schedule) suite='policy:nightly' ;;
+            workflow_dispatch|workflow_call) suite='${{ inputs.suite }}' ;;
+            *) suite='smoke' ;;
+          esac
+          echo "E2E selection: $suite"
+          bash scripts/ci/run_e2e_platform.sh "$suite" 2>&1 | tee .ci/docker-e2e/platform.log
+
+      - name: Write run summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Docker E2E platform'
+            echo
+            echo "Result: **${{ steps.suite.outcome }}**"
+            echo
+            echo "Request Engine image: \`request-engine:${REQUEST_ENGINE_IMAGE_TAG}\`"
+            echo "E2E runner image: \`request-engine-e2e-runner:${E2E_RUNNER_IMAGE_TAG}\`"
+            echo "Commit: \`${GITHUB_SHA}\` · Run: \`${GITHUB_RUN_ID}\` attempt \`${GITHUB_RUN_ATTEMPT}\`"
+            echo
+            echo '> Each selected suite runs in a fresh Compose project/world. Artifacts are namespaced under `.ci/docker-e2e/<suite>/`.'
+            echo '> Pull requests, development merges, and nightly runs resolve suites through the repository registry rather than feature-specific workflow branches.'
+            echo '> Scope remains system/E2E evidence only; production TLS, HA secret handling, backup/restore fencing, break-glass, RPO/RTO and SLO certification are outside this lane.'
+          } | tee .ci/docker-e2e/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-e2e-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .ci/docker-e2e/
+          if-no-files-found: error
+          retention-days: 14

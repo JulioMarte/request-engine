@@ -199,6 +199,47 @@ For each relevant command identify:
 - loser/failure semantics;
 - durable side effects/outbox facts.
 
+### Identity-topology gate (D5)
+
+Identity bindings, control grants, staff memberships and the reachability they
+express share one transaction-scoped advisory gate, registered namespace
+`(1380274257, 1902476357)`:
+
+```text
+SHARE      every local command that can alter the topology
+EXCLUSIVE  global disable or global authority modification
+```
+
+The gate is the first statement of the owning command, before any row lock, so a
+global operation that enumerates affected tenants cannot race a binding created
+after enumeration. Ordinary reads, booking and native login never acquire it.
+Runtime roles hold no direct DML on the topology tables and cannot execute the
+gate functions directly; trigger-side effects on organization-root provisioning
+facts inherit the gated parent transaction. Migration backfills and superuser
+maintenance bypass the gate by construction and must acquire it explicitly when
+they mutate topology outside a command. Production containment limits/timeouts
+remain to be set before global disable ships (see `auth-implementation-status.md`).
+
+### Governed identity recovery boundary (C)
+
+`request_engine.identity_recovery_cases` is the Tenancy-owned recovery aggregate
+(`requested -> approved -> issued -> consumed / revoked`); approval requires a
+different HUMAN platform operator than the requester. The raw proof never enters
+PostgreSQL: issuance stages it outside locks through the technical
+`RecoverySecretDelivery` port and persists only an opaque reference, its
+fingerprint, the token digest/fingerprint and a leased delivery ticket
+(`request_engine.identity_recovery_delivery_tickets`). The authoritative
+issuance transaction calls `request_auth.create_native_recovery_intent` (which
+owns the authority SHARE and identity `FOR UPDATE` locks), links the case,
+creates the ticket and writes the append-only
+`request_engine.platform_identity_recovery_facts` fact. Revocation revokes the
+intent and cancels the ticket atomically; consumption is linked to the case in
+the same transaction as `request_auth.consume_native_recovery_intent`. The five
+private commands take the identity-topology gate as their first statement and
+are exposed only on the private control plane. A deployment without a real
+secret-delivery adapter fails closed with
+`recovery_delivery_unconfigured`.
+
 ## 7. ORM vs explicit SQL
 
 Use the simplest persistence mechanism that preserves clarity and correctness.

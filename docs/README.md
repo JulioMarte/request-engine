@@ -24,6 +24,40 @@ There is no planned blanket architecture freeze. A production release may make p
 
 ## 2. Current architecture map
 
+Native initial provisioning authority is specified in `architecture/initial-controller-policy.md`; executed validation and remaining production gaps are tracked in `architecture/auth-implementation-status.md`.
+
+Current agent lifecycle/revision inspection and its explicit read authority are specified in `architecture/agent-governance-inspection.md`.
+
+Self-only current Party relationship inspection and its explicit policy evolution are specified in `architecture/self-authority-inspection.md`.
+
+Native recovery consumption is specified in `architecture/http-runtime-deployment.md`; executed validation is tracked in `architecture/auth-implementation-status.md` and the proof matrix in `testing/native-recovery-http-validation-handoff.md`.
+
+The remaining identity/product/operational acceptance content is defined in `architecture/auth-production-completion-plan.md`. **For the initial platform trust root, ADR 0014 and `architecture/instance-claim-platform-owner-plan.md` supersede the older CLI-first bootstrap assumptions:** a fresh self-hosted Instance is claimed over the private control-plane HTTP surface, the first effective Platform Owner is a normal capability-governed HUMAN Principal with phishing-resistant authentication, and setup never reopens after claim. The serialized implementation method for the older completion plan remains `architecture/sequential-completion-plan.md`; the new trust-root work follows the slices in the instance-claim plan.
+
+### External competitive/reference systems
+
+`architecture/external-reference-systems.md` records the open-source systems that materially overlap Request Engine — currently LibreBooking, Cal.diy, Easy!Appointments, Medplum and Marley Health — and the required build-vs-reuse comparison discipline. Treat it as a non-normative design reference: upstream implementations may expose missed edge cases and mature patterns, but they do not override Request Engine's owning contracts, guarantees, authority model or transactional semantics.
+
+### Canonical system/E2E CI platform
+
+`architecture/docker-e2e-ci-plan.md` is now the **normative architecture for the reusable Docker system/E2E CI platform**, not a one-off F-01 plan.
+
+Its governing shape is:
+
+```text
+stable deployment definition
+        ×
+swappable black-box suite
+        ↓
+reproducible system/E2E evidence
+```
+
+The platform installs Request Engine from a clean world using one Request Engine image plus separate PostgreSQL/runtime dependencies, then runs an isolated generic `e2e-runner` against public/runtime surfaces. Suites such as `smoke`, `booking`, `authority`, `recovery`, `worker`, `f01`, `oidc` and `all` are selected declaratively. A suite gets a fresh authoritative world by default; Docker images/caches may be reused, business/database state may not be shared implicitly between suites.
+
+F-01 is the first broad acceptance suite consuming this platform. It does **not** define the platform. New ordinary system/E2E suites should be added through the suite registry rather than by copying Compose files or GitHub workflows.
+
+The platform is the default for expensive cross-module black-box journeys. Explicit exceptions are permitted when the risk requires a genuinely different boundary, such as external TLS/ingress, production-shaped backup/restore, specialized load/browser hardware/tooling, or real third-party delivery certification.
+
 For present-day ownership and boundaries, start here:
 
 1. `10-module-ownership-map.md` — current business-module ownership;
@@ -32,11 +66,40 @@ For present-day ownership and boundaries, start here:
 4. `13-connection-surfaces.md` — mandatory layer/module/DB/provider connection surfaces;
 5. `14-architecture-fitness-functions.md` — executable dependency/surface fitness rules;
 6. `testing/repository-governance-contract.md` — HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification;
-7. `15-api-design-and-usability-standards.md` — current public API design/usability guidance.
+7. `15-api-design-and-usability-standards.md` — current HTTP/OpenAPI house standard;
+8. `16-canonical-operation-and-tool-projection-pattern.md` — normative owner/capability/operation/tool projection pattern for UX, integrations and agents.
 
 Historical feature labels such as F1–F7 describe when capabilities entered the system; they do not define current package topology or create permanent compatibility obligations.
 
-## 3. Current capability/domain contracts
+## 3. Current API / agent-tool authority
+
+For any new machine-facing operation, read docs 15 and 16 together.
+
+The governing shape is:
+
+```text
+business owner
+    -> capability policy
+    -> typed semantic operation
+    -> canonical HTTP/OpenAPI
+    -> optional authorized tool/MCP projection
+```
+
+Do not create a second business implementation for agents. `CapabilityDefinition` remains authorization-policy authority; OpenAPI `operationId` identifies one HTTP operation; an optional tool name identifies an agent-facing projection. These identities are related but not interchangeable.
+
+The historical `operational_copilot` package is not a separate source of business truth. Its structured tools are migration input toward the generic authorized operation/tool gateway described by doc 16.
+
+Identity/authentication and deployment references:
+
+- `architecture/instance-claim-platform-owner-plan.md` — **current accepted first-run trust-root implementation plan**: Instance state, SetupSession, Platform Owner policy, WebAuthn/assurance, recovery separation and HTTP/TCP acceptance;
+- `adr/0014-instance-claim-platform-owner-trust-root.md` — accepted hard-to-reverse decision replacing the CLI-first initial-owner ceremony;
+- `architecture/identity-provider-and-staff-provisioning-plan.md` — providerless identity/staff lifecycle and earlier bootstrap design; interpret its initial-root ceremony through ADR 0014;
+- `architecture/principal-agent-and-provisioning-authority-model.md` — Principal planes, workload authority and the amended implementation slice order;
+- `architecture/http-runtime-deployment.md` — native-first and separate private provisioning ASGI factories, explicit configuration, least-privilege startup and readiness limits;
+- `architecture/auth-implementation-status.md` — dated validation evidence and remaining identity-plan acceptance gaps;
+- `architecture/docker-e2e-ci-plan.md` — reusable clean-install black-box system/E2E execution platform.
+
+## 4. Current capability/domain contracts
 
 Historical paths may contain current semantic contracts. Authority comes from the owning module, current guarantee inventory and accepted contract status — not from the path name.
 
@@ -47,23 +110,26 @@ Important current contract families include:
 - live service operations — `v3/26-live-service-operations-contract.md` and its accepted amendments;
 - live capacity — `v3/29-live-capacity-projection-contract.md`;
 - operational recovery — `v3/32-operational-recovery-communications-contract.md`;
-- operational agent tooling — `v3/35-operational-copilot-contract.md`;
-- front desk / communications / identity / onboarding — later accepted contracts under `v3/`.
+- historical operational agent tooling contract — `v3/35-operational-copilot-contract.md`, interpreted through current docs 15/16 and the ownership map;
+- front desk / communications / identity / onboarding — later accepted contracts under `v3/` where their current owner/guarantee semantics remain adopted.
 
 Durable business distinctions such as Reservation versus QueueEntry versus ServiceSession remain current where adopted by the guarantee/owner contracts. Historical structural descriptions do not freeze implementation shape.
 
-## 4. Testing and guarantee governance
+## 5. Testing and guarantee governance
 
 Canonical evidence entry points:
 
 - `testing/current-guarantees.toml` — current semantic guarantees;
 - `testing/README.md` — current test architecture and CI evidence model;
+- `architecture/docker-e2e-ci-plan.md` — reusable system/E2E installation + suite execution architecture;
 - `testing/repository-governance-contract.md` — repository/test rigidity classification;
 - `testing/evidence-authoring-guide.md` — falsifiable proof workflow;
 - `testing/current-proof-map.toml` — representative proof mapping;
 - `testing/test-architecture-migration.md` — test-taxonomy/disposition provenance.
 
 Architecture tests should strongly enforce HARD properties, detect CONTROLLED drift and avoid freezing FLEXIBLE implementation details. Historical exact snapshots/fingerprints belong to historical evidence, not current-head ceilings.
+
+For system/E2E, a green result is meaningful only when the runner is constrained to the intended external boundary. A black-box suite must not gain PostgreSQL access or internal application imports simply to become easier to write.
 
 A useful rule for every new durable gate is:
 
@@ -73,7 +139,7 @@ If a legitimate future feature fails this assertion, what semantic/compatibility
 
 If there is no meaningful answer beyond “the list/file/count changed”, the gate is probably freezing implementation shape and should not be HARD.
 
-## 5. Engineering quality
+## 6. Engineering quality
 
 Engineering-quality entry points:
 
@@ -86,7 +152,7 @@ Engineering-quality entry points:
 
 LOC, C901, file counts and fan-in/fan-out are heuristic review signals. They are not permanent merge-blocking architecture laws without an explicit HARD-gate proof obligation and normative approval.
 
-## 6. PostgreSQL executable truth
+## 7. PostgreSQL executable truth
 
 Executable schema evolution lives under `migrations/`.
 
@@ -112,7 +178,7 @@ For database work read:
 4. `07-database-access-contract.md`;
 5. the affected capability contract and guarantees.
 
-## 7. Compatibility and production transition
+## 8. Compatibility and production transition
 
 Compatibility burden attaches to real consumers and data, not to every old repository shape.
 
@@ -128,9 +194,9 @@ When customer-owned production data or an independently deployed/external suppor
 - high-risk production changes require appropriate rollout/mitigation evidence;
 - rebaseline is no longer a repository-cleanup technique.
 
-See `architecture/continuous-evolution-policy.md` for the normative details.
+See `architecture/continuous-evolution-policy.md` for normative details.
 
-## 8. Historical provenance
+## 9. Historical provenance
 
 Historical release and transition material answers:
 
@@ -147,18 +213,18 @@ what must current Request Engine look like now?
 
 `legacy/**`, former V2/V3 release evidence, old handoffs and removed migration machinery are non-authoritative unless a current contract explicitly adopts a specific guarantee or pattern.
 
-## 9. Documentation precedence
+## 10. Documentation precedence
 
 For a current change use this precedence model:
 
 ```text
 continuous-evolution policy + current guarantee inventory
         ↓
-current phase policy (for example system-optimization mode)
+current phase policy
         ↓
 owning current capability/domain contract
         ↓
-current ownership + connection/database contracts
+current ownership + connection/database/API-operation contracts
         ↓
 repository/test governance + executable fitness functions
         ↓
@@ -171,12 +237,14 @@ No phase policy may silently weaken a HARD guarantee. No historical structural s
 
 When two current normative documents disagree, treat that as a repository defect: identify the semantic owner, reconcile the contradiction and update current indexes/tests in the same coherent change.
 
-## 10. Documentation policy
+## 11. Documentation policy
 
 Repository documentation is the source of truth. Agent instruction files are operational routers/guardrails.
 
 - durable domain/capability rules belong in the owning current contract;
 - durable evolutionary rules belong under `architecture/`;
+- durable API/operation/tool projection rules belong in docs 15/16;
+- durable system/E2E execution rules belong in `architecture/docker-e2e-ci-plan.md`;
 - durable rationale belongs in `adr/`;
 - testing/repository governance belongs in `testing/`;
 - engineering-quality policy belongs in `engineering-quality/`;

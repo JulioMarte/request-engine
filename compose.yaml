@@ -13,7 +13,7 @@ services:
       timeout: 3s
       retries: 20
     volumes:
-      - request_engine_postgres:/var/lib/postgresql/data
+      - request_engine_postgres:/var/lib/postgresql
 
 volumes:
   request_engine_postgres:

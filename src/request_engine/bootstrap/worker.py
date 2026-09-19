@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from request_engine.bootstrap.recovery_sweep import build_recovery_sweep
 from request_engine.bootstrap.recovery_worker import build_recovery_assessment_handler
 from request_engine.bootstrap.scheduled_worker import build_scheduled_action_router
-from request_engine.entrypoints.worker.app import WorkerProcess
+from request_engine.entrypoints.worker.app import WorkerProcess, WorkerRuntime
 from request_engine.entrypoints.worker.outbox_runtime import (
     RESERVATION_LIFECYCLE_EVENT_TYPES,
     FencedOutboxInternalHandler,
@@ -59,6 +59,7 @@ def build_worker_process(
     provider_event_handlers: Mapping[ProviderEventKey, ProviderEventHandler],
     reservation_lifecycle_factory: ReservationLifecycleHandlerFactory | None = None,
     config: WorkerProcessConfig | None = None,
+    identity_recovery_delivery: WorkerRuntime | None = None,
 ) -> WorkerProcess:
     """Assemble production workers without crossing runtime credential boundaries."""
 
@@ -127,4 +128,5 @@ def build_worker_process(
             worker_session_factory,
             domain_session_factory,
         ),
+        identity_recovery_delivery=identity_recovery_delivery,
     )

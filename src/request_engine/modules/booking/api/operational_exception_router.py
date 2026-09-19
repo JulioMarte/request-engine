@@ -11,6 +11,7 @@ from request_engine.modules.booking.application.commands import (
 from request_engine.modules.booking.application.commands import (
     set_resource_schedule_exception as resource_exception_command,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 
@@ -88,8 +89,22 @@ def create_operational_exception_router(
             command,
         )
 
-    router.add_api_route(
-        "/resource-assignments/{assignment_id}/exceptions", assignment_exception, methods=["PUT"]
+    add_capability_route(
+        router,
+        "/resource-assignments/{assignment_id}/exceptions",
+        assignment_exception,
+        methods=["PUT"],
+        capability="booking.manage_supply",
+        operation_id="booking_resource_assignment_exception_set",
+        owner="booking",
     )
-    router.add_api_route("/resources/{resource_id}/exceptions", resource_exception, methods=["PUT"])
+    add_capability_route(
+        router,
+        "/resources/{resource_id}/exceptions",
+        resource_exception,
+        methods=["PUT"],
+        capability="booking.manage_supply",
+        operation_id="booking_resource_exception_set",
+        owner="booking",
+    )
     return router

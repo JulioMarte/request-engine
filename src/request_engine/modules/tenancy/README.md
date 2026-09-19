@@ -6,6 +6,66 @@ Primary concerns: hard tenant boundary, authority snapshots/revocation coordinat
 
 Other modules consume only public tenancy contracts; participant roles or external correlations never become authorization by implication.
 
+## Private platform provisioning
+
+`api/native_platform_provisioning.py` owns native provisioner and organization-root
+creation transport; `api/platform_provisioner_management.py` owns the provisioner
+read projection and lifecycle transport (`list`/`get`/`suspend`/`reactivate`/`revoke`).
+Their typed application commands and queries execute through the dedicated
+platform-control and platform-read DB connections. The separate HTTP entrypoint only
+composes that supported API. See `docs/architecture/http-runtime-deployment.md` for
+operation IDs, authentication, idempotency, revision, privilege and transaction
+contracts. Native enrollment alone still grants no Principal or tenant authority, and
+a provisioner does not become a member of the tenant it creates. Lifecycle changes
+are revisioned, replayed idempotently, recorded in a private append-only audit fact
+and protected by the last-platform-controller guard; reactivation never restores
+revoked authority.
+
+Native organization creation selects the versioned initial controller policy
+documented in `docs/architecture/initial-controller-policy.md`. Its explicit
+grants and policy provenance are atomic with the root; replay never upgrades
+legacy roots or restores revoked authority. New capabilities are not inherited
+automatically from the runtime registry.
+
+Agent provisioning returns separate profile and authority revision snapshots,
+allowing initial authority assignment without database access. Idempotent replay
+preserves the original revisions and omits the one-time credential; historical
+responses without an authority revision return null. This is not a current-state
+inspection API. Separate `agent_list` / `agent_get` reads expose current profile
+and authority revisions plus standing capabilities under current HUMAN
+`agent.read` authority. They do not expose credentials or claim effective access
+to every Party/resource. See `docs/architecture/agent-governance-inspection.md`.
+
+`GET /v1/me/authority` exposes the caller's current active Party relationships,
+scopes and revisions under explicit operational `authority.read_self` authority.
+It is self-only, bounded and advisory; it is not an arbitrary resource authorization
+oracle. See `docs/architecture/self-authority-inspection.md` for the pending-validation
+contract and immutable initial controller v3 policy.
+
+## Identity binding inspection
+
+`GET /v1/identity-bindings` and `GET /v1/identity-bindings/{binding_id}`
+(`identity_binding_list` / `identity_binding_get`) expose the caller tenant's
+identity bindings under explicit `identity.binding.read` authority: binding id,
+principal id, authority id, status, revision and creation time. The projection is
+tenant-opaque (a foreign or absent binding is indistinguishable and never
+addressable), never exposes the binding subject or any verifier, and performs no
+mutation.
+
+## Identity binding lifecycle
+
+`POST /v1/identity-bindings/{binding_id}:suspend`, `:reactivate` and `:revoke`
+(`identity_binding_suspend` / `identity_binding_reactivate` /
+`identity_binding_revoke`) own the tenant-local binding lifecycle under explicit
+`identity.bind` authority (HUMAN only, `expected_revision`, `Idempotency-Key`).
+Suspend/reactivate move an active binding to suspended and back; revoke is
+terminal and never resurrects the row. Each command acquires the identity-topology
+gate and the ordered active-staff-membership lock root before the specific binding
+row, revalidates tenant controller continuity, and cannot remove the last
+authenticatable controller. See
+`docs/architecture/auth-production-completion-plan.md` (D1b) and
+`docs/adr/0013-identity-security-decision-gates.md`.
+
 ## Party registry (S0b)
 
 Owns `parties.register`, `parties.add_contact_point`, `parties.confirm_contact_point`,
@@ -38,10 +98,21 @@ the tenant's root operational authority through
 `operations.manage_*` scopes as delegated Representations on an active
 `organization` Party. It is bootstrap-only (idempotent replay, no general
 Representation administration) and exposes the owner-backed
-`has_active_organization_party` fact consumed by `GET /v1/onboarding/readiness`
-(`onboarding.read` composes this fact through `contracts/onboarding_readiness.py`;
-the readiness router is Tenancy-owned HTTP composition over other modules'
-published readers).
+`has_active_organization_party` fact consumed by `GET /v1/onboarding/readiness`.
+
+## Identity-aware onboarding facts (E2)
+
+Tenancy also publishes `contracts/onboarding_readiness.py`:
+`has_active_organization_party` plus a tenant-scoped, PII-free
+`OnboardingIdentityFactsReader`. The reader projects aggregated
+identity/control facts (active controller, authenticatable controller,
+recorded-policy readiness, staff-administration availability, observed time and
+useful revisions) through the read-only SECURITY DEFINER function
+`request_engine.read_onboarding_identity_facts`, which refuses any organization
+other than the transaction's current tenant. The `GET /v1/onboarding/readiness`
+projection itself is Onboarding-owned HTTP composition over the published
+readers of Tenancy, Catalog, Booking, Queue and Communications; Tenancy does not
+own that router.
 
 ## Staff administrative contacts (R2)
 

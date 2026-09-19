@@ -10,8 +10,9 @@ from request_engine.modules.tenancy.application.commands import (
 from request_engine.modules.tenancy.application.commands import (
     update_organization_operational_profile as profile_command,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 IdempotencyKey = Annotated[
     str,
@@ -55,6 +56,7 @@ def create_operational_router(
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "organization.manage_profile")
         command = profile_command.UpdateOrganizationOperationalProfileCommand(
             organization_id=current.organization_id,
             principal_id=current.principal_id,
@@ -76,6 +78,7 @@ def create_operational_router(
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "organization.manage_profile")
         contacts = tuple(
             contacts_command.OrganizationPublicContactInput(
                 item.channel,
@@ -96,6 +99,20 @@ def create_operational_router(
             command,
         )
 
-    router.add_api_route("/profile", update_profile, methods=["PATCH"])
-    router.add_api_route("/contacts", set_contacts, methods=["PUT"])
+    add_capability_route(
+        router,
+        "/profile",
+        update_profile,
+        capability="organization.manage_profile",
+        methods=["PATCH"],
+        operation_id="tenancy_organization_profile_update",
+    )
+    add_capability_route(
+        router,
+        "/contacts",
+        set_contacts,
+        capability="organization.manage_profile",
+        methods=["PUT"],
+        operation_id="tenancy_organization_contacts_replace",
+    )
     return router

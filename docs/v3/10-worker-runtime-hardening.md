@@ -16,6 +16,12 @@ ProviderEvent
 
 Business state remains owned by the module that created or consumes the work.
 
+On top of those primitives the process also runs operational streams that reuse
+the same claim/fencing protocol: the F5 `recovery_sweep` fallback sweep and the
+governed `identity_recovery_delivery` lane that delivers staged native identity
+recovery secrets. They are registered as ordinary fenced runtimes under the same
+supervisor, not as a second execution engine.
+
 ## Claim and fencing protocol
 
 All cross-tenant discovery uses narrow `SECURITY DEFINER` functions.
@@ -214,7 +220,7 @@ The factory-identity check is a guardrail, not the entire security proof. Postgr
 
 ## Process assembly and deployment
 
-`request_engine.bootstrap.worker.build_worker_process` is the production composition surface. It creates independent fenced runtimes for ScheduledAction, OutboxMessage, and ProviderEvent under a single `WorkerProcess`/`WorkerSupervisor` failure boundary. An unexpected stream failure cancels siblings; graceful shutdown shares one stop event across all streams.
+`request_engine.bootstrap.worker.build_worker_process` is the production composition surface. It creates independent fenced runtimes for ScheduledAction, OutboxMessage and ProviderEvent, plus the F5 `recovery_sweep` and governed `identity_recovery_delivery` streams, under a single `WorkerProcess`/`WorkerSupervisor` failure boundary. An unexpected stream failure cancels siblings; graceful shutdown shares one stop event across all streams.
 
 The ScheduledAction router is assembled in a dedicated bootstrap component so adding a module handler does not grow the process supervisor itself. F5 recovery reassessment is part of the standard registry rather than an optional deployment hook; once F5 source freshness enqueues work, a normally assembled worker knows how to route it.
 

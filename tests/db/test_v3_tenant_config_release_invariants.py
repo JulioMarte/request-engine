@@ -63,17 +63,24 @@ def _resource(
     location_id: UUID,
     label: str,
 ) -> UUID:
-    return _uuid_row(
+    resource_id = _uuid_row(
         conn,
         """
         INSERT INTO request_engine.resources (
-            organization_id, location_id, resource_key, display_name,
+            organization_id, resource_key, display_name,
             capacity_model, capacity_units
-        ) VALUES (%s, %s, %s, %s, 'exclusive', 1)
+        ) VALUES (%s, %s, %s, 'exclusive', 1)
         RETURNING id
         """,
-        (organization_id, location_id, f"resource-{uuid4().hex}", label),
+        (organization_id, f"resource-{uuid4().hex}", label),
     )
+    conn.execute(
+        "INSERT INTO request_engine.resource_location_assignments "
+        "(organization_id, resource_id, location_id, effective_during) "
+        "VALUES (%s, %s, %s, tstzrange(clock_timestamp(), NULL, '[)'))",
+        (organization_id, resource_id, location_id),
+    )
+    return resource_id
 
 
 @pytest.mark.postgres
@@ -91,12 +98,11 @@ def test_i08_resource_capability_location_configuration_cannot_cross_tenant(
     with pytest.raises(Error) as foreign_location:
         admin_conn.execute(
             """
-            INSERT INTO request_engine.resources (
-                organization_id, location_id, resource_key, display_name,
-                capacity_model, capacity_units
-            ) VALUES (%s, %s, %s, 'Cross location', 'exclusive', 1)
+            INSERT INTO request_engine.resource_location_assignments (
+                organization_id, resource_id, location_id, effective_during
+            ) VALUES (%s, %s, %s, tstzrange(clock_timestamp(), NULL, '[)'))
             """,
-            (org_a, location_b, f"cross-location-{uuid4().hex}"),
+            (org_a, resource_a, location_b),
         )
     assert foreign_location.value.sqlstate == "23503"
 
@@ -114,9 +120,10 @@ def test_i08_resource_capability_location_configuration_cannot_cross_tenant(
     with pytest.raises(Error) as foreign_schedule:
         admin_conn.execute(
             """
-            INSERT INTO request_engine.availability_schedules (
-                organization_id, resource_id, weekday, local_start, local_end, timezone
-            ) VALUES (%s, %s, 1, '09:00', '10:00', 'UTC')
+            INSERT INTO request_engine.resource_location_availability (
+                organization_id, resource_location_assignment_id, weekday, local_start, local_end
+            ) VALUES (%s, (SELECT id FROM request_engine.resource_location_assignments
+                           WHERE resource_id = %s), 1, '09:00', '10:00')
             """,
             (org_b, resource_a),
         )
@@ -168,9 +175,11 @@ def test_i09_schedule_mutation_serializes_through_resource_and_advances_revision
         with pytest.raises(Error) as blocked:
             writer.execute(
                 """
-                INSERT INTO request_engine.availability_schedules (
-                    organization_id, resource_id, weekday, local_start, local_end, timezone
-                ) VALUES (%s, %s, 1, '09:00', '10:00', 'UTC')
+                INSERT INTO request_engine.resource_location_availability (
+                    organization_id, resource_location_assignment_id,
+                    weekday, local_start, local_end
+                ) VALUES (%s, (SELECT id FROM request_engine.resource_location_assignments
+                               WHERE resource_id = %s), 1, '09:00', '10:00')
                 """,
                 (organization_id, resource_id),
             )
@@ -180,9 +189,10 @@ def test_i09_schedule_mutation_serializes_through_resource_and_advances_revision
         locker.commit()
         writer.execute(
             """
-            INSERT INTO request_engine.availability_schedules (
-                organization_id, resource_id, weekday, local_start, local_end, timezone
-            ) VALUES (%s, %s, 1, '09:00', '10:00', 'UTC')
+            INSERT INTO request_engine.resource_location_availability (
+                organization_id, resource_location_assignment_id, weekday, local_start, local_end
+            ) VALUES (%s, (SELECT id FROM request_engine.resource_location_assignments
+                           WHERE resource_id = %s), 1, '09:00', '10:00')
             """,
             (organization_id, resource_id),
         )

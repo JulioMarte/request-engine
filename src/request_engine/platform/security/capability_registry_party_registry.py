@@ -4,6 +4,7 @@ from request_engine.platform.security.capability_types import (
     command_capability,
     query_capability,
 )
+from request_engine.platform.security.operation_risk import OperationRiskClass
 
 PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     command_capability(
@@ -15,9 +16,15 @@ PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         ),
     ),
     command_capability(
+        "organization.manage_profile",
+        CapabilityExposure.OPERATOR,
+        "Manage the tenant Organization's operational profile and public contact information.",
+    ),
+    command_capability(
         "parties.register",
         CapabilityExposure.PUBLIC,
         "Register a person with contact points and identity documents.",
+        risk_class=OperationRiskClass.LOW_IMPACT_WRITE,
     ),
     command_capability(
         "parties.add_contact_point",

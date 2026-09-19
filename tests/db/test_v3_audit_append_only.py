@@ -67,8 +67,8 @@ def test_i59_runtime_app_cannot_rewrite_or_delete_material_audit(
             (str(organization_id),),
         )
 
-        # request_engine_app intentionally has UPDATE on ordinary tenant tables.
-        # The audit-specific append-only trigger is therefore the decisive backstop.
+        # Current least-privilege grants reject the write before the immutable
+        # trigger. The unchanged durable fact below remains the independent oracle.
         with pytest.raises(Error) as update_error:
             app.execute(
                 """
@@ -78,7 +78,7 @@ def test_i59_runtime_app_cannot_rewrite_or_delete_material_audit(
                 """,
                 (audit_id,),
             )
-        assert update_error.value.sqlstate == "55000"
+        assert update_error.value.sqlstate == "42501"
 
         # Runtime app has no DELETE privilege at all; normal operation cannot erase history.
         with pytest.raises(Error) as delete_error:

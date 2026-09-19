@@ -5,6 +5,7 @@ from request_engine.platform.security.capability_types import (
     command_capability,
     query_capability,
 )
+from request_engine.platform.security.operation_risk import OperationRiskClass
 
 LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     query_capability(
@@ -19,6 +20,7 @@ LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Join a service queue for an authorized subject Party.",
         party_scope="queue.join",
         override_capability="queue.subject_override",
+        risk_class=OperationRiskClass.LOW_IMPACT_WRITE,
     ),
     query_capability(
         "queue.status",
@@ -46,6 +48,7 @@ LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "queue.check_in",
         CapabilityExposure.OPERATOR,
         "Check in a reservation-backed subject or admit a walk-in to a live queue.",
+        risk_class=OperationRiskClass.LOW_IMPACT_WRITE,
     ),
     command_capability(
         "queue.configure",

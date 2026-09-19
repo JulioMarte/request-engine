@@ -1,10 +1,12 @@
 from request_engine.platform.security.capability_types import (
+    AuthorityPlane,
     CapabilityDefinition,
     CapabilityExposure,
     RevisionPolicy,
     command_capability,
     query_capability,
 )
+from request_engine.platform.security.operation_risk import OperationRiskClass
 
 FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     query_capability(
@@ -38,6 +40,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         party_scope="appointments.book",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.book_appointment"}),
+        risk_class=OperationRiskClass.EXTERNAL_COMMITMENT,
     ),
     query_capability(
         "appointments.read",
@@ -55,6 +58,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.cancel_reservation"}),
+        risk_class=OperationRiskClass.REVERSIBLE_WRITE,
     ),
     command_capability(
         "appointments.reschedule",
@@ -64,6 +68,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.reschedule_reservation"}),
+        risk_class=OperationRiskClass.REVERSIBLE_WRITE,
     ),
     command_capability(
         "appointments.confirm_attendance",
@@ -80,6 +85,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         revision=RevisionPolicy.REQUIRED,
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
+        risk_class=OperationRiskClass.LOW_IMPACT_WRITE,
     ),
     command_capability(
         "appointments.subject_override",
@@ -93,6 +99,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.OPERATOR,
         "Admission permission for trusted integrations to execute operator-directed"
         " mutations under a verified acting operator's authority.",
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
         runtime_available=False,
     ),
 )

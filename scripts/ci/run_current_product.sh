@@ -42,6 +42,12 @@ uv run python scripts/db/analyze_schema_cohesion.py \
 # migration without imposing a permanent equality between 0001 and current HEAD.
 bash scripts/db/prove_baseline_integrity.sh "$ARTIFACT_DIR"
 
+# PostgreSQL roles are cluster-global while Alembic state is database-local.
+# Prove that post-baseline control-plane roles do not poison a second Request
+# Engine database in the same cluster: 0001 must still install and that database
+# must then reach the exact current HEAD by safely reusing verified shared roles.
+uv run python scripts/db/prove_multidatabase_migration_compatibility.py
+
 # Current schema/runtime and operational-profile guarantees.
 uv run pytest \
   tests/integration/f1_operational_profile/test_schema.py \
@@ -86,6 +92,63 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
 
+# Principal trust-root, standing authority, identity bindings, platform-control,
+# one-time bootstrap intents, atomic root establishment, bounded A->B provisioning,
+# atomic B->tenant-root provisioning and tenant staff lifecycle are current
+# product truth after baseline.
+uv run pytest \
+  tests/db/test_principal_trust_root.py \
+  tests/db/test_principal_authority_grants.py \
+  tests/db/test_identity_bindings.py \
+  tests/db/test_identity_binding_reads.py \
+  tests/db/test_identity_binding_lifecycle.py \
+  tests/db/test_platform_control_read_boundary.py \
+  tests/db/test_platform_definer_topology.py \
+  tests/db/test_platform_root_bootstrap_intents.py \
+  tests/db/test_platform_root_bootstrap_consume.py \
+  tests/db/test_platform_root_bootstrap_definer_topology.py \
+  tests/db/test_platform_tenant_provisioner.py \
+  tests/db/test_native_platform_provisioning.py \
+  tests/db/test_initial_controller_policy.py \
+  tests/db/test_native_tenant_root_bootstrap.py \
+  tests/db/test_native_identity_actor_runtime.py \
+  tests/db/test_native_human_auth_runtime.py \
+  tests/db/test_native_recovery_lock_order.py \
+  tests/db/test_native_authority_suspension.py \
+  tests/db/test_native_authority_suspension_locks.py \
+  tests/db/test_native_enrollment_outcomes.py \
+  tests/db/test_native_authority_probe.py \
+  tests/db/test_workload_authentication.py \
+  tests/db/test_agent_governance.py \
+  tests/db/test_agent_governance_reader.py \
+  tests/db/test_self_authority_reader.py \
+  tests/db/test_resource_authority_inspection.py \
+  tests/db/test_agent_policy.py \
+  tests/db/test_delegation_concurrency.py \
+  tests/db/test_integration_governance.py \
+  tests/db/test_v3_tenant_reference_integrity.py \
+  tests/db/test_staff_membership_lifecycle.py \
+  tests/db/test_identity_governance_audit.py \
+  tests/db/test_controller_policy_upgrade.py \
+  tests/db/test_identity_onboarding_readiness.py \
+  tests/db/test_staff_invitation_anchor_authority.py \
+  tests/db/test_platform_control_definer_topology.py \
+  tests/db/test_platform_provisioner_lifecycle.py \
+  tests/db/test_native_identity_global_disable.py \
+  tests/db/test_identity_topology_gate.py \
+  tests/db/test_identity_topology_races.py \
+  tests/db/test_identity_recovery_governance.py \
+  tests/db/test_identity_link_self.py \
+  tests/db/test_identity_link_hardening.py \
+  tests/db/test_identity_link_subject.py \
+  tests/db/test_native_multi_session.py \
+  tests/db/test_platform_instance_setup.py \
+  tests/db/test_instance_claim.py \
+  tests/db/test_webauthn_persistence.py \
+  tests/db/test_webauthn_concurrency.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/principal-authority.xml"
+
 # F2 is part of current product truth, not a detached feature-local proof. Run the
 # complete F2 PostgreSQL proof set so the exact-head gate covers candidate and
 # handoff fences, privileges, public projection, publication concurrency, exact
@@ -119,6 +182,13 @@ uv run pytest \
   tests/modules/live_capacity/test_deduplication.py \
   -q --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/live-capacity-contract.xml"
+
+# The reusable privileged-authentication guard is a pure policy contract. Run it
+# in the current-product packet so its guarantee is backed by executed evidence.
+uv run pytest \
+  tests/unit/platform/security/test_privileged_authentication.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/privileged-authentication.xml"
 
 # Tenant RLS catalog isolation is current-product truth. Run the adversarial
 # catalog enumeration against the accepted Alembic head so post-baseline tenant

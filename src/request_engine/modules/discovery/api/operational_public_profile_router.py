@@ -14,6 +14,7 @@ from request_engine.modules.discovery.application.commands.public_profile import
     deactivate_resource_public_profile,
     set_resource_public_profile,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 
@@ -64,8 +65,22 @@ def create_public_profile_router(
             ),
         )
 
-    router.add_api_route("/{resource_id}/public-profile", set_profile, methods=["PUT"])
-    router.add_api_route(
-        "/{resource_id}/public-profile/deactivate", deactivate_profile, methods=["POST"]
+    add_capability_route(
+        router,
+        "/{resource_id}/public-profile",
+        set_profile,
+        methods=["PUT"],
+        capability="discovery.manage",
+        operation_id="discovery_resource_public_profile_set",
+        owner="discovery",
+    )
+    add_capability_route(
+        router,
+        "/{resource_id}/public-profile/deactivate",
+        deactivate_profile,
+        methods=["POST"],
+        capability="discovery.manage",
+        operation_id="discovery_resource_public_profile_deactivate",
+        owner="discovery",
     )
     return router

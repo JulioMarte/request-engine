@@ -6,11 +6,13 @@ from sqlalchemy.exc import IntegrityError
 
 from request_engine.entrypoints.http.errors import (
     authentication_required_handler,
+    capability_required_handler,
     http_exception_handler,
     idempotency_conflict_handler,
     integrity_error_handler,
     request_validation_error_handler,
 )
+from request_engine.entrypoints.http.operation_catalog import create_operation_catalog_router
 from request_engine.entrypoints.http.operational_composition import install_operational_modules
 from request_engine.entrypoints.http.operational_errors import (
     operational_authority_required_handler,
@@ -23,6 +25,7 @@ from request_engine.platform.security.execution_context import clear_actor_conte
 from request_engine.platform.security.http import (
     ActorResolver,
     AuthenticationRequired,
+    CapabilityRequired,
     RequestExecutionActorResolver,
     request_correlation_id,
 )
@@ -49,7 +52,13 @@ def create_operational_app(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
 ) -> FastAPI:
-    """Compose the authenticated operator/control-plane HTTP process."""
+    """Operator-only subset composition retained for legacy/e2e compositions.
+
+    The canonical single-app composition is create_native_app (via create_app),
+    which mounts the same operational configuration surfaces alongside the
+    business modules. This subset composition exists for operator-only test
+    worlds and legacy compositions that materialize an actor resolver directly.
+    """
 
     request_actor_resolver = RequestExecutionActorResolver(actor_resolver)
     app = FastAPI(
@@ -62,6 +71,7 @@ def create_operational_app(
     )
     app.middleware("http")(_request_execution_context)
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
+    app.add_exception_handler(CapabilityRequired, capability_required_handler)
     app.add_exception_handler(IdempotencyConflict, idempotency_conflict_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(
@@ -79,4 +89,5 @@ def create_operational_app(
         session_factory=session_factory,
         actor_resolver=request_actor_resolver,
     )
+    app.include_router(create_operation_catalog_router(actor_resolver=request_actor_resolver))
     return app

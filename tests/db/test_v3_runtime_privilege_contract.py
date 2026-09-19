@@ -134,7 +134,11 @@ def test_real_application_login_has_only_the_runtime_table_contract(
         for row in table_privileges:
             table_name = cast(str, row[0])
             privileges = cast(tuple[bool, bool, bool, bool, bool, bool, bool], tuple(row[1:]))
-            if table_name in PRIVATE_GLOBAL_TABLES:
+            if table_name == probe_name:
+                # New tables are private until an explicit migration grants a
+                # reviewed runtime surface; default CRUD would bypass review.
+                assert privileges == (False,) * 7
+            elif table_name in PRIVATE_GLOBAL_TABLES:
                 seen_private.add(table_name)
                 assert privileges == (False,) * 7
             elif table_name in EXPECTED_TABLE_EXCEPTIONS:
@@ -154,7 +158,7 @@ def test_real_application_login_has_only_the_runtime_table_contract(
             """,
             (f"request_engine.{probe_name}",) * 4,
         ).fetchone()
-        assert probe_privileges == (True, True, True, False)
+        assert probe_privileges == (False, False, False, False)
 
         function_privileges = app_conn.execute(
             """

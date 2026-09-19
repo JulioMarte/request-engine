@@ -1,0 +1,91 @@
+version = 1
+
+[suites.smoke]
+description = "Clean-install black-box health and isolation smoke for API and control-plane"
+selector = "smoke"
+profiles = []
+services = ["api", "control-plane"]
+deferred_services = []
+runtime_env_from_state = []
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "small"
+artifact_namespace = "smoke"
+pr = true
+merge = true
+nightly = true
+manual = true
+enabled = true
+
+[suites.surface-contract]
+description = "Black-box OpenAPI surface contract for API and control-plane"
+selector = "surface-contract"
+profiles = []
+services = ["api", "control-plane"]
+deferred_services = []
+runtime_env_from_state = []
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "small"
+artifact_namespace = "surface-contract"
+pr = false
+merge = true
+nightly = true
+manual = true
+enabled = true
+
+[suites.api-restart]
+description = "Black-box API kill/restart: idempotent replay, session survival and key-misuse rejection"
+selector = "api-restart"
+profiles = []
+services = ["api", "control-plane"]
+deferred_services = []
+runtime_env_from_state = []
+faults = ["api:kill-restart"]
+fresh_world = true
+fault_injection = true
+cost = "medium"
+artifact_namespace = "api-restart"
+pr = false
+merge = true
+nightly = true
+manual = true
+enabled = true
+
+[suites.f01-foundation]
+description = "Fixture-free F01 trust-root, second provisioner, tenant controller and integration principal foundation"
+selector = "f01-foundation"
+profiles = []
+services = ["api", "control-plane"]
+deferred_services = []
+runtime_env_from_state = []
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "medium"
+artifact_namespace = "f01-foundation"
+pr = true
+merge = false
+nightly = true
+manual = true
+enabled = true
+
+[suites.worker-restart]
+description = "Provision a real integration principal, start the reference worker, and prove worker kill/restart recovery"
+selector = "worker-runtime"
+profiles = ["worker"]
+services = ["api", "control-plane", "worker"]
+deferred_services = ["worker"]
+runtime_env_from_state = ["REQUEST_ENGINE_WORKER_PRINCIPAL_ID=f01-foundation.json:worker_principal_id"]
+faults = ["worker:kill-restart"]
+fresh_world = true
+fault_injection = true
+cost = "medium"
+artifact_namespace = "worker-restart"
+pr = true
+merge = false
+nightly = true
+manual = true
+enabled = true

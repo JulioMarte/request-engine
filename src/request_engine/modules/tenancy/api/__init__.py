@@ -1,7 +1,45 @@
+from collections.abc import Sequence
+
 from fastapi import APIRouter, FastAPI, Request
 
+from request_engine.modules.tenancy.adapters.db.agent_governance_commands import (
+    PostgresAgentGovernanceCommands,
+)
+from request_engine.modules.tenancy.adapters.db.agent_governance_reader import (
+    PostgresAgentGovernanceReader,
+)
+from request_engine.modules.tenancy.adapters.db.agent_policy_commands import (
+    PostgresAgentPolicyCommands,
+)
 from request_engine.modules.tenancy.adapters.db.bootstrap_operational_authority_commands import (
     PostgresBootstrapOperationalAuthorityCommands,
+)
+from request_engine.modules.tenancy.adapters.db.controller_policy_commands import (
+    PostgresControllerPolicyCommands,
+)
+from request_engine.modules.tenancy.adapters.db.delegation_commands import (
+    PostgresDelegationCommands,
+)
+from request_engine.modules.tenancy.adapters.db.identity_binding_admin_reader import (
+    PostgresIdentityBindingAdminReader,
+)
+from request_engine.modules.tenancy.adapters.db.identity_binding_commands import (
+    PostgresIdentityBindingCommands,
+)
+from request_engine.modules.tenancy.adapters.db.identity_link_commands import (
+    PostgresIdentityLinkCommands,
+)
+from request_engine.modules.tenancy.adapters.db.identity_link_intent_reader import (
+    PostgresIdentityLinkIntentReader,
+)
+from request_engine.modules.tenancy.adapters.db.integration_governance_commands import (
+    PostgresIntegrationGovernanceCommands,
+)
+from request_engine.modules.tenancy.adapters.db.integration_governance_reader import (
+    PostgresIntegrationGovernanceReader,
+)
+from request_engine.modules.tenancy.adapters.db.onboarding_identity_reader import (
+    PostgresOnboardingIdentityFactsReader,
 )
 from request_engine.modules.tenancy.adapters.db.onboarding_party_reader import (
     PostgresBusinessPartyReader,
@@ -15,42 +53,99 @@ from request_engine.modules.tenancy.adapters.db.party_authority_operational_read
 from request_engine.modules.tenancy.adapters.db.party_authority_reader import (
     PostgresPartyAuthorityReader,
 )
+from request_engine.modules.tenancy.adapters.db.principal_authority_reader import (
+    PostgresPrincipalAuthorityReader,
+)
 from request_engine.modules.tenancy.adapters.db.principal_contact_commands import (
     PostgresPrincipalContactCommands,
 )
+from request_engine.modules.tenancy.adapters.db.self_authority_reader import (
+    PostgresSelfAuthorityReader,
+)
+from request_engine.modules.tenancy.adapters.db.staff_membership_commands import (
+    PostgresStaffMembershipCommands,
+)
+from request_engine.modules.tenancy.adapters.db.staff_membership_reader import (
+    PostgresStaffMembershipReader,
+)
+from request_engine.modules.tenancy.api.agent_governance_errors import (
+    add_agent_governance_error_handlers,
+)
+from request_engine.modules.tenancy.api.agent_governance_reads import add_agent_governance_reads
+from request_engine.modules.tenancy.api.agent_governance_routes import (
+    add_agent_governance_routes,
+)
+from request_engine.modules.tenancy.api.agent_policy_errors import (
+    add_agent_policy_error_handlers,
+)
+from request_engine.modules.tenancy.api.agent_policy_routes import add_agent_policy_routes
 from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
     bootstrap_authority_error_handler,
     create_bootstrap_authority_router,
 )
-from request_engine.modules.tenancy.api.identity_exchange_http import (
-    install_identity_exchange_http,
+from request_engine.modules.tenancy.api.controller_policy_routes import (
+    add_controller_policy_error_handlers,
+    add_controller_policy_routes,
 )
-from request_engine.modules.tenancy.api.onboarding_readiness_routes import (
-    create_onboarding_readiness_router,
+from request_engine.modules.tenancy.api.delegation_errors import add_delegation_error_handlers
+from request_engine.modules.tenancy.api.delegation_routes import add_delegation_routes
+from request_engine.modules.tenancy.api.identity_binding_routes import (
+    add_identity_binding_error_handlers,
+    add_identity_binding_routes,
+)
+from request_engine.modules.tenancy.api.identity_exchange_http import install_identity_exchange_http
+from request_engine.modules.tenancy.api.identity_link_routes import (
+    add_identity_link_error_handlers,
+    add_identity_link_routes,
+)
+from request_engine.modules.tenancy.api.integration_governance_errors import (
+    add_integration_governance_error_handlers,
+)
+from request_engine.modules.tenancy.api.integration_governance_routes import (
+    add_integration_governance_routes,
 )
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
 from request_engine.modules.tenancy.api.party_registry_http import install_party_registry_http
-from request_engine.modules.tenancy.api.staff_contact_errors import (
-    add_staff_contact_error_handlers,
+from request_engine.modules.tenancy.api.resource_authority_inspection import (
+    add_resource_authority_inspection_error_handlers,
+    create_resource_authority_inspection_router,
 )
+from request_engine.modules.tenancy.api.self_authority import (
+    create_self_authority_router,
+    self_authority_error_handler,
+)
+from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
+from request_engine.modules.tenancy.api.staff_membership_errors import (
+    add_staff_membership_error_handlers,
+)
+from request_engine.modules.tenancy.api.staff_membership_reads import add_staff_membership_reads
+from request_engine.modules.tenancy.api.staff_membership_routes import add_staff_membership_routes
+from request_engine.modules.tenancy.application.commands.native_platform_provisioning import (
+    NATIVE_INITIAL_CONTROLLER_POLICY as NATIVE_INITIAL_CONTROLLER_POLICY,
+)
+from request_engine.modules.tenancy.application.commands.staff_membership import (
+    StaffMembershipCommands,
+)
 from request_engine.modules.tenancy.application.errors import BootstrapAuthorityPartyInvalid
+from request_engine.modules.tenancy.application.queries.self_authority import (
+    AuthorityInspectionDenied,
+)
 from request_engine.modules.tenancy.contracts.authority import (
     OperationalAuthorityPartyReader,
     PartyAuthorityReader,
 )
 from request_engine.modules.tenancy.contracts.onboarding_readiness import (
     BusinessPartyReader,
+    OnboardingIdentityFactsReader,
 )
-from request_engine.modules.tenancy.contracts.onboarding_readiness import (
-    OnboardingReadinessFacts as OnboardingReadinessFacts,
-)
-from request_engine.modules.tenancy.contracts.onboarding_readiness import (
-    OnboardingReadinessFactsReader as OnboardingReadinessFactsReader,
-)
+from request_engine.modules.tenancy.contracts.resource_authority import ResourceAuthorityInspector
+from request_engine.platform.db.native_human_auth_store import PostgresNativeHumanAuthStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.oidc_link import OidcLinkVerifier
+from request_engine.platform.security.principal_authority import PrincipalAuthorityReader
 
 
 def build_party_authority_reader(session_factory: SessionFactory) -> PartyAuthorityReader:
@@ -73,17 +168,52 @@ def build_onboarding_business_party_reader(session_factory: SessionFactory) -> B
     return PostgresBusinessPartyReader(session_factory)
 
 
+def build_onboarding_identity_facts_reader(
+    session_factory: SessionFactory,
+) -> OnboardingIdentityFactsReader:
+    """Compose the tenancy-owned identity/control readiness reader for composition roots."""
+
+    return PostgresOnboardingIdentityFactsReader(session_factory)
+
+
+def build_principal_authority_reader(session_factory: SessionFactory) -> PrincipalAuthorityReader:
+    """Compose the RE-owned Principal authority reader behind the tenancy API surface."""
+
+    return PostgresPrincipalAuthorityReader(session_factory)
+
+
+def build_staff_membership_commands(session_factory: SessionFactory) -> StaffMembershipCommands:
+    """Compose the tenant-owned Staff lifecycle writer behind the module API surface."""
+
+    return PostgresStaffMembershipCommands(session_factory)
+
+
 def install_http(
     app: FastAPI,
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     identity_exchange_fingerprint_key: bytes | None = None,
-    onboarding_facts_reader: OnboardingReadinessFactsReader | None = None,
+    identity_link_verifier: OidcLinkVerifier | None = None,
+    resource_authority_inspectors: Sequence[ResourceAuthorityInspector] = (),
 ) -> None:
     """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
 
     app.add_exception_handler(BootstrapAuthorityPartyInvalid, bootstrap_authority_error_handler)
+    app.add_exception_handler(AuthorityInspectionDenied, self_authority_error_handler)
+    app.include_router(
+        create_self_authority_router(
+            reader=PostgresSelfAuthorityReader(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
+    add_resource_authority_inspection_error_handlers(app)
+    app.include_router(
+        create_resource_authority_inspection_router(
+            inspectors=resource_authority_inspectors,
+            actor_resolver=actor_resolver,
+        )
+    )
     install_party_registry_http(
         app,
         session_factory=session_factory,
@@ -102,28 +232,101 @@ def install_http(
         )
     )
     add_staff_contact_error_handlers(app)
+    add_staff_membership_error_handlers(app)
 
     async def authenticated_actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    staff_commands = PostgresPrincipalContactCommands(session_factory)
+    contact_commands = PostgresPrincipalContactCommands(session_factory)
     staff_router = APIRouter(prefix="/v1/staff", tags=["staff"])
+    add_staff_membership_reads(
+        staff_router,
+        reader=PostgresStaffMembershipReader(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
     add_staff_contact_routes(
         staff_router,
-        register_handler=staff_commands,
-        verification_handler=staff_commands,
-        confirm_handler=staff_commands,
+        register_handler=contact_commands,
+        verification_handler=contact_commands,
+        confirm_handler=contact_commands,
+        authenticated_actor=authenticated_actor,
+    )
+    add_staff_membership_routes(
+        staff_router,
+        commands=PostgresStaffMembershipCommands(session_factory),
         authenticated_actor=authenticated_actor,
     )
     app.include_router(staff_router)
 
-    if onboarding_facts_reader is not None:
-        app.include_router(
-            create_onboarding_readiness_router(
-                reader=onboarding_facts_reader,
-                actor_resolver=actor_resolver,
-            )
-        )
+    add_agent_governance_error_handlers(app)
+    add_agent_policy_error_handlers(app)
+    agents_router = APIRouter(prefix="/v1/agents", tags=["agents"])
+    add_agent_governance_reads(
+        agents_router,
+        reader=PostgresAgentGovernanceReader(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    add_agent_governance_routes(
+        agents_router,
+        commands=PostgresAgentGovernanceCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    add_agent_policy_routes(
+        agents_router,
+        commands=PostgresAgentPolicyCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(agents_router)
+
+    add_integration_governance_error_handlers(app)
+    integrations_router = APIRouter(prefix="/v1/integrations", tags=["integrations"])
+    add_integration_governance_routes(
+        integrations_router,
+        commands=PostgresIntegrationGovernanceCommands(session_factory),
+        reader=PostgresIntegrationGovernanceReader(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(integrations_router)
+
+    add_delegation_error_handlers(app)
+    delegations_router = APIRouter(prefix="/v1/delegations", tags=["delegations"])
+    add_delegation_routes(
+        delegations_router,
+        commands=PostgresDelegationCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(delegations_router)
+
+    add_identity_binding_error_handlers(app)
+    identity_bindings_router = APIRouter(tags=["identity bindings"])
+    add_identity_binding_routes(
+        identity_bindings_router,
+        reader=PostgresIdentityBindingAdminReader(session_factory),
+        commands=PostgresIdentityBindingCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(identity_bindings_router)
+
+    add_identity_link_error_handlers(app)
+    identity_link_router = APIRouter(tags=["identity linking"])
+    add_identity_link_routes(
+        identity_link_router,
+        commands=PostgresIdentityLinkCommands(session_factory),
+        proof_reader=PostgresNativeHumanAuthStore(session_factory),
+        intent_reader=PostgresIdentityLinkIntentReader(session_factory),
+        authenticated_actor=authenticated_actor,
+        oidc_verifier=identity_link_verifier,
+    )
+    app.include_router(identity_link_router)
+
+    add_controller_policy_error_handlers(app)
+    controller_policy_router = APIRouter(tags=["controller policy"])
+    add_controller_policy_routes(
+        controller_policy_router,
+        commands=PostgresControllerPolicyCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(controller_policy_router)
 
 
 def install_operational_http(

@@ -4,18 +4,20 @@ Applies to `src/request_engine/modules/**` in addition to the repository-root `A
 
 Before editing a module, read:
 
-1. `docs/architecture/system-optimization-mode.md`;
-2. `docs/10-module-ownership-map.md`;
-3. the owning module `README.md`;
-4. the current capability/domain contract being changed;
-5. `docs/testing/current-guarantees.toml` for affected semantic guarantees;
-6. `docs/testing/repository-governance-contract.md` for HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification.
+1. `docs/architecture/continuous-evolution-policy.md`;
+2. `docs/architecture/system-optimization-mode.md` while the temporary optimization phase remains active;
+3. `docs/10-module-ownership-map.md`;
+4. the owning module `README.md`;
+5. the current capability/domain contract being changed;
+6. `docs/testing/current-guarantees.toml` for affected semantic guarantees;
+7. `docs/testing/repository-governance-contract.md` for HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification;
+8. `docs/15-api-design-and-usability-standards.md` and `docs/16-canonical-operation-and-tool-projection-pattern.md` for machine-facing API/tool work.
 
 ## Current architecture posture
 
 Request Engine is a modular monolith. Modules are organized by current business ownership, not by historical V2/V3/F1-F7 phases.
 
-Current active business modules include:
+Current active business modules are:
 
 ```text
 tenancy
@@ -28,10 +30,11 @@ discovery
 delivery
 live_capacity
 operational_recovery
+onboarding
 operational_copilot
 ```
 
-`payments` and `dispatch` remain deferred/incubating until an accepted capability gives them real product ownership.
+Payments/reconciliation and field-service dispatch remain future domain areas only. They are deliberately **not current Python modules**; do not create empty placeholder packages for them. Introduce a new module only after accepted product scope gives it real ownership, connection surfaces and code.
 
 Historical feature labels may remain in documentation/tests for provenance, but they are not a reason to preserve obsolete module boundaries or naming during the current optimization phase.
 
@@ -85,6 +88,25 @@ Do not create an adapter merely because two packages need to call each other. Fi
 For Python ↔ PostgreSQL, prefer semantic operations such as `ReservationCommands` or `AppointmentAvailabilityReader`, not generic CRUD repositories. Keep correctness-sensitive SQL visible enough to review locks, constraints and race behavior.
 
 For provider/network surfaces, external I/O occurs outside authoritative lock transactions and ambiguous outcomes reconcile before resend.
+
+## Machine-facing operation gate
+
+For any new or changed HTTP/agent-facing operation preserve these distinct concepts:
+
+```text
+owner
+capability policy
+OpenAPI operationId
+optional tool name/audiences
+```
+
+Use resource-oriented HTTP when standard resource semantics are truthful. Use semantic custom methods for domain actions such as booking, rescheduling, check-in, intake control or recovery execution rather than generic status PATCHes or an untyped command bus.
+
+Capability metadata remains authorization policy. Tool metadata is only projection/discovery metadata and must never replace capability/relationship/owner checks.
+
+A tool-exposed operation requires an explicit stable `operationId` and owner. Agent/MCP adapters must call the same typed owner operation used by normal application/API paths; they do not implement business policy a second time.
+
+Do not let model/tool input supply trusted `organization_id`, `principal_id`, authority Party, capability grants or trusted revision identity.
 
 ## Type and naming boundaries
 
@@ -147,9 +169,15 @@ Provider SDK types stop at adapters. Domain code remains framework-free. SQLAlch
 
 Provider/n8n callbacks use authenticated, tenant-bound, idempotent semantic commands; never direct DB mutation or generic `set_status` APIs.
 
+## Schema evolution
+
+The accepted `0001_initial` + `migrations/baseline/` is immutable history. Ordinary schema evolution appends `0002+`; module work must not rewrite the accepted baseline to make a feature easier.
+
+A schema change still begins from the module owner and affected guarantees. Follow `docs/architecture/continuous-evolution-policy.md` for compatibility, migration, rollout and recovery obligations.
+
 ## Optimization-mode changes
 
-During `cohesion/system-optimization`, module ownership, dependency edges, internal file structure and historical names are CONTROLLED but mutable when a change measurably improves present-day cohesion.
+During `cohesion/system-optimization`, module ownership, dependency edges, internal file structure and historical names remain CONTROLLED but mutable when a change measurably improves present-day cohesion.
 
 Any intentional ownership/dependency change must:
 

@@ -22,8 +22,9 @@ from request_engine.modules.booking.application.commands.set_resource_location_a
     SetResourceLocationAvailabilityHandler,
     set_resource_location_availability,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 IdempotencyKey = Annotated[
     str,
@@ -51,6 +52,7 @@ def create_operational_assignment_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "booking.manage_supply")
         command = AssignResourceToLocationCommand(
             organization_id=current.organization_id,
             principal_id=current.principal_id,
@@ -70,6 +72,7 @@ def create_operational_assignment_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "booking.manage_supply")
         command = retire_assignment.RetireResourceLocationAssignmentCommand(
             organization_id=current.organization_id,
             principal_id=current.principal_id,
@@ -91,6 +94,7 @@ def create_operational_assignment_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "booking.manage_supply")
         windows = tuple(
             ResourceLocationAvailabilityWindow(
                 weekday=item.weekday,
@@ -112,7 +116,28 @@ def create_operational_assignment_router(
         )
         return await set_resource_location_availability(availability_handler, command)
 
-    router.add_api_route("", assign, methods=["POST"])
-    router.add_api_route("/{assignment_id}/retire", retire, methods=["POST"])
-    router.add_api_route("/{assignment_id}/availability", availability, methods=["PUT"])
+    add_capability_route(
+        router,
+        "",
+        assign,
+        capability="booking.manage_supply",
+        methods=["POST"],
+        operation_id="booking_resource_assignment_create",
+    )
+    add_capability_route(
+        router,
+        "/{assignment_id}/retire",
+        retire,
+        capability="booking.manage_supply",
+        methods=["POST"],
+        operation_id="booking_resource_assignment_retire",
+    )
+    add_capability_route(
+        router,
+        "/{assignment_id}/availability",
+        availability,
+        capability="booking.manage_supply",
+        methods=["PUT"],
+        operation_id="booking_resource_assignment_availability_replace",
+    )
     return router

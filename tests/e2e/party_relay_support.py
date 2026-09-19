@@ -1,8 +1,8 @@
 """Shared world/composition support for the acting-operator relay e2e proofs.
 
-The relay flow uses the REAL DB-backed deployment operator resolver against
-real `request_engine.principals` rows; the only deployment-configured input is
-the operator grant model (`OperatorGrantSource`).
+The relay flow uses the real DB-backed operator resolver against authoritative
+``principals`` and ``principal_authority_grants`` rows. Deployment-configured
+operator capabilities are only a ceiling over RE-owned standing authority.
 """
 
 from typing import cast
@@ -29,12 +29,85 @@ PARTY_CAPABILITIES = frozenset(
 RELAY_PERMISSION = "platform.acting_for_operator"
 
 
+def _seed_platform_provisioner(conn: PgConnection) -> UUID:
+    row = conn.execute(
+        """
+        INSERT INTO request_engine.principals (
+            principal_plane,
+            principal_kind,
+            external_subject
+        ) VALUES ('platform', 'human', %s)
+        RETURNING id
+        """,
+        (f"e2e-party-relay-provisioner-{uuid4().hex}",),
+    ).fetchone()
+    assert row is not None
+    provisioner_id = cast(UUID, row[0])
+    conn.execute(
+        """
+        INSERT INTO request_engine.principal_authority_grants (
+            organization_id,
+            principal_id,
+            principal_plane,
+            authority_plane,
+            capability_key,
+            delegable,
+            granted_by_principal_id,
+            provenance_kind,
+            provenance_reference
+        ) VALUES (
+            NULL, %s, 'platform', 'platform', 'organization.provision', true,
+            NULL, 'trust_bootstrap', %s
+        )
+        """,
+        (provisioner_id, f"e2e-party-relay-root:{uuid4().hex}"),
+    )
+    return provisioner_id
+
+
+def _grant_operator_authority(
+    conn: PgConnection,
+    *,
+    organization_id: UUID,
+    principal_id: UUID,
+    provisioner_id: UUID,
+    capabilities: frozenset[str],
+) -> None:
+    for capability in sorted(capabilities):
+        conn.execute(
+            """
+            INSERT INTO request_engine.principal_authority_grants (
+                organization_id,
+                principal_id,
+                principal_plane,
+                authority_plane,
+                capability_key,
+                delegable,
+                granted_by_principal_id,
+                provenance_kind,
+                provenance_reference
+            ) VALUES (
+                %s, %s, 'tenant', 'operational', %s, false, %s,
+                'provisioning', %s
+            )
+            """,
+            (
+                organization_id,
+                principal_id,
+                capability,
+                provisioner_id,
+                f"e2e-party-relay:{uuid4().hex}",
+            ),
+        )
+
+
 def seed_party_registry_tenant(conn: PgConnection) -> tuple[UUID, dict[str, UUID]]:
     """One tenant with real operator/bot principals plus cross-tenant bait."""
 
+    provisioner_id = _seed_platform_provisioner(conn)
     organization_id = new_org(conn, "s0b-party")
     foreign_organization_id = new_org(conn, "s0b-party-foreign")
-    ids: dict[str, UUID] = {}
+    ids: dict[str, UUID] = {"platform_provisioner": provisioner_id}
     for key, kind, organization, subject in (
         ("operator", "human", organization_id, "front-desk"),
         ("second_operator", "human", organization_id, "second-desk"),
@@ -51,11 +124,33 @@ def seed_party_registry_tenant(conn: PgConnection) -> tuple[UUID, dict[str, UUID
         ).fetchone()
         assert row is not None
         ids[key] = cast(UUID, row[0])
+
+    _grant_operator_authority(
+        conn,
+        organization_id=organization_id,
+        principal_id=ids["operator"],
+        provisioner_id=provisioner_id,
+        capabilities=PARTY_CAPABILITIES,
+    )
+    _grant_operator_authority(
+        conn,
+        organization_id=organization_id,
+        principal_id=ids["second_operator"],
+        provisioner_id=provisioner_id,
+        capabilities=PARTY_CAPABILITIES,
+    )
+    _grant_operator_authority(
+        conn,
+        organization_id=organization_id,
+        principal_id=ids["limited_operator"],
+        provisioner_id=provisioner_id,
+        capabilities=PARTY_CAPABILITIES - {"parties.register"},
+    )
     return organization_id, ids
 
 
 class OperatorGrantSource:
-    """Deployment grant model: one capability set per operator principal."""
+    """Deployment ceiling model: it can restrict, but never grant, operator authority."""
 
     def __init__(self, grants: dict[UUID, frozenset[str]]) -> None:
         self._grants = grants
@@ -83,7 +178,7 @@ def relay_client(
     bot_actors: dict[str, ActorContext],
     grants: dict[UUID, frozenset[str]],
 ) -> AsyncClient:
-    """Compose the app with the real DB-backed deployment operator resolver."""
+    """Compose the app with RE authority plus an explicit deployment ceiling."""
 
     app = create_app(
         session_factory=session_factory,

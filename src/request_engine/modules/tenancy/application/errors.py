@@ -1,4 +1,4 @@
-"""Typed errors for the tenancy party registry commands."""
+"""Typed errors for tenancy-owned command failures."""
 
 from datetime import datetime
 from uuid import UUID
@@ -135,3 +135,191 @@ class StaffContactForbidden(PartyRegistryError):
             " staff administrative contacts"
         )
         self.principal_id = principal_id
+
+
+class StaffMembershipError(Exception):
+    """Base class for stable Staff lifecycle failures."""
+
+
+class StaffMembershipForbidden(StaffMembershipError):
+    """The current actor may not perform the requested Staff lifecycle operation."""
+
+
+class StaffMembershipNotFound(StaffMembershipError):
+    """No Staff membership is visible in the current tenant for the supplied identifier."""
+
+
+class StaffMembershipRevisionConflict(StaffMembershipError):
+    """The requested Staff or authority revision is stale."""
+
+
+class StaffMembershipConflict(StaffMembershipError):
+    """The requested Staff lifecycle mutation conflicts with current persisted state."""
+
+
+class StaffMembershipInputInvalid(StaffMembershipError):
+    """The requested Staff lifecycle mutation violates an input contract."""
+
+
+class IdentityBindingLifecycleError(Exception):
+    """Base class for stable tenant identity-binding lifecycle failures."""
+
+
+class IdentityBindingLifecycleForbidden(IdentityBindingLifecycleError):
+    """The current actor may not perform the requested identity binding operation."""
+
+
+class IdentityBindingLifecycleNotFound(IdentityBindingLifecycleError):
+    """No identity binding is visible in the current tenant for the supplied identifier."""
+
+
+class IdentityBindingLifecycleRevisionConflict(IdentityBindingLifecycleError):
+    """The requested identity binding revision is stale."""
+
+
+class IdentityBindingLifecycleConflict(IdentityBindingLifecycleError):
+    """The requested identity binding mutation conflicts with current persisted state."""
+
+
+class IdentityBindingLifecycleInputInvalid(IdentityBindingLifecycleError):
+    """The requested identity binding mutation violates an input contract."""
+
+
+class IdentityLinkError(Exception):
+    """Base class for stable self-service identity-link failures."""
+
+
+class IdentityLinkForbidden(IdentityLinkError):
+    """The current actor may not self-link a second identity."""
+
+
+class IdentityLinkNotFound(IdentityLinkError):
+    """No identity-link intent is visible in the current tenant for the supplied identifier."""
+
+
+class IdentityLinkRevisionConflict(IdentityLinkError):
+    """The actor binding revision captured by the intent is stale."""
+
+
+class IdentityLinkConflict(IdentityLinkError):
+    """The identity-link intent or subject conflicts with current persisted state."""
+
+
+class IdentityLinkInputInvalid(IdentityLinkError):
+    """The requested identity-link command violates an input contract."""
+
+
+class IdentityLinkNotConfigured(IdentityLinkError):
+    """The deployment does not compose the proof method required by this intent."""
+
+
+class AgentGovernanceError(Exception):
+    """Base class for stable Agent governance failures."""
+
+
+class AgentGovernanceForbidden(AgentGovernanceError):
+    """The current actor may not perform the requested Agent governance operation."""
+
+
+class AgentGovernanceNotFound(AgentGovernanceError):
+    """No Agent profile is visible in the current tenant for the supplied identifier."""
+
+
+class AgentGovernanceRevisionConflict(AgentGovernanceError):
+    """The requested Agent profile or authority revision is stale."""
+
+
+class AgentGovernanceConflict(AgentGovernanceError):
+    """The requested Agent governance mutation conflicts with current persisted state."""
+
+
+class AgentGovernanceInputInvalid(AgentGovernanceError):
+    """The requested Agent governance mutation violates an input contract."""
+
+
+class IntegrationGovernanceError(Exception):
+    """Base class for stable INTEGRATION governance failures."""
+
+
+class IntegrationGovernanceForbidden(IntegrationGovernanceError):
+    """The current actor may not perform the requested INTEGRATION governance operation."""
+
+
+class IntegrationGovernanceNotFound(IntegrationGovernanceError):
+    """No INTEGRATION Principal is visible in the current tenant for the supplied identifier."""
+
+
+class IntegrationGovernanceRevisionConflict(IntegrationGovernanceError):
+    """The requested INTEGRATION Principal or authority revision is stale."""
+
+
+class IntegrationGovernanceConflict(IntegrationGovernanceError):
+    """The requested INTEGRATION governance mutation conflicts with current persisted state."""
+
+
+class IntegrationGovernanceInputInvalid(IntegrationGovernanceError):
+    """The requested INTEGRATION governance mutation violates an input contract."""
+
+
+class AgentPolicyError(Exception):
+    """Base class for stable Agent policy failures."""
+
+
+class AgentPolicyForbidden(AgentPolicyError):
+    """The current actor may not perform the requested Agent policy operation."""
+
+
+class AgentPolicyNotFound(AgentPolicyError):
+    """No Agent policy is visible in the current tenant for the supplied Agent."""
+
+
+class AgentPolicyInputInvalid(AgentPolicyError):
+    """The requested Agent policy change violates an input contract."""
+
+
+class DelegationError(Exception):
+    """Base class for stable delegation failures."""
+
+
+class DelegationForbidden(DelegationError):
+    """The current actor may not perform the requested delegation operation."""
+
+
+class DelegationNotFound(DelegationError):
+    """No delegation is visible in the current tenant for the supplied identifier."""
+
+
+class DelegationRevisionConflict(DelegationError):
+    """The requested delegation revision is stale."""
+
+
+class DelegationConflict(DelegationError):
+    """The requested delegation mutation conflicts with current persisted state."""
+
+
+class DelegationInputInvalid(DelegationError):
+    """The requested delegation mutation violates an input contract."""
+
+
+class ControllerPolicyUpgradeError(Exception):
+    """Base class for stable tenant controller-policy upgrade failures."""
+
+
+class ControllerPolicyUpgradeForbidden(ControllerPolicyUpgradeError):
+    """The current actor may not perform the requested controller-policy upgrade."""
+
+
+class ControllerPolicyUpgradeNotFound(ControllerPolicyUpgradeError):
+    """No upgradeable Principal is visible in the current tenant for the identifier."""
+
+
+class ControllerPolicyUpgradeRevisionConflict(ControllerPolicyUpgradeError):
+    """The requested Principal authority revision is stale."""
+
+
+class ControllerPolicyUpgradeConflict(ControllerPolicyUpgradeError):
+    """The requested upgrade conflicts with persisted authority state."""
+
+
+class ControllerPolicyUpgradeInputInvalid(ControllerPolicyUpgradeError):
+    """The requested upgrade violates an input contract or names an unknown policy."""

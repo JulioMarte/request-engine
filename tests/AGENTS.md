@@ -4,6 +4,8 @@ Applies to `tests/**` in addition to the repository-wide `AGENTS.md`.
 
 Before adding, deleting, moving, or weakening a durable proof, read `docs/testing/README.md`, `docs/testing/repository-governance-contract.md`, and `docs/testing/evidence-authoring-guide.md`.
 
+For system/E2E work, also read `docs/architecture/docker-e2e-ci-plan.md`. It is the canonical execution contract for the reusable Docker E2E platform. F-01 is one suite that consumes that platform; it does not define the platform.
+
 ## Rigidity versus flexibility
 
 Every structural assertion must be treated as one of:
@@ -39,9 +41,59 @@ Do not write tests whose setup already manufactures the expected result, whose e
 
 For an important bug/race fix, use a mutation mindset: name the small regression that would reintroduce the defect and ensure the proof would turn red under that regression.
 
+## Reusable Docker system/E2E platform
+
+Production-like black-box journeys should use the reusable Docker E2E platform unless the risk genuinely requires a different execution model.
+
+The governing model is:
+
+```text
+stable deployment definition
+        ×
+swappable suite workload
+        ↓
+fresh isolated world by default
+```
+
+When adding a normal system/E2E suite:
+
+1. add the suite to the platform suite registry instead of creating a feature-specific full Compose stack or workflow;
+2. use the generic `e2e-runner` unless the test technology itself requires a specialized runner;
+3. declare required services/profiles, cost class, fault-injection need and allowed CI modes explicitly;
+4. start from a fresh authoritative world by default; never depend on state leaked by a previous suite;
+5. create business state through supported bootstrap/API contracts after the installation trust root exists; do not use SQL to manufacture the result of the journey;
+6. exercise Request Engine as an external consumer over real network boundaries;
+7. assert the positive outcome and important negative side effects independently;
+8. emit stable checkpoints/JUnit/evidence into the suite's namespaced artifact directory;
+9. preserve local/CI reproducibility through the same suite selector/orchestrator contract;
+10. update the reusable platform contract only when the platform itself changes, not merely because a new ordinary suite is added.
+
+A normal black-box `e2e-runner` MUST NOT receive or gain:
+
+```text
+PostgreSQL DSNs or PG* installation credentials
+network access to postgres/backend-only services
+Docker socket / Docker administrative authority
+Request Engine application internals as an installed package
+bind mounts of src/request_engine
+repository/service/application shortcuts that bypass public contracts
+```
+
+The platform must prove these isolation properties negatively; suite code must not merely promise to avoid them.
+
+The runner is a client. Infrastructure lifecycle and fault injection belong to the orchestrator. A suite may request `kill/restart` of API, worker or another declared service through the platform protocol, but test code must not mount `/var/run/docker.sock` or directly administer the Docker host.
+
+For multi-phase suites, persist only the minimum state needed to resume through the platform's ephemeral state contract. Do not use PostgreSQL as a private test state bus. Keep credentials/proofs separate from artifact-safe checkpoint state and prefer reauthentication through the API over persisting bearer tokens.
+
+`suite=all` means executing selected suites against independent fresh worlds by default. Reuse immutable images/layers and caches, not authoritative database/business state. Sharing a world between suites is an explicit optimization that requires demonstrated independence and must never become an accidental ordering dependency.
+
+Specialized runners such as browser/load/contract runners are permitted when the tool/risk genuinely differs. They should preserve the same black-box isolation unless the owning risk contract explicitly requires another boundary. A new feature or a preference for another test framework is not by itself justification for bypassing the reusable platform.
+
+If a black-box journey cannot complete without direct SQL, an internal import, a fabricated worker principal, or another privileged shortcut, treat that as a product/deployment gap. Do not hide the gap in test setup.
+
 ## Test ownership and evidence
 
-- Organize durable feature tests by ownership/scope, not by the historical feature that introduced them. Module-owned tests belong under `tests/modules/<owner>/`; cross-module PostgreSQL contract/invariant tests belong in `tests/db/`; public production-like journeys belong in `tests/e2e/`; dependency/import/repository-governance fitness functions belong in `tests/architecture/`.
+- Organize durable feature tests by ownership/scope, not by the historical feature that introduced them. Module-owned tests belong under `tests/modules/<owner>/`; cross-module PostgreSQL contract/invariant tests belong in `tests/db/`; public production-like journeys belong in `tests/e2e/` or the platform's dedicated system/E2E suite package; dependency/import/repository-governance fitness functions belong in `tests/architecture/`.
 - `tests/historical/` is reserved for pinned release provenance/compatibility. Historical evidence must not force current Request Engine head to preserve an obsolete implementation shape.
 - Classify what a test proves with pytest markers instead of creating parallel physical trees for `invariant`, `contract`, `adversarial`, or similar evidence classes. Physical location answers who owns the proof; markers answer what evidence it provides.
 - Feature-local integration suites may exist while a feature is under active development. Before/at promotion into the current product, disposition them as durable current proof, historical evidence, replacement, or genuine redundancy rather than accumulating feature-era suites forever.
