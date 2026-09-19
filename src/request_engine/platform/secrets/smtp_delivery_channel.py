@@ -48,8 +48,8 @@ class SmtpRecoveryDeliveryChannel:
         self._host = host
         self._port = port
         self._sender = sender
-        self._username = username
-        self._password = password
+        self._username = username.strip() if username is not None and username.strip() else None
+        self._password = password if password is not None and password.strip() else None
         self._starttls = starttls
         self._use_ssl = use_ssl
         self._timeout_seconds = timeout_seconds
@@ -122,6 +122,7 @@ class SmtpRecoveryDeliveryChannel:
             smtplib.SMTPRecipientsRefused,
             smtplib.SMTPSenderRefused,
             smtplib.SMTPAuthenticationError,
+            smtplib.SMTPNotSupportedError,
         ):
             return DeliveryOutcome.FAILED
         except TimeoutError:
