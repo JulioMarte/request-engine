@@ -526,3 +526,17 @@ evidence = ["contract", "security"]
 guarantee = "INV-NATIVE-SESSION-INTROSPECTION-001"
 path = "tests/e2e/test_native_webauthn_login_http.py"
 evidence = ["contract", "security"]
+[[proofs]]
+guarantee = "INV-OFFLINE-ADMIN-RECOVERY-001"
+path = "tests/db/test_recovery_code_persistence.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-OFFLINE-ADMIN-RECOVERY-001"
+path = "tests/e2e/test_instance_setup_http.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-SECRET-STORE-001"
+path = "tests/unit/platform/secrets/test_openbao_secret_store.py"
+evidence = ["contract", "adversarial", "security"]
