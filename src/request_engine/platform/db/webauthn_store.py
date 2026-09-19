@@ -258,6 +258,44 @@ class PostgresWebAuthnStore:
             )
         return value is True
 
+    async def finalize_setup_registration(
+        self,
+        *,
+        challenge_digest: bytes,
+        credential_row_id: UUID,
+        credential_id: bytes,
+        public_key: bytes,
+        sign_count: int,
+        aaguid: str,
+        backup_eligible: bool,
+        backup_state: bool,
+        user_verified: bool,
+    ) -> bool:
+        async with self._session_factory() as session, session.begin():
+            value = await session.scalar(
+                text(
+                    """
+                    SELECT request_auth.finalize_setup_webauthn_registration(
+                        :challenge_digest, :credential_row_id, :credential_id,
+                        :public_key, :sign_count, :aaguid, :backup_eligible,
+                        :backup_state, :user_verified
+                    )
+                    """
+                ),
+                {
+                    "challenge_digest": challenge_digest,
+                    "credential_row_id": credential_row_id,
+                    "credential_id": credential_id,
+                    "public_key": public_key,
+                    "sign_count": sign_count,
+                    "aaguid": aaguid,
+                    "backup_eligible": backup_eligible,
+                    "backup_state": backup_state,
+                    "user_verified": user_verified,
+                },
+            )
+        return value is True
+
     async def revoke_credential(
         self,
         *,

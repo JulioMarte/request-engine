@@ -152,6 +152,20 @@ class WebAuthnCeremonyStore(Protocol):
         user_verified: bool,
     ) -> bool: ...
 
+    async def finalize_setup_registration(
+        self,
+        *,
+        challenge_digest: bytes,
+        credential_row_id: UUID,
+        credential_id: bytes,
+        public_key: bytes,
+        sign_count: int,
+        aaguid: str,
+        backup_eligible: bool,
+        backup_state: bool,
+        user_verified: bool,
+    ) -> bool: ...
+
 
 class NativeWebAuthnAuthService:
     """Complete internal passkey registration/authentication/step-up ceremonies."""
@@ -324,6 +338,7 @@ class NativeWebAuthnAuthService:
         challenge: bytes,
         native_identity_id: UUID | None = None,
         session_id: UUID | None = None,
+        setup_session_id: UUID | None = None,
     ) -> None:
         created = await self._store.create_challenge(
             challenge_id=uuid4(),
@@ -332,9 +347,45 @@ class NativeWebAuthnAuthService:
             expires_at=self._now() + timedelta(seconds=self._policy.challenge_ttl_seconds),
             native_identity_id=native_identity_id,
             session_id=session_id,
+            setup_session_id=setup_session_id,
         )
         if not created:
             raise WebAuthnCeremonyError("webauthn_challenge_not_created")
+
+    async def begin_setup_registration(self, *, setup_session_id: UUID) -> WebAuthnCeremonyStarted:
+        challenge = generate_challenge()
+        options = self._webauthn.begin_registration(
+            user_handle=_setup_user_handle(setup_session_id),
+            user_name=f"setup-{setup_session_id}",
+            challenge=challenge,
+        )
+        await self._persist_challenge(
+            purpose="registration",
+            challenge=challenge,
+            setup_session_id=setup_session_id,
+        )
+        return WebAuthnCeremonyStarted(challenge=challenge, public_key=options.public_key)
+
+    async def complete_setup_registration(self, *, credential: Mapping[str, Any]) -> bool:
+        challenge = extract_registration_challenge(credential)
+        digest = challenge_digest(challenge)
+        scope = await self._store.read_challenge(challenge_digest=digest, purpose="registration")
+        if scope is None or scope.setup_session_id is None:
+            raise WebAuthnCeremonyError("webauthn_challenge_unknown")
+        verified = self._webauthn.verify_registration(
+            credential=credential, expected_challenge=challenge
+        )
+        return await self._store.finalize_setup_registration(
+            challenge_digest=digest,
+            credential_row_id=uuid4(),
+            credential_id=verified.credential_id,
+            public_key=verified.public_key,
+            sign_count=verified.sign_count,
+            aaguid=verified.aaguid,
+            backup_eligible=verified.backup_eligible,
+            backup_state=verified.backup_state,
+            user_verified=verified.user_verified,
+        )
 
     async def _resolve_credential(
         self, *, credential: Mapping[str, Any], native_identity_id: UUID
@@ -358,6 +409,10 @@ class NativeWebAuthnAuthService:
 
 def _user_handle(native_identity_id: UUID) -> bytes:
     return hashlib.sha256(_USER_HANDLE_PREFIX + native_identity_id.bytes).digest()
+
+
+def _setup_user_handle(setup_session_id: UUID) -> bytes:
+    return hashlib.sha256(b"request-engine:setup:" + setup_session_id.bytes).digest()
 
 
 __all__ = [

@@ -19,6 +19,9 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "discovery_availability_app.py",
     "errors.py",
     "error_handlers.py",
+    # Installation ceremony HTTP boundary (ADR 0014): a dedicated SetupSession
+    # authorization surface, deliberately distinct from Principal authorization.
+    "instance_setup.py",
     "module_composition.py",
     "native_auth.py",
     "native_auth_errors.py",

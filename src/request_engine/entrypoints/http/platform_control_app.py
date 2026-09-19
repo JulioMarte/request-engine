@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import FastAPI, Request, Response
 
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
+from request_engine.entrypoints.http.instance_setup import install_instance_setup_http
 from request_engine.entrypoints.http.native_auth import create_native_auth_router
 from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
 from request_engine.modules.tenancy.api.identity_recovery import install_identity_recovery_http
@@ -16,8 +17,21 @@ from request_engine.modules.tenancy.api.platform_native_identity_management impo
 from request_engine.modules.tenancy.api.platform_provisioner_management import (
     install_native_platform_provisioner_management_http,
 )
+from request_engine.platform.db.instance_setup_store import PostgresInstanceSetupStore
+from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
+from request_engine.platform.security.instance_setup import InstanceSetupService
+from request_engine.platform.security.native_webauthn_auth import NativeWebAuthnAuthService
+from request_engine.platform.security.recovery_codes import NativeRecoveryCodeService
+from request_engine.platform.security.webauthn import WebAuthnPolicy
+
+_DEFAULT_WEBAUTHN_POLICY = WebAuthnPolicy(
+    rp_id="localhost",
+    rp_name="Request Engine",
+    allowed_origins=frozenset({"https://localhost"}),
+)
 
 
 def create_platform_control_app(
@@ -27,6 +41,7 @@ def create_platform_control_app(
     platform_write_session_factory: SessionFactory,
     native_authority_id: UUID,
     recovery_delivery: RecoverySecretDelivery | None = None,
+    webauthn_policy: WebAuthnPolicy | None = None,
 ) -> FastAPI:
     """Explicit private control-plane composition; caller owns pool lifecycles.
 
@@ -80,5 +95,18 @@ def create_platform_control_app(
         read_session_factory=platform_read_session_factory,
         write_session_factory=platform_write_session_factory,
         actor_resolver=runtime.platform_actor_resolver,
+    )
+    install_instance_setup_http(
+        app,
+        service=InstanceSetupService(
+            store=PostgresInstanceSetupStore(platform_write_session_factory),
+            webauthn=NativeWebAuthnAuthService(
+                policy=webauthn_policy or _DEFAULT_WEBAUTHN_POLICY,
+                store=PostgresWebAuthnStore(auth_session_factory),
+            ),
+            recovery_codes=NativeRecoveryCodeService(
+                store=PostgresRecoveryCodeStore(auth_session_factory)
+            ),
+        ),
     )
     return app

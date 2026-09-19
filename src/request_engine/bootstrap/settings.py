@@ -54,6 +54,16 @@ class PlatformControlSettings(BaseSettings):
     platform_control_database_url: SecretStr
     native_identity_authority_id: UUID
     database_probe_timeout_seconds: float = Field(default=5, gt=0, le=30)
+    webauthn_rp_id: str = "localhost"
+    webauthn_rp_name: str = "Request Engine"
+    webauthn_allowed_origins: str = "https://localhost"
+
+    @field_validator("webauthn_rp_id", "webauthn_rp_name", "webauthn_allowed_origins")
+    @classmethod
+    def validate_webauthn_setting(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("WebAuthn relying-party settings cannot be empty")
+        return value
 
     @field_validator("database_url", "platform_read_database_url", "platform_control_database_url")
     @classmethod

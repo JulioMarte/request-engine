@@ -15,6 +15,7 @@ from request_engine.bootstrap.settings import PlatformControlSettings
 from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
 from request_engine.modules.tenancy.api import NATIVE_INITIAL_CONTROLLER_POLICY
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
+from request_engine.platform.security.webauthn import WebAuthnPolicy
 
 _READ = (
     "request_platform.read_principal_authority(uuid)",
@@ -173,6 +174,15 @@ def create_app() -> FastAPI:
         platform_write_session_factory=create_session_factory(engines[2]),
         native_authority_id=settings.native_identity_authority_id,
         recovery_delivery=delivery,
+        webauthn_policy=WebAuthnPolicy(
+            rp_id=settings.webauthn_rp_id,
+            rp_name=settings.webauthn_rp_name,
+            allowed_origins=frozenset(
+                origin.strip()
+                for origin in settings.webauthn_allowed_origins.split(",")
+                if origin.strip()
+            ),
+        ),
     )
     original_lifespan = app.router.lifespan_context
 
