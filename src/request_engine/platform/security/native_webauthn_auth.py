@@ -164,6 +164,7 @@ class WebAuthnCeremonyStore(Protocol):
         backup_eligible: bool,
         backup_state: bool,
         user_verified: bool,
+        setup_session_id: UUID,
     ) -> bool: ...
 
 
@@ -366,11 +367,15 @@ class NativeWebAuthnAuthService:
         )
         return WebAuthnCeremonyStarted(challenge=challenge, public_key=options.public_key)
 
-    async def complete_setup_registration(self, *, credential: Mapping[str, Any]) -> bool:
+    async def complete_setup_registration(
+        self, *, setup_session_id: UUID, credential: Mapping[str, Any]
+    ) -> bool:
         challenge = extract_registration_challenge(credential)
         digest = challenge_digest(challenge)
         scope = await self._store.read_challenge(challenge_digest=digest, purpose="registration")
-        if scope is None or scope.setup_session_id is None:
+        if scope is None or scope.setup_session_id != setup_session_id:
+            # The presented SetupSession must be the ceremony that owns the
+            # challenge; another valid bearer is never sufficient.
             raise WebAuthnCeremonyError("webauthn_challenge_unknown")
         verified = self._webauthn.verify_registration(
             credential=credential, expected_challenge=challenge
@@ -385,6 +390,7 @@ class NativeWebAuthnAuthService:
             backup_eligible=verified.backup_eligible,
             backup_state=verified.backup_state,
             user_verified=verified.user_verified,
+            setup_session_id=setup_session_id,
         )
 
     async def _resolve_credential(

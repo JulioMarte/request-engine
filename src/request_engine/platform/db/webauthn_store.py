@@ -270,6 +270,7 @@ class PostgresWebAuthnStore:
         backup_eligible: bool,
         backup_state: bool,
         user_verified: bool,
+        setup_session_id: UUID,
     ) -> bool:
         async with self._session_factory() as session, session.begin():
             value = await session.scalar(
@@ -278,7 +279,7 @@ class PostgresWebAuthnStore:
                     SELECT request_auth.finalize_setup_webauthn_registration(
                         :challenge_digest, :credential_row_id, :credential_id,
                         :public_key, :sign_count, :aaguid, :backup_eligible,
-                        :backup_state, :user_verified
+                        :backup_state, :user_verified, :setup_session_id
                     )
                     """
                 ),
@@ -292,6 +293,7 @@ class PostgresWebAuthnStore:
                     "backup_eligible": backup_eligible,
                     "backup_state": backup_state,
                     "user_verified": user_verified,
+                    "setup_session_id": setup_session_id,
                 },
             )
         return value is True

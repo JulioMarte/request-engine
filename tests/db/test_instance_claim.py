@@ -90,17 +90,20 @@ def _pending_webauthn(admin_conn: PgConnection, *, setup_session_id: UUID) -> by
     return digest
 
 
-async def _finalize_webauthn(session_factory: SessionFactory, *, digest: bytes) -> bool:
+async def _finalize_webauthn(
+    session_factory: SessionFactory, *, digest: bytes, setup_session_id: UUID
+) -> bool:
     row = await _control(
         session_factory,
         "SELECT request_auth.finalize_setup_webauthn_registration("
-        ":digest, :row, :credential_id, :public_key, 0, :aaguid, false, false, true)",
+        ":digest, :row, :credential_id, :public_key, 0, :aaguid, false, false, true, :setup)",
         {
             "digest": digest,
             "row": uuid4(),
             "credential_id": secrets.token_bytes(32),
             "public_key": secrets.token_bytes(77),
             "aaguid": "00" * 16,
+            "setup": setup_session_id,
         },
     )
     return row == (True,)
@@ -129,7 +132,7 @@ async def _ready_world(
         control_factory, setup_session_id=setup_session_id, login_handle=login_handle
     )
     digest = _pending_webauthn(admin_conn, setup_session_id=setup_session_id)
-    assert await _finalize_webauthn(app_factory, digest=digest)
+    assert await _finalize_webauthn(app_factory, digest=digest, setup_session_id=setup_session_id)
     await _recovery_codes(app_factory, setup_session_id=setup_session_id)
     return setup_session_id, identity_id
 
@@ -350,6 +353,41 @@ async def test_finalize_requires_verified_webauthn(
     assert admin_conn.execute("SELECT state FROM request_engine.platform_instance").fetchone() == (
         "unclaimed",
     )
+
+
+@pytest.mark.asyncio
+async def test_webauthn_completion_requires_owning_setup_session(
+    admin_conn: PgConnection,
+    platform_control_session_factory: SessionFactory,
+    command_session_factory: SessionFactory,
+) -> None:
+    _instance(admin_conn)
+    session_a, _token_a = await _create_setup_session(platform_control_session_factory)
+    session_b, _token_b = await _create_setup_session(platform_control_session_factory)
+    digest = _pending_webauthn(admin_conn, setup_session_id=session_a)
+
+    # A valid bearer for a different concurrent ceremony cannot complete it.
+    assert not await _finalize_webauthn(
+        command_session_factory, digest=digest, setup_session_id=session_b
+    )
+    assert admin_conn.execute(
+        "SELECT status FROM request_engine.webauthn_challenges WHERE challenge_digest = %s",
+        (digest,),
+    ).fetchone() == ("pending",)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.setup_pending_webauthn_credential "
+        "WHERE setup_session_id = %s",
+        (session_a,),
+    ).fetchone() == (0,)
+
+    # The owning SetupSession completes it and consumes the challenge.
+    assert await _finalize_webauthn(
+        command_session_factory, digest=digest, setup_session_id=session_a
+    )
+    assert admin_conn.execute(
+        "SELECT status FROM request_engine.webauthn_challenges WHERE challenge_digest = %s",
+        (digest,),
+    ).fetchone() == ("consumed",)
 
 
 def test_concurrent_finalize_has_exactly_one_winner(

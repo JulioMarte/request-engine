@@ -204,6 +204,11 @@ def test_black_box_runner_requirements_are_minimal_and_pinned() -> None:
     assert names == {"fido2", "cryptography"}, (
         f"runner image may install only the WebAuthn client libraries: {sorted(names)}"
     )
+    # Cryptographic evidence must be reproducible: rebuilding the same commit has
+    # to resolve the same versions, so ranges are not acceptable here.
+    assert all("==" in package for package in packages), (
+        f"runner dependencies must be exact pins for reproducible evidence: {packages}"
+    )
 
 
 def test_black_box_runner_does_not_import_request_engine() -> None:

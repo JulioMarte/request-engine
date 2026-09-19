@@ -148,9 +148,11 @@ def install_instance_setup_http(app: Any, *, service: InstanceSetupService) -> N
     async def webauthn_register(
         request: Request, payload: SetupWebAuthnRegistrationBody
     ) -> Response | JSONResponse:
-        await _resolve(service, request)
+        snapshot = await _resolve(service, request)
         try:
-            await service.complete_webauthn_registration(credential=payload.credential)
+            await service.complete_webauthn_registration(
+                setup_session_id=snapshot, credential=payload.credential
+            )
         except (WebAuthnCeremonyError, WebAuthnInputError):
             return _step_invalid()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -180,9 +182,15 @@ def install_instance_setup_http(app: Any, *, service: InstanceSetupService) -> N
         raw_token = _setup_token(request)
         session = await service.resolve_setup_session(raw_token=raw_token)
         if session.status == "consumed":
-            # Exact-replay path: the winning finalize already committed. Only a
-            # matching receipt is returned; setup authority is never reactivated.
-            receipt = await service.lookup_claim(idempotency_key=idempotency_key)
+            # Exact-replay path: the winning finalize already committed. The
+            # receipt is returned only when the request fingerprint matches; a
+            # reused key with different content is a conflict, never a foreign
+            # receipt. Setup authority is never reactivated.
+            receipt = await service.lookup_claim(
+                setup_session_id=session.setup_session_id,
+                idempotency_key=idempotency_key,
+                claim_provenance=payload.claim_provenance,
+            )
             if receipt is None:
                 return _setup_closed()
             return await _claim_view(service, receipt)
@@ -297,8 +305,9 @@ def install_instance_setup_http(app: Any, *, service: InstanceSetupService) -> N
             "Atomically promotes the pending identity and passkey, grants the "
             "immutable platform-owner policy, promotes recovery codes, consumes "
             "the SetupSession and permanently closes setup. An exact replay with "
-            "the same key returns the same non-secret result; it never redisplay "
-            "recovery codes."
+            "the same key and the same request fingerprint returns the same "
+            "non-secret result; reusing the key with different content is a "
+            "conflict and never redisplay recovery codes."
         ),
         responses={
             409: {"model": ErrorEnvelope, "description": "Setup session unusable"},

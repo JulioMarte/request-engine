@@ -60,6 +60,31 @@ Passkey sessions now resolve through the native session authenticator as
 delivered; the Docker clean-install E2E claims the instance over HTTP and no
 longer calls `platform_bootstrap_cli`.
 
+### P4 hardening (0066)
+
+The P4 surface was hardened before starting P5:
+
+- **Idempotency is a request fingerprint, not a bare key.** `finalize` derives
+  the claim's `intent_digest` from the operation, the SetupSession and the
+  trimmed provenance, and `read_installation_claim` now filters by both the key
+  digest and that fingerprint. A consumed SetupSession plus the same key is no
+  longer enough: exact replay requires the same request content, and reusing a
+  key with different content is a conflict that never returns a foreign receipt.
+- **WebAuthn completion is bound to the presented SetupSession.**
+  `finalize_setup_webauthn_registration` now takes the authenticated
+  `setup_session_id` and rejects a challenge owned by another ceremony, and
+  `complete_setup_registration` applies the same check in Python before
+  finalizing (defense in depth). A valid bearer for a different concurrent
+  ceremony can no longer complete this registration.
+- The generic E2E runner pins `fido2==2.2.1` and `cryptography==50.0.1` exactly
+  so rebuilding the same commit yields the same cryptographic evidence.
+- `INV-INSTANCE-CLAIM-001`, `INV-INSTANCE-CLAIM-IDEMPOTENCY-001` and
+  `INV-SETUP-SESSION-ISOLATION-001` are now registered in
+  `docs/testing/current-guarantees.toml`.
+
+Normal post-claim WebAuthn login over HTTP remains the immediate next step
+(before P5); the owner currently logs in with a `SINGLE_FACTOR` password session.
+
 ### P2 decisions
 
 - **fido2 ceremony state**: `register_begin`/`authenticate_begin` return an

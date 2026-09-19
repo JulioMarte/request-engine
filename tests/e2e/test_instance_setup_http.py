@@ -149,6 +149,15 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
         assert replayed.status_code == 201
         assert replayed.json() == result
 
+        # Reusing the key with different request content is a conflict, not a
+        # foreign receipt: the request fingerprint must match.
+        conflicting = await client.post(
+            "/v1/setup:finalize",
+            headers=finalize_headers,
+            json={"claim_provenance": "e2e:different-provenance"},
+        )
+        assert conflicting.status_code == 409
+
         assert (await client.get("/v1/setup")).json() == {"setup_required": False}
         assert (await client.post("/v1/setup/sessions")).status_code == 409
 
@@ -159,3 +168,56 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
         (owner_principal_id,),
     ).fetchone()
     assert grants is not None and grants[0] == 9
+
+
+@pytest.mark.asyncio
+async def test_webauthn_registration_rejects_another_setup_session(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        issued_a = (await client.post("/v1/setup/sessions")).json()
+        issued_b = (await client.post("/v1/setup/sessions")).json()
+        headers_a = {"Authorization": f"Setup {issued_a['token']}"}
+        headers_b = {"Authorization": f"Setup {issued_b['token']}"}
+
+        options_response = await client.post(
+            "/v1/setup/webauthn/registration-options", headers=headers_a
+        )
+        assert options_response.status_code == 200
+        public_key = options_response.json()["public_key"]
+        authenticator = SoftwareAuthenticator(rp_id=public_key["rp"]["id"], origin=ORIGIN)
+        credential = authenticator.registration_credential(
+            challenge=websafe_decode(public_key["challenge"]), user_verified=True
+        )
+
+        # A valid bearer for another concurrent ceremony cannot complete this one.
+        mismatched = await client.post(
+            "/v1/setup/webauthn/registrations",
+            headers=headers_b,
+            json={"credential": credential},
+        )
+        assert mismatched.status_code == 409
+
+        # The owning session still completes it: the rejected attempt did not
+        # consume the challenge or create a pending credential.
+        registered = await client.post(
+            "/v1/setup/webauthn/registrations",
+            headers=headers_a,
+            json={"credential": credential},
+        )
+        assert registered.status_code == 204
+
+    pending = e2e_admin_conn.execute(
+        "SELECT count(*) FROM request_engine.setup_pending_webauthn_credential "
+        "WHERE setup_session_id = %s AND status = 'pending'",
+        (UUID(issued_a["setup_session_id"]),),
+    ).fetchone()
+    assert pending is not None and pending[0] == 1

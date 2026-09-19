@@ -29,7 +29,7 @@ administration remain open. Nothing is merged or deployed and the application
 database is unmigrated.
 
 Instance-claim trust-root progress (ADR 0014, migration head
-`0065_instance_claim`): P0 contract reconciliation, P1 persistence, the internal
+`0066_claim_hardening`): P0 contract reconciliation, P1 persistence, the internal
 P2 passkey ceremony, P3 recovery codes + password modernization and P4 the atomic
 HTTP Instance claim are delivered locally. P1 adds the structural
 `platform_instance` singleton, bounded digest-only `setup_sessions` with a
@@ -50,8 +50,12 @@ SetupSession bearer resolver distinct from Principal authorization, pending
 identity, real WebAuthn registration, one-time recovery codes and the atomic
 `finalize_instance_claim` that creates the Platform Owner under the immutable
 `platform-owner-v1` policy and permanently closes setup), proven by a real-crypto
-HTTP journey (`tests/e2e/test_instance_setup_http.py`). The P5 additional-owner
-lifecycle and P6 instance recovery remain pending.
+HTTP journey (`tests/e2e/test_instance_setup_http.py`). P4 hardening (`0066`)
+makes finalize idempotency a request fingerprint (operation + SetupSession +
+provenance) rather than a bare key, so key reuse with different content is a
+conflict, and binds setup WebAuthn completion to the presented SetupSession in
+both Python and PostgreSQL. The P5 additional-owner lifecycle and P6 instance
+recovery remain pending.
 
 F-01 exact-head evidence (commit `f8c5a6c5`, Docker E2E run
 [35306586940](https://github.com/JulioMarte/request-engine/actions/runs/35306586940)

@@ -2,5 +2,7 @@
 # These are the only third-party packages the runner needs: the copied software
 # authenticator produces real CBOR/COSE/signature material. Database drivers,
 # the Request Engine application package and Docker admin tooling stay out.
-fido2>=2.2.1,<3
-cryptography>=50.0.1,<51
+# Exact pins: rebuilding the same commit must produce the same cryptographic
+# evidence, so the versions are frozen rather than ranged.
+fido2==2.2.1
+cryptography==50.0.1

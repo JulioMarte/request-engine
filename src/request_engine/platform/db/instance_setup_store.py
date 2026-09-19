@@ -230,7 +230,7 @@ class PostgresInstanceSetupStore:
         return None if row is None else _claim_result(dict(row))
 
     async def read_installation_claim(
-        self, *, idempotency_key_digest: str
+        self, *, idempotency_key_digest: str, intent_digest: str
     ) -> InstanceClaimResult | None:
         async with self._session_factory() as session, session.begin():
             row = (
@@ -241,11 +241,14 @@ class PostgresInstanceSetupStore:
                             SELECT instance_id, owner_principal_id, native_identity_id,
                                    setup_session_id, policy_key
                               FROM request_platform.read_installation_claim(
-                                  :idempotency_key_digest
+                                  :idempotency_key_digest, :intent_digest
                               )
                             """
                         ),
-                        {"idempotency_key_digest": idempotency_key_digest},
+                        {
+                            "idempotency_key_digest": idempotency_key_digest,
+                            "intent_digest": intent_digest,
+                        },
                     )
                 )
                 .mappings()

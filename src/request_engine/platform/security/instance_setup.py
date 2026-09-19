@@ -129,7 +129,7 @@ class InstanceSetupStore(Protocol):
     ) -> InstanceClaimResult | None: ...
 
     async def read_installation_claim(
-        self, *, idempotency_key_digest: str
+        self, *, idempotency_key_digest: str, intent_digest: str
     ) -> InstanceClaimResult | None: ...
 
 
@@ -214,8 +214,12 @@ class InstanceSetupService:
     ) -> WebAuthnCeremonyStarted:
         return await self._webauthn.begin_setup_registration(setup_session_id=setup_session_id)
 
-    async def complete_webauthn_registration(self, *, credential: Mapping[str, Any]) -> None:
-        registered = await self._webauthn.complete_setup_registration(credential=credential)
+    async def complete_webauthn_registration(
+        self, *, setup_session_id: UUID, credential: Mapping[str, Any]
+    ) -> None:
+        registered = await self._webauthn.complete_setup_registration(
+            setup_session_id=setup_session_id, credential=credential
+        )
         if not registered:
             raise SetupStepInvalid("setup WebAuthn registration was rejected")
 
@@ -238,7 +242,9 @@ class InstanceSetupService:
         correlation_id: UUID | None = None,
     ) -> InstanceClaimResult:
         key_digest = hashlib.sha256(idempotency_key.strip().encode("utf-8")).hexdigest()
-        intent_digest = hashlib.sha256(b"finalize-instance-claim-v1").hexdigest()
+        intent_digest = claim_intent_digest(
+            setup_session_id=setup_session_id, claim_provenance=claim_provenance
+        )
         result = await self._store.finalize_claim(
             setup_session_id=setup_session_id,
             idempotency_key_digest=key_digest,
@@ -251,6 +257,40 @@ class InstanceSetupService:
             raise SetupStepInvalid("instance claim was rejected")
         return result
 
-    async def lookup_claim(self, *, idempotency_key: str) -> InstanceClaimResult | None:
+    async def lookup_claim(
+        self,
+        *,
+        setup_session_id: UUID,
+        idempotency_key: str,
+        claim_provenance: str,
+    ) -> InstanceClaimResult | None:
+        """Return the receipt only for the exact original request.
+
+        A consumed SetupSession plus the same idempotency key is not enough: the
+        request fingerprint must also match, so reusing a key with different
+        provenance (or another session) is a conflict, never a foreign receipt.
+        """
         key_digest = hashlib.sha256(idempotency_key.strip().encode("utf-8")).hexdigest()
-        return await self._store.read_installation_claim(idempotency_key_digest=key_digest)
+        intent_digest = claim_intent_digest(
+            setup_session_id=setup_session_id, claim_provenance=claim_provenance
+        )
+        return await self._store.read_installation_claim(
+            idempotency_key_digest=key_digest, intent_digest=intent_digest
+        )
+
+
+def claim_intent_digest(*, setup_session_id: UUID, claim_provenance: str) -> str:
+    """Fingerprint the exact finalize request, not just its idempotency key.
+
+    The digest covers the operation, the SetupSession and the provenance so that
+    a key reused with different request content is detected as a conflict rather
+    than replayed as the earlier receipt.
+    """
+    payload = "\x1f".join(
+        (
+            "finalize-instance-claim-v1",
+            str(setup_session_id),
+            claim_provenance.strip(),
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()

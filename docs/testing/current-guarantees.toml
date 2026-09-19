@@ -390,3 +390,24 @@ statement = "The self resource-authority inspection query returns an advisory al
 severity = "high"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-INSTANCE-CLAIM-001"
+statement = "The installation trust root is created by at most one atomic first claim: before finalize no Principal, identity binding, authority grant, native identity or credential exists for the installation, finalize promotes the pending native identity and a verified WebAuthn authenticator, grants the immutable platform-owner-v1 policy, promotes the setup recovery codes, consumes the SetupSession and transitions the instance UNCLAIMED to CLAIMED exactly once, and setup never reopens or admits a second owner."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-INSTANCE-CLAIM-IDEMPOTENCY-001"
+statement = "Finalizing the instance claim is idempotent only for the exact same request: an exact replay sharing both the Idempotency-Key and the request fingerprint over operation, SetupSession and provenance returns the original non-secret receipt and performs no second effect, while reusing the key with different request content is rejected as a conflict and never returns a foreign receipt."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-SETUP-SESSION-ISOLATION-001"
+statement = "A SetupSession is a bounded, single-use installation bearer that is never a Principal session and never confers business authority; completing a setup WebAuthn registration requires the presented SetupSession to own the challenge being consumed, so a valid bearer for another ceremony cannot complete it, and a consumed session is never reactivated."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]

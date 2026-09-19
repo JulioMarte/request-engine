@@ -446,3 +446,33 @@ evidence = ["invariant", "adversarial", "security"]
 guarantee = "INV-RESOURCE-AUTHORITY-INSPECTION-001"
 path = "tests/e2e/test_resource_authority_inspection_http.py"
 evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-INSTANCE-CLAIM-001"
+path = "tests/db/test_instance_claim.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-INSTANCE-CLAIM-001"
+path = "tests/e2e/test_instance_setup_http.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-INSTANCE-CLAIM-IDEMPOTENCY-001"
+path = "tests/db/test_instance_claim.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-INSTANCE-CLAIM-IDEMPOTENCY-001"
+path = "tests/e2e/test_instance_setup_http.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-SETUP-SESSION-ISOLATION-001"
+path = "tests/db/test_instance_claim.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-SETUP-SESSION-ISOLATION-001"
+path = "tests/e2e/test_instance_setup_http.py"
+evidence = ["invariant", "adversarial", "security"]

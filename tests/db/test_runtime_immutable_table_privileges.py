@@ -106,7 +106,7 @@ _EXACT_DEFINER_OWNERS = {
     (
         "request_platform",
         "read_installation_claim",
-        "p_idempotency_key_digest text",
+        "p_idempotency_key_digest text, p_intent_digest text",
     ): "request_platform_control_definer",
     (
         "request_platform",
