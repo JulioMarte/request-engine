@@ -119,6 +119,37 @@ _EXACT_DEFINER_OWNERS = {
         "p_setup_session_id uuid, p_idempotency_key_digest text, p_intent_digest text, "
         "p_claim_provenance text, p_actor_authentication_method text, p_correlation_id uuid",
     ): "request_platform_control_definer",
+    # 0068 governed platform owner/admin lifecycle.
+    (
+        "request_engine",
+        "seed_platform_owner_capabilities",
+        "",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "invite_platform_owner",
+        "p_native_identity_id uuid, p_proof_digest text, "
+        "p_expires_at timestamp with time zone, p_idempotency_key_digest text, "
+        "p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "accept_platform_invitation",
+        "p_proof_digest text, p_native_identity_id uuid, p_expected_revision bigint, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "transition_platform_membership",
+        "p_membership_id uuid, p_expected_revision bigint, p_target_status text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "replace_platform_authority",
+        "p_membership_id uuid, p_expected_authority_revision bigint, "
+        "p_desired_capabilities text[], p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
     (
         "request_platform",
         "create_identity_recovery_case",

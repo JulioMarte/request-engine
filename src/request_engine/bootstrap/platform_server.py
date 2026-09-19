@@ -52,6 +52,12 @@ _SETUP = (
     "request_platform.read_installation_claim_intent_digest(text)",
     "request_platform.finalize_instance_claim(uuid,text,text,text,text,uuid)",
 )
+_OWNER = (
+    "request_platform.invite_platform_owner(uuid,text,timestamp with time zone,text,text)",
+    "request_platform.accept_platform_invitation(text,uuid,bigint,text,text)",
+    "request_platform.transition_platform_membership(uuid,bigint,text,text,text)",
+    "request_platform.replace_platform_authority(uuid,bigint,text[],text,text)",
+)
 
 
 async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
@@ -115,6 +121,7 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
                 *_LIFECYCLE,
                 *_RECOVERY,
                 *_SETUP,
+                *_OWNER,
             )
         )
         for function in required:
