@@ -131,6 +131,27 @@ login/step-up surface are delivered before P5:
   (≥32 bytes) for the enumeration-resistant decoy. The public data-plane app is
   not yet composed with the WebAuthn login policy; the control plane is.
 
+### P4.2 Offline owner access recovery (0068)
+
+The recovery codes returned once during Instance Claim are now also an
+OpenBao/SMTP-independent break-glass credential for the owning native identity.
+
+`POST /auth/native/password:recover-with-code` exists only on the private
+control plane. It accepts one unused recovery code plus a replacement password;
+the code identifies the identity, so callers cannot select another user.
+
+`request_auth.consume_recovery_code_and_rotate_password` consumes the code and
+replaces the active password in one transaction, bumps the session epoch,
+revokes all active native sessions and pending delivery-based recovery intents,
+and records recovery provenance. The previous password is never recoverable,
+the code cannot be replayed and the Instance remains CLAIMED: first-run setup is
+never reopened.
+
+This path deliberately does not depend on SMTP, OpenBao/Vault, a current session
+or a live WebAuthn authenticator. It is therefore the independent human-access
+recovery leg required by ADR 0015. Secret-store disaster recovery is a separate
+operator procedure and cannot grant/reopen Instance Claim authority.
+
 ### P2 decisions
 
 - **fido2 ceremony state**: `register_begin`/`authenticate_begin` return an
