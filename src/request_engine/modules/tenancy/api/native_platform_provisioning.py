@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -22,6 +23,7 @@ from request_engine.modules.tenancy.application.commands.native_platform_provisi
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+from request_engine.platform.security.freshness import require_phishing_resistant_authentication
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.platform_http import PlatformActorResolver
 
@@ -128,6 +130,7 @@ def install_native_platform_provisioning_http(
             str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r"\S")
         ],
     ) -> NativePlatformProvisionerView:
+        require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
         result = await commands.provision_native_platform_provisioner(
             actor,
             ProvisionNativePlatformProvisionerCommand(
@@ -154,6 +157,7 @@ def install_native_platform_provisioning_http(
             str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r"\S")
         ],
     ) -> NativeRecoveryOperatorView:
+        require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
         result = await commands.provision_native_recovery_operator(
             actor,
             ProvisionNativeRecoveryOperatorCommand(

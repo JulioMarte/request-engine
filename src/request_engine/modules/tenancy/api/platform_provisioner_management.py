@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -34,6 +34,7 @@ from request_engine.modules.tenancy.application.queries.platform_provisioner_rea
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+from request_engine.platform.security.freshness import require_phishing_resistant_authentication
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.platform_http import PlatformActorResolver
 
@@ -190,6 +191,7 @@ def install_native_platform_provisioner_management_http(
         actor: PlatformActorContext,
         idempotency_key: str,
     ) -> PlatformProvisionerLifecycleView:
+        require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
         result = await commands.transition_provisioner(
             actor,
             TransitionPlatformProvisionerCommand(

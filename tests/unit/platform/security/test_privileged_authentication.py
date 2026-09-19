@@ -4,12 +4,13 @@ from uuid import uuid4
 import pytest
 
 from request_engine.platform.security.assurance import AuthenticationAssurance
-from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.context import ActorContext, PrincipalKind
 from request_engine.platform.security.freshness import (
     PhishingResistantAuthenticationRequired,
     RecentAuthenticationRequired,
     require_phishing_resistant_authentication,
 )
+from request_engine.platform.security.platform_context import PlatformActorContext
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 
@@ -31,6 +32,21 @@ def _actor(
         authentication_assurance=assurance,
         user_verified=user_verified,
         recovery_derived=recovery_derived,
+    )
+
+
+def test_recent_platform_phishing_resistant_authentication_is_accepted() -> None:
+    require_phishing_resistant_authentication(
+        PlatformActorContext(
+            principal_id=uuid4(),
+            capabilities=frozenset(),
+            authority_revision=1,
+            principal_kind=PrincipalKind.HUMAN,
+            authenticated_at=NOW - timedelta(minutes=1),
+            authentication_assurance=AuthenticationAssurance.PHISHING_RESISTANT,
+            user_verified=True,
+        ),
+        now=NOW,
     )
 
 

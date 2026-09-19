@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Final, Protocol
 
 from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.capabilities import capability_definition
 from request_engine.platform.security.context import ActorContext
+
+
+class AuthenticationFreshnessContext(Protocol):
+    authenticated_at: datetime | None
+    authentication_assurance: AuthenticationAssurance | None
+    user_verified: bool
+    recovery_derived: bool
 
 REAUTHENTICATION_WINDOW: Final[timedelta] = timedelta(minutes=5)
 
@@ -23,7 +30,7 @@ class RecentAuthenticationRequired(PermissionError):
 
 
 def require_recent_authentication(
-    actor: ActorContext,
+    actor: AuthenticationFreshnessContext,
     *,
     now: datetime,
     window: timedelta = REAUTHENTICATION_WINDOW,
@@ -42,7 +49,7 @@ def require_recent_authentication(
 
 
 def require_phishing_resistant_authentication(
-    actor: ActorContext,
+    actor: AuthenticationFreshnessContext,
     *,
     now: datetime,
     window: timedelta = REAUTHENTICATION_WINDOW,
