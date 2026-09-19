@@ -134,9 +134,7 @@ def test_single_sided_configuration_is_rejected(
     else:
         _configure_vault(monkeypatch)
 
-    with pytest.raises(
-        RuntimeError, match="requires a secret store and SMTP configuration"
-    ):
+    with pytest.raises(RuntimeError, match="requires a secret store and SMTP configuration"):
         build_recovery_secret_delivery(RecoveryDeliverySettings())
 
 
