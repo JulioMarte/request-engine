@@ -71,6 +71,32 @@ class PostgresRecoveryCodeStore:
             code_id=UUID(str(row["code_id"])),
         )
 
+    async def consume_and_rotate_password(
+        self,
+        *,
+        code_digest: bytes,
+        new_credential_id: UUID,
+        new_verifier: str,
+    ) -> UUID | None:
+        async with self._session_factory() as session, session.begin():
+            value = await session.scalar(
+                text(
+                    """
+                    SELECT request_auth.consume_recovery_code_and_rotate_password(
+                        :code_digest, :new_credential_id, :new_verifier
+                    )
+                    """
+                ),
+                {
+                    "code_digest": code_digest,
+                    "new_credential_id": new_credential_id,
+                    "new_verifier": new_verifier,
+                },
+            )
+        if value is None:
+            return None
+        return UUID(str(value))
+
     async def promote(self, *, set_id: UUID, native_identity_id: UUID) -> bool:
         return await self._call_boolean(
             "SELECT request_auth.promote_recovery_code_set(:set_id, :native_identity_id)",
