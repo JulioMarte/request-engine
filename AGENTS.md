@@ -7,12 +7,60 @@ These instructions apply repository-wide. A nearer `AGENTS.md` may add path-spec
 2-tambien has el uso correcto de sub agentes para dividir tu trabajo de manera logica.
 ## Reporting discipline — mandatory
 
-When reporting changes:
+Every substantive report or answer about work (progress, completion, status,
+changes, decisions, review findings, failures) MUST contain **two clearly
+labelled sections, always both**:
 
-1. explain what changed in production/system terms;
-2. state explicitly what was NOT changed and any pre-existing issues discovered;
-3. surface decisions made and pending decisions clearly;
-4. never report a check as passed unless it actually ran against the intended environment.
+```text
+## Reporte simple (para humanos)   /   ## Plain-language report
+## Reporte técnico (detallado)     /   ## Technical report
+```
+
+Rules that are not optional:
+
+- write both versions in the language the user is using;
+- present the plain-language version first by default; the user may ask to change
+  the order;
+- the two versions must carry the **same truth**. The plain version is not a
+  marketing summary: it must still say what was done, what was NOT done, what is
+  risky or uncertain, what is pending, and the current verified state. If the
+  plain version hides something the technical version says, the report is wrong;
+- do not force two versions for a trivial one-line factual answer (for example
+  "4", "yes", "the file is `src/x.py`"). This rule applies to reports about work.
+
+### Technical report must include
+
+1. what changed in production/system terms, with exact files, functions and
+   migration revisions;
+2. what was NOT changed, and any pre-existing problems discovered;
+3. decisions made and decisions still pending;
+4. the exact evidence: commands run, environment, and results — never report a
+   check as passed unless it actually ran against the intended environment;
+5. remaining limitations and what is still unfinished.
+
+### Plain-language report must
+
+- use everyday words and short sentences; avoid jargon, acronyms, file paths,
+  function names and migration numbers unless they are explained;
+- explain why each thing matters, not only what was done;
+- use a simple analogy when it helps;
+- be honest: only call something "done" when it is actually done and verified,
+  and say plainly what is unfinished, uncertain or broken;
+- let a non-technical reader make decisions without reading the technical part.
+
+Template to follow:
+
+```markdown
+## Reporte simple (para humanos)
+
+<qué se hizo, para qué sirve, qué falta, en palabras simples y honestas>
+
+## Reporte técnico (detallado)
+
+<cambios exactos, archivos/funciones/migraciones, evidencia, decisiones, límites>
+```
+
+The pre-existing technical facts below still apply to the technical section:
 
 ## Current repository mode
 
