@@ -41,7 +41,7 @@ services:
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: ci-root-token
       VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
-    command: server -dev
+    command: server -dev -dev-root-token-id=ci-root-token -dev-listen-address=0.0.0.0:8200
     healthcheck:
       test: [CMD, bao, status, -address=http://127.0.0.1:8200]
       interval: 2s
