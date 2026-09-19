@@ -217,10 +217,7 @@ def install_platform_owner_management_http(
             idempotency_key,
         )
 
-    mutation_responses = {
-        status: {"model": ErrorEnvelope}
-        for status in (400, 401, 403, 409, 422)
-    }
+    mutation_responses = {status: {"model": ErrorEnvelope} for status in (400, 401, 403, 409, 422)}
     add_capability_route(
         router,
         "/v1/platform/owners",
