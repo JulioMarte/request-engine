@@ -453,3 +453,16 @@ statement = "Reading the current native session returns only the trusted persist
 severity = "high"
 required_evidence = ["contract"]
 risk = ["security"]
+[[guarantees]]
+id = "INV-OFFLINE-ADMIN-RECOVERY-001"
+statement = "A native Platform Owner who retains one unused setup-issued recovery code can replace the owning identity's password without the previous password, SMTP, OpenBao/Vault, an existing session or a live WebAuthn authenticator; code consumption and password replacement are one atomic transaction, all existing native sessions and pending recovery intents are revoked, the code is single-use, setup never reopens, and no old password or recovery plaintext is durably recoverable."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security", "availability"]
+
+[[guarantees]]
+id = "INV-PLATFORM-SECRET-STORE-001"
+statement = "Reversible platform secret material is accessed through the provider-neutral PlatformSecretStore boundary; the OpenBao reference adapter derives backend paths from opaque UUIDs, creates/rotates with KV-v2 CAS rather than blind overwrite, exposes plaintext only through the trusted runtime resolve operation, supports tokenless OpenBao-Agent proxy mode, and never includes plaintext or authentication tokens in raised backend errors."
+severity = "high"
+required_evidence = ["contract", "adversarial"]
+risk = ["security", "availability"]
