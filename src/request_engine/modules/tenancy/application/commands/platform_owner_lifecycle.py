@@ -82,6 +82,19 @@ class PlatformOwnerInvitationEnrollmentResult:
 
 
 @dataclass(frozen=True, slots=True)
+class RevokePlatformOwnerInvitationCommand:
+    invitation_id: UUID
+    reason_code: str
+    idempotency_key: str
+
+    def __post_init__(self) -> None:
+        if not 1 <= len(self.reason_code.strip()) <= 80:
+            raise ValueError("reason_code must contain 1 to 80 characters")
+        if not 1 <= len(self.idempotency_key.strip()) <= 200:
+            raise ValueError("idempotency_key must contain 1 to 200 characters")
+
+
+@dataclass(frozen=True, slots=True)
 class ActivatePlatformOwnerInvitationCommand:
     invitation_id: UUID
     idempotency_key: str
@@ -163,6 +176,12 @@ class PlatformOwnerCommands(Protocol):
         self,
         command: EnrollPlatformOwnerInvitationCommand,
     ) -> PlatformOwnerInvitationEnrollmentResult: ...
+
+    async def revoke_invitation(
+        self,
+        actor: PlatformActorContext,
+        command: RevokePlatformOwnerInvitationCommand,
+    ) -> int: ...
 
     async def activate_invitation(
         self,

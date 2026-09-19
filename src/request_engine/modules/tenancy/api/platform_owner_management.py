@@ -20,6 +20,7 @@ from request_engine.modules.tenancy.application.commands.platform_owner_lifecycl
     PlatformOwnerInvalid,
     PlatformOwnerLifecycleAction,
     PlatformOwnerRevisionConflict,
+    RevokePlatformOwnerInvitationCommand,
     TransitionPlatformOwnerCommand,
 )
 from request_engine.platform.db.session import SessionFactory
@@ -70,6 +71,17 @@ class PlatformOwnerInvitationEnrollBody(BaseModel):
 class PlatformOwnerInvitationEnrollView(BaseModel):
     invitation_id: UUID
     native_identity_id: UUID
+
+
+class PlatformOwnerInvitationRevokeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    reason_code: str = Field(min_length=1, max_length=80)
+
+
+class PlatformOwnerInvitationRevokeView(BaseModel):
+    invitation_id: UUID
+    revision: int
+    status: str = "revoked"
 
 
 class PlatformOwnerProvisionView(BaseModel):
@@ -192,6 +204,27 @@ def install_platform_owner_management_http(
             native_identity_id=result.native_identity_id,
         )
 
+    async def revoke_invitation(
+        invitation_id: UUID,
+        body: PlatformOwnerInvitationRevokeBody,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+    ) -> PlatformOwnerInvitationRevokeView:
+        require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+        revision = await commands.revoke_invitation(
+            actor,
+            RevokePlatformOwnerInvitationCommand(
+                invitation_id=invitation_id,
+                reason_code=body.reason_code,
+                idempotency_key=idempotency_key,
+            ),
+        )
+        return PlatformOwnerInvitationRevokeView(
+            invitation_id=invitation_id,
+            revision=revision,
+        )
+
     async def activate_invitation(
         invitation_id: UUID,
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
@@ -305,6 +338,18 @@ def install_platform_owner_management_http(
         status_code=201,
         response_model=PlatformOwnerInvitationEnrollView,
         responses={status: {"model": ErrorEnvelope} for status in (401, 409, 422)},
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/owner-invitations/{invitation_id}:revoke",
+        revoke_invitation,
+        capability="platform.owner.provision",
+        methods=["POST"],
+        operation_id="platform_owner_invitation_revoke",
+        owner="tenancy",
+        status_code=200,
+        response_model=PlatformOwnerInvitationRevokeView,
+        responses=mutation_responses,
     )
     add_capability_route(
         router,

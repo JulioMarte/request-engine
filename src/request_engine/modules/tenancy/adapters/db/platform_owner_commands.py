@@ -23,6 +23,7 @@ from request_engine.modules.tenancy.application.commands.platform_owner_lifecycl
     PlatformOwnerProvisioningResult,
     PlatformOwnerRevisionConflict,
     ProvisionPlatformOwnerCommand,
+    RevokePlatformOwnerInvitationCommand,
     TransitionPlatformOwnerCommand,
 )
 from request_engine.platform.db.session import SessionFactory, platform_actor_transaction
@@ -151,6 +152,48 @@ class PostgresPlatformOwnerCommands:
             invitation_id=UUID(str(row[0])),
             native_identity_id=UUID(str(row[1])),
         )
+
+    async def revoke_invitation(
+        self,
+        actor: PlatformActorContext,
+        command: RevokePlatformOwnerInvitationCommand,
+    ) -> int:
+        if actor.principal_kind is not PrincipalKind.HUMAN or not actor.allows(
+            _PROVISION_CAPABILITY
+        ):
+            raise PlatformOwnerForbidden(_PROVISION_CAPABILITY)
+        key_digest = hashlib.sha256(command.idempotency_key.strip().encode("utf-8")).hexdigest()
+        intent_digest = _digest_json(
+            {
+                "invitation_id": str(command.invitation_id),
+                "reason_code": command.reason_code.strip(),
+            }
+        )
+        try:
+            async with platform_actor_transaction(self._session_factory, actor) as session:
+                revision = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT request_platform.revoke_platform_owner_invitation(
+                                CAST(:invitation_id AS uuid),
+                                CAST(:reason_code AS text),
+                                CAST(:key_digest AS text),
+                                CAST(:intent_digest AS text)
+                            )
+                            """
+                        ),
+                        {
+                            "invitation_id": command.invitation_id,
+                            "reason_code": command.reason_code.strip(),
+                            "key_digest": key_digest,
+                            "intent_digest": intent_digest,
+                        },
+                    )
+                ).scalar_one()
+        except DBAPIError as exc:
+            _raise_mapped(exc)
+        return int(revision)
 
     async def activate_invitation(
         self,
