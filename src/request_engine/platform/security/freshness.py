@@ -9,10 +9,17 @@ from request_engine.platform.security.context import ActorContext
 
 
 class AuthenticationFreshnessContext(Protocol):
-    authentication_assurance: AuthenticationAssurance | None
-    user_verified: bool
-    recovery_derived: bool
-    authenticated_at: datetime | None
+    @property
+    def authentication_assurance(self) -> AuthenticationAssurance | None: ...
+
+    @property
+    def user_verified(self) -> bool: ...
+
+    @property
+    def recovery_derived(self) -> bool: ...
+
+    @property
+    def authenticated_at(self) -> datetime | None: ...
 
 
 REAUTHENTICATION_WINDOW: Final[timedelta] = timedelta(minutes=5)
