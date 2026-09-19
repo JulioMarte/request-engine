@@ -15,6 +15,7 @@ from request_engine.platform.security.native_auth import (
     issue_opaque_token,
     normalize_login_handle,
     parse_opaque_token,
+    password_needs_rehash,
     verify_password,
 )
 from request_engine.platform.security.native_session import (
@@ -165,6 +166,14 @@ class NativeHumanAuthStore(Protocol):
 
     async def read_credential_verifier(self, *, credential_id: UUID) -> str | None: ...
 
+    async def rehash_password_verifier(
+        self,
+        *,
+        credential_id: UUID,
+        native_identity_id: UUID,
+        new_verifier: str,
+    ) -> bool: ...
+
     async def reauthenticate_session(
         self, *, session_id: UUID, credential_id: UUID
     ) -> datetime | None: ...
@@ -238,6 +247,7 @@ class NativeHumanAuthService:
             raise CredentialInvalid("native credential is invalid")
         if not await asyncio.to_thread(verify_password, password, snapshot.verifier):
             raise CredentialInvalid("native credential is invalid")
+        await self._maybe_rehash(password, snapshot)
 
         token = issue_opaque_token()
         expires_at = self._now() + self._session_ttl
@@ -380,6 +390,27 @@ class NativeHumanAuthService:
         if authenticated_at is None:
             raise CredentialInvalid("native session is no longer usable")
         return authenticated_at
+
+    async def _maybe_rehash(
+        self, password: str, snapshot: NativePasswordCredentialSnapshot
+    ) -> None:
+        """Opportunistically upgrade a legacy verifier after a successful login.
+
+        Best-effort and never changes the authentication outcome; it must not
+        force a logout or password reset.
+        """
+
+        if not password_needs_rehash(snapshot.verifier):
+            return
+        new_verifier = await asyncio.to_thread(hash_password, password)
+        try:
+            await self._store.rehash_password_verifier(
+                credential_id=snapshot.credential_id,
+                native_identity_id=snapshot.native_identity_id,
+                new_verifier=new_verifier,
+            )
+        except Exception:
+            return
 
     def _now(self) -> datetime:
         value = self._clock()

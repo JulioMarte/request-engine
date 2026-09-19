@@ -41,6 +41,7 @@ class FakeNativeHumanAuthStore:
         self.consumed_recovery: dict[str, object] | None = None
         self.rotated_password: dict[str, object] | None = None
         self.credential_verifier: str | None = None
+        self.rehashed: dict[str, object] | None = None
         self.reauthenticated_at: datetime | None = None
         self.reauthenticated: dict[str, object] | None = None
 
@@ -80,6 +81,10 @@ class FakeNativeHumanAuthStore:
 
     async def read_credential_verifier(self, **kwargs: object) -> str | None:
         return self.credential_verifier
+
+    async def rehash_password_verifier(self, **kwargs: object) -> bool:
+        self.rehashed = kwargs
+        return True
 
     async def reauthenticate_session(self, **kwargs: object) -> datetime | None:
         self.reauthenticated = kwargs

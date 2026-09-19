@@ -4,7 +4,7 @@ Date: 2026-09-18
 Branch of reference: `cohesion/system-optimization`  
 Status: **accepted architecture and implementation handoff; not production certification.**
 
-Implementation status (2026-09-18, migration head `0060_webauthn_sessions`):
+Implementation status (2026-09-18, migration head `0064_recovery_codes`):
 
 ```text
 P0  contract reconciliation                    delivered (reconnaissance)
@@ -16,7 +16,12 @@ P2  WebAuthn + assurance primitives            delivered internally (assurance,
                                                 sign-count high-water policy,
                                                 step_up purpose, real-crypto
                                                 tests; HTTP surface pending P4)
-P3  recovery codes + password modernization    pending
+P3  recovery codes + password modernization    delivered (0063/0064: digest-only
+                                                recovery code sets, single-use
+                                                consumption, setup->identity
+                                                promotion, append-only facts,
+                                                Argon2id verifier with legacy
+                                                scrypt + opportunistic rehash)
 P4  atomic HTTP Instance claim                 pending
 P5  additional Platform Owner/admin lifecycle  pending
 P6  Instance recovery                          pending
@@ -85,11 +90,33 @@ pending.
   sessions whose proven methods include WebAuthn, so a password session that
   stepped up cannot retain phishing-resistant assurance after the proving
   credential is revoked.
-- **Deferred, explicitly**: recovery-code sessions (`RECOVERY` assurance) are not
-  yet issued because recovery codes are P3; the model, checks and guard already
-  support them and prevent step-up from escaping `RECOVERY`. Enforcing assurance
-  in capability/step-up policy is P5; the trusted value is already carried on
-  `ActorContext`/`PlatformActorContext` for that consumer.
+- **Deferred, explicitly**: enforcing assurance in capability/step-up policy is
+  P5; the trusted value is already carried on `ActorContext`/`PlatformActorContext`
+  for that consumer.
+
+P3 delivers digest-only recovery code sets and password modernization:
+
+- `recovery_code_sets` are scoped to exactly one native identity (runtime) or one
+  setup session (first-run), versioned, revocable, with at most one active set per
+  scope; `recovery_codes` store only a 32-byte SHA-256 digest (globally unique);
+- plaintext codes are generated in Python (128-bit base32) and returned once;
+  durable reads never expose a digest or plaintext;
+- `consume_recovery_code` locks the matching unused code, marks it used and
+  returns its owner in one transaction; concurrent replays yield exactly one
+  winner; issuing a new set revokes the prior active set;
+- `promote_recovery_code_set` re-points a setup-session set onto the permanent
+  native identity in the finalize transaction (consumed by P4);
+- set creation/rotation, promotion and code consumption emit append-only
+  `platform_recovery_code_facts` (identifiers/provenance only, never raw codes);
+- `native_credentials.verifier` supports a versioned Argon2id envelope in addition
+  to legacy scrypt; the guard permits a controlled verifier-only upgrade; a
+  successful legacy login opportunistically rehashes in place via
+  `rehash_native_password_verifier` without changing the credential id, revision,
+  sessions or forcing a reset.
+
+A recovery-code-authenticated session (assurance `RECOVERY`) and the normal
+account/factor-recovery ceremony remain for P5/P6; the durable primitive and
+assurance model already support them.
 
 ADR 0014 is the decision authority for the trust-root change. This document is
 the executable design/handoff. It deliberately separates accepted semantics from

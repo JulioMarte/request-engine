@@ -24,7 +24,7 @@ def test_password_verifier_never_contains_raw_password() -> None:
 
     verifier = hash_password(password)
 
-    assert verifier.startswith("scrypt$v=1$")
+    assert verifier.startswith("$argon2id$")
     assert password not in verifier
     assert verify_password(password, verifier)
     assert not verify_password("incorrect horse battery staple", verifier)

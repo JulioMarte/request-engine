@@ -7,6 +7,9 @@ import secrets
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+
 from request_engine.platform.security.authentication import (
     AuthenticatedSubject,
     AuthenticatedSubjectClass,
@@ -18,9 +21,25 @@ _SCRYPT_N = 1 << 14
 _SCRYPT_R = 8
 _SCRYPT_P = 1
 _SCRYPT_DKLEN = 32
+_SCRYPT_PREFIX = "scrypt$"
+# OWASP-recommended Argon2id minimum (19 MiB, t=2, p=1).
+_ARGON2_TIME_COST = 2
+_ARGON2_MEMORY_COST = 19456
+_ARGON2_PARALLELISM = 1
+_ARGON2_HASH_LEN = 32
+_ARGON2_SALT_LEN = 16
+_ARGON2ID_PREFIX = "$argon2id$"
 _MIN_PASSWORD_LENGTH = 12
 _MAX_PASSWORD_BYTES = 1024
 _SECRET_BYTES = 32
+
+_ARGON2_HASHER = PasswordHasher(
+    time_cost=_ARGON2_TIME_COST,
+    memory_cost=_ARGON2_MEMORY_COST,
+    parallelism=_ARGON2_PARALLELISM,
+    hash_len=_ARGON2_HASH_LEN,
+    salt_len=_ARGON2_SALT_LEN,
+)
 
 
 class NativeAuthenticationError(RuntimeError):
@@ -65,6 +84,19 @@ def normalize_login_handle(value: str) -> str:
 
 
 def hash_password(password: str) -> str:
+    """Hash a password with the current versioned verifier (Argon2id)."""
+
+    password_bytes = _validate_password(password)
+    return _ARGON2_HASHER.hash(password_bytes)
+
+
+def hash_password_scrypt(password: str) -> str:
+    """Create a legacy scrypt verifier.
+
+    New verifiers always use Argon2id; this exists for transitional fixtures and
+    for proving legacy verification/opportunistic rehash.
+    """
+
     password_bytes = _validate_password(password)
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(
@@ -89,6 +121,32 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, verifier: str) -> bool:
+    """Verify a password against any supported versioned verifier.
+
+    Legacy scrypt verifiers remain verifiable; unknown schemes fail closed.
+    """
+
+    if verifier.startswith(_SCRYPT_PREFIX):
+        return _verify_scrypt(password, verifier)
+    if verifier.startswith(_ARGON2ID_PREFIX):
+        return _verify_argon2id(password, verifier)
+    return False
+
+
+def password_needs_rehash(verifier: str) -> bool:
+    """Return whether a verifier should be upgraded to the current parameters."""
+
+    if verifier.startswith(_SCRYPT_PREFIX):
+        return True
+    if verifier.startswith(_ARGON2ID_PREFIX):
+        try:
+            return _ARGON2_HASHER.check_needs_rehash(verifier)
+        except InvalidHashError:
+            return True
+    return True
+
+
+def _verify_scrypt(password: str, verifier: str) -> bool:
     try:
         password_bytes = password.encode("utf-8")
         algorithm, version, n_value, r_value, p_value, salt_value, digest_value = verifier.split(
@@ -116,6 +174,13 @@ def verify_password(password: str, verifier: str) -> bool:
     except (UnicodeError, ValueError):
         return False
     return hmac.compare_digest(actual, expected)
+
+
+def _verify_argon2id(password: str, verifier: str) -> bool:
+    try:
+        return _ARGON2_HASHER.verify(verifier, password.encode("utf-8"))
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
+        return False
 
 
 def issue_opaque_token(*, token_id: UUID | None = None) -> OpaqueTokenMaterial:

@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 from psycopg import Connection
 
-from request_engine.platform.security.native_auth import hash_password
+from request_engine.platform.security.native_auth import hash_password_scrypt
 
 
 @dataclass(frozen=True)
@@ -72,8 +72,9 @@ def establish_pre_policy_root(
     policy: str | None = None,
 ) -> PrePolicyRoot:
     creator, authority, identity, organization, party, controller = (uuid4() for _ in range(6))
-    # Credential preparation precedes the authoritative root transaction.
-    verifier = hash_password(f"migration-proof-{uuid4().hex}")
+    # Credential preparation precedes the authoritative root transaction. The
+    # pre-policy schema only accepts the historical scrypt verifier.
+    verifier = hash_password_scrypt(f"migration-proof-{uuid4().hex}")
     with conn.transaction():
         conn.execute(
             "INSERT INTO request_engine.principals "

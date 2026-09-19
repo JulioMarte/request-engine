@@ -267,6 +267,26 @@ class PostgresNativeHumanAuthStore(NativeHumanAuthStore):
             return None
         return str(value)
 
+    async def rehash_password_verifier(
+        self,
+        *,
+        credential_id: UUID,
+        native_identity_id: UUID,
+        new_verifier: str,
+    ) -> bool:
+        return await self._call_boolean(
+            """
+            SELECT request_auth.rehash_native_password_verifier(
+                :credential_id, :native_identity_id, :new_verifier
+            )
+            """,
+            {
+                "credential_id": credential_id,
+                "native_identity_id": native_identity_id,
+                "new_verifier": new_verifier,
+            },
+        )
+
     async def reauthenticate_session(
         self, *, session_id: UUID, credential_id: UUID
     ) -> datetime | None:
