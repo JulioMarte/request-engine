@@ -99,12 +99,26 @@ and Vault simultaneously fails closed.
 The reusable Docker E2E `secrets` profile now uses OpenBao dev mode instead of
 HashiCorp Vault dev mode.
 
+### 2.5 Private configuration core (0069)
+
+Migration `0069_platform_configuration` establishes the private persistence
+foundation without prematurely granting application mutation authority:
+
+- typed `configuration_kind` / `provider_kind` revisions;
+- immutable staged payload and secret-binding identity;
+- monotonic draft -> validated -> active -> superseded/disabled lifecycle;
+- at most one ACTIVE revision per configuration kind;
+- opaque secret bindings storing backend/id/version metadata only;
+- append-only configuration facts;
+- no direct `request_engine_app` CRUD on these private global tables.
+
+The governed command/API surface remains pending P5.
+
 ## 3. Deliberately not claimed as delivered yet
 
 The following remain future P7 product work and must not be inferred from the
 secret-store foundation:
 
-- PostgreSQL configuration-revision schema;
 - control-plane configuration CRUD/stage/validate/activate APIs;
 - secret admin APIs;
 - SMTP candidate validation/test/activation;
