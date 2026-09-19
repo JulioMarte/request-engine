@@ -208,15 +208,17 @@ def _mentions_cas(body: str) -> bool:
 
 def _parse_payload(response: httpx.Response) -> dict[str, Any]:
     try:
-        body = response.json()
+        raw_body: object = response.json()
     except ValueError as exc:
         raise RecoveryDeliveryPermanent("OpenBao returned malformed response") from exc
-    if not isinstance(body, dict):
+    if not isinstance(raw_body, dict):
         raise RecoveryDeliveryPermanent("OpenBao returned malformed response")
-    data = body.get("data")
-    if not isinstance(data, dict):
+    body = cast(dict[str, object], raw_body)
+    raw_data = body.get("data")
+    if not isinstance(raw_data, dict):
         raise RecoveryDeliveryPermanent("OpenBao returned malformed response")
-    payload = cast(dict[str, Any], data).get("data")
+    data = cast(dict[str, object], raw_data)
+    payload = data.get("data")
     if not isinstance(payload, dict):
         raise RecoveryDeliveryPermanent("OpenBao returned malformed response")
     return cast(dict[str, Any], payload)
