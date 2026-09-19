@@ -393,7 +393,10 @@ def upgrade() -> None:
             ) VALUES (
                 v_invitation.id,
                 'activate',
-                NULLIF(current_setting('request_engine.authenticated_principal_id', true), '')::uuid,
+                NULLIF(
+                    current_setting('request_engine.authenticated_principal_id', true),
+                    ''
+                )::uuid,
                 v_invitation.native_identity_id,
                 v_revision_before,
                 v_invitation.revision,
