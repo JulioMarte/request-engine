@@ -1701,7 +1701,19 @@ def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> Non
 
     deadline = time.monotonic() + 60
     body = ""
+    last_delivery_status = str(issued.get("delivery_status", "unknown"))
     while time.monotonic() < deadline:
+        current = _http_json(
+            "GET",
+            f"{control_url}/v1/platform/identity-recovery-cases/{case_id}",
+            bearer=platform_token,
+        )
+        last_delivery_status = str(current.get("delivery_status", "unknown"))
+        if last_delivery_status in {"failed", "unknown"}:
+            raise RuntimeError(
+                "recovery delivery reached terminal status "
+                f"{last_delivery_status!r} before Mailpit received the proof"
+            )
         try:
             body = _http_get("http://mailpit:8025/view/latest.txt")
         except (RuntimeError, urllib.error.URLError):
@@ -1711,7 +1723,10 @@ def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> Non
         time.sleep(1)
     marker = "Recovery code: "
     if marker not in body:
-        raise RuntimeError("Mailpit never received the recovery proof")
+        raise RuntimeError(
+            "Mailpit never received the recovery proof; "
+            f"last delivery status was {last_delivery_status!r}"
+        )
     proof = body.split(marker, 1)[1].splitlines()[0].strip()
     if not proof:
         raise RuntimeError("Mailpit recovery message contained an empty proof")
