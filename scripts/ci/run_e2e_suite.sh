@@ -99,6 +99,22 @@ done
 retry_docker "$suite_artifacts/phases/infrastructure.log" \
   "${compose[@]}" up -d --wait --wait-timeout "${INFRA_READY_TIMEOUT_SECONDS:-120}" "${infra[@]}"
 
+for profile in "${profiles[@]}"; do
+  case "$profile" in
+    secrets)
+      export REQUEST_ENGINE_OPENBAO_ADDR="http://openbao:8200"
+      export REQUEST_ENGINE_OPENBAO_TOKEN="ci-root-token"
+      ;;
+    delivery)
+      export REQUEST_ENGINE_SMTP_HOST="mailpit"
+      export REQUEST_ENGINE_SMTP_PORT="1025"
+      export REQUEST_ENGINE_SMTP_SENDER="recovery@example.test"
+      export REQUEST_ENGINE_SMTP_STARTTLS="false"
+      export REQUEST_ENGINE_SMTP_SSL="false"
+      ;;
+  esac
+done
+
 {
   "${compose[@]}" run --rm --no-deps migrate
   "${compose[@]}" exec -T -e PGPASSWORD=ci-postgres-only postgres \
@@ -161,7 +177,7 @@ export E2E_RUNTIME_SERVICES="${runtime_services[*]}"
 bash scripts/ci/assert_reference_image_identity.sh 2>&1 | tee "$suite_artifacts/phases/image-identity.log"
 
 if ((${#faults[@]} == 0)); then
-  if ((${#deferred_services[@]} == 0)); then run_runner main 2>&1 | tee "$suite_artifacts/phases/runner.log"; fi
+  run_runner main 2>&1 | tee "$suite_artifacts/phases/runner.log"
 else
   run_runner before-fault 2>&1 | tee "$suite_artifacts/phases/runner-before-fault.log"
   for fault in "${faults[@]}"; do bash scripts/ci/e2e_fault_injection.sh "$fault" 2>&1 | tee -a "$suite_artifacts/phases/faults.log"; done

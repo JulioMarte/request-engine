@@ -89,3 +89,21 @@ merge = false
 nightly = true
 manual = true
 enabled = true
+
+[suites.recovery-delivery]
+description = "Real OpenBao + Mailpit recovery proof delivery and one-time password recovery"
+selector = "recovery-delivery"
+profiles = ["worker", "secrets", "delivery"]
+services = ["api", "control-plane", "worker"]
+deferred_services = ["worker"]
+runtime_env_from_state = ["REQUEST_ENGINE_WORKER_PRINCIPAL_ID=f01-foundation.json:worker_principal_id"]
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "medium"
+artifact_namespace = "recovery-delivery"
+pr = true
+merge = true
+nightly = true
+manual = true
+enabled = true

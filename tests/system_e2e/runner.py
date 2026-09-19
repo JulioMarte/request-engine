@@ -812,17 +812,18 @@ def _run_f01_foundation(
                 "bounded platform recovery approver provisioned over HTTP",
             )
         )
-        _exercise_recovery_governance(
-            checkpoints,
-            control_url=control_url,
-            api_url=api_url,
-            platform_token=platform_token,
-            provisioner_login=provisioner_login,
-            provisioner_password=provisioner_password,
-            recovery_login=recovery_login,
-            recovery_password=recovery_password,
-            target_native_identity_id=tenant_identity_id,
-        )
+        if _active_suite != "recovery-delivery":
+            _exercise_recovery_governance(
+                checkpoints,
+                control_url=control_url,
+                api_url=api_url,
+                platform_token=platform_token,
+                provisioner_login=provisioner_login,
+                provisioner_password=provisioner_password,
+                recovery_login=recovery_login,
+                recovery_password=recovery_password,
+                target_native_identity_id=tenant_identity_id,
+            )
         if include_continuity:
             _exercise_last_controller_refusal(
                 checkpoints,
@@ -839,6 +840,7 @@ def _run_f01_foundation(
         "platform_provisioner_principal_id": provisioner_principal_id,
         "worker_principal_id": integration_principal_id,
         "tenant_login": tenant_login,
+        "tenant_native_identity_id": tenant_identity_id,
     }
     (state_dir / "f01-foundation.json").write_text(
         json.dumps(foundation, sort_keys=True) + "\n", encoding="utf-8"
@@ -1639,6 +1641,130 @@ def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
     )
 
 
+
+def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> None:
+    if phase == "prepare-worker":
+        _run_f01_foundation(checkpoints, phase)
+        return
+    if phase != "main":
+        raise RuntimeError("recovery-delivery requires prepare-worker then main")
+
+    state_dir, controller = _handoff()
+    foundation = _json_object(state_dir / "f01-foundation.json")
+    control_url = "http://control-plane:8001"
+    platform_login = _required_string(
+        controller, "login_handle", "platform-controller secret"
+    )
+    platform_password = _required_string(
+        controller, "password", "platform-controller secret"
+    )
+    target_identity_id = _required_string(
+        foundation, "tenant_native_identity_id", "F01 foundation state"
+    )
+    platform_token = _native_session(control_url, platform_login, platform_password)
+
+    recovery_login = "f01-recovery-operator@example.invalid"
+    recovery_password = _derived_password(platform_password, "f01-recovery-operator")
+    recovery_operator_token = _native_session(
+        control_url, recovery_login, recovery_password
+    )
+
+    destination = "e2e-runner@example.invalid"
+    case = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases",
+        bearer=platform_token,
+        idempotency_key="delivery-e2e-recovery-case-v1",
+        payload={
+            "target_native_identity_id": target_identity_id,
+            "reason_code": "lost_credential",
+            "evidence_reference": "e2e:recovery-delivery",
+            "delivery_destination_reference": destination,
+        },
+        expected_statuses=(201,),
+    )
+    case_id = _required_string(case, "case_id", "recovery case create response")
+    approved = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
+        bearer=recovery_operator_token,
+        idempotency_key="delivery-e2e-recovery-approve-v1",
+        payload={"expected_revision": 1, "reason_code": "ownership_verified"},
+    )
+    if approved.get("status") != "approved" or approved.get("revision") != 2:
+        raise RuntimeError("recovery case was not independently approved")
+
+    issued = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:issue",
+        bearer=platform_token,
+        idempotency_key="delivery-e2e-recovery-issue-v1",
+        payload={"expected_revision": 2},
+        expected_statuses=(202,),
+    )
+    if issued.get("status") != "issued":
+        raise RuntimeError("configured recovery issuance did not reach issued state")
+
+    deadline = time.monotonic() + 60
+    body = ""
+    while time.monotonic() < deadline:
+        try:
+            body = _http_get("http://mailpit:8025/view/latest.txt")
+        except (RuntimeError, urllib.error.URLError):
+            body = ""
+        if "Recovery code: " in body:
+            break
+        time.sleep(1)
+    marker = "Recovery code: "
+    if marker not in body:
+        raise RuntimeError("Mailpit never received the recovery proof")
+    proof = body.split(marker, 1)[1].splitlines()[0].strip()
+    if not proof:
+        raise RuntimeError("Mailpit recovery message contained an empty proof")
+
+    current = _http_json(
+        "GET",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}",
+        bearer=platform_token,
+    )
+    if current.get("delivery_status") != "delivered":
+        raise RuntimeError("recovery ticket was not finalized as delivered")
+
+    tenant_login = _required_string(foundation, "tenant_login", "F01 foundation state")
+    old_password = _derived_password(platform_password, "f01-tenant-controller")
+    new_password = _derived_password(platform_password, "recovery-delivery-reset")
+    _http_request(
+        "POST",
+        f"{control_url}/auth/native/password:recover",
+        payload={"recovery_token": proof, "new_password": new_password},
+        expected_statuses=(204,),
+    )
+    _http_request(
+        "POST",
+        f"{control_url}/auth/native/sessions",
+        payload={"login_handle": tenant_login, "password": old_password},
+        expected_statuses=(401,),
+    )
+    _native_session(control_url, tenant_login, new_password)
+    _http_request(
+        "POST",
+        f"{control_url}/auth/native/password:recover",
+        payload={
+            "recovery_token": proof,
+            "new_password": _derived_password(new_password, "replay"),
+        },
+        expected_statuses=(401,),
+    )
+    checkpoints.append(
+        _checkpoint(
+            "recovery-delivery-openbao-mailpit",
+            "passed",
+            "OpenBao staged a one-time proof, worker delivered it through Mailpit, "
+            "and the proof rotated the target password exactly once",
+        )
+    )
+
+
 Suite = Callable[[list[dict[str, str]], str], None]
 SUITES: dict[str, Suite] = {
     "smoke": _run_smoke,
@@ -1646,6 +1772,7 @@ SUITES: dict[str, Suite] = {
     "api-restart": _run_api_restart,
     "f01-foundation": _run_f01_foundation,
     "worker-runtime": _run_worker_runtime,
+    "recovery-delivery": _run_recovery_delivery,
 }
 
 
