@@ -68,6 +68,9 @@ def create_platform_control_app(
         identities=webauthn_store,
         decoy_key=resolve_webauthn_decoy_key(webauthn_decoy_key),
     )
+    recovery_codes = NativeRecoveryCodeService(
+        store=PostgresRecoveryCodeStore(auth_session_factory)
+    )
     app = FastAPI(title="Request Engine platform control", version="1.0.0")
 
     async def uncached_control_response(
@@ -86,6 +89,7 @@ def create_platform_control_app(
             identity_authority_id=native_authority_id,
             webauthn_login=webauthn_login,
             webauthn_auth=webauthn_auth,
+            recovery_codes=recovery_codes,
         )
     )
     install_native_platform_provisioning_http(
@@ -118,9 +122,7 @@ def create_platform_control_app(
         service=InstanceSetupService(
             store=PostgresInstanceSetupStore(platform_write_session_factory),
             webauthn=webauthn_auth,
-            recovery_codes=NativeRecoveryCodeService(
-                store=PostgresRecoveryCodeStore(auth_session_factory)
-            ),
+            recovery_codes=recovery_codes,
         ),
     )
     return app
