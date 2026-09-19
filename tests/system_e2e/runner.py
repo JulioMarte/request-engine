@@ -787,44 +787,44 @@ def _run_f01_foundation(
             expires_at=expires_at,
         )
     if phase == "main" or _active_suite == "recovery-delivery":
-    recovery_login = "f01-recovery-operator@example.invalid"
-    recovery_password = _derived_password(platform_password, "f01-recovery-operator")
-    recovery_identity_id = _native_identity(control_url, recovery_login, recovery_password)
-    recovery_operator = _http_json(
-        "POST",
-        f"{control_url}/v1/platform/recovery-operators",
-        bearer=platform_token,
-        idempotency_key="f01-recovery-operator-v1",
-        payload={
-            "native_identity_id": recovery_identity_id,
-            "provenance_reference": "e2e:f01:recovery-operator",
-        },
-        expected_statuses=(201,),
-    )
-    _required_string(
-        recovery_operator,
-        "principal_id",
-        "platform recovery operator response",
-    )
-    checkpoints.append(
-        _checkpoint(
-            "f01-10b-recovery-operator",
-            "passed",
-            "bounded platform recovery approver provisioned over HTTP",
+        recovery_login = "f01-recovery-operator@example.invalid"
+        recovery_password = _derived_password(platform_password, "f01-recovery-operator")
+        recovery_identity_id = _native_identity(control_url, recovery_login, recovery_password)
+        recovery_operator = _http_json(
+            "POST",
+            f"{control_url}/v1/platform/recovery-operators",
+            bearer=platform_token,
+            idempotency_key="f01-recovery-operator-v1",
+            payload={
+                "native_identity_id": recovery_identity_id,
+                "provenance_reference": "e2e:f01:recovery-operator",
+            },
+            expected_statuses=(201,),
         )
-    )
-    if _active_suite != "recovery-delivery":
-        _exercise_recovery_governance(
-            checkpoints,
-            control_url=control_url,
-            api_url=api_url,
-            platform_token=platform_token,
-            provisioner_login=provisioner_login,
-            provisioner_password=provisioner_password,
-            recovery_login=recovery_login,
-            recovery_password=recovery_password,
-            target_native_identity_id=tenant_identity_id,
+        _required_string(
+            recovery_operator,
+            "principal_id",
+            "platform recovery operator response",
         )
+        checkpoints.append(
+            _checkpoint(
+                "f01-10b-recovery-operator",
+                "passed",
+                "bounded platform recovery approver provisioned over HTTP",
+            )
+        )
+        if phase == "main":
+            _exercise_recovery_governance(
+                checkpoints,
+                control_url=control_url,
+                api_url=api_url,
+                platform_token=platform_token,
+                provisioner_login=provisioner_login,
+                provisioner_password=provisioner_password,
+                recovery_login=recovery_login,
+                recovery_password=recovery_password,
+                target_native_identity_id=tenant_identity_id,
+            )
     if phase == "main" and include_continuity:
         _exercise_last_controller_refusal(
             checkpoints,
