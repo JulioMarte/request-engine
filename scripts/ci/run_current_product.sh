@@ -142,6 +142,10 @@ uv run pytest \
   tests/db/test_identity_link_hardening.py \
   tests/db/test_identity_link_subject.py \
   tests/db/test_native_multi_session.py \
+  tests/db/test_platform_instance_setup.py \
+  tests/db/test_instance_claim.py \
+  tests/db/test_webauthn_persistence.py \
+  tests/db/test_webauthn_concurrency.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/principal-authority.xml"
 
