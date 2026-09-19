@@ -327,6 +327,11 @@ def upgrade() -> None:
             v_created uuid;
             v_revision_before bigint;
         BEGIN
+            PERFORM actor_id
+              FROM request_platform.assert_platform_identity_actor(
+                  'platform.owner.provision'
+              );
+
             SELECT invitation.* INTO v_invitation
               FROM request_engine.platform_owner_invitations AS invitation
              WHERE invitation.id = p_invitation_id
