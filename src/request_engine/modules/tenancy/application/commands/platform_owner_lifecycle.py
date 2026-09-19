@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
@@ -41,6 +42,53 @@ class PlatformOwnerInvalid(PlatformOwnerError):
 
 class PlatformOwnerRevisionConflict(PlatformOwnerError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class CreatePlatformOwnerInvitationCommand:
+    provenance_reference: str
+    idempotency_key: str
+
+    def __post_init__(self) -> None:
+        if not 1 <= len(self.provenance_reference.strip()) <= 500:
+            raise ValueError("provenance_reference must contain 1 to 500 characters")
+        if not 1 <= len(self.idempotency_key.strip()) <= 200:
+            raise ValueError("idempotency_key must contain 1 to 200 characters")
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformOwnerInvitationResult:
+    invitation_id: UUID
+    raw_token: str | None
+    expires_at: datetime
+    created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class EnrollPlatformOwnerInvitationCommand:
+    raw_token: str
+    login_handle: str
+    password: str
+
+    def __post_init__(self) -> None:
+        if not 20 <= len(self.raw_token) <= 1024:
+            raise ValueError("invitation token is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformOwnerInvitationEnrollmentResult:
+    invitation_id: UUID
+    native_identity_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class ActivatePlatformOwnerInvitationCommand:
+    invitation_id: UUID
+    idempotency_key: str
+
+    def __post_init__(self) -> None:
+        if not 1 <= len(self.idempotency_key.strip()) <= 200:
+            raise ValueError("idempotency_key must contain 1 to 200 characters")
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +153,23 @@ class PlatformOwnerLifecycleResult:
 
 
 class PlatformOwnerCommands(Protocol):
+    async def create_invitation(
+        self,
+        actor: PlatformActorContext,
+        command: CreatePlatformOwnerInvitationCommand,
+    ) -> PlatformOwnerInvitationResult: ...
+
+    async def enroll_invitation(
+        self,
+        command: EnrollPlatformOwnerInvitationCommand,
+    ) -> PlatformOwnerInvitationEnrollmentResult: ...
+
+    async def activate_invitation(
+        self,
+        actor: PlatformActorContext,
+        command: ActivatePlatformOwnerInvitationCommand,
+    ) -> PlatformOwnerProvisioningResult: ...
+
     async def provision_owner(
         self,
         actor: PlatformActorContext,
