@@ -466,3 +466,10 @@ statement = "Reversible platform secret material is accessed through the provide
 severity = "high"
 required_evidence = ["contract", "adversarial"]
 risk = ["security", "availability"]
+
+[[guarantees]]
+id = "INV-PLATFORM-CONFIG-REVISION-001"
+statement = "Platform operational configuration is persisted as private typed/provider revisions rather than generic key/value state; staged payload and secret-binding identity are immutable, lifecycle transitions are monotonic, at most one revision per configuration kind can be ACTIVE, secret bindings contain only opaque backend identifiers and versions, and ordinary application runtime roles have no direct table authority over configuration, bindings or append-only configuration facts."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
