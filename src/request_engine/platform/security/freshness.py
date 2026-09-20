@@ -56,6 +56,10 @@ def require_recent_authentication(
     or timezone-naive ``authenticated_at`` is treated as stale.
     """
 
+    if actor.recovery_restricted:
+        raise RecoveryCompletionRequired(
+            "complete account recovery before using sensitive authority"
+        )
     authenticated_at = actor.authenticated_at
     if authenticated_at is None or authenticated_at.tzinfo is None:
         raise ReauthenticationRequired("recent reauthentication is required")
