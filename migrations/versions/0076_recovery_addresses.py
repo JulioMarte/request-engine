@@ -495,9 +495,7 @@ def upgrade() -> None:
         ),
     )
     for signature in signatures:
-        op.execute(
-            f"ALTER FUNCTION request_auth.{signature} OWNER TO request_engine_schema_owner"
-        )
+        op.execute(f"ALTER FUNCTION request_auth.{signature} OWNER TO request_engine_schema_owner")
         op.execute(f"REVOKE ALL ON FUNCTION request_auth.{signature} FROM PUBLIC")
         op.execute(f"GRANT EXECUTE ON FUNCTION request_auth.{signature} TO request_engine_app")
 
