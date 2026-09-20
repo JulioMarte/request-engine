@@ -61,6 +61,7 @@ def _snapshot(
     authentication_assurance: AuthenticationAssurance = AuthenticationAssurance.SINGLE_FACTOR,
     user_verified: bool = False,
     recovery_derived: bool = False,
+    recovery_restricted: bool = False,
 ) -> NativeSessionSnapshot:
     return NativeSessionSnapshot(
         session_id=session_id,
@@ -80,6 +81,7 @@ def _snapshot(
         authentication_assurance=authentication_assurance,
         user_verified=user_verified,
         recovery_derived=recovery_derived,
+        recovery_restricted=recovery_restricted,
         expires_at=expires_at,
         created_at=NOW,
         last_seen_at=last_seen_at,
@@ -113,6 +115,7 @@ def _webauthn_snapshot(
         authentication_assurance=authentication_assurance,
         user_verified=user_verified,
         recovery_derived=False,
+        recovery_restricted=False,
         expires_at=NOW + timedelta(hours=1),
         created_at=NOW,
         last_seen_at=None,
@@ -306,3 +309,21 @@ async def test_passkey_session_propagates_phishing_resistant_evidence() -> None:
     assert subject.metadata["authentication_methods"] == "webauthn"
     assert subject.metadata["user_verified"] == "true"
     assert subject.metadata["recovery_derived"] == "false"
+
+
+@pytest.mark.asyncio
+async def test_recovery_restriction_is_trusted_session_metadata() -> None:
+    material = issue_opaque_token()
+    session = _snapshot(
+        token_digest=material.digest,
+        session_id=material.token_id,
+        recovery_restricted=True,
+    )
+    authenticator = NativeSessionAuthenticator(
+        session_reader=FakeSessionReader(session),
+        clock=lambda: NOW,
+    )
+
+    subject = await authenticator.authenticate(NativeSessionEvidence(material.raw_token))
+
+    assert subject.metadata["recovery_restricted"] == "true"
