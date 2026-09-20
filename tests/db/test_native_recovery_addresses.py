@@ -14,12 +14,12 @@ from request_engine.platform.db.native_recovery_address_store import (
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.secrets.delivery import DeliveryOutcome
-from request_engine.platform.security.native_recovery_delivery import (
-    PostgresNativeRecoveryDeliveryLeaseStore,
-)
 from request_engine.platform.security.native_recovery_addresses import (
     NativeRecoveryAddressInvalid,
     NativeRecoveryAddressService,
+)
+from request_engine.platform.security.native_recovery_delivery import (
+    PostgresNativeRecoveryDeliveryLeaseStore,
 )
 
 PgConnection = Connection[Any]
