@@ -12,6 +12,7 @@ Current active business-module inventory:
 
 ```text
 tenancy
+platform_configuration
 catalog
 requests
 booking
@@ -32,6 +33,7 @@ onboarding
 | Module | Primary ownership |
 |---|---|
 | `tenancy` | Organization, Principal, Party, PartyContactPoint identity/normalization, Representation and tenant/subject authority truth |
+| `platform_configuration` | installation-wide typed operational configuration lifecycle, secret-binding metadata, provider validation/test orchestration and readiness projection; never plaintext secret transport |
 | `catalog` | Location, Offering/OfferingVersion, ResourceCapability vocabulary, OfferingResourceRequirement and structured operational configuration |
 | `requests` | RequestDefinition/Version, durable new business Request, participants/correlation and bounded generic request-extension payload/result boundary |
 | `booking` | Resource planning, contextual Resource-at-Location supply, availability, BookingContextTerms/commercial provenance, CapacityHold/CapacityClaim, Reservation, AttendanceResponse and commitment/revalidation |
@@ -57,6 +59,9 @@ installation-wide Request Engine Instance claim and Platform Owner lifecycle
 because those commands establish platform Principals/bindings/grants. Technical
 SetupSession token mechanics, WebAuthn verification and session assurance remain
 `platform/security` mechanics. This target is documented but not yet implemented.
+
+### Platform Configuration
+Owns the governed product lifecycle for installation-wide operational configuration: typed revisions, stage/validate/activate/disable semantics, secret-binding metadata, provider validation/test orchestration and diagnostic readiness projections. PostgreSQL remains authoritative for active revision state. Reversible secret material remains behind `platform/secrets`; identity/Platform Owner authority remains in Tenancy; provider delivery semantics remain with their business owner. Human-facing reads never expose plaintext secrets.
 
 ### Catalog
 Owns stable/versioned service vocabulary and operational configuration such as Location, Offering/OfferingVersion, ResourceCapability and OfferingResourceRequirement. Catalog describes what can be configured/offered; it does not own concrete committed capacity.
@@ -112,6 +117,7 @@ The executable source of truth for allowed synchronous Python edges is `tests/ar
 
 ```text
 tenancy              -> none
+platform_configuration -> none
 catalog              -> none
 requests             -> tenancy
 booking              -> catalog, tenancy
