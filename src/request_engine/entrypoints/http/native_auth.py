@@ -938,6 +938,7 @@ def create_native_auth_router(
             methods=["DELETE"],
             operation_id="nativeRecoveryAddressRevokeCurrent",
             status_code=status.HTTP_204_NO_CONTENT,
+            response_model=None,
             responses={
                 401: {"model": ErrorEnvelope},
                 403: {"model": ErrorEnvelope},
