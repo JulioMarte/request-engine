@@ -104,11 +104,11 @@ def upgrade() -> None:
                 RETURN;
             END IF;
 
-            UPDATE request_engine.native_recovery_intents
+            UPDATE request_engine.native_recovery_intents AS intent
                SET status = 'revoked',
                    revoked_at = clock_timestamp()
-             WHERE native_identity_id = v_identity_id
-               AND status = 'pending';
+             WHERE intent.native_identity_id = v_identity_id
+               AND intent.status = 'pending';
 
             INSERT INTO request_engine.native_recovery_intents (
                 id,
