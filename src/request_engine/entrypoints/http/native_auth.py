@@ -459,19 +459,27 @@ def create_native_auth_router(
         except NativeRecoveryAddressInvalid:
             return JSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                content={"error": {"code": "recovery_address_invalid",
-                                   "message": "the recovery address is invalid",
-                                   "retryable": False,
-                                   "resolution": "fix_request"}},
+                content={
+                    "error": {
+                        "code": "recovery_address_invalid",
+                        "message": "the recovery address is invalid",
+                        "retryable": False,
+                        "resolution": "fix_request",
+                    }
+                },
                 headers={"Cache-Control": "no-store"},
             )
         except NativeRecoveryAddressDeliveryUnavailable:
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                content={"error": {"code": "recovery_address_delivery_unavailable",
-                                   "message": "recovery-address verification delivery is unavailable",
-                                   "retryable": True,
-                                   "resolution": "retry_same_request"}},
+                content={
+                    "error": {
+                        "code": "recovery_address_delivery_unavailable",
+                        "message": "recovery-address verification delivery is unavailable",
+                        "retryable": True,
+                        "resolution": "retry_same_request",
+                    }
+                },
                 headers={"Cache-Control": "no-store"},
             )
         _prevent_secret_caching(response)
@@ -524,10 +532,14 @@ def create_native_auth_router(
         except NativeRecoveryAddressInvalid:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                content={"error": {"code": "recovery_address_not_found",
-                                   "message": "the recovery address is unavailable",
-                                   "retryable": False,
-                                   "resolution": "fix_request"}},
+                content={
+                    "error": {
+                        "code": "recovery_address_not_found",
+                        "message": "the recovery address is unavailable",
+                        "retryable": False,
+                        "resolution": "fix_request",
+                    }
+                },
                 headers={"Cache-Control": "no-store"},
             )
         _prevent_secret_caching(response)
@@ -542,10 +554,14 @@ def create_native_auth_router(
         except NativeRecoveryAddressInvalid:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"error": {"code": "recovery_address_verification_invalid",
-                                   "message": "the recovery-address proof is invalid or expired",
-                                   "retryable": False,
-                                   "resolution": "reauthenticate"}},
+                content={
+                    "error": {
+                        "code": "recovery_address_verification_invalid",
+                        "message": "the recovery-address proof is invalid or expired",
+                        "retryable": False,
+                        "resolution": "reauthenticate",
+                    }
+                },
                 headers={"Cache-Control": "no-store"},
             )
         response = Response(status_code=status.HTTP_204_NO_CONTENT)
