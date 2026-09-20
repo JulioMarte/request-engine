@@ -231,6 +231,10 @@ async def test_finalize_claims_instance_atomically(
         "platform.identity.recover",
         "platform.identity.read",
         "platform.identity.recovery_approve",
+        "platform.identity.provision",
+        "platform.owner.read",
+        "platform.owner.provision",
+        "platform.owner.manage_lifecycle",
         "platform.provisioner.read",
         "platform.provisioner.manage_lifecycle",
     }

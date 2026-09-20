@@ -367,6 +367,8 @@ def upgrade() -> None:
             v_policy record;
             v_existing record;
         BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+
             IF p_principal_id IS NULL OR p_binding_id IS NULL
                OR p_identity_authority_id IS NULL OR p_native_identity_id IS NULL
                OR p_provenance_reference IS NULL
@@ -565,6 +567,8 @@ def upgrade() -> None:
             v_replay record;
             v_fact_id uuid;
         BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+
             IF p_principal_id IS NULL OR p_expected_revision IS NULL
                OR p_expected_revision < 1
                OR p_action NOT IN ('suspend', 'reactivate', 'revoke')
