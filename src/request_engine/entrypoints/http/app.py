@@ -24,6 +24,7 @@ from request_engine.modules.tenancy.api import build_principal_authority_reader
 from request_engine.platform.db.agent_budget_enforcer import PostgresAgentBudgetEnforcer
 from request_engine.platform.db.agent_policy_reader import PostgresAgentPolicyReader
 from request_engine.platform.db.delegation_reader import PostgresDelegationReader
+from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.acting_operator import (
     ActingOperatorActorResolver,
@@ -45,6 +46,7 @@ from request_engine.platform.security.http import (
 from request_engine.platform.security.native_human_auth import NativeHumanAuthService
 from request_engine.platform.security.native_session import NativeSessionAuthenticator
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
+from request_engine.platform.security.recovery_codes import NativeRecoveryCodeService
 from request_engine.platform.security.oidc_link import OidcLinkVerifier
 from request_engine.platform.security.subject_http import (
     HttpSubjectResolver,
@@ -82,6 +84,7 @@ def create_app(
     native_auth_service: NativeHumanAuthService | None = None,
     native_session_authenticator: NativeSessionAuthenticator | None = None,
     native_identity_authority_id: UUID | None = None,
+    native_recovery_codes: NativeRecoveryCodeService | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
 ) -> FastAPI:
     """Compose the full single-app HTTP surface (business + operational configuration).
@@ -156,6 +159,7 @@ def create_app(
                 service=native_auth_service,
                 authenticator=native_session_authenticator,
                 identity_authority_id=native_identity_authority_id,
+                recovery_codes=native_recovery_codes,
             )
         )
     app.include_router(
@@ -264,5 +268,8 @@ def create_native_app(
         native_auth_service=runtime.service,
         native_session_authenticator=runtime.authenticator,
         native_identity_authority_id=native_identity_authority_id,
+        native_recovery_codes=NativeRecoveryCodeService(
+            store=PostgresRecoveryCodeStore(session_factory)
+        ),
         identity_link_verifier=identity_link_verifier,
     )
