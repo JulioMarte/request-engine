@@ -55,6 +55,22 @@ class RecoveryCodeConsumed:
     code_id: UUID
 
 
+@dataclass(frozen=True, slots=True)
+class NativeRecoveryReadiness:
+    recovery_state: str
+    recovery_epoch: int
+    last_recovered_at: datetime | None
+    last_recovery_method: str | None
+    completed_at: datetime | None
+    active_code_set: bool
+    remaining_codes: int
+    active_webauthn_credentials: int
+
+    @property
+    def recovery_restricted(self) -> bool:
+        return self.recovery_state == "recovery_restricted"
+
+
 class RecoveryCodeStore(Protocol):
     async def create_set(
         self,
@@ -80,6 +96,10 @@ class RecoveryCodeStore(Protocol):
     async def revoke(self, *, set_id: UUID, reason: str) -> bool: ...
 
     async def summary(self, *, native_identity_id: UUID) -> tuple[RecoveryCodeSetSummary, ...]: ...
+
+    async def readiness(self, *, native_identity_id: UUID) -> NativeRecoveryReadiness | None: ...
+
+    async def complete_recovery(self, *, native_identity_id: UUID) -> bool: ...
 
 
 def generate_recovery_codes(count: int = _DEFAULT_CODE_COUNT) -> tuple[str, ...]:
@@ -167,6 +187,18 @@ class NativeRecoveryCodeService:
 
     async def summary(self, *, native_identity_id: UUID) -> tuple[RecoveryCodeSetSummary, ...]:
         return await self._store.summary(native_identity_id=native_identity_id)
+
+    async def readiness(self, *, native_identity_id: UUID) -> NativeRecoveryReadiness:
+        readiness = await self._store.readiness(native_identity_id=native_identity_id)
+        if readiness is None:
+            raise RecoveryCodeInvalid("native identity recovery readiness is unavailable")
+        return readiness
+
+    async def complete_recovery(self, *, native_identity_id: UUID) -> NativeRecoveryReadiness:
+        completed = await self._store.complete_recovery(native_identity_id=native_identity_id)
+        if not completed:
+            raise RecoveryCodeInvalid("native recovery cannot be completed")
+        return await self.readiness(native_identity_id=native_identity_id)
 
     async def _issue(
         self,
