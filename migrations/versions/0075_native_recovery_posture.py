@@ -265,6 +265,151 @@ def upgrade() -> None:
         """
     )
 
+    op.execute(
+        r"""
+        CREATE OR REPLACE FUNCTION request_auth.consume_native_recovery_intent(
+            p_recovery_id uuid,
+            p_token_digest bytea,
+            p_new_credential_id uuid,
+            p_new_verifier text
+        ) RETURNS uuid
+        LANGUAGE plpgsql
+        SECURITY DEFINER
+        SET search_path TO 'pg_catalog', 'request_engine'
+        AS $
+        DECLARE
+            v_native_identity_id uuid;
+            v_identity_status text;
+            v_recovery_epoch bigint;
+        BEGIN
+            SELECT intent.native_identity_id
+              INTO v_native_identity_id
+              FROM request_engine.native_recovery_intents AS intent
+             WHERE intent.id = p_recovery_id
+               AND intent.token_digest = p_token_digest
+               AND intent.status = 'pending'
+               AND intent.expires_at > clock_timestamp();
+            IF NOT FOUND THEN
+                RETURN NULL;
+            END IF;
+
+            SELECT identity.status
+              INTO v_identity_status
+              FROM request_engine.native_identities AS identity
+             WHERE identity.id = v_native_identity_id
+             FOR UPDATE;
+            IF NOT FOUND OR v_identity_status <> 'active' THEN
+                RETURN NULL;
+            END IF;
+
+            PERFORM 1
+              FROM request_engine.native_recovery_intents AS intent
+             WHERE intent.id = p_recovery_id
+               AND intent.native_identity_id = v_native_identity_id
+               AND intent.token_digest = p_token_digest
+               AND intent.status = 'pending'
+               AND intent.expires_at > clock_timestamp()
+             FOR UPDATE;
+            IF NOT FOUND THEN
+                RETURN NULL;
+            END IF;
+
+            UPDATE request_engine.native_credentials
+               SET status = 'revoked',
+                   revision = revision + 1,
+                   rotated_at = clock_timestamp(),
+                   revoked_at = clock_timestamp()
+             WHERE native_identity_id = v_native_identity_id
+               AND kind = 'password'
+               AND status = 'active';
+
+            INSERT INTO request_engine.native_credentials (
+                id, native_identity_id, verifier
+            ) VALUES (
+                p_new_credential_id, v_native_identity_id, p_new_verifier
+            );
+
+            UPDATE request_engine.native_identities
+               SET session_epoch = session_epoch + 1,
+                   revision = revision + 1,
+                   updated_at = clock_timestamp()
+             WHERE id = v_native_identity_id;
+
+            UPDATE request_engine.native_sessions
+               SET status = 'revoked',
+                   revoked_at = clock_timestamp(),
+                   revocation_reason = 'credential_recovery'
+             WHERE native_identity_id = v_native_identity_id
+               AND status = 'active';
+
+            UPDATE request_engine.native_recovery_intents
+               SET status = 'consumed',
+                   consumed_at = clock_timestamp()
+             WHERE id = p_recovery_id;
+
+            UPDATE request_engine.native_recovery_intents
+               SET status = 'revoked',
+                   revoked_at = clock_timestamp()
+             WHERE native_identity_id = v_native_identity_id
+               AND id <> p_recovery_id
+               AND status = 'pending';
+
+            INSERT INTO request_engine.native_identity_recovery_state (
+                native_identity_id,
+                state,
+                recovery_epoch,
+                revision,
+                last_recovered_at,
+                last_recovery_method,
+                completed_at
+            ) VALUES (
+                v_native_identity_id,
+                'recovery_restricted',
+                1,
+                1,
+                clock_timestamp(),
+                'delivered_recovery_proof',
+                NULL
+            )
+            ON CONFLICT (native_identity_id) DO UPDATE
+               SET state = 'recovery_restricted',
+                   recovery_epoch =
+                       request_engine.native_identity_recovery_state.recovery_epoch + 1,
+                   revision =
+                       request_engine.native_identity_recovery_state.revision + 1,
+                   last_recovered_at = clock_timestamp(),
+                   last_recovery_method = 'delivered_recovery_proof',
+                   completed_at = NULL
+            RETURNING recovery_epoch INTO v_recovery_epoch;
+
+            INSERT INTO request_engine.native_identity_recovery_facts (
+                native_identity_id,
+                event_kind,
+                recovery_epoch,
+                recovery_method,
+                correlation_id
+            ) VALUES (
+                v_native_identity_id,
+                'recovery_started',
+                v_recovery_epoch,
+                'delivered_recovery_proof',
+                NULLIF(current_setting('request_engine.correlation_id', true), '')::uuid
+            );
+
+            RETURN v_native_identity_id;
+        END
+        $;
+        ALTER FUNCTION request_auth.consume_native_recovery_intent(uuid, bytea, uuid, text)
+            OWNER TO request_engine_schema_owner;
+        REVOKE ALL ON FUNCTION
+            request_auth.consume_native_recovery_intent(uuid, bytea, uuid, text)
+            FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION
+            request_auth.consume_native_recovery_intent(uuid, bytea, uuid, text)
+            TO request_engine_app;
+        """
+    )
+
     op.execute("DROP FUNCTION request_auth.read_native_session(uuid)")
     op.execute(
         r"""
