@@ -158,3 +158,8 @@ The second path is governed by `architecture/continuous-evolution-policy.md`, `a
 Architecture-test failures should explain what boundary was crossed, which file/import crossed it, what surface is allowed and what design question must be answered before changing policy.
 
 A `Development integration lane mismatch` is an integration-state error: reconcile with current `origin/development`, set `.github/development-integration-lane` to the actual working PR branch and rerun exact-head checks. Do not weaken the test or create a bypass branch.
+
+
+## P7 platform_configuration fitness rule
+
+`platform_configuration` is an explicit node in `tests/architecture/dependency_policy.py` with no synchronous business-module dependencies initially. New edges require an ownership decision and contract-only imports. Architecture tests must continue to reject unregistered business modules and business imports that bypass supported contracts. P7 must not move secret-store, worker, identity, or communication-delivery mechanics into the module merely to satisfy dependency direction.
