@@ -1,7 +1,7 @@
 import sys
 from collections.abc import Callable, Mapping
 from types import ModuleType
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -146,7 +146,7 @@ def test_reference_factory_composes_both_recovery_delivery_streams(
         lambda factory, configured_delivery: native_runtime,
     )
 
-    def capture_worker_process(**kwargs: object) -> object:
+    def capture_worker_process(**kwargs: Any) -> object:
         captured.update(kwargs)
         return object()
 
