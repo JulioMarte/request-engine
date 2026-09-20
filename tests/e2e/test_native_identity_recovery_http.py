@@ -22,9 +22,11 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
+from fido2.utils import websafe_decode
 from httpx import ASGITransport, AsyncClient
 from psycopg import Connection, sql
 from psycopg.conninfo import make_conninfo
+from software_webauthn_authenticator import SoftwareAuthenticator
 
 from request_engine.bootstrap.recovery_delivery_worker import build_recovery_delivery_worker
 from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
@@ -43,6 +45,7 @@ from request_engine.platform.secrets.delivery import (
 from request_engine.platform.secrets.smtp_delivery_channel import SmtpRecoveryDeliveryChannel
 from request_engine.platform.secrets.vault_secret_store import VaultRecoverySecretStore
 from request_engine.platform.security.native_auth import hash_password
+from request_engine.platform.security.webauthn import WebAuthnPolicy
 from request_engine.platform.worker.runtime import WorkerRuntimeConfig
 
 PgConnection = Connection[Any]
@@ -258,6 +261,12 @@ def _control_app(
         platform_write_session_factory=platform_write_session_factory,
         native_authority_id=authority_id,
         recovery_delivery=delivery,
+        webauthn_policy=WebAuthnPolicy(
+            rp_id="control.test",
+            rp_name="Request Engine recovery E2E",
+            allowed_origins=frozenset({"https://control.test"}),
+        ),
+        webauthn_decoy_key=b"recovery-control-e2e-decoy-key-" + b"x" * 32,
     )
 
 
@@ -270,8 +279,52 @@ async def _login(client: AsyncClient, login_handle: str, password: str) -> str:
     return str(response.json()["access_token"])
 
 
-async def _bearer_headers(client: AsyncClient, login_handle: str, password: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {await _login(client, login_handle, password)}"}
+async def _bearer_headers(
+    client: AsyncClient,
+    login_handle: str,
+    password: str,
+) -> dict[str, str]:
+    token = await _login(client, login_handle, password)
+    headers = {"Authorization": f"Bearer {token}"}
+    options = (
+        await client.post(
+            "/auth/native/sessions/current/webauthn/registration-options",
+            headers=headers,
+        )
+    ).json()["public_key"]
+    authenticator = SoftwareAuthenticator(
+        rp_id=options["rp"]["id"],
+        origin="https://control.test",
+    )
+    credential = authenticator.registration_credential(
+        challenge=websafe_decode(options["challenge"]),
+        user_verified=True,
+    )
+    registered = await client.post(
+        "/auth/native/sessions/current/webauthn/registrations",
+        headers=headers,
+        json={"credential": credential},
+    )
+    assert registered.status_code == 201, registered.text
+
+    step_options = (
+        await client.post(
+            "/auth/native/sessions/current/webauthn/step-up-options",
+            headers=headers,
+        )
+    ).json()["public_key"]
+    assertion = authenticator.authentication_credential(
+        challenge=websafe_decode(step_options["challenge"]),
+        user_verified=True,
+    )
+    stepped = await client.post(
+        "/auth/native/sessions/current/webauthn/step-up",
+        headers=headers,
+        json={"credential": assertion},
+    )
+    assert stepped.status_code == 200, stepped.text
+    assert stepped.json()["authentication_assurance"] == "phishing_resistant"
+    return headers
 
 
 def _case_state(conn: PgConnection, case_id: UUID) -> tuple[Any, ...]:
