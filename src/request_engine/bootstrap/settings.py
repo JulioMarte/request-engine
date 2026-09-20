@@ -23,6 +23,9 @@ class HttpSettings(BaseSettings):
     appointment_option_signing_key: SecretStr
     identity_exchange_fingerprint_key: SecretStr
     webauthn_decoy_key: SecretStr
+    webauthn_rp_id: str = "localhost"
+    webauthn_rp_name: str = "Request Engine"
+    webauthn_allowed_origins: str = "https://localhost"
     oidc_enabled: bool = False
     database_probe_timeout_seconds: float = Field(default=5, gt=0, le=30)
 
@@ -34,6 +37,13 @@ class HttpSettings(BaseSettings):
             raise ValueError("an asynchronous PostgreSQL URL is required")
         if not url.username or url.username in {"postgres", "request_engine"}:
             raise ValueError("HTTP requires a dedicated least-privilege runtime login")
+        return value
+
+    @field_validator("webauthn_rp_id", "webauthn_rp_name", "webauthn_allowed_origins")
+    @classmethod
+    def validate_webauthn_setting(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("WebAuthn relying-party settings cannot be empty")
         return value
 
     @field_validator(
