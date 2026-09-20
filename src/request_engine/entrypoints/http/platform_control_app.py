@@ -126,6 +126,8 @@ def create_platform_control_app(
         read_session_factory=platform_read_session_factory,
         write_session_factory=platform_write_session_factory,
         actor_resolver=runtime.platform_actor_resolver,
+        native_auth_service=runtime.service,
+        native_authority_id=native_authority_id,
     )
     install_instance_setup_http(
         app,

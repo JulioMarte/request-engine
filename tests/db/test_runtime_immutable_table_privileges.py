@@ -191,6 +191,11 @@ _EXACT_DEFINER_OWNERS = {
     ): "request_platform_control_definer",
     (
         "request_platform",
+        "grant_platform_owner_v2_capabilities_on_claim",
+        "",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
         "native_identity_ready_for_platform_owner",
         "p_identity_authority_id uuid, p_native_identity_id uuid",
     ): "request_platform_control_definer",

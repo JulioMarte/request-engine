@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, FastAPI, Header, Request
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from request_engine.modules.tenancy.adapters.db.native_identity_disable_commands import (
     PostgresNativeIdentityDisableCommands,
@@ -35,13 +35,43 @@ from request_engine.modules.tenancy.application.queries.native_identity_read imp
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+from request_engine.platform.security.native_auth import (
+    PasswordPolicyViolation,
+    normalize_login_handle,
+)
+from request_engine.platform.security.native_human_auth import (
+    NativeEnrollmentUnavailable,
+    NativeHumanAuthService,
+    NativeIdentityAlreadyExists,
+)
 from request_engine.platform.security.platform_context import PlatformActorContext
-from request_engine.platform.security.platform_http import PlatformActorResolver
+from request_engine.platform.security.platform_http import (
+    PlatformActorResolver,
+    require_platform_capability,
+)
 
 PlatformIdempotencyKey = Annotated[
     str,
     Header(alias="Idempotency-Key", min_length=1, max_length=250),
 ]
+
+
+class NativeIdentityProvisionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    login_handle: str = Field(min_length=1, max_length=320)
+    password: str = Field(min_length=1, max_length=1024, repr=False)
+
+    @field_validator("login_handle")
+    @classmethod
+    def validate_handle(cls, value: str) -> str:
+        return normalize_login_handle(value)
+
+
+class NativeIdentityProvisionView(BaseModel):
+    native_identity_id: UUID
+    identity_authority_id: UUID
+    login_handle: str
 
 
 class NativeIdentityView(BaseModel):
@@ -96,6 +126,8 @@ def install_native_identity_management_http(
     read_session_factory: SessionFactory,
     write_session_factory: SessionFactory,
     actor_resolver: PlatformActorResolver,
+    native_auth_service: NativeHumanAuthService,
+    native_authority_id: UUID,
 ) -> None:
     reader = PostgresNativeIdentityReader(read_session_factory)
     commands = PostgresNativeIdentityDisableCommands(write_session_factory)
@@ -103,6 +135,33 @@ def install_native_identity_management_http(
 
     async def authenticated_actor(request: Request) -> PlatformActorContext:
         return await actor_resolver.resolve_platform_actor(request)
+
+    async def provision_identity(
+        body: NativeIdentityProvisionBody,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+    ) -> NativeIdentityProvisionView:
+        require_platform_capability(actor, "platform.principal.provision")
+        try:
+            enrolled = await native_auth_service.enroll_password_identity(
+                identity_authority_id=native_authority_id,
+                login_handle=body.login_handle,
+                password=body.password,
+            )
+        except NativeIdentityAlreadyExists as exc:
+            raise NativeIdentityProvisionConflict(
+                "native login handle is already enrolled"
+            ) from exc
+        except PasswordPolicyViolation as exc:
+            raise NativeIdentityProvisionInvalid("password policy rejected enrollment") from exc
+        except NativeEnrollmentUnavailable as exc:
+            raise NativeIdentityProvisionUnavailable(
+                "native identity authority is unavailable"
+            ) from exc
+        return NativeIdentityProvisionView(
+            native_identity_id=enrolled.native_identity_id,
+            identity_authority_id=native_authority_id,
+            login_handle=enrolled.login_handle,
+        )
 
     async def list_identities(
         params: Annotated[NativeIdentityListParams, Depends()],
@@ -146,6 +205,22 @@ def install_native_identity_management_http(
             affected_platform=result.affected_platform,
         )
 
+    provision_responses = {
+        status: {"model": ErrorEnvelope}
+        for status in (401, 403, 409, 422, 503)
+    }
+    add_capability_route(
+        router,
+        "/v1/platform/native-identities",
+        provision_identity,
+        capability="platform.principal.provision",
+        methods=["POST"],
+        operation_id="platform_native_identity_provision",
+        owner="tenancy",
+        status_code=http_status.HTTP_201_CREATED,
+        response_model=NativeIdentityProvisionView,
+        responses=provision_responses,
+    )
     read_responses = {status: {"model": ErrorEnvelope} for status in (401, 403, 422)}
     case_responses = {**read_responses, 404: {"model": ErrorEnvelope}}
     mutation_responses = {**case_responses, 409: {"model": ErrorEnvelope}}
@@ -182,9 +257,61 @@ def install_native_identity_management_http(
         response_model=NativeIdentityDisableView,
         responses=mutation_responses,
     )
+    app.add_exception_handler(
+        NativeIdentityProvisionError, native_identity_provision_error_handler
+    )
     app.add_exception_handler(NativeIdentityReadError, native_identity_error_handler)
     app.add_exception_handler(NativeIdentityDisableError, native_identity_error_handler)
     app.include_router(router)
+
+
+class NativeIdentityProvisionError(RuntimeError):
+    pass
+
+
+class NativeIdentityProvisionConflict(NativeIdentityProvisionError):
+    pass
+
+
+class NativeIdentityProvisionInvalid(NativeIdentityProvisionError):
+    pass
+
+
+class NativeIdentityProvisionUnavailable(NativeIdentityProvisionError):
+    pass
+
+
+async def native_identity_provision_error_handler(
+    _: Request, exc: Exception
+) -> JSONResponse:
+    if isinstance(exc, NativeIdentityProvisionConflict):
+        status_code = http_status.HTTP_409_CONFLICT
+        body = ErrorBody(
+            code="native_identity_already_exists",
+            message="the native login handle is already enrolled",
+            resolution=ErrorResolution.FIX_REQUEST,
+        )
+    elif isinstance(exc, NativeIdentityProvisionInvalid):
+        status_code = http_status.HTTP_422_UNPROCESSABLE_CONTENT
+        body = ErrorBody(
+            code="native_identity_provision_invalid",
+            message="the native identity enrollment input is invalid",
+            resolution=ErrorResolution.FIX_REQUEST,
+        )
+    elif isinstance(exc, NativeIdentityProvisionUnavailable):
+        status_code = http_status.HTTP_503_SERVICE_UNAVAILABLE
+        body = ErrorBody(
+            code="native_identity_provision_unavailable",
+            message="the native identity authority is unavailable",
+            resolution=ErrorResolution.OPERATOR_INTERVENTION,
+        )
+    else:
+        raise exc
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorEnvelope(error=body).model_dump(mode="json"),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 async def native_identity_error_handler(_: Request, exc: Exception) -> JSONResponse:

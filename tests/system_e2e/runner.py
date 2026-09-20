@@ -553,14 +553,21 @@ def _native_session(base_url: str, login: str, password: str) -> str:
     return _required_string(response, "access_token", "native session response")
 
 
-def _native_identity(base_url: str, login: str, password: str) -> str:
+def _native_identity(
+    base_url: str,
+    login: str,
+    password: str,
+    *,
+    bearer: str,
+) -> str:
     response = _http_json(
         "POST",
-        f"{base_url}/auth/native/identities",
+        f"{base_url}/v1/platform/native-identities",
+        bearer=bearer,
         payload={"login_handle": login, "password": password},
         expected_statuses=(201,),
     )
-    return _required_string(response, "native_identity_id", "native enrollment response")
+    return _required_string(response, "native_identity_id", "governed native enrollment response")
 
 
 def _webauthn_platform_session(
@@ -649,7 +656,12 @@ def _run_f01_foundation(
         )
     provisioner_login = "f01-security-operator@example.invalid"
     provisioner_password = _derived_password(platform_password, "f01-security-operator")
-    provisioner_identity_id = _native_identity(control_url, provisioner_login, provisioner_password)
+    provisioner_identity_id = _native_identity(
+        control_url,
+        provisioner_login,
+        provisioner_password,
+        bearer=platform_token,
+    )
     provisioner = _http_json(
         "POST",
         f"{control_url}/v1/platform/provisioners",
@@ -668,7 +680,12 @@ def _run_f01_foundation(
 
     tenant_login = "f01-tenant-controller@example.invalid"
     tenant_password = _derived_password(platform_password, "f01-tenant-controller")
-    tenant_identity_id = _native_identity(control_url, tenant_login, tenant_password)
+    tenant_identity_id = _native_identity(
+        control_url,
+        tenant_login,
+        tenant_password,
+        bearer=platform_token,
+    )
     organization = _http_json(
         "POST",
         f"{control_url}/v1/platform/organizations",
