@@ -135,6 +135,18 @@ class NativeSessionCurrentView(BaseModel):
     authentication_assurance: str
     user_verified: bool
     recovery_derived: bool
+    recovery_restricted: bool
+
+
+class NativeRecoveryReadinessView(BaseModel):
+    recovery_state: str
+    recovery_epoch: int
+    last_recovered_at: datetime | None
+    last_recovery_method: str | None
+    completed_at: datetime | None
+    active_code_set: bool
+    remaining_codes: int
+    active_webauthn_credentials: int
 
 
 class NativeWebAuthnLoginRequest(BaseModel):
@@ -341,6 +353,54 @@ def create_native_auth_router(
             authentication_assurance=subject.metadata["authentication_assurance"],
             user_verified=subject.metadata["user_verified"] == "true",
             recovery_derived=subject.metadata["recovery_derived"] == "true",
+            recovery_restricted=subject.metadata.get("recovery_restricted") == "true",
+        )
+
+    async def read_recovery_readiness(
+        request: Request,
+        response: Response,
+    ) -> NativeRecoveryReadinessView:
+        if recovery_codes is None:
+            raise RuntimeError("recovery-code lifecycle is not composed")
+        raw_token = bearer_token(request)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        readiness = await recovery_codes.readiness(
+            native_identity_id=UUID(subject.subject_id)
+        )
+        _prevent_secret_caching(response)
+        return NativeRecoveryReadinessView(
+            recovery_state=readiness.recovery_state,
+            recovery_epoch=readiness.recovery_epoch,
+            last_recovered_at=readiness.last_recovered_at,
+            last_recovery_method=readiness.last_recovery_method,
+            completed_at=readiness.completed_at,
+            active_code_set=readiness.active_code_set,
+            remaining_codes=readiness.remaining_codes,
+            active_webauthn_credentials=readiness.active_webauthn_credentials,
+        )
+
+    async def complete_recovery(
+        request: Request,
+        response: Response,
+    ) -> NativeRecoveryReadinessView:
+        if recovery_codes is None:
+            raise RuntimeError("recovery-code lifecycle is not composed")
+        raw_token = bearer_token(request)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        _require_recent_phishing_resistant_subject(subject)
+        readiness = await recovery_codes.complete_recovery(
+            native_identity_id=UUID(subject.subject_id)
+        )
+        _prevent_secret_caching(response)
+        return NativeRecoveryReadinessView(
+            recovery_state=readiness.recovery_state,
+            recovery_epoch=readiness.recovery_epoch,
+            last_recovered_at=readiness.last_recovered_at,
+            last_recovery_method=readiness.last_recovery_method,
+            completed_at=readiness.completed_at,
+            active_code_set=readiness.active_code_set,
+            remaining_codes=readiness.remaining_codes,
+            active_webauthn_credentials=readiness.active_webauthn_credentials,
         )
 
     async def webauthn_registration_options(
@@ -609,6 +669,64 @@ def create_native_auth_router(
                 422: {"model": ErrorEnvelope, "description": "Invalid input or password policy"},
             },
         )
+    if recovery_codes is not None:
+        router.add_api_route(
+            "/sessions/current/recovery-readiness",
+            read_recovery_readiness,
+            methods=["GET"],
+            operation_id="nativeRecoveryReadinessReadCurrent",
+            response_model=NativeRecoveryReadinessView,
+            summary="Read recovery readiness for the current native identity",
+            responses={401: {"model": ErrorEnvelope, "description": "Session is invalid"}},
+        )
+        router.add_api_route(
+            "/sessions/current/recovery:complete",
+            complete_recovery,
+            methods=["POST"],
+            operation_id="nativeRecoveryCompleteCurrent",
+            response_model=NativeRecoveryReadinessView,
+            summary="Complete a restricted recovery after strong re-authentication",
+            description=(
+                "Requires a recent phishing-resistant session for the same native identity. "
+                "It changes only recovery posture and never creates, restores or elevates "
+                "Principal authority, bindings, memberships or grants."
+            ),
+            responses={
+                401: {"model": ErrorEnvelope, "description": "Session is invalid"},
+                403: {"model": ErrorEnvelope, "description": "Strong recovery completion proof required"},
+            },
+        )
+        router.add_api_route(
+            "/sessions/current/recovery-codes",
+            issue_current_recovery_codes,
+            methods=["POST"],
+            operation_id="nativeCurrentRecoveryCodesIssue",
+            response_model=NativeRecoveryCodesView,
+            status_code=status.HTTP_201_CREATED,
+            summary="Issue offline recovery codes for the current native identity",
+            description=(
+                "Requires a recent phishing-resistant session. The authenticated bearer "
+                "determines the identity. Plaintext codes are returned once and only "
+                "digests are persisted."
+            ),
+            responses={
+                401: {"model": ErrorEnvelope, "description": "Session is invalid"},
+                403: {"model": ErrorEnvelope, "description": "Strong recent proof required"},
+            },
+        )
+        router.add_api_route(
+            "/sessions/current/recovery-codes:regenerate",
+            issue_current_recovery_codes,
+            methods=["POST"],
+            operation_id="nativeCurrentRecoveryCodesRegenerate",
+            response_model=NativeRecoveryCodesView,
+            status_code=status.HTTP_201_CREATED,
+            summary="Regenerate offline recovery codes for the current native identity",
+            responses={
+                401: {"model": ErrorEnvelope, "description": "Session is invalid"},
+                403: {"model": ErrorEnvelope, "description": "Strong recent proof required"},
+            },
+        )
     if webauthn_login is not None:
         _register_webauthn_routes(
             router,
@@ -619,38 +737,6 @@ def create_native_auth_router(
             step_up_options=webauthn_step_up_options,
             step_up=webauthn_step_up,
         )
-        if recovery_codes is not None:
-            router.add_api_route(
-                "/sessions/current/recovery-codes",
-                issue_current_recovery_codes,
-                methods=["POST"],
-                operation_id="nativeCurrentRecoveryCodesIssue",
-                response_model=NativeRecoveryCodesView,
-                status_code=status.HTTP_201_CREATED,
-                summary="Issue offline recovery codes for the current native identity",
-                description=(
-                    "Requires a recent phishing-resistant session. The authenticated "
-                    "bearer determines the native identity; no identity selector is accepted. "
-                    "Plaintext codes are returned once and only digests are persisted."
-                ),
-                responses={
-                    401: {"model": ErrorEnvelope, "description": "Session is invalid"},
-                    403: {"model": ErrorEnvelope, "description": "Strong recent proof required"},
-                },
-            )
-            router.add_api_route(
-                "/sessions/current/recovery-codes:regenerate",
-                issue_current_recovery_codes,
-                methods=["POST"],
-                operation_id="nativeCurrentRecoveryCodesRegenerate",
-                response_model=NativeRecoveryCodesView,
-                status_code=status.HTTP_201_CREATED,
-                summary="Regenerate offline recovery codes for the current native identity",
-                responses={
-                    401: {"model": ErrorEnvelope, "description": "Session is invalid"},
-                    403: {"model": ErrorEnvelope, "description": "Strong recent proof required"},
-                },
-            )
     return router
 
 
