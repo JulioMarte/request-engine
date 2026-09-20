@@ -537,6 +537,36 @@ path = "tests/e2e/test_instance_setup_http.py"
 evidence = ["contract", "adversarial", "security"]
 
 [[proofs]]
+guarantee = "INV-NATIVE-RECOVERY-POSTURE-001"
+path = "tests/db/test_recovery_code_persistence.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-RECOVERY-POSTURE-001"
+path = "tests/e2e/test_native_password_recovery.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-RECOVERY-POSTURE-001"
+path = "tests/unit/platform/security/test_privileged_authentication.py"
+evidence = ["contract", "security"]
+
+[[proofs]]
+guarantee = "INV-VERIFIED-RECOVERY-ADDRESS-001"
+path = "tests/db/test_native_recovery_addresses.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-VERIFIED-RECOVERY-ADDRESS-001"
+path = "tests/e2e/test_native_verified_recovery_address.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-VERIFIED-RECOVERY-ADDRESS-001"
+path = "tests/e2e/test_native_password_recovery_adversarial.py"
+evidence = ["adversarial", "security"]
+
+[[proofs]]
 guarantee = "INV-PLATFORM-SECRET-STORE-001"
 path = "tests/unit/platform/secrets/test_openbao_secret_store.py"
 evidence = ["contract", "adversarial", "security"]
