@@ -8,6 +8,7 @@ from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.freshness import (
     PhishingResistantAuthenticationRequired,
     RecentAuthenticationRequired,
+    RecoveryCompletionRequired,
     require_phishing_resistant_authentication,
 )
 
@@ -22,6 +23,7 @@ def _actor(
     assurance: AuthenticationAssurance | None,
     user_verified: bool = False,
     recovery_derived: bool = False,
+    recovery_restricted: bool = False,
 ) -> ActorContext:
     return ActorContext(
         organization_id=uuid4(),
@@ -31,6 +33,7 @@ def _actor(
         authentication_assurance=assurance,
         user_verified=user_verified,
         recovery_derived=recovery_derived,
+        recovery_restricted=recovery_restricted,
     )
 
 
@@ -91,6 +94,19 @@ def test_absent_strong_authentication_time_reports_recent_authentication_require
                 authenticated_at=None,
                 assurance=AuthenticationAssurance.PHISHING_RESISTANT,
                 user_verified=True,
+            ),
+            now=NOW,
+        )
+
+
+def test_recovery_restricted_actor_cannot_use_sensitive_authority() -> None:
+    with pytest.raises(RecoveryCompletionRequired):
+        require_phishing_resistant_authentication(
+            _actor(
+                authenticated_at=NOW - timedelta(minutes=1),
+                assurance=AuthenticationAssurance.PHISHING_RESISTANT,
+                user_verified=True,
+                recovery_restricted=True,
             ),
             now=NOW,
         )
