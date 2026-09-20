@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from request_engine.bootstrap.recovery_delivery import build_native_recovery_messenger
 from request_engine.bootstrap.settings import HttpSettings
 from request_engine.entrypoints.http.app import create_native_app
 from request_engine.entrypoints.http.native_runtime import build_identity_link_verifier
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
             ),
         ),
         webauthn_decoy_key=settings.webauthn_decoy_key.get_secret_value().encode(),
+        native_recovery_messenger=build_native_recovery_messenger(),
         slot_offer_ports=QueueSlotOfferHttpPorts(
             capacity=CapacitySafeSlotOfferCapacity(),
             notification=PostgresSlotOfferNotificationIntent(),
