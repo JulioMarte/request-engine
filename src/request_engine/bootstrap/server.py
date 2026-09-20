@@ -22,6 +22,7 @@ from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.platform.db.oidc_authority_reader import PostgresOidcAuthorityReader
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
+from request_engine.platform.security.webauthn import WebAuthnPolicy
 
 
 def create_app() -> FastAPI:
@@ -44,6 +45,16 @@ def create_app() -> FastAPI:
         identity_exchange_fingerprint_key=settings.identity_exchange_fingerprint_key.get_secret_value().encode(),
         oidc_subject_resolver=oidc,
         identity_link_verifier=identity_link_verifier,
+        webauthn_policy=WebAuthnPolicy(
+            rp_id=settings.webauthn_rp_id,
+            rp_name=settings.webauthn_rp_name,
+            allowed_origins=frozenset(
+                origin.strip()
+                for origin in settings.webauthn_allowed_origins.split(",")
+                if origin.strip()
+            ),
+        ),
+        webauthn_decoy_key=settings.webauthn_decoy_key.get_secret_value().encode(),
         slot_offer_ports=QueueSlotOfferHttpPorts(
             capacity=CapacitySafeSlotOfferCapacity(),
             notification=PostgresSlotOfferNotificationIntent(),
