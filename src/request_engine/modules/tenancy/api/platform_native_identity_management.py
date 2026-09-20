@@ -205,10 +205,7 @@ def install_native_identity_management_http(
             affected_platform=result.affected_platform,
         )
 
-    provision_responses = {
-        status: {"model": ErrorEnvelope}
-        for status in (401, 403, 409, 422, 503)
-    }
+    provision_responses = {status: {"model": ErrorEnvelope} for status in (401, 403, 409, 422, 503)}
     add_capability_route(
         router,
         "/v1/platform/native-identities",
@@ -257,9 +254,7 @@ def install_native_identity_management_http(
         response_model=NativeIdentityDisableView,
         responses=mutation_responses,
     )
-    app.add_exception_handler(
-        NativeIdentityProvisionError, native_identity_provision_error_handler
-    )
+    app.add_exception_handler(NativeIdentityProvisionError, native_identity_provision_error_handler)
     app.add_exception_handler(NativeIdentityReadError, native_identity_error_handler)
     app.add_exception_handler(NativeIdentityDisableError, native_identity_error_handler)
     app.include_router(router)
@@ -281,9 +276,7 @@ class NativeIdentityProvisionUnavailable(NativeIdentityProvisionError):
     pass
 
 
-async def native_identity_provision_error_handler(
-    _: Request, exc: Exception
-) -> JSONResponse:
+async def native_identity_provision_error_handler(_: Request, exc: Exception) -> JSONResponse:
     if isinstance(exc, NativeIdentityProvisionConflict):
         status_code = http_status.HTTP_409_CONFLICT
         body = ErrorBody(
