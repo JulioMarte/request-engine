@@ -66,24 +66,34 @@ def build_native_recovery_messenger(
     """
 
     resolved = settings or RecoveryDeliverySettings()
-    smtp_values = (
-        _has_text(resolved.smtp_host),
-        _has_text(resolved.smtp_sender),
-        _has_secret(resolved.smtp_password),
-    )
-    if not any(smtp_values):
+    host_configured = _has_text(resolved.smtp_host)
+    sender_configured = _has_text(resolved.smtp_sender)
+    username_configured = _has_text(resolved.smtp_username)
+    password_configured = _has_secret(resolved.smtp_password)
+    if not any(
+        (host_configured, sender_configured, username_configured, password_configured)
+    ):
         return None
-    if not all(smtp_values):
+    if not (host_configured and sender_configured):
         raise RuntimeError(
-            "native recovery email requires REQUEST_ENGINE_SMTP_HOST, "
-            "REQUEST_ENGINE_SMTP_SENDER and REQUEST_ENGINE_SMTP_PASSWORD"
+            "native recovery email requires REQUEST_ENGINE_SMTP_HOST and "
+            "REQUEST_ENGINE_SMTP_SENDER"
+        )
+    if username_configured != password_configured:
+        raise RuntimeError(
+            "native recovery SMTP authentication requires both "
+            "REQUEST_ENGINE_SMTP_USERNAME and REQUEST_ENGINE_SMTP_PASSWORD"
         )
     return SmtpRecoveryDeliveryChannel(
         host=_required_text("REQUEST_ENGINE_SMTP_HOST", resolved.smtp_host),
         port=resolved.smtp_port,
         sender=_required_text("REQUEST_ENGINE_SMTP_SENDER", resolved.smtp_sender),
         username=resolved.smtp_username,
-        password=_required_secret("REQUEST_ENGINE_SMTP_PASSWORD", resolved.smtp_password),
+        password=(
+            resolved.smtp_password.get_secret_value()
+            if password_configured and resolved.smtp_password is not None
+            else None
+        ),
         starttls=resolved.smtp_starttls,
         use_ssl=resolved.smtp_ssl,
         timeout_seconds=resolved.smtp_timeout_seconds,
