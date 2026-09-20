@@ -104,7 +104,7 @@ def test_root_establishment_materializes_one_native_platform_controller_atomical
         "SELECT principal_plane, principal_kind, active, authority_revision "
         "FROM request_engine.principals WHERE id = %s",
         (principal_id,),
-    ).fetchone() == ("platform", "human", True, 11)
+    ).fetchone() == ("platform", "human", True, 12)
     assert admin_conn.execute(
         "SELECT principal_id, principal_plane, status, subject_id "
         "FROM request_engine.identity_bindings WHERE id = %s",
@@ -125,6 +125,10 @@ def test_root_establishment_materializes_one_native_platform_controller_atomical
         ("platform.identity.read", False, "trust_bootstrap"),
         ("platform.identity.recover", False, "trust_bootstrap"),
         ("platform.identity.recovery_approve", False, "trust_bootstrap"),
+        ("platform.identity.provision", False, "trust_bootstrap"),
+        ("platform.owner.manage_lifecycle", False, "trust_bootstrap"),
+        ("platform.owner.provision", False, "trust_bootstrap"),
+        ("platform.owner.read", False, "trust_bootstrap"),
         ("platform.principal.provision", True, "trust_bootstrap"),
         ("platform.provisioner.manage_lifecycle", False, "trust_bootstrap"),
         ("platform.provisioner.read", False, "trust_bootstrap"),
