@@ -6,6 +6,7 @@ from typing import Final, Protocol
 from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.capabilities import capability_definition
 from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.operation_risk import OperationRiskClass
 
 
 class AuthenticationFreshnessContext(Protocol):
@@ -103,6 +104,30 @@ def require_phishing_resistant_authentication(
         raise RecentAuthenticationRequired("recent strong authentication is required")
     if now - authenticated_at > window:
         raise RecentAuthenticationRequired("recent strong authentication is required")
+
+
+def recovery_safe_capabilities(
+    capabilities: frozenset[str],
+    *,
+    recovery_restricted: bool,
+) -> frozenset[str]:
+    """Temporarily fence authority-changing capabilities during account recovery.
+
+    This does not mutate standing grants. It shapes only the request-local effective
+    actor after authentication, preserving ordinary reads and non-authority product
+    operations while preventing recovery from becoming an authority-change bypass.
+    """
+
+    if not recovery_restricted:
+        return capabilities
+    return frozenset(
+        capability
+        for capability in capabilities
+        if (
+            (definition := capability_definition(capability)) is None
+            or definition.effective_risk_class is not OperationRiskClass.AUTHORITY_CHANGE
+        )
+    )
 
 
 def enforce_step_up(
