@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -41,6 +41,7 @@ from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
+from request_engine.platform.security.freshness import require_phishing_resistant_authentication
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.platform_http import PlatformActorResolver
 
@@ -184,9 +185,14 @@ def install_identity_recovery_http(
     async def authenticated_actor(request: Request) -> PlatformActorContext:
         return await actor_resolver.resolve_platform_actor(request)
 
+    async def strong_recovery_actor(request: Request) -> PlatformActorContext:
+        actor = await authenticated_actor(request)
+        require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+        return actor
+
     async def create_case(
         body: CreateIdentityRecoveryCaseBody,
-        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        actor: Annotated[PlatformActorContext, Depends(strong_recovery_actor)],
         response: Response,
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
@@ -235,7 +241,7 @@ def install_identity_recovery_http(
     async def approve_case(
         case_id: UUID,
         body: ApproveIdentityRecoveryCaseBody,
-        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        actor: Annotated[PlatformActorContext, Depends(strong_recovery_actor)],
         response: Response,
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
@@ -255,7 +261,7 @@ def install_identity_recovery_http(
     async def issue_case(
         case_id: UUID,
         body: IssueIdentityRecoveryCaseBody,
-        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        actor: Annotated[PlatformActorContext, Depends(strong_recovery_actor)],
         response: Response,
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
@@ -274,7 +280,7 @@ def install_identity_recovery_http(
     async def revoke_case(
         case_id: UUID,
         body: RevokeIdentityRecoveryCaseBody,
-        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        actor: Annotated[PlatformActorContext, Depends(strong_recovery_actor)],
         response: Response,
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
