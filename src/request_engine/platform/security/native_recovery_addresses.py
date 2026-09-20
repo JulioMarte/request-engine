@@ -7,7 +7,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from uuid import UUID, uuid4
 
-from request_engine.platform.secrets.delivery import DeliveryOutcome
+from request_engine.platform.secrets.delivery import (
+    DeliveryOutcome,
+    RecoveryDeliveryPermanent,
+    RecoveryDeliveryRetryable,
+)
 from request_engine.platform.security.native_auth import (
     issue_opaque_token,
     normalize_login_handle,
@@ -151,11 +155,16 @@ class NativeRecoveryAddressService:
             raise NativeRecoveryAddressDeliveryUnavailable(
                 "recovery-address verification delivery is not configured"
             )
-        outcome = await self._messenger.send_verification(
-            secret=token.raw_token,
-            destination_reference=normalized,
-            idempotency_key=f"verify-recovery-address:{token.token_id}",
-        )
+        try:
+            outcome = await self._messenger.send_verification(
+                secret=token.raw_token,
+                destination_reference=normalized,
+                idempotency_key=f"verify-recovery-address:{token.token_id}",
+            )
+        except (RecoveryDeliveryPermanent, RecoveryDeliveryRetryable) as exc:
+            raise NativeRecoveryAddressDeliveryUnavailable(
+                "recovery-address verification delivery is unavailable"
+            ) from exc
         if outcome is DeliveryOutcome.FAILED:
             raise NativeRecoveryAddressDeliveryUnavailable(
                 "recovery-address verification delivery was rejected"
@@ -213,11 +222,16 @@ class NativeRecoveryAddressService:
         )
         if dispatch is None:
             return
-        await self._messenger.send_recovery(
-            secret=token.raw_token,
-            destination_reference=dispatch.destination_address,
-            idempotency_key=f"native-account-recovery:{token.token_id}",
-        )
+        try:
+            await self._messenger.send_recovery(
+                secret=token.raw_token,
+                destination_reference=dispatch.destination_address,
+                idempotency_key=f"native-account-recovery:{token.token_id}",
+            )
+        except (RecoveryDeliveryPermanent, RecoveryDeliveryRetryable):
+            # Public recovery request is intentionally anti-enumerating. Provider
+            # availability is an operator concern and does not change the public result.
+            return
 
     def _now(self) -> datetime:
         value = self._clock()
