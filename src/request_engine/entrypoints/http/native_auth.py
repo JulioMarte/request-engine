@@ -35,6 +35,11 @@ from request_engine.platform.security.native_human_auth import (
     NativeIdentityAlreadyExists,
     RecoveryIntentInvalid,
 )
+from request_engine.platform.security.native_recovery_addresses import (
+    NativeRecoveryAddressDeliveryUnavailable,
+    NativeRecoveryAddressInvalid,
+    NativeRecoveryAddressService,
+)
 from request_engine.platform.security.native_session import (
     NativeSessionAuthenticator,
     NativeSessionEvidence,
@@ -202,6 +207,40 @@ class NativeRecoveryCodesView(BaseModel):
     codes: list[str]
 
 
+class NativeRecoveryAddressCreateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
+
+
+class NativeRecoveryAddressVerifyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verification_token: str = Field(min_length=1, max_length=1024, repr=False)
+
+
+class NativeRecoveryRequestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    login_handle: str = Field(min_length=1, max_length=320)
+
+
+class NativeRecoveryAddressView(BaseModel):
+    recovery_address_id: UUID
+    kind: str
+    address: str
+    status: str
+    revision: int
+    verified_at: datetime | None
+    created_at: datetime
+
+
+class NativeRecoveryAddressPreparedView(BaseModel):
+    recovery_address_id: UUID
+    status: str
+    verification_created: bool
+
+
 def create_native_auth_router(
     *,
     service: NativeHumanAuthService,
@@ -210,6 +249,7 @@ def create_native_auth_router(
     webauthn_login: NativeWebAuthnLoginService | None = None,
     webauthn_auth: NativeWebAuthnAuthService | None = None,
     recovery_codes: NativeRecoveryCodeService | None = None,
+    recovery_addresses: NativeRecoveryAddressService | None = None,
     allow_identity_enrollment: bool = True,
 ) -> APIRouter:
     router = APIRouter(prefix="/auth/native", tags=["Native authentication"])
@@ -400,6 +440,131 @@ def create_native_auth_router(
             remaining_codes=readiness.remaining_codes,
             active_webauthn_credentials=readiness.active_webauthn_credentials,
         )
+
+    async def prepare_recovery_address(
+        payload: NativeRecoveryAddressCreateBody,
+        request: Request,
+        response: Response,
+    ) -> NativeRecoveryAddressPreparedView | JSONResponse:
+        if recovery_addresses is None:
+            raise RuntimeError("verified recovery addresses are not composed")
+        raw_token = bearer_token(request)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        _require_recent_phishing_resistant_subject(subject)
+        try:
+            prepared = await recovery_addresses.prepare_email(
+                native_identity_id=UUID(subject.subject_id),
+                address=payload.email,
+            )
+        except NativeRecoveryAddressInvalid:
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                content={"error": {"code": "recovery_address_invalid",
+                                   "message": "the recovery address is invalid",
+                                   "retryable": False,
+                                   "resolution": "fix_request"}},
+                headers={"Cache-Control": "no-store"},
+            )
+        except NativeRecoveryAddressDeliveryUnavailable:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"error": {"code": "recovery_address_delivery_unavailable",
+                                   "message": "recovery-address verification delivery is unavailable",
+                                   "retryable": True,
+                                   "resolution": "retry_same_request"}},
+                headers={"Cache-Control": "no-store"},
+            )
+        _prevent_secret_caching(response)
+        return NativeRecoveryAddressPreparedView(
+            recovery_address_id=prepared.address_id,
+            status=prepared.status,
+            verification_created=prepared.verification_created,
+        )
+
+    async def list_recovery_addresses(
+        request: Request,
+        response: Response,
+    ) -> list[NativeRecoveryAddressView]:
+        if recovery_addresses is None:
+            raise RuntimeError("verified recovery addresses are not composed")
+        raw_token = bearer_token(request)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        rows = await recovery_addresses.list_for_identity(
+            native_identity_id=UUID(subject.subject_id)
+        )
+        _prevent_secret_caching(response)
+        return [
+            NativeRecoveryAddressView(
+                recovery_address_id=row.address_id,
+                kind=row.kind,
+                address=row.normalized_address,
+                status=row.status,
+                revision=row.revision,
+                verified_at=row.verified_at,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+
+    async def revoke_recovery_address(
+        recovery_address_id: UUID,
+        request: Request,
+        response: Response,
+    ) -> None | JSONResponse:
+        if recovery_addresses is None:
+            raise RuntimeError("verified recovery addresses are not composed")
+        raw_token = bearer_token(request)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        _require_recent_phishing_resistant_subject(subject)
+        try:
+            await recovery_addresses.revoke(
+                native_identity_id=UUID(subject.subject_id),
+                address_id=recovery_address_id,
+            )
+        except NativeRecoveryAddressInvalid:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"error": {"code": "recovery_address_not_found",
+                                   "message": "the recovery address is unavailable",
+                                   "retryable": False,
+                                   "resolution": "fix_request"}},
+                headers={"Cache-Control": "no-store"},
+            )
+        _prevent_secret_caching(response)
+
+    async def verify_recovery_address(
+        payload: NativeRecoveryAddressVerifyBody,
+    ) -> Response | JSONResponse:
+        if recovery_addresses is None:
+            raise RuntimeError("verified recovery addresses are not composed")
+        try:
+            await recovery_addresses.verify(raw_token=payload.verification_token)
+        except NativeRecoveryAddressInvalid:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"error": {"code": "recovery_address_verification_invalid",
+                                   "message": "the recovery-address proof is invalid or expired",
+                                   "retryable": False,
+                                   "resolution": "reauthenticate"}},
+                headers={"Cache-Control": "no-store"},
+            )
+        response = Response(status_code=status.HTTP_204_NO_CONTENT)
+        _prevent_secret_caching(response)
+        return response
+
+    async def request_verified_channel_recovery(
+        payload: NativeRecoveryRequestBody,
+    ) -> Response:
+        if recovery_addresses is not None:
+            await recovery_addresses.request_recovery(
+                identity_authority_id=identity_authority_id,
+                login_handle=payload.login_handle,
+            )
+        # Deliberately identical for unknown identities, missing verified
+        # destinations and unconfigured/failed delivery.
+        response = Response(status_code=status.HTTP_202_ACCEPTED)
+        _prevent_secret_caching(response)
+        return response
 
     async def webauthn_registration_options(
         request: Request,
@@ -727,6 +892,64 @@ def create_native_auth_router(
                 401: {"model": ErrorEnvelope, "description": "Session is invalid"},
                 403: {"model": ErrorEnvelope, "description": "Strong recent proof required"},
             },
+        )
+    if recovery_addresses is not None:
+        router.add_api_route(
+            "/sessions/current/recovery-addresses",
+            prepare_recovery_address,
+            methods=["POST"],
+            operation_id="nativeRecoveryAddressPrepareCurrent",
+            response_model=NativeRecoveryAddressPreparedView,
+            status_code=status.HTTP_202_ACCEPTED,
+            responses={
+                401: {"model": ErrorEnvelope},
+                403: {"model": ErrorEnvelope},
+                422: {"model": ErrorEnvelope},
+                503: {"model": ErrorEnvelope},
+            },
+        )
+        router.add_api_route(
+            "/sessions/current/recovery-addresses",
+            list_recovery_addresses,
+            methods=["GET"],
+            operation_id="nativeRecoveryAddressListCurrent",
+            response_model=list[NativeRecoveryAddressView],
+            responses={401: {"model": ErrorEnvelope}},
+        )
+        router.add_api_route(
+            "/sessions/current/recovery-addresses/{recovery_address_id}",
+            revoke_recovery_address,
+            methods=["DELETE"],
+            operation_id="nativeRecoveryAddressRevokeCurrent",
+            status_code=status.HTTP_204_NO_CONTENT,
+            responses={
+                401: {"model": ErrorEnvelope},
+                403: {"model": ErrorEnvelope},
+                404: {"model": ErrorEnvelope},
+            },
+        )
+        router.add_api_route(
+            "/recovery-addresses:verify",
+            verify_recovery_address,
+            methods=["POST"],
+            operation_id="nativeRecoveryAddressVerify",
+            status_code=status.HTTP_204_NO_CONTENT,
+            response_model=None,
+            responses={401: {"model": ErrorEnvelope}},
+        )
+        router.add_api_route(
+            "/password:request-recovery",
+            request_verified_channel_recovery,
+            methods=["POST"],
+            operation_id="nativePasswordRecoveryRequest",
+            status_code=status.HTTP_202_ACCEPTED,
+            response_model=None,
+            summary="Request account recovery through a pre-verified address",
+            description=(
+                "Always returns the same result. The request never reveals whether the "
+                "login handle exists, has a verified recovery address, or whether delivery "
+                "was possible."
+            ),
         )
     if webauthn_login is not None:
         _register_webauthn_routes(
