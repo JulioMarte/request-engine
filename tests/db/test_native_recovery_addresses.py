@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+
 from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
 from request_engine.platform.db.native_recovery_address_store import (
     PostgresNativeRecoveryAddressStore,
