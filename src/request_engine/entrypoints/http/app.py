@@ -46,8 +46,8 @@ from request_engine.platform.security.http import (
 from request_engine.platform.security.native_human_auth import NativeHumanAuthService
 from request_engine.platform.security.native_session import NativeSessionAuthenticator
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
-from request_engine.platform.security.recovery_codes import NativeRecoveryCodeService
 from request_engine.platform.security.oidc_link import OidcLinkVerifier
+from request_engine.platform.security.recovery_codes import NativeRecoveryCodeService
 from request_engine.platform.security.subject_http import (
     HttpSubjectResolver,
     ProviderNeutralHttpActorResolver,
