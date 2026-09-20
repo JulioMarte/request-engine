@@ -280,8 +280,14 @@ def upgrade() -> None:
         DECLARE
             v_native_identity_id uuid;
             v_identity_status text;
+            v_case_id uuid;
+            v_case_revision_before bigint;
+            v_case_revision_after bigint;
             v_recovery_epoch bigint;
         BEGIN
+            -- Preserve the canonical authority -> identity -> intent lock order.
+            -- The initial intent lookup is advisory and is revalidated after
+            -- acquiring the authority and identity locks.
             SELECT intent.native_identity_id
               INTO v_native_identity_id
               FROM request_engine.native_recovery_intents AS intent
@@ -289,6 +295,18 @@ def upgrade() -> None:
                AND intent.token_digest = p_token_digest
                AND intent.status = 'pending'
                AND intent.expires_at > clock_timestamp();
+            IF NOT FOUND THEN
+                RETURN NULL;
+            END IF;
+
+            PERFORM 1
+              FROM request_engine.identity_authorities AS authority
+              JOIN request_engine.native_identities AS native_identity
+                ON native_identity.identity_authority_id = authority.id
+             WHERE native_identity.id = v_native_identity_id
+               AND authority.kind = 'native'
+               AND authority.status = 'active'
+             FOR SHARE OF authority;
             IF NOT FOUND THEN
                 RETURN NULL;
             END IF;
@@ -354,6 +372,52 @@ def upgrade() -> None:
                AND id <> p_recovery_id
                AND status = 'pending';
 
+            -- Preserve governed recovery linkage from migration 0045. A proof
+            -- issued from a recovery case must consume that case atomically.
+            UPDATE request_engine.identity_recovery_cases
+               SET status = 'consumed',
+                   consumed_at = clock_timestamp(),
+                   revision = revision + 1,
+                   updated_at = clock_timestamp()
+             WHERE recovery_intent_id = p_recovery_id
+               AND status = 'issued'
+            RETURNING id, revision - 1, revision
+                 INTO v_case_id, v_case_revision_before, v_case_revision_after;
+            IF FOUND THEN
+                INSERT INTO request_engine.platform_identity_recovery_facts (
+                    id,
+                    case_id,
+                    action,
+                    actor_principal_id,
+                    actor_authentication_method,
+                    reason_code,
+                    external_case_reference,
+                    revision_before,
+                    revision_after,
+                    correlation_id,
+                    capability_key,
+                    idempotency_key_digest,
+                    intent_digest
+                ) VALUES (
+                    uuidv7(),
+                    v_case_id,
+                    'consume',
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    v_case_revision_before,
+                    v_case_revision_after,
+                    NULL,
+                    'platform.identity.recovery_consume',
+                    NULL,
+                    NULL
+                );
+            END IF;
+
+            -- New P6 posture is additive to the established consumption
+            -- semantics: every successful recovery enters a restricted state
+            -- until a strong authenticator explicitly completes recovery.
             INSERT INTO request_engine.native_identity_recovery_state (
                 native_identity_id,
                 state,
