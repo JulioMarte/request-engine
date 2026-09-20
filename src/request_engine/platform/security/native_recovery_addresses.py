@@ -13,6 +13,7 @@ from request_engine.platform.secrets.delivery import (
     RecoveryDeliveryRetryable,
 )
 from request_engine.platform.security.native_auth import (
+    digest_opaque_secret,
     issue_opaque_token,
     normalize_login_handle,
     parse_opaque_token,
@@ -178,7 +179,7 @@ class NativeRecoveryAddressService:
             raise NativeRecoveryAddressInvalid("recovery-address proof is invalid") from exc
         identity_id = await self._store.verify(
             verification_id=parsed.token_id,
-            token_digest=parsed.digest,
+            token_digest=digest_opaque_secret(parsed.secret),
         )
         if identity_id is None:
             raise NativeRecoveryAddressInvalid("recovery-address proof is invalid")
