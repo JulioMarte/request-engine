@@ -8,6 +8,9 @@ from request_engine.bootstrap.communication_providers import (
     build_communication_delivery_providers,
     build_communication_provider_event_handlers,
 )
+from request_engine.bootstrap.native_recovery_delivery_worker import (
+    build_native_recovery_delivery_worker,
+)
 from request_engine.bootstrap.recovery_delivery import build_recovery_secret_delivery
 from request_engine.bootstrap.recovery_delivery_worker import build_recovery_delivery_worker
 from request_engine.bootstrap.worker import build_worker_process
@@ -103,6 +106,11 @@ def create_worker() -> WorkerProcess:
     identity_recovery_delivery = (
         build_recovery_delivery_worker(worker_sessions, delivery) if delivery is not None else None
     )
+    native_recovery_delivery = (
+        build_native_recovery_delivery_worker(worker_sessions, delivery)
+        if delivery is not None
+        else None
+    )
     return build_worker_process(
         worker_session_factory=worker_sessions,
         domain_session_factory=domain_sessions,
@@ -133,4 +141,5 @@ def create_worker() -> WorkerProcess:
             ),
         ),
         identity_recovery_delivery=identity_recovery_delivery,
+        native_recovery_delivery=native_recovery_delivery,
     )
