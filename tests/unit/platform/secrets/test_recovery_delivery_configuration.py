@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import SecretStr
 
 from request_engine.bootstrap.recovery_delivery import (
     RecoveryDeliverySettings,
@@ -86,12 +87,12 @@ def test_native_recovery_messenger_supports_smtp_without_authentication() -> Non
     ("username", "password"),
     [
         ("recovery@example.test", None),
-        (None, "smtp-password"),
+        (None, SecretStr("smtp-password")),
     ],
 )
 def test_native_recovery_messenger_rejects_partial_smtp_authentication(
     username: str | None,
-    password: str | None,
+    password: SecretStr | None,
 ) -> None:
     with pytest.raises(RuntimeError, match="requires both"):
         build_native_recovery_messenger(
