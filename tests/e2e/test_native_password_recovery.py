@@ -18,7 +18,6 @@ from .conftest import PgConnection
 
 pytestmark = [pytest.mark.e2e, pytest.mark.postgres, pytest.mark.security]
 
-
 @pytest.mark.asyncio
 async def test_recovery_http_consumes_once_revokes_old_sessions_and_preserves_authority(
     e2e_admin_conn: PgConnection,
