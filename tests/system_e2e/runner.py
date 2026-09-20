@@ -585,6 +585,53 @@ def _native_identity(
     return _required_string(response, "native_identity_id", "governed native enrollment response")
 
 
+def _strong_native_session(
+    control_url: str,
+    login_handle: str,
+    password: str,
+) -> str:
+    """Create a password session, enroll a fresh passkey and step it up.
+
+    F01 uses this for bounded HUMAN platform actors so an authorization-denial
+    proof is not accidentally short-circuited by the stronger authentication
+    requirement shared by recovery mutations.
+    """
+
+    token = _native_session(control_url, login_handle, password)
+    options = _http_json(
+        "POST",
+        f"{control_url}/auth/native/sessions/current/webauthn/registration-options",
+        bearer=token,
+    )
+    public_key_value = options.get("public_key")
+    if not isinstance(public_key_value, dict):
+        raise RuntimeError("WebAuthn registration options are missing public_key")
+    public_key = cast(dict[str, object], public_key_value)
+    rp_value = public_key.get("rp")
+    if not isinstance(rp_value, dict):
+        raise RuntimeError("WebAuthn registration options are missing rp")
+    rp_id = _required_string(cast(dict[str, object], rp_value), "id", "WebAuthn registration rp")
+    challenge = _required_string(public_key, "challenge", "WebAuthn registration challenge")
+    authenticator = SoftwareAuthenticator(rp_id=rp_id, origin=f"https://{rp_id}")
+    credential = authenticator.registration_credential(
+        challenge=websafe_decode(challenge),
+        user_verified=True,
+    )
+    _http_json(
+        "POST",
+        f"{control_url}/auth/native/sessions/current/webauthn/registrations",
+        bearer=token,
+        payload={"credential": credential},
+        expected_statuses=(201,),
+    )
+    stepped = _step_up_native_session(control_url, token, authenticator)
+    if stepped.get("authentication_assurance") != "phishing_resistant":
+        raise RuntimeError("bounded platform actor did not reach phishing-resistant assurance")
+    if stepped.get("user_verified") is not True:
+        raise RuntimeError("bounded platform actor WebAuthn step-up lacks user verification")
+    return token
+
+
 def _webauthn_platform_session(
     control_url: str, login_handle: str, authenticator: SoftwareAuthenticator
 ) -> tuple[str, dict[str, object]]:
@@ -1325,7 +1372,11 @@ def _exercise_recovery_governance(
     ):
         raise RuntimeError("a requester was allowed to approve their own recovery case")
 
-    provisioner_token = _native_session(control_url, provisioner_login, provisioner_password)
+    provisioner_token = _strong_native_session(
+        control_url,
+        provisioner_login,
+        provisioner_password,
+    )
     unauthorized = _http_json(
         "POST",
         f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
@@ -1340,7 +1391,11 @@ def _exercise_recovery_governance(
     ):
         raise RuntimeError("a principal without recovery authority approved a case")
 
-    recovery_token = _native_session(control_url, recovery_login, recovery_password)
+    recovery_token = _strong_native_session(
+        control_url,
+        recovery_login,
+        recovery_password,
+    )
     _http_request(
         "POST",
         f"{control_url}/v1/platform/organizations",
