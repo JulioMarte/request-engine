@@ -237,3 +237,8 @@ current guarantee/evidence disposition where affected
 ```
 
 and exact-head proof.
+
+
+## P7 platform_configuration boundary
+
+`platform_configuration` is a business module for governed installation-wide operational configuration. It may publish typed contracts for configuration lifecycle, provider validation/test orchestration, secret-binding metadata and readiness. Secret-store transport remains in `platform/secrets`; identity authority remains in `tenancy`; process composition remains in `bootstrap`/`entrypoints`. The module must not become a generic settings bag or import other business modules merely to centralize configuration.
