@@ -693,7 +693,10 @@ def create_native_auth_router(
             ),
             responses={
                 401: {"model": ErrorEnvelope, "description": "Session is invalid"},
-                403: {"model": ErrorEnvelope, "description": "Strong recovery completion proof required"},
+                403: {
+                    "model": ErrorEnvelope,
+                    "description": "Strong recovery completion proof required",
+                },
             },
         )
         router.add_api_route(
