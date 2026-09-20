@@ -461,6 +461,20 @@ required_evidence = ["invariant", "adversarial", "contract"]
 risk = ["security", "availability"]
 
 [[guarantees]]
+id = "INV-NATIVE-RECOVERY-POSTURE-001"
+statement = "Every successful Native HUMAN password-recovery path enters a persisted recovery_restricted posture without changing standing grants, bindings or memberships; request-local effective authority removes all AUTHORITY_CHANGE capabilities while restricted, recent/phishing-resistant privileged guards fail closed, and only a fresh accepted strong-factor proof can complete recovery and restore normal posture."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-VERIFIED-RECOVERY-ADDRESS-001"
+statement = "A Native HUMAN may add or revoke a recovery email only from its own authenticated session, creation/revocation requires recent phishing-resistant proof, verification and recovery tokens are one-time and stored only as digests/fingerprints, a verified address is required before public password recovery can dispatch, public recovery requests return the same empty 202 result for known, unknown, throttled or unavailable-delivery cases, and the database suppresses repeated dispatch for the same identity/address within one minute."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security", "availability"]
+
+[[guarantees]]
 id = "INV-PLATFORM-SECRET-STORE-001"
 statement = "Reversible platform secret material is accessed through the provider-neutral PlatformSecretStore boundary; the OpenBao reference adapter derives backend paths from opaque UUIDs, creates/rotates with KV-v2 CAS rather than blind overwrite, exposes plaintext only through the trusted runtime resolve operation, supports tokenless OpenBao-Agent proxy mode, and never includes plaintext or authentication tokens in raised backend errors."
 severity = "high"
