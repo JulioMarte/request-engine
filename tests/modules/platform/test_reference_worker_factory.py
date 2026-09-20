@@ -138,12 +138,12 @@ def test_reference_factory_composes_both_recovery_delivery_streams(
     monkeypatch.setattr(
         reference_worker_factory,
         "build_recovery_delivery_worker",
-        lambda factory, configured_delivery: identity_runtime,
+        lambda factory, configured_delivery: identity_runtime,  # type: ignore[reportUnknownLambdaType]
     )
     monkeypatch.setattr(
         reference_worker_factory,
         "build_native_recovery_delivery_worker",
-        lambda factory, configured_delivery: native_runtime,
+        lambda factory, configured_delivery: native_runtime,  # type: ignore[reportUnknownLambdaType]
     )
 
     def capture_worker_process(**kwargs: Any) -> object:
