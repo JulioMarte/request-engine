@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.recovery_codes import (
+    NativeRecoveryReadiness,
     RecoveryCodeConsumed,
     RecoveryCodeSetSummary,
 )
@@ -97,6 +98,48 @@ class PostgresRecoveryCodeStore:
             return None
         return UUID(str(value))
 
+    async def readiness(self, *, native_identity_id: UUID) -> NativeRecoveryReadiness | None:
+        async with self._session_factory() as session, session.begin():
+            row = (
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT recovery_state, recovery_epoch, last_recovered_at,
+                                   last_recovery_method, completed_at, active_code_set,
+                                   remaining_codes, active_webauthn_credentials
+                              FROM request_auth.read_native_recovery_readiness(
+                                  :native_identity_id
+                              )
+                            """
+                        ),
+                        {"native_identity_id": native_identity_id},
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            return None
+        return NativeRecoveryReadiness(
+            recovery_state=str(row["recovery_state"]),
+            recovery_epoch=int(row["recovery_epoch"]),
+            last_recovered_at=_datetime_or_none(row["last_recovered_at"]),
+            last_recovery_method=(
+                None if row["last_recovery_method"] is None else str(row["last_recovery_method"])
+            ),
+            completed_at=_datetime_or_none(row["completed_at"]),
+            active_code_set=bool(row["active_code_set"]),
+            remaining_codes=int(row["remaining_codes"]),
+            active_webauthn_credentials=int(row["active_webauthn_credentials"]),
+        )
+
+    async def complete_recovery(self, *, native_identity_id: UUID) -> bool:
+        return await self._call_boolean(
+            "SELECT request_auth.complete_native_recovery(:native_identity_id)",
+            {"native_identity_id": native_identity_id},
+        )
+
     async def promote(self, *, set_id: UUID, native_identity_id: UUID) -> bool:
         return await self._call_boolean(
             "SELECT request_auth.promote_recovery_code_set(:set_id, :native_identity_id)",
@@ -149,3 +192,11 @@ def _summary(row: Mapping[str, Any]) -> RecoveryCodeSetSummary:
         total_codes=int(row["total_codes"]),
         remaining_codes=int(row["remaining_codes"]),
     )
+
+
+def _datetime_or_none(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, datetime):
+        raise RuntimeError("native recovery timestamp could not be materialized")
+    return value
