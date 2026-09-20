@@ -140,7 +140,7 @@ def install_native_identity_management_http(
         body: NativeIdentityProvisionBody,
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> NativeIdentityProvisionView:
-        require_platform_capability(actor, "platform.principal.provision")
+        require_platform_capability(actor, "platform.identity.provision")
         try:
             enrolled = await native_auth_service.enroll_password_identity(
                 identity_authority_id=native_authority_id,
@@ -210,7 +210,7 @@ def install_native_identity_management_http(
         router,
         "/v1/platform/native-identities",
         provision_identity,
-        capability="platform.principal.provision",
+        capability="platform.identity.provision",
         methods=["POST"],
         operation_id="platform_native_identity_provision",
         owner="tenancy",

@@ -46,6 +46,7 @@ def upgrade() -> None:
                 {"capability_key": "organization.provision", "delegable": true},
                 {"capability_key": "platform.identity.recover", "delegable": false},
                 {"capability_key": "platform.identity.read", "delegable": false},
+                {"capability_key": "platform.identity.provision", "delegable": false},
                 {"capability_key": "platform.identity.recovery_approve", "delegable": false},
                 {"capability_key": "platform.provisioner.read", "delegable": false},
                 {"capability_key": "platform.provisioner.manage_lifecycle", "delegable": false},
@@ -121,7 +122,8 @@ def upgrade() -> None:
                   FROM (
                       VALUES ('platform.owner.read'),
                              ('platform.owner.provision'),
-                             ('platform.owner.manage_lifecycle')
+                             ('platform.owner.manage_lifecycle'),
+                             ('platform.identity.provision')
                   ) AS capability(capability_key)
                  WHERE NOT EXISTS (
                      SELECT 1
@@ -800,7 +802,8 @@ def upgrade() -> None:
           CROSS JOIN (
               VALUES ('platform.owner.read'),
                      ('platform.owner.provision'),
-                     ('platform.owner.manage_lifecycle')
+                     ('platform.owner.manage_lifecycle'),
+                     ('platform.identity.provision')
           ) AS capability(capability_key)
          WHERE controller.principal_plane = 'platform'
            AND controller.principal_kind = 'human'

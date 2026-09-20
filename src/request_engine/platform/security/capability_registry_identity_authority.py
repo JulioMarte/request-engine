@@ -145,6 +145,14 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
     command_capability(
+        "platform.identity.provision",
+        CapabilityExposure.OPERATOR,
+        "Create a native HUMAN identity for later governed platform or tenant provisioning.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.SERVER_SELECTED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
+    command_capability(
         "platform.identity.disable",
         CapabilityExposure.OPERATOR,
         "Terminally disable a native identity across every tenant and platform binding.",
