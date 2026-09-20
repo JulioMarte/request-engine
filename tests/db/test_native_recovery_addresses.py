@@ -128,25 +128,22 @@ async def test_verified_address_proofs_are_digest_only_one_time_and_throttled(
         identity_authority_id=authority_id,
         login_handle=handle,
     )
-    assert len(messenger.recoveries) == 1
+    assert messenger.recoveries == []
 
-    recovery_secret, recovery_destination = messenger.recoveries[0]
-    assert recovery_destination == destination.casefold()
-    intent = admin_conn.execute(
+    requests = admin_conn.execute(
         """
-        SELECT token_digest, token_fingerprint, status
-          FROM request_engine.native_recovery_intents
+        SELECT status, recovery_intent_id, secret_reference, destination_reference
+          FROM request_engine.native_recovery_delivery_requests
          WHERE native_identity_id = %s
-         ORDER BY created_at DESC
-         LIMIT 1
         """,
         (identity_id,),
-    ).fetchone()
-    assert intent is not None
-    assert len(bytes(intent[0])) == 32
-    assert recovery_secret.encode("utf-8") != bytes(intent[0])
-    assert len(str(intent[1])) == 16
-    assert intent[2] == "pending"
+    ).fetchall()
+    assert requests == [("pending", None, None, destination.casefold())]
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.native_recovery_intents "
+        "WHERE native_identity_id = %s",
+        (identity_id,),
+    ).fetchone() == (0,)
     assert admin_conn.execute(
         """
         SELECT count(*)
@@ -165,6 +162,8 @@ def test_recovery_address_tables_are_private_and_facts_append_only(
         "request_engine.native_recovery_addresses",
         "request_engine.native_recovery_address_verifications",
         "request_engine.native_recovery_address_facts",
+        "request_engine.native_recovery_delivery_requests",
+        "request_engine.native_recovery_delivery_facts",
     ):
         assert admin_conn.execute(
             "SELECT has_table_privilege('request_engine_app', %s, 'SELECT')",
@@ -213,7 +212,7 @@ _RECOVERY_ADDRESS_FUNCTIONS = (
     "verify_native_recovery_address(uuid,bytea)",
     "read_native_recovery_addresses(uuid)",
     "revoke_native_recovery_address(uuid,uuid)",
-    "create_native_recovery_intent_for_verified_address(uuid,text,uuid,bytea,text,timestamptz)",
+    "queue_native_verified_recovery(uuid,text,uuid)",
 )
 
 
@@ -241,3 +240,52 @@ def test_recovery_address_functions_are_least_privilege(
         assert row[2] == ["search_path=pg_catalog, request_engine"], signature
         assert row[3] is True, signature
         assert row[4] is False, signature
+
+
+_WORKER_RECOVERY_FUNCTIONS = (
+    "claim_native_recovery_delivery_requests(integer,integer)",
+    "activate_native_recovery_delivery_request(uuid,uuid,integer,uuid,bytea,text,timestamptz,text,text)",
+    "complete_native_recovery_delivery_request(uuid,uuid,text,text)",
+    "retry_native_recovery_delivery_request(uuid,uuid,integer,text)",
+    "renew_native_recovery_delivery_request_lease(uuid,uuid,integer)",
+)
+
+
+def test_native_recovery_delivery_worker_surface_is_narrow(
+    admin_conn: PgConnection,
+) -> None:
+    for signature in _WORKER_RECOVERY_FUNCTIONS:
+        row = admin_conn.execute(
+            """
+            SELECT pg_get_userbyid(p.proowner), p.prosecdef, p.proconfig,
+                   has_function_privilege('request_engine_worker', p.oid, 'EXECUTE'),
+                   has_function_privilege('request_engine_app', p.oid, 'EXECUTE'),
+                   EXISTS (
+                       SELECT 1
+                         FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner)))
+                        WHERE grantee = 0
+                          AND privilege_type = 'EXECUTE'
+                   )
+              FROM pg_proc AS p
+             WHERE p.oid = to_regprocedure(%s)
+            """,
+            (f"request_auth.{signature}",),
+        ).fetchone()
+        assert row is not None, signature
+        assert row[0:2] == ("request_engine_schema_owner", True), signature
+        assert row[2] == ["search_path=pg_catalog, request_engine"], signature
+        assert row[3] is True, signature
+        assert row[4] is False, signature
+        assert row[5] is False, signature
+
+    legacy = admin_conn.execute(
+        """
+        SELECT has_function_privilege('request_engine_app', p.oid, 'EXECUTE')
+          FROM pg_proc AS p
+         WHERE p.oid = to_regprocedure(
+             'request_auth.create_native_recovery_intent_for_verified_address('
+             'uuid,text,uuid,bytea,text,timestamptz)'
+         )
+        """
+    ).fetchone()
+    assert legacy == (False,)
