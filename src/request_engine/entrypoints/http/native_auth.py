@@ -364,9 +364,7 @@ def create_native_auth_router(
             raise RuntimeError("recovery-code lifecycle is not composed")
         raw_token = bearer_token(request)
         subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
-        readiness = await recovery_codes.readiness(
-            native_identity_id=UUID(subject.subject_id)
-        )
+        readiness = await recovery_codes.readiness(native_identity_id=UUID(subject.subject_id))
         _prevent_secret_caching(response)
         return NativeRecoveryReadinessView(
             recovery_state=readiness.recovery_state,
