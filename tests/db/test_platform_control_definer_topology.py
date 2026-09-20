@@ -462,6 +462,12 @@ _EXPECTED_COLUMNS = {
     ("platform_owner_invitations", "enrolled_at", "UPDATE"),
     ("platform_owner_invitations", "consumed_at", "UPDATE"),
     ("platform_owner_invitations", "revoked_at", "UPDATE"),
+    # 0074 revocation replay reads only the exact immutable fact columns it needs.
+    ("platform_owner_invitation_facts", "actor_principal_id", "SELECT"),
+    ("platform_owner_invitation_facts", "action", "SELECT"),
+    ("platform_owner_invitation_facts", "idempotency_key_digest", "SELECT"),
+    ("platform_owner_invitation_facts", "intent_digest", "SELECT"),
+    ("platform_owner_invitation_facts", "revision_after", "SELECT"),
     ("platform_owner_invitation_facts", "invitation_id", "INSERT"),
     ("platform_owner_invitation_facts", "action", "INSERT"),
     ("platform_owner_invitation_facts", "actor_principal_id", "INSERT"),
