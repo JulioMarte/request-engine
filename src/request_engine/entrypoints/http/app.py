@@ -271,9 +271,7 @@ def create_native_app(
     )
     if (webauthn_policy is None) != (webauthn_decoy_key is None):
         raise ValueError("WebAuthn policy and deployment decoy key must be configured together")
-    webauthn_store = (
-        None if webauthn_policy is None else PostgresWebAuthnStore(session_factory)
-    )
+    webauthn_store = None if webauthn_policy is None else PostgresWebAuthnStore(session_factory)
     webauthn_auth = (
         None
         if webauthn_store is None or webauthn_policy is None
