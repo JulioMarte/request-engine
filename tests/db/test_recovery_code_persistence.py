@@ -151,12 +151,14 @@ async def test_offline_code_atomically_resets_password_and_revokes_sessions(
         "ORDER BY created_at DESC LIMIT 1",
         (enrollment.native_identity_id,),
     ).fetchone() == ("platform.recovery_codes.password_reset",)
-    assert admin_conn.execute(
+    recovery_state = admin_conn.execute(
         "SELECT state, recovery_epoch, last_recovery_method, completed_at "
         "FROM request_engine.native_identity_recovery_state "
         "WHERE native_identity_id = %s",
         (enrollment.native_identity_id,),
-    ).fetchone()[:3] == (
+    ).fetchone()
+    assert recovery_state is not None
+    assert recovery_state[:3] == (
         "recovery_restricted",
         1,
         "offline_recovery_code",
