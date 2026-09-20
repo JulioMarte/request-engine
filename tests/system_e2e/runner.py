@@ -1848,11 +1848,19 @@ def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> Non
     target_identity_id = _required_string(
         foundation, "tenant_native_identity_id", "F01 foundation state"
     )
-    platform_token = _native_session(control_url, platform_login, platform_password)
+    platform_token = _strong_native_session(
+        control_url,
+        platform_login,
+        platform_password,
+    )
 
     recovery_login = "f01-recovery-operator@example.invalid"
     recovery_password = _derived_password(platform_password, "f01-recovery-operator")
-    recovery_operator_token = _native_session(control_url, recovery_login, recovery_password)
+    recovery_operator_token = _strong_native_session(
+        control_url,
+        recovery_login,
+        recovery_password,
+    )
 
     destination = "e2e-runner@example.invalid"
     case = _http_json(
