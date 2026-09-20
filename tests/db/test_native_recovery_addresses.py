@@ -140,8 +140,7 @@ async def test_verified_address_proofs_are_digest_only_one_time_and_throttled(
     ).fetchall()
     assert requests == [("pending", None, None, destination.casefold())]
     assert admin_conn.execute(
-        "SELECT count(*) FROM request_engine.native_recovery_intents "
-        "WHERE native_identity_id = %s",
+        "SELECT count(*) FROM request_engine.native_recovery_intents WHERE native_identity_id = %s",
         (identity_id,),
     ).fetchone() == (0,)
     assert admin_conn.execute(
