@@ -574,6 +574,13 @@ async def test_governed_identity_recovery_http_journey_issues_delivers_and_consu
             json={"login_handle": target.login_handle, "password": new_password},
         )
         assert new_login.status_code == 201, new_login.text
+        recovered_headers = {"Authorization": f"Bearer {new_login.json()['access_token']}"}
+        recovered_session = await client.get(
+            "/auth/native/sessions/current",
+            headers=recovered_headers,
+        )
+        assert recovered_session.status_code == 200, recovered_session.text
+        assert recovered_session.json()["recovery_restricted"] is True
 
         assert e2e_admin_conn.execute(
             "SELECT status, count(*) FROM request_engine.native_credentials "
@@ -582,6 +589,11 @@ async def test_governed_identity_recovery_http_journey_issues_delivers_and_consu
         ).fetchall() == [("active", 1), ("revoked", 1)]
 
     assert _case_state(e2e_admin_conn, case_id) == ("consumed", "delivered", 6, 1, intent_id)
+    assert e2e_admin_conn.execute(
+        "SELECT state, last_recovery_method FROM request_engine.native_identity_recovery_state "
+        "WHERE native_identity_id = %s",
+        (target.identity_id,),
+    ).fetchone() == ("recovery_restricted", "delivered_recovery_proof")
     assert e2e_admin_conn.execute(
         "SELECT status FROM request_engine.native_recovery_intents WHERE id = %s",
         (intent_id,),
