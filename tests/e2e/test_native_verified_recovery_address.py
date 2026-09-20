@@ -1,5 +1,7 @@
 """Universal Native HUMAN verified-address recovery over real HTTP/PostgreSQL."""
 
+import hashlib
+from datetime import datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -7,10 +9,17 @@ from fido2.utils import websafe_decode
 from httpx import ASGITransport, AsyncClient
 from software_webauthn_authenticator import SoftwareAuthenticator
 
+from request_engine.bootstrap.native_recovery_delivery_worker import (
+    build_native_recovery_delivery_worker,
+)
 from request_engine.entrypoints.http.app import create_native_app
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.secrets.delivery import DeliveryOutcome
+from request_engine.platform.secrets.delivery import (
+    DeliveryOutcome,
+    StagedRecoverySecret,
+)
 from request_engine.platform.security.webauthn import WebAuthnPolicy
+from request_engine.platform.worker.runtime import WorkerItemState
 
 from .conftest import PgConnection
 
@@ -43,6 +52,61 @@ class RecordingRecoveryMessenger:
         del idempotency_key
         self.recoveries.append((secret, destination_reference))
         return DeliveryOutcome.DELIVERED
+
+
+class MemoryRecoverySecretDelivery:
+    def __init__(self) -> None:
+        self.secrets: dict[str, tuple[str, datetime]] = {}
+        self.published: list[tuple[str, str, str]] = []
+
+    async def stage(
+        self,
+        *,
+        case_id: UUID,
+        generation: int,
+        secret: str,
+        expires_at: datetime,
+    ) -> StagedRecoverySecret:
+        reference = f"memory://native-recovery/{case_id}/{generation}"
+        existing = self.secrets.get(reference)
+        if existing is not None:
+            retained, retained_expiry = existing
+            return StagedRecoverySecret(
+                reference=reference,
+                digest=hashlib.sha256(retained.encode()).hexdigest(),
+                expires_at=retained_expiry,
+                created=False,
+            )
+        self.secrets[reference] = (secret, expires_at)
+        return StagedRecoverySecret(
+            reference=reference,
+            digest=hashlib.sha256(secret.encode()).hexdigest(),
+            expires_at=expires_at,
+            created=True,
+        )
+
+    async def discard(self, *, case_id: UUID, generation: int) -> None:
+        self.secrets.pop(f"memory://native-recovery/{case_id}/{generation}", None)
+
+    async def publish(
+        self,
+        *,
+        reference: str,
+        destination_reference: str,
+        idempotency_key: str,
+    ) -> DeliveryOutcome:
+        secret, _ = self.secrets[reference]
+        self.published.append((secret, destination_reference, idempotency_key))
+        return DeliveryOutcome.DELIVERED
+
+    async def reconcile(
+        self,
+        *,
+        reference: str,
+        idempotency_key: str,
+    ) -> DeliveryOutcome | None:
+        del reference, idempotency_key
+        return None
 
 
 async def _strong_session(
@@ -105,6 +169,7 @@ async def _strong_session(
 async def test_verified_recovery_address_is_self_service_anti_enumerating_and_restricted(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
+    e2e_worker_session_factory: SessionFactory,
 ) -> None:
     authority_id = uuid4()
     e2e_admin_conn.execute(
@@ -205,10 +270,41 @@ async def test_verified_recovery_address_is_self_service_anti_enumerating_and_re
         )
         assert requested.status_code == unknown.status_code == throttled.status_code == 202
         assert requested.content == unknown.content == throttled.content == b""
-        assert len(messenger.recoveries) == 1
+        assert messenger.recoveries == []
 
-        recovery_secret, recovery_destination = messenger.recoveries[0]
+        queued = e2e_admin_conn.execute(
+            """
+            SELECT status, recovery_intent_id, secret_reference
+              FROM request_engine.native_recovery_delivery_requests
+             WHERE native_identity_id = %s
+            """,
+            (identity_id,),
+        ).fetchall()
+        assert queued == [("pending", None, None)]
+
+        delivery = MemoryRecoverySecretDelivery()
+        worker = build_native_recovery_delivery_worker(
+            e2e_worker_session_factory,
+            delivery,
+        )
+        outcomes = await worker.run_once()
+        assert len(outcomes) == 1
+        assert outcomes[0].state is WorkerItemState.COMPLETED
+        assert len(delivery.published) == 1
+        recovery_secret, recovery_destination, idempotency_key = delivery.published[0]
         assert recovery_destination == recovery_email
+        assert idempotency_key.startswith("native-recovery:")
+
+        delivered = e2e_admin_conn.execute(
+            """
+            SELECT status, recovery_intent_id IS NOT NULL, secret_reference IS NOT NULL
+              FROM request_engine.native_recovery_delivery_requests
+             WHERE native_identity_id = %s
+            """,
+            (identity_id,),
+        ).fetchone()
+        assert delivered == ("delivered", True, True)
+
         recovered = await client.post(
             "/auth/native/password:recover",
             json={"recovery_token": recovery_secret, "new_password": new_password},
