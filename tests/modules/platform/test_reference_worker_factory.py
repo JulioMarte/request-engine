@@ -118,3 +118,41 @@ def test_reference_factory_composes_reservation_lifecycle_handlers(
     assert set(adapter_factories) == set(adapter_names)
     assert set(adapter_factories.values()) == {domain_factories[0]}
     assert domain_factories[0] is not worker_factories[0]
+
+
+@pytest.mark.unit
+def test_reference_factory_composes_both_recovery_delivery_streams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_reference_environment(monkeypatch)
+    delivery = object()
+    identity_runtime = object()
+    native_runtime = object()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        reference_worker_factory,
+        "build_recovery_secret_delivery",
+        lambda: delivery,
+    )
+    monkeypatch.setattr(
+        reference_worker_factory,
+        "build_recovery_delivery_worker",
+        lambda factory, configured_delivery: identity_runtime,
+    )
+    monkeypatch.setattr(
+        reference_worker_factory,
+        "build_native_recovery_delivery_worker",
+        lambda factory, configured_delivery: native_runtime,
+    )
+
+    def capture_worker_process(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(reference_worker_factory, "build_worker_process", capture_worker_process)
+
+    reference_worker_factory.create_worker()
+
+    assert captured["identity_recovery_delivery"] is identity_runtime
+    assert captured["native_recovery_delivery"] is native_runtime
