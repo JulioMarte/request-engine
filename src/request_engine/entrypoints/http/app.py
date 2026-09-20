@@ -26,6 +26,7 @@ from request_engine.platform.db.agent_policy_reader import PostgresAgentPolicyRe
 from request_engine.platform.db.delegation_reader import PostgresDelegationReader
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
 from request_engine.platform.security.acting_operator import (
     ActingOperatorActorResolver,
     OperatorActorResolver,
@@ -45,6 +46,8 @@ from request_engine.platform.security.http import (
 )
 from request_engine.platform.security.native_human_auth import NativeHumanAuthService
 from request_engine.platform.security.native_session import NativeSessionAuthenticator
+from request_engine.platform.security.native_webauthn_auth import NativeWebAuthnAuthService
+from request_engine.platform.security.native_webauthn_login import NativeWebAuthnLoginService
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
 from request_engine.platform.security.oidc_link import OidcLinkVerifier
 from request_engine.platform.security.recovery_codes import NativeRecoveryCodeService
@@ -52,6 +55,7 @@ from request_engine.platform.security.subject_http import (
     HttpSubjectResolver,
     ProviderNeutralHttpActorResolver,
 )
+from request_engine.platform.security.webauthn import WebAuthnPolicy
 
 _APPOINTMENT_OPTION_SIGNING_KEY_ENV = "REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY"
 _IDENTITY_EXCHANGE_KEY_ENV = "REQUEST_ENGINE_IDENTITY_EXCHANGE_KEY"
@@ -85,6 +89,8 @@ def create_app(
     native_session_authenticator: NativeSessionAuthenticator | None = None,
     native_identity_authority_id: UUID | None = None,
     native_recovery_codes: NativeRecoveryCodeService | None = None,
+    native_webauthn_login: NativeWebAuthnLoginService | None = None,
+    native_webauthn_auth: NativeWebAuthnAuthService | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
 ) -> FastAPI:
     """Compose the full single-app HTTP surface (business + operational configuration).
@@ -159,6 +165,8 @@ def create_app(
                 service=native_auth_service,
                 authenticator=native_session_authenticator,
                 identity_authority_id=native_identity_authority_id,
+                webauthn_login=native_webauthn_login,
+                webauthn_auth=native_webauthn_auth,
                 recovery_codes=native_recovery_codes,
             )
         )
@@ -203,6 +211,24 @@ def create_authenticated_app(
         subject_resolver=subject_resolver,
         principal_resolver=build_identity_principal_resolver(session_factory),
     )
+    webauthn_store = PostgresWebAuthnStore(session_factory) if webauthn_policy is not None else None
+    if webauthn_policy is not None and webauthn_decoy_key is None:
+        raise ValueError("WebAuthn login requires an explicit deployment decoy key")
+    webauthn_auth = (
+        None
+        if webauthn_store is None
+        else NativeWebAuthnAuthService(policy=webauthn_policy, store=webauthn_store)
+    )
+    webauthn_login = (
+        None
+        if webauthn_auth is None
+        else NativeWebAuthnLoginService(
+            webauthn=webauthn_auth,
+            identities=webauthn_store,
+            decoy_key=webauthn_decoy_key,
+        )
+    )
+
     return create_app(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
@@ -227,6 +253,8 @@ def create_native_app(
     operator_capability_source: OperatorCapabilitySource | None = None,
     oidc_subject_resolver: OidcHttpSubjectResolver | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
+    webauthn_policy: WebAuthnPolicy | None = None,
+    webauthn_decoy_key: bytes | None = None,
 ) -> FastAPI:
     """Compose a providerless deployment whose protected routes trust Native evidence.
 
@@ -271,5 +299,7 @@ def create_native_app(
         native_recovery_codes=NativeRecoveryCodeService(
             store=PostgresRecoveryCodeStore(session_factory)
         ),
+        native_webauthn_login=webauthn_login,
+        native_webauthn_auth=webauthn_auth,
         identity_link_verifier=identity_link_verifier,
     )
