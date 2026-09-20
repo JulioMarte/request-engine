@@ -24,12 +24,19 @@ from request_engine.modules.tenancy.api.platform_provisioner_management import (
     install_native_platform_provisioner_management_http,
 )
 from request_engine.platform.db.instance_setup_store import PostgresInstanceSetupStore
+from request_engine.platform.db.native_recovery_address_store import (
+    PostgresNativeRecoveryAddressStore,
+)
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
 from request_engine.platform.security.instance_setup import InstanceSetupService
 from request_engine.platform.security.native_webauthn_auth import NativeWebAuthnAuthService
+from request_engine.platform.security.native_recovery_addresses import (
+    NativeRecoveryAddressService,
+    NativeRecoveryMessenger,
+)
 from request_engine.platform.security.native_webauthn_login import NativeWebAuthnLoginService
 from request_engine.platform.security.recovery_codes import NativeRecoveryCodeService
 from request_engine.platform.security.webauthn import WebAuthnPolicy
@@ -48,6 +55,7 @@ def create_platform_control_app(
     platform_write_session_factory: SessionFactory,
     native_authority_id: UUID,
     recovery_delivery: RecoverySecretDelivery | None = None,
+    native_recovery_messenger: NativeRecoveryMessenger | None = None,
     webauthn_policy: WebAuthnPolicy | None = None,
     webauthn_decoy_key: bytes | None = None,
 ) -> FastAPI:
@@ -93,6 +101,10 @@ def create_platform_control_app(
             webauthn_login=webauthn_login,
             webauthn_auth=webauthn_auth,
             recovery_codes=recovery_codes,
+            recovery_addresses=NativeRecoveryAddressService(
+                store=PostgresNativeRecoveryAddressStore(auth_session_factory),
+                messenger=native_recovery_messenger,
+            ),
             allow_identity_enrollment=False,
         )
     )
