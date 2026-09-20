@@ -24,6 +24,9 @@ from request_engine.modules.tenancy.api import build_principal_authority_reader
 from request_engine.platform.db.agent_budget_enforcer import PostgresAgentBudgetEnforcer
 from request_engine.platform.db.agent_policy_reader import PostgresAgentPolicyReader
 from request_engine.platform.db.delegation_reader import PostgresDelegationReader
+from request_engine.platform.db.native_recovery_address_store import (
+    PostgresNativeRecoveryAddressStore,
+)
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
