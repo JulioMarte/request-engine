@@ -1,22 +1,20 @@
-"""Align Platform Owner database authority proof with canonical capability grants.
+"""Align Platform Owner authority proof and invitation replay privileges.
 
 Revision ID: 0074_owner_actor_auth
 Revises: 0073_platform_owner_compat
 
-The HTTP/application boundary already resolves a PlatformActorContext from active
-canonical grants and checks the requested capability. 0073 added a second SQL
-assertion for invitation/lifecycle writers, but that assertion additionally
-required the grant row's denormalized plane columns to equal ``platform``. The
-older invitation-create writer does not add that extra predicate. This made two
-operations protected by the same ``platform.owner.provision`` capability disagree:
-an owner could create an invitation and then receive 403 while revoking it.
+0073 moved invitation activation/revocation onto the owner-specific actor
+assertion and narrowed invitation reads to explicit columns. The revocation
+writer also performs an idempotency replay lookup in the append-only invitation
+facts table, but the control definer had INSERT-only access to that table. Under
+its SECURITY DEFINER role the replay SELECT therefore failed with
+insufficient_privilege and surfaced at HTTP as ``platform_owner_forbidden``.
 
-The database assertion still independently proves that the authenticated
-principal is an active platform HUMAN, that its authority revision is current,
-and that it owns an active exact capability grant. Capability keys are canonical
-and the principal itself is constrained to the platform plane, so the redundant
-grant-plane predicates are not an authorization boundary and must not make the
-SQL writer disagree with the canonical resolver.
+This revision grants only the fact columns needed by that replay lookup. It also
+keeps the owner actor assertion aligned with the canonical capability decision:
+an active platform HUMAN at the current authority revision with an active exact
+capability grant. No table-wide SELECT or broader application-role privilege is
+introduced.
 """
 
 from collections.abc import Sequence
@@ -33,6 +31,19 @@ def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
     op.execute(
         r"""
+        -- revoke_platform_owner_invitation performs an idempotency replay lookup
+        -- before mutating the invitation. Keep that read column-scoped: the
+        -- definer does not need table-wide SELECT on the append-only fact ledger.
+        GRANT SELECT (
+            actor_principal_id,
+            action,
+            idempotency_key_digest,
+            intent_digest,
+            revision_after
+        )
+        ON request_engine.platform_owner_invitation_facts
+        TO request_platform_control_definer;
+
         CREATE OR REPLACE FUNCTION request_platform.assert_platform_owner_actor(
             p_capability text
         )
@@ -96,10 +107,6 @@ def upgrade() -> None:
                     USING ERRCODE = '40001';
             END IF;
 
-            -- Keep the SQL proof identical to the canonical capability decision:
-            -- active platform HUMAN + current revision + active exact capability.
-            -- The capability key itself is canonical; grant-plane metadata is not
-            -- an additional authorization dimension for this platform-only actor.
             IF NOT EXISTS (
                 SELECT 1
                   FROM request_engine.principal_authority_grants AS actor_grant
