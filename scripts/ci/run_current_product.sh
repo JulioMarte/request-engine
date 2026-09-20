@@ -146,6 +146,7 @@ uv run pytest \
   tests/db/test_instance_claim.py \
   tests/db/test_platform_configuration_foundation.py \
   tests/db/test_recovery_code_persistence.py \
+  tests/db/test_native_recovery_addresses.py \
   tests/db/test_webauthn_persistence.py \
   tests/db/test_webauthn_concurrency.py \
   -q -m postgres --tb=short --durations=20 \
