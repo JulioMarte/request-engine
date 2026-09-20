@@ -4,8 +4,6 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
-from psycopg import Connection
-
 from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
 from request_engine.platform.db.native_recovery_address_store import (
     PostgresNativeRecoveryAddressStore,
@@ -170,10 +168,40 @@ def test_recovery_address_tables_are_private_and_facts_append_only(
             (table,),
         ).fetchone() == (False,)
 
+    authority_id = uuid4()
+    identity_id = uuid4()
+    address_id = uuid4()
+    admin_conn.execute(
+        "INSERT INTO request_engine.identity_authorities(id, kind, issuer_or_environment) "
+        "VALUES (%s, 'native', %s)",
+        (authority_id, f"append-only-recovery-address-{uuid4().hex}"),
+    )
+    admin_conn.execute(
+        "INSERT INTO request_engine.native_identities(id, identity_authority_id, login_handle) "
+        "VALUES (%s, %s, %s)",
+        (identity_id, authority_id, f"append-only-{uuid4().hex}@example.test"),
+    )
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.native_recovery_addresses(
+            id, native_identity_id, kind, normalized_address
+        ) VALUES (%s, %s, 'email', %s)
+        """,
+        (address_id, identity_id, f"append-only-{uuid4().hex}@example.test"),
+    )
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.native_recovery_address_facts(
+            native_identity_id, recovery_address_id, event_kind
+        ) VALUES (%s, %s, 'verification_requested')
+        """,
+        (identity_id, address_id),
+    )
     with pytest.raises(psycopg.Error):
         admin_conn.execute(
             "UPDATE request_engine.native_recovery_address_facts "
-            "SET event_kind = event_kind"
+            "SET event_kind = event_kind WHERE recovery_address_id = %s",
+            (address_id,),
         )
 
 
