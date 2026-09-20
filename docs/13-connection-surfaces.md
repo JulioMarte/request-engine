@@ -292,3 +292,8 @@ Ask:
 8. Does this edge make ownership clearer, or only hide/repackage existing coupling?
 
 Architecture tests should make high-value connection rules executable whenever practical. Intentional evolution is allowed under `architecture/continuous-evolution-policy.md`; mechanical boundary weakening is not.
+
+
+## P7 platform configuration surfaces
+
+The `platform_configuration` module is the product boundary for installation-wide configuration lifecycle. HTTP composition may call its public contracts. Runtime consumers receive narrow typed resolver contracts; they do not read administrative tables or OpenBao directly. Secret plaintext crosses only the trusted runtime `PlatformSecretStore` boundary and is never returned by human-facing read surfaces. Provider network I/O must occur outside authoritative PostgreSQL locks.
