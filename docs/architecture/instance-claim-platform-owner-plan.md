@@ -27,8 +27,15 @@ P4  atomic HTTP Instance claim                 delivered (0065: HTTP setup surfa
                                                 Docker clean-install E2E now claims
                                                 the instance over HTTP and no longer
                                                 calls platform_bootstrap_cli)
-P5  additional Platform Owner/admin lifecycle  pending
-P6  Instance recovery                          pending
+P5  additional Platform Owner/admin lifecycle  delivered (0071-0074: governed
+                                                owner invitation/activation,
+                                                lifecycle, continuity and
+                                                phishing-resistant authority)
+P6  Instance recovery                          delivered (0075-0077 + F-01:
+                                                universal recovery posture,
+                                                verified recovery address,
+                                                governed recovery reuse and
+                                                offline owner break-glass drill)
 P7  configuration/secrets admin APIs           deferred (follow-on)
 ```
 
@@ -1594,26 +1601,40 @@ Deliver:
 
 This is the point where ADR 0014 becomes executable product behavior.
 
-### P5 — Platform owner/admin lifecycle
+### P5 — Platform owner/admin lifecycle — delivered
 
-Deliver:
+Delivered by revisions 0071-0074 and the Platform Owner HTTP/E2E journeys:
 
-- invitation/provisioning;
-- explicit platform grant/revoke semantics;
-- self-elevation prevention;
-- last-controller continuity;
-- recent phishing-resistant step-up for authority changes;
-- second-controller positive E2E path.
+- one-time invitation and governed activation of a prepared Native HUMAN;
+- explicit provision/read/lifecycle capabilities with no owner/superuser bypass;
+- phishing-resistant, recent HUMAN proof before owner authority changes;
+- last-effective-owner continuity protection;
+- suspend/reactivate/revoke semantics with revisions, idempotency and append-only facts;
+- a second owner can be activated and the final effective owner cannot be removed.
 
-### P6 — Instance recovery
+### P6 — Instance recovery — delivered
 
-Deliver:
+The accepted recovery goal is met without introducing a permanent magic root or
+a second privileged SQL path:
 
-- deployment recovery trust adapter;
-- normal-vs-instance recovery separation;
-- break-glass drill;
-- no setup reopening;
-- audit/security notification behavior.
+- every successful Native HUMAN password-recovery method enters
+  `recovery_restricted` posture and preserves standing authority data;
+- request-local effective authority removes every `AUTHORITY_CHANGE` capability
+  until recovery is completed by fresh accepted strong-factor proof;
+- setup-issued offline recovery codes restore the existing owner's password even
+  when SMTP and OpenBao/Vault are absent; setup remains permanently closed;
+- verified recovery addresses are self-service, require strong proof to add/revoke,
+  use one-time digest-only verification/recovery material, and apply durable
+  per-identity/address throttling;
+- the existing governed two-HUMAN recovery case remains the administrative
+  assisted-recovery path and now enters the same restricted posture;
+- the F-01 Docker journey drills owner break-glass end-to-end: offline code reset →
+  restricted session → original passkey proof → recovery completion → setup still
+  closed → sensitive Platform Owner authority works again.
+
+No new deployment master password or force capability was added. A future
+emergency ceremony that creates a replacement controller rather than restoring an
+existing owner would still require a separate accepted contract.
 
 ### P7 — Configuration/secrets admin APIs
 
