@@ -1,5 +1,6 @@
 """PostgreSQL proofs for verified Native HUMAN recovery addresses."""
 
+from datetime import timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -13,6 +14,9 @@ from request_engine.platform.db.native_recovery_address_store import (
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.secrets.delivery import DeliveryOutcome
+from request_engine.platform.security.native_recovery_delivery import (
+    PostgresNativeRecoveryDeliveryLeaseStore,
+)
 from request_engine.platform.security.native_recovery_addresses import (
     NativeRecoveryAddressInvalid,
     NativeRecoveryAddressService,
@@ -288,3 +292,82 @@ def test_native_recovery_delivery_worker_surface_is_narrow(
         """
     ).fetchone()
     assert legacy == (False,)
+
+
+@pytest.mark.asyncio
+async def test_native_recovery_delivery_reclaims_expired_worker_lease(
+    admin_conn: PgConnection,
+    worker_session_factory: SessionFactory,
+) -> None:
+    authority_id = uuid4()
+    identity_id = uuid4()
+    address_id = uuid4()
+    request_id = uuid4()
+    destination = f"lease-recovery-{uuid4().hex}@example.test"
+
+    admin_conn.execute(
+        "INSERT INTO request_engine.identity_authorities(id, kind, issuer_or_environment) "
+        "VALUES (%s, 'native', %s)",
+        (authority_id, f"lease-recovery-{uuid4().hex}"),
+    )
+    admin_conn.execute(
+        "INSERT INTO request_engine.native_identities("
+        "id, identity_authority_id, login_handle"
+        ") VALUES (%s, %s, %s)",
+        (identity_id, authority_id, f"lease-user-{uuid4().hex}@example.test"),
+    )
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.native_recovery_addresses(
+            id,
+            native_identity_id,
+            kind,
+            normalized_address,
+            status,
+            verified_at
+        ) VALUES (%s, %s, 'email', %s, 'verified', clock_timestamp())
+        """,
+        (address_id, identity_id, destination),
+    )
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.native_recovery_delivery_requests(
+            id,
+            native_identity_id,
+            recovery_address_id,
+            destination_reference,
+            request_expires_at
+        ) VALUES (%s, %s, %s, %s, clock_timestamp() + interval '30 minutes')
+        """,
+        (request_id, identity_id, address_id, destination),
+    )
+
+    store = PostgresNativeRecoveryDeliveryLeaseStore(worker_session_factory)
+    first = await store.claim(limit=1, lease=timedelta(seconds=30))
+    assert len(first) == 1
+    assert first[0].id == request_id
+    assert first[0].attempt_count == 1
+    first_claim_token = first[0].claim_token
+
+    admin_conn.execute(
+        """
+        UPDATE request_engine.native_recovery_delivery_requests
+           SET lease_until = clock_timestamp() - interval '1 second'
+         WHERE id = %s
+        """,
+        (request_id,),
+    )
+
+    reclaimed = await store.claim(limit=1, lease=timedelta(seconds=30))
+    assert len(reclaimed) == 1
+    assert reclaimed[0].id == request_id
+    assert reclaimed[0].attempt_count == 2
+    assert reclaimed[0].claim_token != first_claim_token
+    assert admin_conn.execute(
+        """
+        SELECT status, attempt_count, last_error_class
+          FROM request_engine.native_recovery_delivery_requests
+         WHERE id = %s
+        """,
+        (request_id,),
+    ).fetchone() == ("sending", 2, "lease_expired")
