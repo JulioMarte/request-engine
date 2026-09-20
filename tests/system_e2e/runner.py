@@ -623,6 +623,33 @@ def _webauthn_platform_session(
     return token, evidence
 
 
+def _step_up_native_session(
+    control_url: str,
+    token: str,
+    authenticator: SoftwareAuthenticator,
+) -> dict[str, object]:
+    options = _http_json(
+        "POST",
+        f"{control_url}/auth/native/sessions/current/webauthn/step-up-options",
+        bearer=token,
+    )
+    public_key_value = options.get("public_key")
+    if not isinstance(public_key_value, dict):
+        raise RuntimeError("WebAuthn step-up options are missing public_key")
+    public_key = cast(dict[str, object], public_key_value)
+    challenge = _required_string(public_key, "challenge", "WebAuthn step-up challenge")
+    credential = authenticator.authentication_credential(
+        challenge=websafe_decode(challenge),
+        user_verified=True,
+    )
+    return _http_json(
+        "POST",
+        f"{control_url}/auth/native/sessions/current/webauthn/step-up",
+        bearer=token,
+        payload={"credential": credential},
+    )
+
+
 def _run_f01_foundation(
     checkpoints: list[dict[str, str]],
     phase: str,
@@ -914,6 +941,66 @@ def _run_f01_foundation(
         )
         if not recovered_session:
             raise RuntimeError("offline recovery did not yield a usable replacement password")
+
+        restricted = _http_json(
+            "GET",
+            f"{control_url}/auth/native/sessions/current",
+            bearer=recovered_session,
+        )
+        if restricted.get("recovery_restricted") is not True:
+            raise RuntimeError("offline recovery did not enter recovery-restricted posture")
+
+        if claim_authenticator is None:
+            raise RuntimeError("fresh-world break-glass drill lost the claim passkey")
+        stepped = _step_up_native_session(
+            control_url,
+            recovered_session,
+            claim_authenticator,
+        )
+        if stepped.get("authentication_assurance") != "phishing_resistant":
+            raise RuntimeError("break-glass passkey proof did not become phishing-resistant")
+
+        completed = _http_json(
+            "POST",
+            f"{control_url}/auth/native/sessions/current/recovery:complete",
+            bearer=recovered_session,
+        )
+        if completed.get("recovery_state") != "normal":
+            raise RuntimeError("strong factor proof did not complete account recovery")
+
+        restored = _http_json(
+            "GET",
+            f"{control_url}/auth/native/sessions/current",
+            bearer=recovered_session,
+        )
+        if restored.get("recovery_restricted") is not False:
+            raise RuntimeError("completed recovery remained restricted")
+
+        setup_state = _http_json("GET", f"{control_url}/v1/setup")
+        if setup_state.get("setup_required") is not False:
+            raise RuntimeError("break-glass recovery reopened first-run setup")
+
+        drill_invitation = _http_json(
+            "POST",
+            f"{control_url}/v1/platform/owner-invitations",
+            bearer=recovered_session,
+            idempotency_key="f01-break-glass-owner-proof",
+            payload={"provenance_reference": "e2e:f01:break-glass-authority-proof"},
+            expected_statuses=(201,),
+        )
+        invitation_id = _required_string(
+            drill_invitation,
+            "invitation_id",
+            "break-glass authority proof invitation",
+        )
+        _http_json(
+            "POST",
+            f"{control_url}/v1/platform/owner-invitations/{invitation_id}:revoke",
+            bearer=recovered_session,
+            idempotency_key="f01-break-glass-owner-proof-revoke",
+            payload={"reason_code": "invitation_cancelled"},
+        )
+
         _http_request(
             "POST",
             f"{control_url}/auth/native/password:recover-with-code",
@@ -927,8 +1014,9 @@ def _run_f01_foundation(
             _checkpoint(
                 "f01-18-offline-owner-recovery",
                 "passed",
-                "one claim recovery code replaced the owner password over TCP "
-                "without reopening setup",
+                "offline code restored the existing owner while SMTP/OpenBao were absent; "
+                "recovery stayed restricted until the original passkey was proven, "
+                "setup remained closed and sensitive owner authority worked afterward",
             )
         )
 
