@@ -155,7 +155,10 @@ def test_recovery_posture_filters_authority_changes_without_mutating_other_capab
 def test_normal_posture_preserves_standing_capabilities_exactly() -> None:
     standing = frozenset({"staff.invite", "appointments.book"})
 
-    assert recovery_safe_capabilities(
-        standing,
-        recovery_restricted=False,
-    ) is standing
+    assert (
+        recovery_safe_capabilities(
+            standing,
+            recovery_restricted=False,
+        )
+        is standing
+    )
