@@ -87,6 +87,11 @@ _EXACT_DEFINER_OWNERS = {
         "assert_platform_identity_actor",
         "p_capability text",
     ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "assert_platform_owner_actor",
+        "p_capability text",
+    ): "request_platform_control_definer",
     # 0065 atomic Instance claim surface.
     (
         "request_platform",
