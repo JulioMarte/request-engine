@@ -49,6 +49,7 @@ async def _identity(admin_conn: PgConnection, command_session_factory: SessionFa
 def _service(session_factory: SessionFactory) -> NativeRecoveryCodeService:
     return NativeRecoveryCodeService(store=PostgresRecoveryCodeStore(session_factory), code_count=4)
 
+
 @pytest.mark.asyncio
 async def test_issue_persists_digests_only_and_is_single_use(
     admin_conn: PgConnection,
@@ -362,7 +363,6 @@ def _backend_pid(conn: PgConnection) -> int:
     row = conn.execute("SELECT pg_backend_pid()").fetchone()
     assert row is not None
     return int(row[0])
-
 
 
 @pytest.mark.asyncio
