@@ -98,6 +98,14 @@ def upgrade() -> None:
             IF OLD.state = 'unclaimed'
                AND NEW.state = 'claimed'
                AND NEW.initial_owner_principal_id IS NOT NULL
+               AND EXISTS (
+                   SELECT 1
+                     FROM request_engine.principals AS principal
+                    WHERE principal.id = NEW.initial_owner_principal_id
+                      AND principal.principal_plane = 'platform'
+                      AND principal.principal_kind = 'human'
+                      AND principal.active
+               )
             THEN
                 INSERT INTO request_engine.principal_authority_grants (
                     principal_id, principal_plane, authority_plane, capability_key,
@@ -127,7 +135,7 @@ def upgrade() -> None:
         END
         $$;
         ALTER FUNCTION request_engine.grant_platform_owner_v2_capabilities_on_claim()
-            OWNER TO request_engine_schema_owner;
+            OWNER TO request_platform_control_definer;
         REVOKE ALL ON FUNCTION
             request_engine.grant_platform_owner_v2_capabilities_on_claim() FROM PUBLIC;
         CREATE TRIGGER platform_instance_grant_owner_v2_capabilities
