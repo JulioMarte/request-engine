@@ -170,6 +170,7 @@ class IdentityPrincipalResolver:
             authentication_assurance=_authentication_assurance(subject),
             user_verified=_metadata_flag(subject, "user_verified"),
             recovery_derived=_metadata_flag(subject, "recovery_derived"),
+            recovery_restricted=_metadata_flag(subject, "recovery_restricted"),
         )
 
     async def resolve_platform_actor(
@@ -206,6 +207,7 @@ class IdentityPrincipalResolver:
             authentication_assurance=_authentication_assurance(subject),
             user_verified=_metadata_flag(subject, "user_verified"),
             recovery_derived=_metadata_flag(subject, "recovery_derived"),
+            recovery_restricted=_metadata_flag(subject, "recovery_restricted"),
             authenticated_at=_authenticated_at(subject),
         )
 
