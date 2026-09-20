@@ -211,24 +211,6 @@ def create_authenticated_app(
         subject_resolver=subject_resolver,
         principal_resolver=build_identity_principal_resolver(session_factory),
     )
-    webauthn_store = PostgresWebAuthnStore(session_factory) if webauthn_policy is not None else None
-    if webauthn_policy is not None and webauthn_decoy_key is None:
-        raise ValueError("WebAuthn login requires an explicit deployment decoy key")
-    webauthn_auth = (
-        None
-        if webauthn_store is None
-        else NativeWebAuthnAuthService(policy=webauthn_policy, store=webauthn_store)
-    )
-    webauthn_login = (
-        None
-        if webauthn_auth is None
-        else NativeWebAuthnLoginService(
-            webauthn=webauthn_auth,
-            identities=webauthn_store,
-            decoy_key=webauthn_decoy_key,
-        )
-    )
-
     return create_app(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
@@ -277,6 +259,26 @@ def create_native_app(
             else OidcAuthRuntime(subject_resolver=oidc_subject_resolver)
         ),
     )
+    if (webauthn_policy is None) != (webauthn_decoy_key is None):
+        raise ValueError("WebAuthn policy and deployment decoy key must be configured together")
+    webauthn_store = (
+        None if webauthn_policy is None else PostgresWebAuthnStore(session_factory)
+    )
+    webauthn_auth = (
+        None
+        if webauthn_store is None or webauthn_policy is None
+        else NativeWebAuthnAuthService(policy=webauthn_policy, store=webauthn_store)
+    )
+    if webauthn_auth is None or webauthn_store is None:
+        webauthn_login = None
+    else:
+        assert webauthn_decoy_key is not None
+        webauthn_login = NativeWebAuthnLoginService(
+            webauthn=webauthn_auth,
+            identities=webauthn_store,
+            decoy_key=webauthn_decoy_key,
+        )
+
     return create_app(
         session_factory=session_factory,
         actor_resolver=AgentPolicyActorResolver(
