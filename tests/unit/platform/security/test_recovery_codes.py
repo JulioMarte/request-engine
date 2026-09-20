@@ -6,6 +6,7 @@ import pytest
 
 from request_engine.platform.security.recovery_codes import (
     NativeRecoveryCodeService,
+    NativeRecoveryReadiness,
     RecoveryCodeConsumed,
     RecoveryCodeSetSummary,
     generate_recovery_codes,
@@ -75,6 +76,21 @@ class FakeRecoveryCodeStore:
     async def summary(self, *, native_identity_id: UUID) -> tuple[RecoveryCodeSetSummary, ...]:
         return ()
 
+    async def readiness(self, *, native_identity_id: UUID) -> NativeRecoveryReadiness | None:
+        return NativeRecoveryReadiness(
+            recovery_state="normal",
+            recovery_epoch=0,
+            last_recovered_at=None,
+            last_recovery_method=None,
+            completed_at=None,
+            active_code_set=False,
+            remaining_codes=0,
+            active_webauthn_credentials=0,
+        )
+
+    async def complete_recovery(self, *, native_identity_id: UUID) -> bool:
+        return True
+
 
 def test_generated_codes_are_grouped_base32() -> None:
     codes = generate_recovery_codes(3)
@@ -139,3 +155,12 @@ def test_generate_rejects_invalid_count() -> None:
         generate_recovery_codes(0)
     with pytest.raises(ValueError):
         generate_recovery_codes(51)
+
+
+@pytest.mark.asyncio
+async def test_recovery_readiness_is_identity_scoped() -> None:
+    store = FakeRecoveryCodeStore()
+    service = NativeRecoveryCodeService(store=store)
+    readiness = await service.readiness(native_identity_id=uuid4())
+    assert readiness.recovery_state == "normal"
+    assert readiness.recovery_restricted is False
