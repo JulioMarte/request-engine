@@ -19,6 +19,9 @@ class AuthenticationFreshnessContext(Protocol):
     def recovery_derived(self) -> bool: ...
 
     @property
+    def recovery_restricted(self) -> bool: ...
+
+    @property
     def authenticated_at(self) -> datetime | None: ...
 
 
@@ -35,6 +38,10 @@ class PhishingResistantAuthenticationRequired(PermissionError):
 
 class RecentAuthenticationRequired(PermissionError):
     """Raised when a strong proof exists but is older than the freshness window."""
+
+
+class RecoveryCompletionRequired(PermissionError):
+    """Raised when account recovery must be completed before sensitive authority use."""
 
 
 def require_recent_authentication(
@@ -76,6 +83,10 @@ def require_phishing_resistant_authentication(
     request. It is not SMTP-, P7- or Platform-Owner-specific.
     """
 
+    if actor.recovery_restricted:
+        raise RecoveryCompletionRequired(
+            "complete account recovery before using sensitive authority"
+        )
     if actor.recovery_derived or (
         actor.authentication_assurance is not AuthenticationAssurance.PHISHING_RESISTANT
         or not actor.user_verified
