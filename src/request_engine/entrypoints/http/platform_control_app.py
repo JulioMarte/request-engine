@@ -32,11 +32,11 @@ from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
 from request_engine.platform.security.instance_setup import InstanceSetupService
-from request_engine.platform.security.native_webauthn_auth import NativeWebAuthnAuthService
 from request_engine.platform.security.native_recovery_addresses import (
     NativeRecoveryAddressService,
     NativeRecoveryMessenger,
 )
+from request_engine.platform.security.native_webauthn_auth import NativeWebAuthnAuthService
 from request_engine.platform.security.native_webauthn_login import NativeWebAuthnLoginService
 from request_engine.platform.security.recovery_codes import NativeRecoveryCodeService
 from request_engine.platform.security.webauthn import WebAuthnPolicy
