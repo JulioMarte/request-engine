@@ -3,6 +3,7 @@ from __future__ import annotations
 import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from collections.abc import Callable
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -112,7 +113,7 @@ class NativeRecoveryAddressService:
         *,
         store: NativeRecoveryAddressStore,
         messenger: NativeRecoveryMessenger | None,
-        clock: callable | None = None,
+        clock: Callable[[], datetime] | None = None,
         verification_ttl: timedelta = _DEFAULT_VERIFICATION_TTL,
         recovery_ttl: timedelta = _DEFAULT_RECOVERY_TTL,
     ) -> None:
