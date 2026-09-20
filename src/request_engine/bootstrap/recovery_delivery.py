@@ -55,6 +55,42 @@ class RecoveryDeliverySettings(BaseSettings):
     smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
 
 
+def build_native_recovery_messenger(
+    settings: RecoveryDeliverySettings | None = None,
+) -> SmtpRecoveryDeliveryChannel | None:
+    """Build the SMTP-only Native HUMAN recovery messenger.
+
+    Verified-address recovery persists only one-way token digests in PostgreSQL,
+    so it does not require OpenBao/Vault staging. Absence of SMTP disables this
+    optional channel without affecting offline recovery codes.
+    """
+
+    resolved = settings or RecoveryDeliverySettings()
+    smtp_values = (
+        _has_text(resolved.smtp_host),
+        _has_text(resolved.smtp_sender),
+        _has_secret(resolved.smtp_password),
+    )
+    if not any(smtp_values):
+        return None
+    if not all(smtp_values):
+        raise RuntimeError(
+            "native recovery email requires REQUEST_ENGINE_SMTP_HOST, "
+            "REQUEST_ENGINE_SMTP_SENDER and REQUEST_ENGINE_SMTP_PASSWORD"
+        )
+    return SmtpRecoveryDeliveryChannel(
+        host=_required_text("REQUEST_ENGINE_SMTP_HOST", resolved.smtp_host),
+        port=resolved.smtp_port,
+        sender=_required_text("REQUEST_ENGINE_SMTP_SENDER", resolved.smtp_sender),
+        username=resolved.smtp_username,
+        password=_required_secret("REQUEST_ENGINE_SMTP_PASSWORD", resolved.smtp_password),
+        starttls=resolved.smtp_starttls,
+        use_ssl=resolved.smtp_ssl,
+        timeout_seconds=resolved.smtp_timeout_seconds,
+        reset_url=resolved.recovery_reset_url,
+    )
+
+
 def build_recovery_secret_delivery(
     settings: RecoveryDeliverySettings | None = None,
 ) -> RecoverySecretDelivery | None:
