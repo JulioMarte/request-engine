@@ -276,7 +276,7 @@ def upgrade() -> None:
         LANGUAGE plpgsql
         SECURITY DEFINER
         SET search_path TO 'pg_catalog', 'request_engine'
-        AS $
+        AS $$
         DECLARE
             v_native_identity_id uuid;
             v_identity_status text;
@@ -398,7 +398,7 @@ def upgrade() -> None:
 
             RETURN v_native_identity_id;
         END
-        $;
+        $$;
         ALTER FUNCTION request_auth.consume_native_recovery_intent(uuid, bytea, uuid, text)
             OWNER TO request_engine_schema_owner;
         REVOKE ALL ON FUNCTION
