@@ -49,7 +49,6 @@ async def _identity(admin_conn: PgConnection, command_session_factory: SessionFa
 def _service(session_factory: SessionFactory) -> NativeRecoveryCodeService:
     return NativeRecoveryCodeService(store=PostgresRecoveryCodeStore(session_factory), code_count=4)
 
-
 @pytest.mark.asyncio
 async def test_issue_persists_digests_only_and_is_single_use(
     admin_conn: PgConnection,
