@@ -4,6 +4,13 @@ Date: 2026-09-19
 Branch: `feature/platform-config-openbao-recovery`  
 Authority: ADR 0015
 
+> **P7 execution handoff (2026-09-20):**
+> `p7-platform-configuration-secrets-implementation-handoff.md` is the
+> executable continuation for the deferred P7 surface. This document remains the
+> requirements/Definition-of-Done source; the handoff reconciles those
+> requirements with the delivered P1-P6 trust root and current worker/secret
+> architecture.
+
 ## 1. Objective
 
 Move Request Engine toward a self-hosted control plane where operational
