@@ -10,6 +10,7 @@ from request_engine.platform.security.freshness import (
     RecentAuthenticationRequired,
     RecoveryCompletionRequired,
     require_phishing_resistant_authentication,
+    require_recent_authentication,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
@@ -106,6 +107,18 @@ def test_recovery_restricted_actor_cannot_use_sensitive_authority() -> None:
                 authenticated_at=NOW - timedelta(minutes=1),
                 assurance=AuthenticationAssurance.PHISHING_RESISTANT,
                 user_verified=True,
+                recovery_restricted=True,
+            ),
+            now=NOW,
+        )
+
+
+def test_recovery_restricted_actor_cannot_use_generic_recent_authentication_gate() -> None:
+    with pytest.raises(RecoveryCompletionRequired):
+        require_recent_authentication(
+            _actor(
+                authenticated_at=NOW - timedelta(minutes=1),
+                assurance=AuthenticationAssurance.SINGLE_FACTOR,
                 recovery_restricted=True,
             ),
             now=NOW,
