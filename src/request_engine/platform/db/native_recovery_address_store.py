@@ -9,7 +9,6 @@ from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.native_recovery_addresses import (
     NativeRecoveryAddress,
     NativeRecoveryAddressPrepared,
-    NativeRecoveryDispatch,
 )
 
 
@@ -146,53 +145,33 @@ class PostgresNativeRecoveryAddressStore:
             ).scalar_one()
         return bool(value)
 
-    async def prepare_recovery(
+    async def queue_recovery(
         self,
         *,
         identity_authority_id: UUID,
         login_handle: str,
-        recovery_id: UUID,
-        token_digest: bytes,
-        token_fingerprint: str,
-        expires_at: datetime,
-    ) -> NativeRecoveryDispatch | None:
+        request_id: UUID,
+    ) -> bool:
         async with self._session_factory() as session, session.begin():
-            row = (
-                (
-                    await session.execute(
-                        text(
-                            """
-                            SELECT native_identity_id, recovery_address_id, destination_address
-                              FROM request_auth.create_native_recovery_intent_for_verified_address(
-                                  :identity_authority_id,
-                                  :login_handle,
-                                  :recovery_id,
-                                  :token_digest,
-                                  :token_fingerprint,
-                                  :expires_at
-                              )
-                            """
-                        ),
-                        {
-                            "identity_authority_id": identity_authority_id,
-                            "login_handle": login_handle,
-                            "recovery_id": recovery_id,
-                            "token_digest": token_digest,
-                            "token_fingerprint": token_fingerprint,
-                            "expires_at": expires_at,
-                        },
-                    )
+            value = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT request_auth.queue_native_verified_recovery(
+                            :identity_authority_id,
+                            :login_handle,
+                            :request_id
+                        )
+                        """
+                    ),
+                    {
+                        "identity_authority_id": identity_authority_id,
+                        "login_handle": login_handle,
+                        "request_id": request_id,
+                    },
                 )
-                .mappings()
-                .one_or_none()
-            )
-        if row is None:
-            return None
-        return NativeRecoveryDispatch(
-            native_identity_id=UUID(str(row["native_identity_id"])),
-            recovery_address_id=UUID(str(row["recovery_address_id"])),
-            destination_address=str(row["destination_address"]),
-        )
+            ).scalar_one()
+        return bool(value)
 
 
 def _datetime(value: object) -> datetime:
