@@ -26,10 +26,7 @@ depends_on: str | Sequence[str] | None = None
 _CONTROL_DEFINER = "request_platform_control_definer"
 _BOOTSTRAP_DEFINER = "request_bootstrap_definer"
 
-_ESTABLISH_ROOT = (
-    "request_platform.establish_root("
-    "uuid,bytea,uuid,uuid,text,uuid,text,uuid,uuid)"
-)
+_ESTABLISH_ROOT = "request_platform.establish_root(uuid,bytea,uuid,uuid,text,uuid,text,uuid,uuid)"
 _ENROLL = "request_platform.enroll_platform_owner_invitation(bytea,uuid,uuid,text,text)"
 _REVOKE = "request_platform.revoke_platform_owner_invitation(uuid,text,text,text)"
 _ACTIVATE = "request_platform.activate_platform_owner_invitation(uuid,uuid,uuid,text,text)"
