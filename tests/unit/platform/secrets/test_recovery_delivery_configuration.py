@@ -4,9 +4,11 @@ import pytest
 
 from request_engine.bootstrap.recovery_delivery import (
     RecoveryDeliverySettings,
+    build_native_recovery_messenger,
     build_recovery_secret_delivery,
 )
 from request_engine.platform.secrets.composed_delivery import ComposedRecoverySecretDelivery
+from request_engine.platform.secrets.smtp_delivery_channel import SmtpRecoveryDeliveryChannel
 
 pytestmark = [pytest.mark.unit]
 
@@ -65,3 +67,38 @@ def test_partial_recovery_delivery_configuration_fails_closed(
 ) -> None:
     with pytest.raises(RuntimeError, match="requires a secret store and SMTP"):
         build_recovery_secret_delivery(settings)
+
+
+def test_native_recovery_messenger_supports_smtp_without_authentication() -> None:
+    messenger = build_native_recovery_messenger(
+        RecoveryDeliverySettings(
+            smtp_host="mailpit",
+            smtp_port=1025,
+            smtp_sender="recovery@example.test",
+            smtp_starttls=False,
+        )
+    )
+
+    assert isinstance(messenger, SmtpRecoveryDeliveryChannel)
+
+
+@pytest.mark.parametrize(
+    ("username", "password"),
+    [
+        ("recovery@example.test", None),
+        (None, "smtp-password"),
+    ],
+)
+def test_native_recovery_messenger_rejects_partial_smtp_authentication(
+    username: str | None,
+    password: str | None,
+) -> None:
+    with pytest.raises(RuntimeError, match="requires both"):
+        build_native_recovery_messenger(
+            RecoveryDeliverySettings(
+                smtp_host="mail.internal",
+                smtp_sender="recovery@example.test",
+                smtp_username=username,
+                smtp_password=password,
+            )
+        )
