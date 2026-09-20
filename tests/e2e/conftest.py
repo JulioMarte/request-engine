@@ -218,6 +218,17 @@ async def e2e_session_factory(
         await engine.dispose()
 
 
+@pytest_asyncio.fixture
+async def e2e_worker_session_factory(
+    worker_runtime_credentials: RuntimeCredentials,
+) -> AsyncIterator[SessionFactory]:
+    engine = create_postgres_engine(worker_runtime_credentials.database_url)
+    try:
+        yield create_session_factory(engine)
+    finally:
+        await engine.dispose()
+
+
 @pytest.fixture
 def e2e_barrier_conn() -> Iterator[PgConnection]:
     """Independent non-autocommit connection used to hold deterministic lock barriers."""
