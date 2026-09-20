@@ -306,9 +306,9 @@ async def test_native_human_can_prepare_and_complete_offline_recovery_without_pl
         assert completed.json()["recovery_epoch"] == 1
 
     # Recovery is identity-only: no Principal or binding is synthesized.
-    assert e2e_admin_conn.execute(
-        "SELECT count(*) FROM request_engine.principals"
-    ).fetchone() == (0,)
+    assert e2e_admin_conn.execute("SELECT count(*) FROM request_engine.principals").fetchone() == (
+        0,
+    )
     assert e2e_admin_conn.execute(
         "SELECT count(*) FROM request_engine.identity_bindings"
     ).fetchone() == (0,)
