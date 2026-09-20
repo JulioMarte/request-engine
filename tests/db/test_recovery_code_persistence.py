@@ -403,9 +403,7 @@ async def test_repeated_offline_recovery_advances_epoch_without_authority_side_e
         "WHERE native_identity_id = %s AND event_kind = 'recovery_started'",
         (identity_id,),
     ).fetchone() == (2,)
-    assert admin_conn.execute(
-        "SELECT count(*) FROM request_engine.principals"
-    ).fetchone() == (0,)
+    assert admin_conn.execute("SELECT count(*) FROM request_engine.principals").fetchone() == (0,)
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.identity_bindings"
     ).fetchone() == (0,)
