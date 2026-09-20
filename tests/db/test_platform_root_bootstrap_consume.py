@@ -122,10 +122,10 @@ def test_root_establishment_materializes_one_native_platform_controller_atomical
     ).fetchall()
     assert grants == [
         ("organization.provision", True, "trust_bootstrap"),
+        ("platform.identity.provision", False, "trust_bootstrap"),
         ("platform.identity.read", False, "trust_bootstrap"),
         ("platform.identity.recover", False, "trust_bootstrap"),
         ("platform.identity.recovery_approve", False, "trust_bootstrap"),
-        ("platform.identity.provision", False, "trust_bootstrap"),
         ("platform.owner.manage_lifecycle", False, "trust_bootstrap"),
         ("platform.owner.provision", False, "trust_bootstrap"),
         ("platform.owner.read", False, "trust_bootstrap"),
