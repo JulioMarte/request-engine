@@ -880,7 +880,6 @@ async def test_concurrent_issuance_keeps_the_retained_secret(
     ).fetchone() == (1,)
 
 
-
 def test_delivery_claim_reclaims_expired_lease_and_rejects_late_renewal(
     admin_conn: PgConnection,
 ) -> None:
