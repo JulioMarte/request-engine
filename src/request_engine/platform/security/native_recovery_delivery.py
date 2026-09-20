@@ -1,6 +1,7 @@
 """Fenced worker for queued Native HUMAN verified-address recovery delivery."""
 
 import math
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import cast
@@ -319,13 +320,11 @@ class NativeRecoveryDeliveryProcessor:
             secret_digest=staged.digest,
         )
         if not activated:
-            try:
+            with suppress(RecoveryDeliveryPermanent, RecoveryDeliveryRetryable):
                 await self._delivery.discard(
                     case_id=lease.id,
                     generation=lease.generation,
                 )
-            except (RecoveryDeliveryPermanent, RecoveryDeliveryRetryable):
-                pass
             raise LeaseLostWorkError("native_recovery_activation_fence_lost")
 
         return replace(
