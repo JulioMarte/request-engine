@@ -53,13 +53,6 @@ class NativeRecoveryAddressPrepared:
     verification_created: bool
 
 
-@dataclass(frozen=True, slots=True)
-class NativeRecoveryDispatch:
-    native_identity_id: UUID
-    recovery_address_id: UUID
-    destination_address: str
-
-
 class NativeRecoveryMessenger(Protocol):
     async def send_verification(
         self,
@@ -100,16 +93,13 @@ class NativeRecoveryAddressStore(Protocol):
 
     async def revoke(self, *, native_identity_id: UUID, address_id: UUID) -> bool: ...
 
-    async def prepare_recovery(
+    async def queue_recovery(
         self,
         *,
         identity_authority_id: UUID,
         login_handle: str,
-        recovery_id: UUID,
-        token_digest: bytes,
-        token_fingerprint: str,
-        expires_at: datetime,
-    ) -> NativeRecoveryDispatch | None: ...
+        request_id: UUID,
+    ) -> bool: ...
 
 
 class NativeRecoveryAddressService:
@@ -203,36 +193,19 @@ class NativeRecoveryAddressService:
         identity_authority_id: UUID,
         login_handle: str,
     ) -> None:
-        # Public callers always receive the same HTTP result. Missing identity,
-        # missing verified destination and missing delivery are intentionally
-        # indistinguishable outside this service.
-        if self._messenger is None:
-            return
+        # Public callers always receive the same HTTP result. The request path
+        # performs database-only enqueue work; provider and secret-store I/O belongs
+        # to the fenced delivery worker so account existence cannot be inferred from
+        # SMTP/OpenBao latency.
         try:
             normalized_handle = normalize_login_handle(login_handle)
         except ValueError:
             return
-        token = issue_opaque_token()
-        dispatch = await self._store.prepare_recovery(
+        await self._store.queue_recovery(
             identity_authority_id=identity_authority_id,
             login_handle=normalized_handle,
-            recovery_id=token.token_id,
-            token_digest=token.digest,
-            token_fingerprint=token.fingerprint,
-            expires_at=self._now() + self._recovery_ttl,
+            request_id=uuid4(),
         )
-        if dispatch is None:
-            return
-        try:
-            await self._messenger.send_recovery(
-                secret=token.raw_token,
-                destination_reference=dispatch.destination_address,
-                idempotency_key=f"native-account-recovery:{token.token_id}",
-            )
-        except (RecoveryDeliveryPermanent, RecoveryDeliveryRetryable):
-            # Public recovery request is intentionally anti-enumerating. Provider
-            # availability is an operator concern and does not change the public result.
-            return
 
     def _now(self) -> datetime:
         value = self._clock()
