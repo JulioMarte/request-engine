@@ -1,6 +1,6 @@
 """Align Platform Owner database authority proof with canonical capability grants.
 
-Revision ID: 0074_platform_owner_actor_authority
+Revision ID: 0074_owner_actor_auth
 Revises: 0073_platform_owner_compat
 
 The HTTP/application boundary already resolves a PlatformActorContext from active
@@ -23,7 +23,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0074_platform_owner_actor_authority"
+revision: str = "0074_owner_actor_auth"
 down_revision: str | Sequence[str] | None = "0073_platform_owner_compat"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
