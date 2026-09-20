@@ -384,8 +384,13 @@ def _run_api_restart(checkpoints: list[dict[str, str]], phase: str) -> None:
     api_url = "http://api:8000"
     control_url = "http://control-plane:8001"
     if phase == "before-fault":
-        _run_f01_foundation(checkpoints, "main", include_continuity=False)
-        state_dir, _ = _handoff()
+        _run_f01_foundation(
+            checkpoints,
+            "main",
+            include_continuity=False,
+            include_offline_recovery=False,
+        )
+        state_dir, controller = _handoff()
         receipt = _read_instance_receipt(state_dir)
         if receipt is None:
             raise RuntimeError("instance claim receipt is missing after the F01 foundation")
@@ -397,7 +402,17 @@ def _run_api_restart(checkpoints: list[dict[str, str]], phase: str) -> None:
             _required_string(foundation, "tenant_login", "F01 foundation state"),
             "f01-restart-staff",
         )
-        restart_identity_id = _native_identity(control_url, restart_login, restart_password)
+        platform_token = _native_session(
+            control_url,
+            _required_string(controller, "login_handle", "platform-controller secret"),
+            _required_string(controller, "password", "platform-controller secret"),
+        )
+        restart_identity_id = _native_identity(
+            control_url,
+            restart_login,
+            restart_password,
+            bearer=platform_token,
+        )
         invite: dict[str, object] = {
             "identity_authority_id": native_authority_id,
             "native_identity_id": restart_identity_id,
@@ -609,7 +624,11 @@ def _webauthn_platform_session(
 
 
 def _run_f01_foundation(
-    checkpoints: list[dict[str, str]], phase: str, *, include_continuity: bool = True
+    checkpoints: list[dict[str, str]],
+    phase: str,
+    *,
+    include_continuity: bool = True,
+    include_offline_recovery: bool = True,
 ) -> None:
     if phase not in {"main", "prepare-worker"}:
         raise RuntimeError("f01-foundation only supports main or prepare-worker")
@@ -782,6 +801,7 @@ def _run_f01_foundation(
             control_url=control_url,
             api_url=api_url,
             tenant_token=tenant_token,
+            platform_token=platform_token,
             tenant_password=tenant_password,
             organization_id=organization_id,
             native_authority_id=native_authority_id,
@@ -806,7 +826,12 @@ def _run_f01_foundation(
     if phase == "main" or _active_suite == "recovery-delivery":
         recovery_login = "f01-recovery-operator@example.invalid"
         recovery_password = _derived_password(platform_password, "f01-recovery-operator")
-        recovery_identity_id = _native_identity(control_url, recovery_login, recovery_password)
+        recovery_identity_id = _native_identity(
+            control_url,
+            recovery_login,
+            recovery_password,
+            bearer=platform_token,
+        )
         recovery_operator = _http_json(
             "POST",
             f"{control_url}/v1/platform/recovery-operators",
@@ -865,7 +890,7 @@ def _run_f01_foundation(
     )
     checkpoints.append(_checkpoint("f01-foundation-state", "passed"))
 
-    if phase == "main" and offline_recovery_code is not None:
+    if phase == "main" and include_offline_recovery and offline_recovery_code is not None:
         recovered_password = _derived_password(platform_password, "f01-offline-recovered-owner")
         _http_request(
             "POST",
@@ -914,13 +939,19 @@ def _exercise_staff_zero_authority(
     control_url: str,
     api_url: str,
     tenant_token: str,
+    platform_token: str,
     tenant_password: str,
     organization_id: str,
     native_authority_id: str,
 ) -> None:
     staff_login = "f01-bounded-staff@example.invalid"
     staff_password = _derived_password(tenant_password, "f01-bounded-staff")
-    staff_identity_id = _native_identity(control_url, staff_login, staff_password)
+    staff_identity_id = _native_identity(
+        control_url,
+        staff_login,
+        staff_password,
+        bearer=platform_token,
+    )
     invited = _http_json(
         "POST",
         f"{api_url}/v1/staff/members/native",
