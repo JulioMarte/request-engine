@@ -290,15 +290,38 @@ def upgrade() -> None:
                     USING ERRCODE = '22023';
             END IF;
 
+            -- A process may disappear after claiming but before it can retry or
+            -- finalize. Expired leases are therefore made claimable again under a
+            -- new fencing token; staged proof metadata, when present, is retained so
+            -- the next worker reconciles/publishes the same proof rather than minting
+            -- another one.
+            UPDATE request_engine.native_recovery_delivery_requests AS request
+               SET status = 'pending',
+                   claim_token = NULL,
+                   lease_until = NULL,
+                   next_attempt_at = clock_timestamp(),
+                   last_error_class = 'lease_expired',
+                   updated_at = clock_timestamp()
+             WHERE request.status = 'sending'
+               AND request.lease_until <= clock_timestamp();
+
             FOR v_expired IN
                 SELECT request.id,
                        request.native_identity_id,
                        request.recovery_address_id,
                        request.generation,
-                       request.recovery_intent_id
+                       request.recovery_intent_id,
+                       CASE
+                           WHEN request.request_expires_at <= clock_timestamp()
+                           THEN 'request_expired'
+                           ELSE 'attempts_exhausted'
+                       END AS error_class
                   FROM request_engine.native_recovery_delivery_requests AS request
                  WHERE request.status = 'pending'
-                   AND request.request_expires_at <= clock_timestamp()
+                   AND (
+                       request.request_expires_at <= clock_timestamp()
+                       OR request.attempt_count >= request.max_attempts
+                   )
                  ORDER BY request.id
                  FOR UPDATE SKIP LOCKED
             LOOP
@@ -311,7 +334,7 @@ def upgrade() -> None:
                 END IF;
                 UPDATE request_engine.native_recovery_delivery_requests AS request
                    SET status = 'failed',
-                       last_error_class = 'request_expired',
+                       last_error_class = v_expired.error_class,
                        updated_at = clock_timestamp()
                  WHERE request.id = v_expired.id;
                 INSERT INTO request_engine.native_recovery_delivery_facts (
@@ -327,7 +350,7 @@ def upgrade() -> None:
                     v_expired.recovery_address_id,
                     v_expired.generation,
                     'delivery_failed',
-                    'request_expired'
+                    v_expired.error_class
                 );
             END LOOP;
 
