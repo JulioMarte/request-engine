@@ -47,6 +47,7 @@ _OWNER = (
     "uuid,bytea,text,timestamp with time zone,text,text,text)",
     "request_platform.enroll_platform_owner_invitation(bytea,uuid,uuid,text,text)",
     "request_platform.activate_platform_owner_invitation(uuid,uuid,uuid,text,text)",
+    "request_platform.revoke_platform_owner_invitation(uuid,text,text,text)",
 )
 _SETUP = (
     "request_platform.read_platform_instance()",

@@ -88,7 +88,7 @@ def upgrade() -> None:
 
     op.execute(
         """
-        CREATE FUNCTION request_engine.grant_platform_owner_v2_capabilities_on_claim()
+        CREATE FUNCTION request_platform.grant_platform_owner_v2_capabilities_on_claim()
         RETURNS trigger
         LANGUAGE plpgsql
         SECURITY DEFINER
@@ -134,15 +134,15 @@ def upgrade() -> None:
             RETURN NEW;
         END
         $$;
-        ALTER FUNCTION request_engine.grant_platform_owner_v2_capabilities_on_claim()
+        ALTER FUNCTION request_platform.grant_platform_owner_v2_capabilities_on_claim()
             OWNER TO request_platform_control_definer;
         REVOKE ALL ON FUNCTION
-            request_engine.grant_platform_owner_v2_capabilities_on_claim() FROM PUBLIC;
+            request_platform.grant_platform_owner_v2_capabilities_on_claim() FROM PUBLIC;
         CREATE TRIGGER platform_instance_grant_owner_v2_capabilities
             AFTER UPDATE OF state ON request_engine.platform_instance
             FOR EACH ROW
             WHEN (OLD.state IS DISTINCT FROM NEW.state)
-            EXECUTE FUNCTION request_engine.grant_platform_owner_v2_capabilities_on_claim();
+            EXECUTE FUNCTION request_platform.grant_platform_owner_v2_capabilities_on_claim();
         """
     )
 
