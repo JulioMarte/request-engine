@@ -680,3 +680,142 @@ async def test_authentication_options_do_not_reveal_unknown_handles(
             json={"login_handle": "does-not-exist@example.test", "credential": forged},
         )
         assert rejected.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_offline_recovery_restricts_sensitive_authority_until_webauthn_completion(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        authenticator = await _claim_owner(client)
+        _, owner_token = await _webauthn_login(client, authenticator)
+        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+        issued = await client.post(
+            "/auth/native/sessions/current/recovery-codes",
+            headers=owner_headers,
+        )
+        assert issued.status_code == 201, issued.text
+        code = issued.json()["codes"][0]
+
+        recovered = await client.post(
+            "/auth/native/password:recover-with-code",
+            json={
+                "recovery_code": code,
+                "new_password": "owner password after offline recovery",
+            },
+        )
+        assert recovered.status_code == 204, recovered.text
+
+        # Recovery revokes every old session.
+        assert (
+            await client.get("/auth/native/sessions/current", headers=owner_headers)
+        ).status_code == 401
+
+        login = await client.post(
+            "/auth/native/sessions",
+            json={
+                "login_handle": LOGIN_HANDLE,
+                "password": "owner password after offline recovery",
+            },
+        )
+        assert login.status_code == 201, login.text
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        current = await client.get("/auth/native/sessions/current", headers=headers)
+        assert current.status_code == 200
+        assert current.json()["recovery_restricted"] is True
+
+        readiness = await client.get(
+            "/auth/native/sessions/current/recovery-readiness",
+            headers=headers,
+        )
+        assert readiness.status_code == 200, readiness.text
+        assert readiness.json()["recovery_state"] == "recovery_restricted"
+        assert readiness.json()["recovery_epoch"] == 1
+
+        # Standing grants still exist, but sensitive use is blocked by recovery posture.
+        denied = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**headers, "Idempotency-Key": "blocked-during-recovery"},
+            json={"provenance_reference": "e2e:recovery-restricted"},
+        )
+        assert denied.status_code == 403, denied.text
+        assert denied.json()["error"]["code"] == "recovery_completion_required"
+
+        options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/registration-options",
+                headers=headers,
+            )
+        ).json()["public_key"]
+        replacement_authenticator = SoftwareAuthenticator(
+            rp_id=options["rp"]["id"],
+            origin=ORIGIN,
+        )
+        credential = replacement_authenticator.registration_credential(
+            challenge=websafe_decode(options["challenge"]),
+            user_verified=True,
+        )
+        registered = await client.post(
+            "/auth/native/sessions/current/webauthn/registrations",
+            headers=headers,
+            json={"credential": credential},
+        )
+        assert registered.status_code == 201, registered.text
+
+        step_options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/step-up-options",
+                headers=headers,
+            )
+        ).json()["public_key"]
+        assertion = replacement_authenticator.authentication_credential(
+            challenge=websafe_decode(step_options["challenge"]),
+            user_verified=True,
+        )
+        stepped = await client.post(
+            "/auth/native/sessions/current/webauthn/step-up",
+            headers=headers,
+            json={"credential": assertion},
+        )
+        assert stepped.status_code == 200, stepped.text
+        assert stepped.json()["authentication_assurance"] == "phishing_resistant"
+
+        still_denied = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**headers, "Idempotency-Key": "still-blocked-before-completion"},
+            json={"provenance_reference": "e2e:recovery-still-restricted"},
+        )
+        assert still_denied.status_code == 403
+        assert still_denied.json()["error"]["code"] == "recovery_completion_required"
+
+        completed = await client.post(
+            "/auth/native/sessions/current/recovery:complete",
+            headers=headers,
+        )
+        assert completed.status_code == 200, completed.text
+        assert completed.json()["recovery_state"] == "normal"
+        assert completed.json()["active_webauthn_credentials"] >= 1
+
+        allowed = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**headers, "Idempotency-Key": "allowed-after-recovery-complete"},
+            json={"provenance_reference": "e2e:recovery-complete"},
+        )
+        assert allowed.status_code == 201, allowed.text
+
+        facts = e2e_admin_conn.execute(
+            "SELECT event_kind FROM request_engine.native_identity_recovery_facts "
+            "ORDER BY created_at"
+        ).fetchall()
+        assert [row[0] for row in facts] == ["recovery_started", "recovery_completed"]
