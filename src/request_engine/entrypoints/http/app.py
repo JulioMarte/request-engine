@@ -45,6 +45,10 @@ from request_engine.platform.security.http import (
     request_correlation_id,
 )
 from request_engine.platform.security.native_human_auth import NativeHumanAuthService
+from request_engine.platform.security.native_recovery_addresses import (
+    NativeRecoveryAddressService,
+    NativeRecoveryMessenger,
+)
 from request_engine.platform.security.native_session import NativeSessionAuthenticator
 from request_engine.platform.security.native_webauthn_auth import NativeWebAuthnAuthService
 from request_engine.platform.security.native_webauthn_login import NativeWebAuthnLoginService
@@ -89,6 +93,7 @@ def create_app(
     native_session_authenticator: NativeSessionAuthenticator | None = None,
     native_identity_authority_id: UUID | None = None,
     native_recovery_codes: NativeRecoveryCodeService | None = None,
+    native_recovery_addresses: NativeRecoveryAddressService | None = None,
     native_webauthn_login: NativeWebAuthnLoginService | None = None,
     native_webauthn_auth: NativeWebAuthnAuthService | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
@@ -168,6 +173,7 @@ def create_app(
                 webauthn_login=native_webauthn_login,
                 webauthn_auth=native_webauthn_auth,
                 recovery_codes=native_recovery_codes,
+                recovery_addresses=native_recovery_addresses,
             )
         )
     app.include_router(
@@ -237,6 +243,7 @@ def create_native_app(
     identity_link_verifier: OidcLinkVerifier | None = None,
     webauthn_policy: WebAuthnPolicy | None = None,
     webauthn_decoy_key: bytes | None = None,
+    native_recovery_messenger: NativeRecoveryMessenger | None = None,
 ) -> FastAPI:
     """Compose a providerless deployment whose protected routes trust Native evidence.
 
@@ -300,6 +307,10 @@ def create_native_app(
         native_identity_authority_id=native_identity_authority_id,
         native_recovery_codes=NativeRecoveryCodeService(
             store=PostgresRecoveryCodeStore(session_factory)
+        ),
+        native_recovery_addresses=NativeRecoveryAddressService(
+            store=PostgresNativeRecoveryAddressStore(session_factory),
+            messenger=native_recovery_messenger,
         ),
         native_webauthn_login=webauthn_login,
         native_webauthn_auth=webauthn_auth,
