@@ -213,9 +213,7 @@ class NativeSessionAuthenticator:
                 "authentication_assurance": session.authentication_assurance.value,
                 "user_verified": "true" if session.user_verified else "false",
                 "recovery_derived": "true" if session.recovery_derived else "false",
-                "recovery_restricted": (
-                    "true" if session.recovery_restricted else "false"
-                ),
+                "recovery_restricted": ("true" if session.recovery_restricted else "false"),
             },
         )
 
