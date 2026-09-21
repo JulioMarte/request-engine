@@ -121,6 +121,18 @@ async def platform_read_session_factory() -> AsyncIterator[SessionFactory]:
                 "request_platform.read_native_identities(uuid,uuid,integer) TO {}"
             ).format(sql.Identifier(role_name))
         )
+        admin.execute(
+            sql.SQL(
+                "GRANT EXECUTE ON FUNCTION "
+                "request_platform.read_platform_configuration_revisions(text) TO {}"
+            ).format(sql.Identifier(role_name))
+        )
+        admin.execute(
+            sql.SQL(
+                "GRANT EXECUTE ON FUNCTION "
+                "request_platform.read_platform_secret_binding(uuid) TO {}"
+            ).format(sql.Identifier(role_name))
+        )
         engine = create_postgres_engine(_platform_test_url(role_name, role_password))
         yield create_session_factory(engine)
     finally:
