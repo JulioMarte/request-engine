@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from pydantic import ValidationError
 
 from request_engine.modules.platform_configuration.api.http import (
@@ -57,15 +58,15 @@ def test_platform_configuration_http_registers_canonical_capability_surface() ->
         actor_resolver=cast(PlatformActorResolver, object()),
     )
 
-    operations = {
-        route.operation_id: (
-            getattr(route, "request_engine_capability", None),
-            getattr(route, "path", None),
-            frozenset(getattr(route, "methods", set())),
+    operations: dict[str, tuple[str | None, str, frozenset[str]]] = {}
+    for route in app.routes:
+        if not isinstance(route, APIRoute) or route.operation_id is None:
+            continue
+        operations[route.operation_id] = (
+            cast(str | None, getattr(route, "request_engine_capability", None)),
+            route.path,
+            frozenset(route.methods),
         )
-        for route in app.routes
-        if getattr(route, "operation_id", None) is not None
-    }
     assert operations == {
         "platform_configuration_list": (
             "platform.configuration.read",
