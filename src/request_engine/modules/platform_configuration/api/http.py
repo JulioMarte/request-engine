@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from typing import Annotated, Any, cast
 from uuid import UUID
@@ -193,7 +191,7 @@ def install_platform_configuration_http(
 
     async def list_configurations(
         _bearer: _NativeBearer,
-        actor: PlatformActorContext = Depends(authenticated_actor),
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationRevisionListView:
         rows = await reader.list_revisions(actor)
         return ConfigurationRevisionListView(items=[_revision_view(row) for row in rows])
@@ -201,7 +199,7 @@ def install_platform_configuration_http(
     async def list_configuration_revisions(
         configuration_kind: str,
         _bearer: _NativeBearer,
-        actor: PlatformActorContext = Depends(authenticated_actor),
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationRevisionListView:
         rows = await reader.list_revisions(actor, configuration_kind)
         return ConfigurationRevisionListView(items=[_revision_view(row) for row in rows])
@@ -210,14 +208,14 @@ def install_platform_configuration_http(
         configuration_kind: str,
         revision: int,
         _bearer: _NativeBearer,
-        actor: PlatformActorContext = Depends(authenticated_actor),
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationRevisionView:
         return _revision_view(await reader.get_revision(actor, configuration_kind, revision))
 
     async def get_secret_binding(
         binding_id: UUID,
         _bearer: _NativeBearer,
-        actor: PlatformActorContext = Depends(authenticated_actor),
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> SecretBindingMetadataView:
         return _secret_view(await reader.get_secret_binding(actor, binding_id))
 
@@ -226,7 +224,7 @@ def install_platform_configuration_http(
         body: StageConfigurationBody,
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
-        actor: PlatformActorContext = Depends(authenticated_actor),
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
         result = await commands.stage(
@@ -246,7 +244,7 @@ def install_platform_configuration_http(
         revision: int,
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
-        actor: PlatformActorContext = Depends(authenticated_actor),
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
         return _mutation_view(
@@ -266,7 +264,7 @@ def install_platform_configuration_http(
         body: ActivateConfigurationBody,
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
-        actor: PlatformActorContext = Depends(authenticated_actor),
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
         return _mutation_view(
@@ -286,7 +284,7 @@ def install_platform_configuration_http(
         revision: int,
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
-        actor: PlatformActorContext = Depends(authenticated_actor),
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
         return _mutation_view(
