@@ -575,3 +575,23 @@ evidence = ["contract", "adversarial", "security"]
 guarantee = "INV-PLATFORM-CONFIG-REVISION-001"
 path = "tests/db/test_platform_configuration_foundation.py"
 evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-GOVERNANCE-001"
+path = "tests/db/test_platform_configuration_governance.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-GOVERNANCE-001"
+path = "tests/e2e/test_native_webauthn_login_http.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-ACTIVATION-001"
+path = "tests/db/test_platform_configuration_governance.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-ACTIVATION-001"
+path = "tests/e2e/test_native_webauthn_login_http.py"
+evidence = ["contract", "adversarial", "security"]
