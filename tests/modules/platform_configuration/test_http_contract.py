@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from request_engine.modules.platform_configuration.api.http import (
     StageConfigurationBody,
-    _require_strong,
+    require_platform_configuration_step_up,
     install_platform_configuration_http,
 )
 from request_engine.platform.db.session import SessionFactory
@@ -62,10 +62,11 @@ def test_platform_configuration_http_registers_canonical_capability_surface() ->
     for route in app.routes:
         if not isinstance(route, APIRoute) or route.operation_id is None:
             continue
+        methods = frozenset[str]() if route.methods is None else frozenset(route.methods)
         operations[route.operation_id] = (
             cast(str | None, getattr(route, "request_engine_capability", None)),
             route.path,
-            frozenset(route.methods),
+            methods,
         )
     assert operations == {
         "platform_configuration_list": (
@@ -131,6 +132,6 @@ def test_stage_payload_rejects_embedded_secret_material(
 
 def test_configuration_mutation_requires_phishing_resistant_step_up() -> None:
     with pytest.raises(PhishingResistantAuthenticationRequired):
-        _require_strong(_actor(strong=False))
+        require_platform_configuration_step_up(_actor(strong=False))
 
-    _require_strong(_actor(strong=True))
+    require_platform_configuration_step_up(_actor(strong=True))
