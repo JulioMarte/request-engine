@@ -11,8 +11,8 @@ from pydantic import ValidationError
 
 from request_engine.modules.platform_configuration.api.http import (
     StageConfigurationBody,
-    require_platform_configuration_step_up,
     install_platform_configuration_http,
+    require_platform_configuration_step_up,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.assurance import AuthenticationAssurance
