@@ -64,6 +64,17 @@ _SETUP = (
     "request_platform.read_installation_claim_intent_digest(text)",
     "request_platform.finalize_instance_claim(uuid,text,text,text,text,uuid)",
 )
+_PLATFORM_CONFIGURATION = (
+    "request_platform.read_platform_configuration_revisions(text)",
+    "request_platform.read_platform_secret_binding(uuid)",
+    "request_platform.stage_platform_configuration(text,text,jsonb,uuid,text,text)",
+    "request_platform.validate_platform_configuration(text,bigint,text,text)",
+    "request_platform.activate_platform_configuration(text,bigint,bigint,text,text)",
+    "request_platform.disable_platform_configuration(text,bigint,text,text)",
+    "request_platform.record_platform_secret_binding(text,text,uuid,integer,text,text)",
+    "request_platform.commit_platform_secret_rotation(uuid,bigint,integer,integer,text,text)",
+    "request_platform.revoke_platform_secret_binding(uuid,bigint,integer,text,text)",
+)
 
 
 async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
@@ -128,6 +139,7 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
                 *_RECOVERY,
                 *_OWNER,
                 *_SETUP,
+                *_PLATFORM_CONFIGURATION,
             )
         )
         for function in required:
