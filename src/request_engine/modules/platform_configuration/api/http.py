@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, FastAPI, Header, Request, Security
@@ -70,13 +70,14 @@ class StageConfigurationBody(BaseModel):
     def reject_embedded_secret_material(cls, value: dict[str, Any]) -> dict[str, Any]:
         def inspect(node: object) -> None:
             if isinstance(node, dict):
-                for key, child in node.items():
+                mapping = cast("dict[object, object]", node)
+                for key, child in mapping.items():
                     normalized = str(key).strip().lower().replace("-", "_")
                     if normalized in _SECRET_FIELD_NAMES:
                         raise ValueError("secret material must use a governed secret binding")
                     inspect(child)
             elif isinstance(node, list):
-                for child in node:
+                for child in cast("list[object]", node):
                     inspect(child)
 
         inspect(value)
