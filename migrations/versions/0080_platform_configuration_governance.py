@@ -24,8 +24,11 @@ depends_on: str | Sequence[str] | None = None
 _CONTROL_DEFINER = "request_platform_control_definer"
 _RUNTIME = "request_platform_control"
 
-_FUNCTIONS = (
+_INTERNAL_FUNCTIONS = (
     "request_platform.assert_platform_configuration_actor(text)",
+)
+
+_RUNTIME_FUNCTIONS = (
     "request_platform.read_platform_configuration_revisions(text)",
     "request_platform.read_platform_secret_binding(uuid)",
     (
@@ -293,15 +296,96 @@ def upgrade() -> None:
         ON request_engine.platform_owner_policies
         TO {_CONTROL_DEFINER};
 
-        GRANT SELECT, INSERT, UPDATE
+        GRANT SELECT (
+            id,
+            configuration_kind,
+            provider_kind,
+            revision,
+            configuration,
+            secret_binding_id,
+            state,
+            created_by_principal_id,
+            created_at,
+            validated_at,
+            activated_at,
+            disabled_at
+        ),
+        INSERT (
+            id,
+            configuration_kind,
+            provider_kind,
+            revision,
+            configuration,
+            secret_binding_id,
+            created_by_principal_id
+        ),
+        UPDATE (
+            state,
+            validated_at,
+            activated_at,
+            disabled_at
+        )
         ON request_engine.platform_configuration_revisions
         TO {_CONTROL_DEFINER};
 
-        GRANT SELECT, INSERT, UPDATE
+        GRANT SELECT (
+            id,
+            purpose,
+            backend,
+            secret_id,
+            backend_version,
+            status,
+            revision,
+            created_at,
+            rotated_at,
+            revoked_at
+        ),
+        INSERT (
+            id,
+            purpose,
+            backend,
+            secret_id,
+            backend_version
+        ),
+        UPDATE (
+            backend_version,
+            status,
+            revision,
+            rotated_at,
+            revoked_at
+        )
         ON request_engine.platform_secret_bindings
         TO {_CONTROL_DEFINER};
 
-        GRANT SELECT, INSERT
+        GRANT SELECT (
+            event_kind,
+            configuration_revision_id,
+            configuration_kind,
+            revision,
+            secret_binding_id,
+            actor_principal_id,
+            actor_authentication_method,
+            correlation_id,
+            detail,
+            capability_key,
+            idempotency_key_digest,
+            intent_digest,
+            created_at
+        ),
+        INSERT (
+            event_kind,
+            configuration_revision_id,
+            configuration_kind,
+            revision,
+            secret_binding_id,
+            actor_principal_id,
+            actor_authentication_method,
+            correlation_id,
+            detail,
+            capability_key,
+            idempotency_key_digest,
+            intent_digest
+        )
         ON request_engine.platform_configuration_facts
         TO {_CONTROL_DEFINER};
 
@@ -505,7 +589,6 @@ def upgrade() -> None:
             binding_id uuid,
             purpose text,
             backend text,
-            secret_id uuid,
             backend_version integer,
             status text,
             revision bigint,
@@ -529,7 +612,6 @@ def upgrade() -> None:
                 binding.id,
                 binding.purpose,
                 binding.backend,
-                binding.secret_id,
                 binding.backend_version,
                 binding.status,
                 binding.revision,
@@ -1668,7 +1750,10 @@ def upgrade() -> None:
         """
     )
 
-    for signature in _FUNCTIONS:
+    for signature in _INTERNAL_FUNCTIONS:
+        op.execute(f"ALTER FUNCTION {signature} OWNER TO {_CONTROL_DEFINER}")
+        op.execute(f"REVOKE ALL ON FUNCTION {signature} FROM PUBLIC")
+    for signature in _RUNTIME_FUNCTIONS:
         op.execute(f"ALTER FUNCTION {signature} OWNER TO {_CONTROL_DEFINER}")
         op.execute(f"REVOKE ALL ON FUNCTION {signature} FROM PUBLIC")
         op.execute(f"GRANT EXECUTE ON FUNCTION {signature} TO {_RUNTIME}")
