@@ -28,9 +28,7 @@ _READ_FUNCTIONS = (
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
     for signature in _READ_FUNCTIONS:
-        op.execute(
-            f"REVOKE EXECUTE ON FUNCTION {signature} FROM request_platform_control"
-        )
+        op.execute(f"REVOKE EXECUTE ON FUNCTION {signature} FROM request_platform_control")
 
 
 def downgrade() -> None:
