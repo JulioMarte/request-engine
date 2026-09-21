@@ -269,10 +269,6 @@ def upgrade() -> None:
         ON request_engine.principal_authority_grants
         TO {_CONTROL_DEFINER};
 
-        GRANT SELECT
-        ON request_engine.platform_owner_policies
-        TO {_CONTROL_DEFINER};
-
         GRANT SELECT (
             id,
             configuration_kind,
