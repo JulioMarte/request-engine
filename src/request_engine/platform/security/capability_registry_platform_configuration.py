@@ -35,14 +35,40 @@ PLATFORM_CONFIGURATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         authority_plane=AuthorityPlane.PLATFORM,
         runtime_available=False,
     ),
-    _platform_command("platform.configuration.stage", "Stage a typed platform configuration revision.", revision=RevisionPolicy.SERVER_SELECTED),
-    _platform_command("platform.configuration.validate", "Validate an exact staged platform configuration revision."),
-    _platform_command("platform.configuration.activate", "Activate an exact validated platform configuration revision."),
-    _platform_command("platform.configuration.disable", "Disable an exact platform configuration revision."),
-    _platform_command("platform.secret.write", "Create governed platform secret material and binding metadata.", revision=RevisionPolicy.SERVER_SELECTED),
-    _platform_command("platform.secret.rotate", "Rotate an exact governed platform secret binding."),
-    _platform_command("platform.secret.revoke", "Revoke an exact governed platform secret binding."),
-    _platform_command("platform.provider.test", "Test an exact governed provider configuration revision."),
+    _platform_command(
+        "platform.configuration.stage",
+        "Stage a typed platform configuration revision.",
+        revision=RevisionPolicy.SERVER_SELECTED,
+    ),
+    _platform_command(
+        "platform.configuration.validate",
+        "Validate an exact staged platform configuration revision.",
+    ),
+    _platform_command(
+        "platform.configuration.activate",
+        "Activate an exact validated platform configuration revision.",
+    ),
+    _platform_command(
+        "platform.configuration.disable",
+        "Disable an exact platform configuration revision.",
+    ),
+    _platform_command(
+        "platform.secret.write",
+        "Create governed platform secret material and binding metadata.",
+        revision=RevisionPolicy.SERVER_SELECTED,
+    ),
+    _platform_command(
+        "platform.secret.rotate",
+        "Rotate an exact governed platform secret binding.",
+    ),
+    _platform_command(
+        "platform.secret.revoke",
+        "Revoke an exact governed platform secret binding.",
+    ),
+    _platform_command(
+        "platform.provider.test",
+        "Test an exact governed provider configuration revision.",
+    ),
     query_capability(
         "platform.readiness.read",
         CapabilityExposure.OPERATOR,
