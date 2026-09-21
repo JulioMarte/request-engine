@@ -24,9 +24,7 @@ depends_on: str | Sequence[str] | None = None
 _CONTROL_DEFINER = "request_platform_control_definer"
 _RUNTIME = "request_platform_control"
 
-_INTERNAL_FUNCTIONS = (
-    "request_platform.assert_platform_configuration_actor(text)",
-)
+_INTERNAL_FUNCTIONS = ("request_platform.assert_platform_configuration_actor(text)",)
 
 _RUNTIME_FUNCTIONS = (
     "request_platform.read_platform_configuration_revisions(text)",
