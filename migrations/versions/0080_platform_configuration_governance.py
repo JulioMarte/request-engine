@@ -821,11 +821,8 @@ def upgrade() -> None:
             IF p_configuration_kind !~ '^[a-z][a-z0-9_.-]{1,79}$'
                OR p_revision IS NULL
                OR p_revision < 1
-               OR (
-                   p_expected_active_revision IS NOT NULL
-                   AND p_expected_active_revision < 1
-               )
-               OR p_idempotency_key_digest !~ '^[0-9a-f]{64}               OR p_intent_digest !~ '^[0-9a-f]{64}$'
+               OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
+               OR p_intent_digest !~ '^[0-9a-f]{64}$'
             THEN
                 RAISE EXCEPTION 'Platform configuration validation input is invalid'
                     USING ERRCODE = '22023';
@@ -969,6 +966,10 @@ def upgrade() -> None:
             IF p_configuration_kind !~ '^[a-z][a-z0-9_.-]{1,79}$'
                OR p_revision IS NULL
                OR p_revision < 1
+               OR (
+                   p_expected_active_revision IS NOT NULL
+                   AND p_expected_active_revision < 1
+               )
                OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
                OR p_intent_digest !~ '^[0-9a-f]{64}$'
             THEN
