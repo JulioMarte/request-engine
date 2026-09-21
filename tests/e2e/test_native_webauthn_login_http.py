@@ -881,7 +881,7 @@ async def test_platform_configuration_http_is_governed_and_never_replays_secret_
         assert "must-never-enter-postgres" not in rejected_secret.text
 
         stage_headers = {**owner_headers, "Idempotency-Key": "config-stage-1"}
-        body = {
+        body: dict[str, object] = {
             "provider_kind": "smtp",
             "configuration": {
                 "host": "mail.example.test",
@@ -939,10 +939,11 @@ async def test_platform_configuration_http_is_governed_and_never_replays_secret_
             "/v1/platform/configurations/email.delivery/revisions",
             headers={**owner_headers, "Idempotency-Key": "config-stage-2"},
             json={
-                **body,
+                "provider_kind": "smtp",
                 "configuration": {
-                    **body["configuration"],
                     "host": "mail-two.example.test",
+                    "port": 587,
+                    "security": "starttls",
                 },
             },
         )
