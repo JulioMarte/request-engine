@@ -1,6 +1,6 @@
 """Separate platform-configuration reads from the control runtime role.
 
-Revision ID: 0081_platform_config_read_boundary
+Revision ID: 0081_platform_config_read
 Revises: 0080_platform_config_governance
 
 P7-C routes administrative reads through the dedicated platform-read login and
@@ -14,7 +14,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0081_platform_config_read_boundary"
+revision: str = "0081_platform_config_read"
 down_revision: str | Sequence[str] | None = "0080_platform_config_governance"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
