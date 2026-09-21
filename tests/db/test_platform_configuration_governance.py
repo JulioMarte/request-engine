@@ -194,7 +194,7 @@ def test_platform_owner_v3_contains_exact_p7_capability_delta(
         """
     ).fetchall()
     keys = {str(row[0]) for row in rows}
-    assert P7_CAPABILITIES <= keys
+    assert keys >= P7_CAPABILITIES
 
     previous = admin_conn.execute(
         """
@@ -256,7 +256,7 @@ def test_new_platform_owner_authority_adopts_v3_without_mutating_v2(
         (owner_id,),
     ).fetchall()
     granted = {str(row[0]) for row in rows}
-    assert P7_CAPABILITIES <= granted
+    assert granted >= P7_CAPABILITIES
 
     revision = admin_conn.execute(
         """
