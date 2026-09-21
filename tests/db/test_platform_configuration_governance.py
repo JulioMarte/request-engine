@@ -396,15 +396,11 @@ def test_concurrent_first_activation_has_one_winner_and_one_stale_conflict(
         return "success"
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(
-            pool.map(
-                lambda args: activate(*args),
-                (
-                    (1, "9" * 64, "a" * 64),
-                    (2, "b" * 64, "c" * 64),
-                ),
-            )
+        futures = (
+            pool.submit(activate, 1, "9" * 64, "a" * 64),
+            pool.submit(activate, 2, "b" * 64, "c" * 64),
         )
+        results = [future.result() for future in futures]
 
     assert sorted(results) == ["40001", "success"]
     active = admin_conn.execute(
@@ -462,6 +458,7 @@ def test_secret_binding_commands_are_version_fenced_and_metadata_only(
     )
     metadata = cursor.fetchone()
     assert metadata is not None
+    assert cursor.description is not None
     column_names = [description.name for description in cursor.description]
     assert "secret_id" not in column_names
     assert metadata[0] == binding_id
