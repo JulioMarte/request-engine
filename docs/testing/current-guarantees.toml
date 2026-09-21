@@ -487,3 +487,17 @@ statement = "Platform operational configuration is persisted as private typed/pr
 severity = "high"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-PLATFORM-CONFIG-GOVERNANCE-001"
+statement = "Platform configuration reads and mutations execute through explicit Platform-plane capabilities owned by platform_configuration; mutation requires an active HUMAN Platform actor with recent phishing-resistant authentication, exact idempotency intent and append-only provenance, while recovery-restricted or stale authority fails closed and administrative secret reads expose metadata only."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-PLATFORM-CONFIG-ACTIVATION-001"
+statement = "A platform configuration revision must be validated before activation; activation is serialized per configuration kind against the exact observed ACTIVE revision, stale or concurrent activation fails closed, and superseding the prior ACTIVE revision plus activating the candidate is one PostgreSQL transaction so at most one revision is ACTIVE."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["security", "provenance"]
