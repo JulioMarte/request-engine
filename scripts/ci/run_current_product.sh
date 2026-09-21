@@ -145,6 +145,7 @@ uv run pytest \
   tests/db/test_platform_instance_setup.py \
   tests/db/test_instance_claim.py \
   tests/db/test_platform_configuration_foundation.py \
+  tests/db/test_platform_configuration_governance.py \
   tests/db/test_recovery_code_persistence.py \
   tests/db/test_native_recovery_addresses.py \
   tests/db/test_webauthn_persistence.py \
