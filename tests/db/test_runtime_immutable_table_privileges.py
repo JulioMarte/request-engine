@@ -274,6 +274,68 @@ _EXACT_DEFINER_OWNERS = {
         "read_setup_session",
         "p_token_digest bytea",
     ): "request_platform_control_definer",
+    (
+        "request_engine",
+        "adopt_platform_owner_v3",
+        "",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "assert_platform_configuration_actor",
+        "p_capability text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_platform_configuration_revisions",
+        "p_configuration_kind text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_platform_secret_binding",
+        "p_binding_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "stage_platform_configuration",
+        "p_configuration_kind text, p_provider_kind text, p_configuration jsonb, "
+        "p_secret_binding_id uuid, p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "validate_platform_configuration",
+        "p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, "
+        "p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "activate_platform_configuration",
+        "p_configuration_kind text, p_revision bigint, p_expected_active_revision bigint, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "disable_platform_configuration",
+        "p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, "
+        "p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "record_platform_secret_binding",
+        "p_purpose text, p_backend text, p_secret_id uuid, p_backend_version integer, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "commit_platform_secret_rotation",
+        "p_binding_id uuid, p_expected_revision bigint, p_expected_backend_version integer, "
+        "p_new_backend_version integer, p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "revoke_platform_secret_binding",
+        "p_binding_id uuid, p_expected_revision bigint, p_expected_backend_version integer, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
 }
 _COLUMN_UPDATE_AUTHORITY = {
     "operational_recovery_executions": {
