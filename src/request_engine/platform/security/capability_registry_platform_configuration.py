@@ -14,6 +14,7 @@ def _platform_command(
     description: str,
     *,
     revision: RevisionPolicy = RevisionPolicy.REQUIRED,
+    runtime_available: bool = False,
 ) -> CapabilityDefinition:
     return command_capability(
         key,
@@ -21,7 +22,7 @@ def _platform_command(
         description,
         authority_plane=AuthorityPlane.PLATFORM,
         revision=revision,
-        runtime_available=False,
+        runtime_available=runtime_available,
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
         requires_recent_authentication=True,
     )
@@ -33,24 +34,28 @@ PLATFORM_CONFIGURATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.OPERATOR,
         "Read governed platform configuration metadata and revisions.",
         authority_plane=AuthorityPlane.PLATFORM,
-        runtime_available=False,
+        runtime_available=True,
     ),
     _platform_command(
         "platform.configuration.stage",
         "Stage a typed platform configuration revision.",
         revision=RevisionPolicy.SERVER_SELECTED,
+        runtime_available=True,
     ),
     _platform_command(
         "platform.configuration.validate",
         "Validate an exact staged platform configuration revision.",
+        runtime_available=True,
     ),
     _platform_command(
         "platform.configuration.activate",
         "Activate an exact validated platform configuration revision.",
+        runtime_available=True,
     ),
     _platform_command(
         "platform.configuration.disable",
         "Disable an exact platform configuration revision.",
+        runtime_available=True,
     ),
     _platform_command(
         "platform.secret.write",
