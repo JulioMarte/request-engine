@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, FastAPI, Header, Request, Security
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from request_engine.modules.platform_configuration.adapters.db.configuration import (
     PostgresPlatformConfigurationCommands,
@@ -44,12 +44,43 @@ _IdempotencyKey = Annotated[
 ]
 
 
+_SECRET_FIELD_NAMES = frozenset(
+    {
+        "api_key",
+        "apikey",
+        "credential",
+        "credentials",
+        "password",
+        "private_key",
+        "secret",
+        "token",
+    }
+)
+
+
 class StageConfigurationBody(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     provider_kind: str = Field(min_length=2, max_length=80, pattern=r"^[a-z][a-z0-9_.-]+$")
     configuration: dict[str, Any]
     secret_binding_id: UUID | None = None
+
+    @field_validator("configuration")
+    @classmethod
+    def reject_embedded_secret_material(cls, value: dict[str, Any]) -> dict[str, Any]:
+        def inspect(node: object) -> None:
+            if isinstance(node, dict):
+                for key, child in node.items():
+                    normalized = str(key).strip().lower().replace("-", "_")
+                    if normalized in _SECRET_FIELD_NAMES:
+                        raise ValueError("secret material must use a governed secret binding")
+                    inspect(child)
+            elif isinstance(node, list):
+                for child in node:
+                    inspect(child)
+
+        inspect(value)
+        return value
 
 
 class ActivateConfigurationBody(BaseModel):
