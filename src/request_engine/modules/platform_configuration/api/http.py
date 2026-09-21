@@ -362,7 +362,20 @@ def _mutation_view(result: ConfigurationMutationResult) -> ConfigurationMutation
 
 
 def _revision_view(row: ConfigurationRevision) -> ConfigurationRevisionView:
-    return ConfigurationRevisionView(**row.__dict__)
+    return ConfigurationRevisionView(
+        configuration_revision_id=row.configuration_revision_id,
+        configuration_kind=row.configuration_kind,
+        provider_kind=row.provider_kind,
+        revision=row.revision,
+        configuration=row.configuration,
+        secret_binding_id=row.secret_binding_id,
+        state=row.state,
+        created_by_principal_id=row.created_by_principal_id,
+        created_at=row.created_at,
+        validated_at=row.validated_at,
+        activated_at=row.activated_at,
+        disabled_at=row.disabled_at,
+    )
 
 
 def _secret_view(row: SecretBindingMetadata) -> SecretBindingMetadataView:
