@@ -480,6 +480,77 @@ _EXPECTED_COLUMNS = {
     ("platform_owner_invitation_facts", "intent_digest", "INSERT"),
 }
 
+_P7_CONFIGURATION_COLUMNS = {
+    ("platform_configuration_revisions", "id", "SELECT"),
+    ("platform_configuration_revisions", "configuration_kind", "SELECT"),
+    ("platform_configuration_revisions", "provider_kind", "SELECT"),
+    ("platform_configuration_revisions", "revision", "SELECT"),
+    ("platform_configuration_revisions", "configuration", "SELECT"),
+    ("platform_configuration_revisions", "secret_binding_id", "SELECT"),
+    ("platform_configuration_revisions", "state", "SELECT"),
+    ("platform_configuration_revisions", "created_by_principal_id", "SELECT"),
+    ("platform_configuration_revisions", "created_at", "SELECT"),
+    ("platform_configuration_revisions", "validated_at", "SELECT"),
+    ("platform_configuration_revisions", "activated_at", "SELECT"),
+    ("platform_configuration_revisions", "disabled_at", "SELECT"),
+    ("platform_configuration_revisions", "id", "INSERT"),
+    ("platform_configuration_revisions", "configuration_kind", "INSERT"),
+    ("platform_configuration_revisions", "provider_kind", "INSERT"),
+    ("platform_configuration_revisions", "revision", "INSERT"),
+    ("platform_configuration_revisions", "configuration", "INSERT"),
+    ("platform_configuration_revisions", "secret_binding_id", "INSERT"),
+    ("platform_configuration_revisions", "created_by_principal_id", "INSERT"),
+    ("platform_configuration_revisions", "state", "UPDATE"),
+    ("platform_configuration_revisions", "validated_at", "UPDATE"),
+    ("platform_configuration_revisions", "activated_at", "UPDATE"),
+    ("platform_configuration_revisions", "disabled_at", "UPDATE"),
+    ("platform_secret_bindings", "id", "SELECT"),
+    ("platform_secret_bindings", "purpose", "SELECT"),
+    ("platform_secret_bindings", "backend", "SELECT"),
+    ("platform_secret_bindings", "secret_id", "SELECT"),
+    ("platform_secret_bindings", "backend_version", "SELECT"),
+    ("platform_secret_bindings", "status", "SELECT"),
+    ("platform_secret_bindings", "revision", "SELECT"),
+    ("platform_secret_bindings", "created_at", "SELECT"),
+    ("platform_secret_bindings", "rotated_at", "SELECT"),
+    ("platform_secret_bindings", "revoked_at", "SELECT"),
+    ("platform_secret_bindings", "id", "INSERT"),
+    ("platform_secret_bindings", "purpose", "INSERT"),
+    ("platform_secret_bindings", "backend", "INSERT"),
+    ("platform_secret_bindings", "secret_id", "INSERT"),
+    ("platform_secret_bindings", "backend_version", "INSERT"),
+    ("platform_secret_bindings", "backend_version", "UPDATE"),
+    ("platform_secret_bindings", "status", "UPDATE"),
+    ("platform_secret_bindings", "revision", "UPDATE"),
+    ("platform_secret_bindings", "rotated_at", "UPDATE"),
+    ("platform_secret_bindings", "revoked_at", "UPDATE"),
+    ("platform_configuration_facts", "event_kind", "SELECT"),
+    ("platform_configuration_facts", "configuration_revision_id", "SELECT"),
+    ("platform_configuration_facts", "configuration_kind", "SELECT"),
+    ("platform_configuration_facts", "revision", "SELECT"),
+    ("platform_configuration_facts", "secret_binding_id", "SELECT"),
+    ("platform_configuration_facts", "actor_principal_id", "SELECT"),
+    ("platform_configuration_facts", "actor_authentication_method", "SELECT"),
+    ("platform_configuration_facts", "correlation_id", "SELECT"),
+    ("platform_configuration_facts", "detail", "SELECT"),
+    ("platform_configuration_facts", "capability_key", "SELECT"),
+    ("platform_configuration_facts", "idempotency_key_digest", "SELECT"),
+    ("platform_configuration_facts", "intent_digest", "SELECT"),
+    ("platform_configuration_facts", "created_at", "SELECT"),
+    ("platform_configuration_facts", "event_kind", "INSERT"),
+    ("platform_configuration_facts", "configuration_revision_id", "INSERT"),
+    ("platform_configuration_facts", "configuration_kind", "INSERT"),
+    ("platform_configuration_facts", "revision", "INSERT"),
+    ("platform_configuration_facts", "secret_binding_id", "INSERT"),
+    ("platform_configuration_facts", "actor_principal_id", "INSERT"),
+    ("platform_configuration_facts", "actor_authentication_method", "INSERT"),
+    ("platform_configuration_facts", "correlation_id", "INSERT"),
+    ("platform_configuration_facts", "detail", "INSERT"),
+    ("platform_configuration_facts", "capability_key", "INSERT"),
+    ("platform_configuration_facts", "idempotency_key_digest", "INSERT"),
+    ("platform_configuration_facts", "intent_digest", "INSERT"),
+}
+
 
 def test_platform_control_roles_have_exact_elevation(admin_conn: PgConnection) -> None:
     rows = admin_conn.execute(
@@ -524,7 +595,7 @@ def test_platform_control_definer_has_only_reviewed_columns(
         (cast(str, table), cast(str, column), cast(str, privilege))
         for table, column, privilege in rows
     }
-    assert actual == _EXPECTED_COLUMNS
+    assert actual == _EXPECTED_COLUMNS | _P7_CONFIGURATION_COLUMNS
     assert admin_conn.execute(
         """
             SELECT table_name, privilege_type
