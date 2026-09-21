@@ -648,9 +648,9 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:idempotency:'
+                    'p7/idempotency/'
                     || v_actor_id::text
-                    || ':platform.configuration.stage:'
+                    || '/platform.configuration.stage/'
                     || p_idempotency_key_digest,
                     0
                 )
@@ -683,7 +683,7 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:configuration-kind:' || p_configuration_kind,
+                    'p7/configuration-kind/' || p_configuration_kind,
                     0
                 )
             );
@@ -807,9 +807,9 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:idempotency:'
+                    'p7/idempotency/'
                     || v_actor_id::text
-                    || ':platform.configuration.validate:'
+                    || '/platform.configuration.validate/'
                     || p_idempotency_key_digest,
                     0
                 )
@@ -842,7 +842,7 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:configuration-kind:' || p_configuration_kind,
+                    'p7/configuration-kind/' || p_configuration_kind,
                     0
                 )
             );
@@ -956,9 +956,9 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:idempotency:'
+                    'p7/idempotency/'
                     || v_actor_id::text
-                    || ':platform.configuration.activate:'
+                    || '/platform.configuration.activate/'
                     || p_idempotency_key_digest,
                     0
                 )
@@ -991,7 +991,7 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:configuration-kind:' || p_configuration_kind,
+                    'p7/configuration-kind/' || p_configuration_kind,
                     0
                 )
             );
@@ -1175,9 +1175,9 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:idempotency:'
+                    'p7/idempotency/'
                     || v_actor_id::text
-                    || ':platform.configuration.disable:'
+                    || '/platform.configuration.disable/'
                     || p_idempotency_key_digest,
                     0
                 )
@@ -1210,7 +1210,7 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:configuration-kind:' || p_configuration_kind,
+                    'p7/configuration-kind/' || p_configuration_kind,
                     0
                 )
             );
@@ -1342,9 +1342,9 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:idempotency:'
+                    'p7/idempotency/'
                     || v_actor_id::text
-                    || ':platform.secret.write:'
+                    || '/platform.secret.write/'
                     || p_idempotency_key_digest,
                     0
                 )
@@ -1484,9 +1484,9 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:idempotency:'
+                    'p7/idempotency/'
                     || v_actor_id::text
-                    || ':platform.secret.rotate:'
+                    || '/platform.secret.rotate/'
                     || p_idempotency_key_digest,
                     0
                 )
@@ -1642,9 +1642,9 @@ def upgrade() -> None:
 
             PERFORM pg_catalog.pg_advisory_xact_lock(
                 pg_catalog.hashtextextended(
-                    'p7:idempotency:'
+                    'p7/idempotency/'
                     || v_actor_id::text
-                    || ':platform.secret.revoke:'
+                    || '/platform.secret.revoke/'
                     || p_idempotency_key_digest,
                     0
                 )
