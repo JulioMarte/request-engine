@@ -89,6 +89,9 @@ def upgrade() -> None:
           FROM request_engine.platform_owner_policies
          WHERE policy_key = 'platform-owner-v2';
 
+        GRANT CREATE ON SCHEMA request_engine
+            TO request_platform_control_definer;
+
         CREATE FUNCTION request_engine.adopt_platform_owner_v3()
         RETURNS trigger
         LANGUAGE plpgsql
@@ -161,6 +164,8 @@ def upgrade() -> None:
             OWNER TO request_platform_control_definer;
         REVOKE ALL ON FUNCTION request_engine.adopt_platform_owner_v3()
             FROM PUBLIC;
+        REVOKE CREATE ON SCHEMA request_engine
+            FROM request_platform_control_definer;
 
         CREATE TRIGGER principal_authority_adopt_platform_owner_v3
             AFTER INSERT ON request_engine.principal_authority_grants
@@ -284,7 +289,7 @@ def upgrade() -> None:
         ON request_engine.principal_authority_grants
         TO {_CONTROL_DEFINER};
 
-        GRANT SELECT, INSERT
+        GRANT SELECT
         ON request_engine.platform_owner_policies
         TO {_CONTROL_DEFINER};
 
@@ -300,7 +305,7 @@ def upgrade() -> None:
         ON request_engine.platform_configuration_facts
         TO {_CONTROL_DEFINER};
 
-        GRANT USAGE ON SCHEMA request_platform
+        GRANT USAGE, CREATE ON SCHEMA request_platform
         TO {_CONTROL_DEFINER};
         """
     )
@@ -1667,6 +1672,7 @@ def upgrade() -> None:
         op.execute(f"ALTER FUNCTION {signature} OWNER TO {_CONTROL_DEFINER}")
         op.execute(f"REVOKE ALL ON FUNCTION {signature} FROM PUBLIC")
         op.execute(f"GRANT EXECUTE ON FUNCTION {signature} TO {_RUNTIME}")
+    op.execute(f"REVOKE CREATE ON SCHEMA request_platform FROM {_CONTROL_DEFINER}")
 
 
 def downgrade() -> None:
