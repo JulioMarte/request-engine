@@ -1,0 +1,379 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Annotated, Any
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, FastAPI, Header, Request, Security
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, ConfigDict, Field
+
+from request_engine.modules.platform_configuration.adapters.db.configuration import (
+    PostgresPlatformConfigurationCommands,
+    PostgresPlatformConfigurationReader,
+)
+from request_engine.modules.platform_configuration.application.configuration import (
+    ActivateConfiguration,
+    ConfigurationMutationResult,
+    ConfigurationRevision,
+    DisableConfiguration,
+    PlatformConfigurationConflict,
+    PlatformConfigurationError,
+    PlatformConfigurationForbidden,
+    PlatformConfigurationInvalid,
+    PlatformConfigurationNotFound,
+    PlatformConfigurationRevisionConflict,
+    SecretBindingMetadata,
+    StageConfiguration,
+    ValidateConfiguration,
+)
+from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.http.capability_routes import add_capability_route
+from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+from request_engine.platform.security.freshness import require_phishing_resistant_authentication
+from request_engine.platform.security.platform_context import PlatformActorContext
+from request_engine.platform.security.platform_http import PlatformActorResolver
+
+_NativeBearer = Annotated[
+    HTTPAuthorizationCredentials | None,
+    Security(HTTPBearer(scheme_name="NativeSessionBearer", auto_error=False)),
+]
+_IdempotencyKey = Annotated[
+    str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r"\S")
+]
+
+
+class StageConfigurationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    provider_kind: str = Field(min_length=2, max_length=80, pattern=r"^[a-z][a-z0-9_.-]+$")
+    configuration: dict[str, Any]
+    secret_binding_id: UUID | None = None
+
+
+class ActivateConfigurationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_active_revision: int | None = Field(default=None, ge=1)
+
+
+class ConfigurationMutationView(BaseModel):
+    configuration_revision_id: UUID
+    revision: int
+    state: str
+
+
+class ConfigurationRevisionView(BaseModel):
+    configuration_revision_id: UUID
+    configuration_kind: str
+    provider_kind: str
+    revision: int
+    configuration: dict[str, Any]
+    secret_binding_id: UUID | None
+    state: str
+    created_by_principal_id: UUID
+    created_at: datetime
+    validated_at: datetime | None
+    activated_at: datetime | None
+    disabled_at: datetime | None
+
+
+class ConfigurationRevisionListView(BaseModel):
+    items: list[ConfigurationRevisionView]
+
+
+class SecretBindingMetadataView(BaseModel):
+    binding_id: UUID
+    purpose: str
+    backend: str
+    configured: bool = True
+    backend_version: int
+    revision: int
+    last_rotated_at: datetime | None
+    status: str
+    created_at: datetime
+    revoked_at: datetime | None
+
+
+async def platform_configuration_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    errors: dict[type[Exception], tuple[int, str, ErrorResolution]] = {
+        PlatformConfigurationForbidden: (
+            403,
+            "platform_configuration_forbidden",
+            ErrorResolution.REQUEST_AUTHORITY,
+        ),
+        PlatformConfigurationNotFound: (
+            404,
+            "platform_configuration_not_found",
+            ErrorResolution.FIX_REQUEST,
+        ),
+        PlatformConfigurationConflict: (
+            409,
+            "platform_configuration_conflict",
+            ErrorResolution.REFRESH_AND_RETRY,
+        ),
+        PlatformConfigurationRevisionConflict: (
+            409,
+            "platform_configuration_changed",
+            ErrorResolution.REFRESH_AND_RETRY,
+        ),
+        PlatformConfigurationInvalid: (
+            422,
+            "platform_configuration_invalid",
+            ErrorResolution.FIX_REQUEST,
+        ),
+    }
+    status_code, code, resolution = errors.get(
+        type(exc),
+        (
+            500,
+            "platform_configuration_failed",
+            ErrorResolution.OPERATOR_INTERVENTION,
+        ),
+    )
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorEnvelope(
+            error=ErrorBody(
+                code=code,
+                message="The platform configuration operation could not be accepted.",
+                resolution=resolution,
+                retryable=False,
+            )
+        ).model_dump(mode="json"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+def install_platform_configuration_http(
+    app: FastAPI,
+    *,
+    read_session_factory: SessionFactory,
+    write_session_factory: SessionFactory,
+    actor_resolver: PlatformActorResolver,
+) -> None:
+    reader = PostgresPlatformConfigurationReader(read_session_factory)
+    commands = PostgresPlatformConfigurationCommands(write_session_factory)
+    router = APIRouter(tags=["Platform configuration"])
+
+    async def authenticated_actor(request: Request) -> PlatformActorContext:
+        return await actor_resolver.resolve_platform_actor(request)
+
+    async def list_configurations(
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        _bearer: _NativeBearer,
+    ) -> ConfigurationRevisionListView:
+        rows = await reader.list_revisions(actor)
+        return ConfigurationRevisionListView(items=[_revision_view(row) for row in rows])
+
+    async def list_configuration_revisions(
+        configuration_kind: str,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        _bearer: _NativeBearer,
+    ) -> ConfigurationRevisionListView:
+        rows = await reader.list_revisions(actor, configuration_kind)
+        return ConfigurationRevisionListView(items=[_revision_view(row) for row in rows])
+
+    async def get_configuration_revision(
+        configuration_kind: str,
+        revision: int,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        _bearer: _NativeBearer,
+    ) -> ConfigurationRevisionView:
+        return _revision_view(await reader.get_revision(actor, configuration_kind, revision))
+
+    async def get_secret_binding(
+        binding_id: UUID,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        _bearer: _NativeBearer,
+    ) -> SecretBindingMetadataView:
+        return _secret_view(await reader.get_secret_binding(actor, binding_id))
+
+    async def stage_configuration(
+        configuration_kind: str,
+        body: StageConfigurationBody,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+    ) -> ConfigurationMutationView:
+        _require_strong(actor)
+        result = await commands.stage(
+            actor,
+            StageConfiguration(
+                configuration_kind=configuration_kind,
+                provider_kind=body.provider_kind,
+                configuration=body.configuration,
+                secret_binding_id=body.secret_binding_id,
+                idempotency_key=idempotency_key,
+            ),
+        )
+        return _mutation_view(result)
+
+    async def validate_configuration(
+        configuration_kind: str,
+        revision: int,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+    ) -> ConfigurationMutationView:
+        _require_strong(actor)
+        return _mutation_view(
+            await commands.validate(
+                actor,
+                ValidateConfiguration(
+                    configuration_kind=configuration_kind,
+                    revision=revision,
+                    idempotency_key=idempotency_key,
+                ),
+            )
+        )
+
+    async def activate_configuration(
+        configuration_kind: str,
+        revision: int,
+        body: ActivateConfigurationBody,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+    ) -> ConfigurationMutationView:
+        _require_strong(actor)
+        return _mutation_view(
+            await commands.activate(
+                actor,
+                ActivateConfiguration(
+                    configuration_kind=configuration_kind,
+                    revision=revision,
+                    expected_active_revision=body.expected_active_revision,
+                    idempotency_key=idempotency_key,
+                ),
+            )
+        )
+
+    async def disable_configuration(
+        configuration_kind: str,
+        revision: int,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+    ) -> ConfigurationMutationView:
+        _require_strong(actor)
+        return _mutation_view(
+            await commands.disable(
+                actor,
+                DisableConfiguration(
+                    configuration_kind=configuration_kind,
+                    revision=revision,
+                    idempotency_key=idempotency_key,
+                ),
+            )
+        )
+
+    read_responses = {status: {"model": ErrorEnvelope} for status in (400, 401, 403, 404, 422)}
+    mutation_responses = {
+        status: {"model": ErrorEnvelope} for status in (400, 401, 403, 404, 409, 422)
+    }
+    add_capability_route(
+        router,
+        "/v1/platform/configurations",
+        list_configurations,
+        capability="platform.configuration.read",
+        methods=["GET"],
+        operation_id="platform_configuration_list",
+        owner="platform_configuration",
+        response_model=ConfigurationRevisionListView,
+        responses=read_responses,
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/configurations/{configuration_kind}",
+        list_configuration_revisions,
+        capability="platform.configuration.read",
+        methods=["GET"],
+        operation_id="platform_configuration_revision_list",
+        owner="platform_configuration",
+        response_model=ConfigurationRevisionListView,
+        responses=read_responses,
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/configurations/{configuration_kind}/revisions/{revision}",
+        get_configuration_revision,
+        capability="platform.configuration.read",
+        methods=["GET"],
+        operation_id="platform_configuration_revision_get",
+        owner="platform_configuration",
+        response_model=ConfigurationRevisionView,
+        responses=read_responses,
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/secrets/{binding_id}",
+        get_secret_binding,
+        capability="platform.configuration.read",
+        methods=["GET"],
+        operation_id="platform_secret_metadata_get",
+        owner="platform_configuration",
+        response_model=SecretBindingMetadataView,
+        responses=read_responses,
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/configurations/{configuration_kind}/revisions",
+        stage_configuration,
+        capability="platform.configuration.stage",
+        methods=["POST"],
+        operation_id="platform_configuration_stage",
+        owner="platform_configuration",
+        status_code=201,
+        response_model=ConfigurationMutationView,
+        responses=mutation_responses,
+    )
+    for action, endpoint, capability in (
+        ("validate", validate_configuration, "platform.configuration.validate"),
+        ("activate", activate_configuration, "platform.configuration.activate"),
+        ("disable", disable_configuration, "platform.configuration.disable"),
+    ):
+        add_capability_route(
+            router,
+            f"/v1/platform/configurations/{{configuration_kind}}/revisions/{{revision}}:{action}",
+            endpoint,
+            capability=capability,
+            methods=["POST"],
+            operation_id=f"platform_configuration_{action}",
+            owner="platform_configuration",
+            response_model=ConfigurationMutationView,
+            responses=mutation_responses,
+        )
+
+    app.add_exception_handler(PlatformConfigurationError, platform_configuration_error_handler)
+    app.include_router(router)
+
+
+def _require_strong(actor: PlatformActorContext) -> None:
+    require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+
+
+def _mutation_view(result: ConfigurationMutationResult) -> ConfigurationMutationView:
+    return ConfigurationMutationView(
+        configuration_revision_id=result.configuration_revision_id,
+        revision=result.revision,
+        state=result.state,
+    )
+
+
+def _revision_view(row: ConfigurationRevision) -> ConfigurationRevisionView:
+    return ConfigurationRevisionView(**row.__dict__)
+
+
+def _secret_view(row: SecretBindingMetadata) -> SecretBindingMetadataView:
+    return SecretBindingMetadataView(
+        binding_id=row.binding_id,
+        purpose=row.purpose,
+        backend=row.backend,
+        backend_version=row.backend_version,
+        revision=row.revision,
+        last_rotated_at=row.rotated_at,
+        status=row.status,
+        created_at=row.created_at,
+        revoked_at=row.revoked_at,
+    )
