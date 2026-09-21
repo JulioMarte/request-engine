@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Never
+from typing import Any, Never
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import Row
 from sqlalchemy.exc import DBAPIError
 
 from request_engine.modules.platform_configuration.application.configuration import (
@@ -270,21 +271,21 @@ def _require(actor: PlatformActorContext, capability: str) -> None:
         raise PlatformConfigurationForbidden(capability)
 
 
-def _revision(row: object) -> ConfigurationRevision:
+def _revision(row: Row[Any]) -> ConfigurationRevision:
     values = row
     return ConfigurationRevision(
-        configuration_revision_id=UUID(str(values[0])),  # type: ignore[index]
-        configuration_kind=str(values[1]),  # type: ignore[index]
-        provider_kind=str(values[2]),  # type: ignore[index]
-        revision=int(values[3]),  # type: ignore[index]
-        configuration=dict(values[4]),  # type: ignore[index,arg-type]
-        secret_binding_id=None if values[5] is None else UUID(str(values[5])),  # type: ignore[index]
-        state=str(values[6]),  # type: ignore[index]
-        created_by_principal_id=UUID(str(values[7])),  # type: ignore[index]
-        created_at=values[8],  # type: ignore[index]
-        validated_at=values[9],  # type: ignore[index]
-        activated_at=values[10],  # type: ignore[index]
-        disabled_at=values[11],  # type: ignore[index]
+        configuration_revision_id=UUID(str(values[0])),
+        configuration_kind=str(values[1]),
+        provider_kind=str(values[2]),
+        revision=int(values[3]),
+        configuration=dict(values[4]),
+        secret_binding_id=None if values[5] is None else UUID(str(values[5])),
+        state=str(values[6]),
+        created_by_principal_id=UUID(str(values[7])),
+        created_at=values[8],
+        validated_at=values[9],
+        activated_at=values[10],
+        disabled_at=values[11],
     )
 
 
