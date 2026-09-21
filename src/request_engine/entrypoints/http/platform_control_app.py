@@ -10,6 +10,9 @@ from request_engine.entrypoints.http.native_runtime import (
     build_native_auth_runtime,
     resolve_webauthn_decoy_key,
 )
+from request_engine.modules.platform_configuration.api.http import (
+    install_platform_configuration_http,
+)
 from request_engine.modules.tenancy.api.identity_recovery import install_identity_recovery_http
 from request_engine.modules.tenancy.api.native_platform_provisioning import (
     install_native_platform_provisioning_http,
@@ -140,6 +143,12 @@ def create_platform_control_app(
         actor_resolver=runtime.platform_actor_resolver,
         native_auth_service=runtime.service,
         native_authority_id=native_authority_id,
+    )
+    install_platform_configuration_http(
+        app,
+        read_session_factory=platform_read_session_factory,
+        write_session_factory=platform_write_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
     )
     install_instance_setup_http(
         app,
