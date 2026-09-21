@@ -819,3 +819,183 @@ async def test_offline_recovery_restricts_sensitive_authority_until_webauthn_com
             "ORDER BY created_at"
         ).fetchall()
         assert [row[0] for row in facts] == ["recovery_started", "recovery_completed"]
+
+
+@pytest.mark.asyncio
+async def test_platform_configuration_http_is_governed_and_never_replays_secret_material(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        authenticator = await _claim_owner(client)
+        _, owner_token = await _webauthn_login(client, authenticator)
+        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+        empty = await client.get("/v1/platform/configurations", headers=owner_headers)
+        assert empty.status_code == 200, empty.text
+        assert empty.json() == {"items": []}
+
+        password_login = await client.post(
+            "/auth/native/sessions",
+            json={"login_handle": LOGIN_HANDLE, "password": PASSWORD},
+        )
+        assert password_login.status_code == 201
+        password_headers = {
+            "Authorization": f"Bearer {password_login.json()['access_token']}",
+            "Idempotency-Key": "config-password-denied",
+        }
+        denied = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions",
+            headers=password_headers,
+            json={
+                "provider_kind": "smtp",
+                "configuration": {
+                    "host": "mail.example.test",
+                    "port": 587,
+                    "security": "starttls",
+                },
+            },
+        )
+        assert denied.status_code == 403
+        assert denied.json()["error"]["code"] == "phishing_resistant_auth_required"
+
+        rejected_secret = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions",
+            headers={**owner_headers, "Idempotency-Key": "config-secret-rejected"},
+            json={
+                "provider_kind": "smtp",
+                "configuration": {
+                    "host": "mail.example.test",
+                    "password": "must-never-enter-postgres",
+                },
+            },
+        )
+        assert rejected_secret.status_code == 422
+        assert "must-never-enter-postgres" not in rejected_secret.text
+
+        stage_headers = {**owner_headers, "Idempotency-Key": "config-stage-1"}
+        body = {
+            "provider_kind": "smtp",
+            "configuration": {
+                "host": "mail.example.test",
+                "port": 587,
+                "security": "starttls",
+            },
+        }
+        staged = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions",
+            headers=stage_headers,
+            json=body,
+        )
+        assert staged.status_code == 201, staged.text
+        assert staged.json()["revision"] == 1
+        assert staged.json()["state"] == "draft"
+        replay = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions",
+            headers=stage_headers,
+            json=body,
+        )
+        assert replay.status_code == 201
+        assert replay.json() == staged.json()
+
+        listed = await client.get(
+            "/v1/platform/configurations/email.delivery",
+            headers=owner_headers,
+        )
+        assert listed.status_code == 200
+        assert len(listed.json()["items"]) == 1
+        assert listed.json()["items"][0]["configuration"] == body["configuration"]
+
+        exact = await client.get(
+            "/v1/platform/configurations/email.delivery/revisions/1",
+            headers=owner_headers,
+        )
+        assert exact.status_code == 200
+        assert exact.json()["state"] == "draft"
+
+        validated = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions/1:validate",
+            headers={**owner_headers, "Idempotency-Key": "config-validate-1"},
+        )
+        assert validated.status_code == 200, validated.text
+        assert validated.json()["state"] == "validated"
+
+        activated = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions/1:activate",
+            headers={**owner_headers, "Idempotency-Key": "config-activate-1"},
+            json={"expected_active_revision": None},
+        )
+        assert activated.status_code == 200, activated.text
+        assert activated.json()["state"] == "active"
+
+        staged_two = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions",
+            headers={**owner_headers, "Idempotency-Key": "config-stage-2"},
+            json={
+                **body,
+                "configuration": {
+                    **body["configuration"],
+                    "host": "mail-two.example.test",
+                },
+            },
+        )
+        assert staged_two.status_code == 201
+        assert staged_two.json()["revision"] == 2
+        assert (
+            await client.post(
+                "/v1/platform/configurations/email.delivery/revisions/2:validate",
+                headers={**owner_headers, "Idempotency-Key": "config-validate-2"},
+            )
+        ).status_code == 200
+
+        stale = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions/2:activate",
+            headers={**owner_headers, "Idempotency-Key": "config-activate-stale"},
+            json={"expected_active_revision": None},
+        )
+        assert stale.status_code == 409
+        assert stale.json()["error"]["code"] == "platform_configuration_changed"
+
+        switched = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions/2:activate",
+            headers={**owner_headers, "Idempotency-Key": "config-activate-2"},
+            json={"expected_active_revision": 1},
+        )
+        assert switched.status_code == 200, switched.text
+        assert switched.json()["state"] == "active"
+
+        binding_id = uuid4()
+        secret_id = uuid4()
+        e2e_admin_conn.execute(
+            """
+            INSERT INTO request_engine.platform_secret_bindings (
+                id, purpose, backend, secret_id, backend_version
+            ) VALUES (%s, 'email.smtp.password', 'openbao', %s, 4)
+            """,
+            (binding_id, secret_id),
+        )
+        metadata = await client.get(
+            f"/v1/platform/secrets/{binding_id}",
+            headers=owner_headers,
+        )
+        assert metadata.status_code == 200, metadata.text
+        assert metadata.json()["binding_id"] == str(binding_id)
+        assert metadata.json()["backend"] == "openbao"
+        assert metadata.json()["backend_version"] == 4
+        assert metadata.json()["configured"] is True
+        assert "secret_id" not in metadata.json()
+        assert str(secret_id) not in metadata.text
+
+        operation = (await client.get("/openapi.json")).json()["paths"][
+            "/v1/platform/configurations/{configuration_kind}/revisions"
+        ]["post"]
+        assert operation["x-request-engine-owner"] == "platform_configuration"
+        assert operation["x-request-engine-capability"] == "platform.configuration.stage"
+        assert operation["x-request-engine-idempotency"] == "required"
