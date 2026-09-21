@@ -55,16 +55,16 @@ def upgrade() -> None:
             'platform-owner-v3',
             3,
             grants || '[
-                {"capability_key":"platform.configuration.read","delegable":false},
-                {"capability_key":"platform.configuration.stage","delegable":false},
-                {"capability_key":"platform.configuration.validate","delegable":false},
-                {"capability_key":"platform.configuration.activate","delegable":false},
-                {"capability_key":"platform.configuration.disable","delegable":false},
-                {"capability_key":"platform.secret.write","delegable":false},
-                {"capability_key":"platform.secret.rotate","delegable":false},
-                {"capability_key":"platform.secret.revoke","delegable":false},
-                {"capability_key":"platform.provider.test","delegable":false},
-                {"capability_key":"platform.readiness.read","delegable":false}
+                {"capability_key":"platform.configuration.read","delegable": false},
+                {"capability_key":"platform.configuration.stage","delegable": false},
+                {"capability_key":"platform.configuration.validate","delegable": false},
+                {"capability_key":"platform.configuration.activate","delegable": false},
+                {"capability_key":"platform.configuration.disable","delegable": false},
+                {"capability_key":"platform.secret.write","delegable": false},
+                {"capability_key":"platform.secret.rotate","delegable": false},
+                {"capability_key":"platform.secret.revoke","delegable": false},
+                {"capability_key":"platform.provider.test","delegable": false},
+                {"capability_key":"platform.readiness.read","delegable": false}
             ]'::jsonb
           FROM request_engine.platform_owner_policies
          WHERE policy_key = 'platform-owner-v2';
