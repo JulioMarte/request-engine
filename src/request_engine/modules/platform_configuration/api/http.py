@@ -228,7 +228,7 @@ def install_platform_configuration_http(
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
     ) -> ConfigurationMutationView:
-        _require_strong(actor)
+        require_platform_configuration_step_up(actor)
         result = await commands.stage(
             actor,
             StageConfiguration(
@@ -248,7 +248,7 @@ def install_platform_configuration_http(
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
     ) -> ConfigurationMutationView:
-        _require_strong(actor)
+        require_platform_configuration_step_up(actor)
         return _mutation_view(
             await commands.validate(
                 actor,
@@ -268,7 +268,7 @@ def install_platform_configuration_http(
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
     ) -> ConfigurationMutationView:
-        _require_strong(actor)
+        require_platform_configuration_step_up(actor)
         return _mutation_view(
             await commands.activate(
                 actor,
@@ -288,7 +288,7 @@ def install_platform_configuration_http(
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
     ) -> ConfigurationMutationView:
-        _require_strong(actor)
+        require_platform_configuration_step_up(actor)
         return _mutation_view(
             await commands.disable(
                 actor,
@@ -381,7 +381,7 @@ def install_platform_configuration_http(
     app.include_router(router)
 
 
-def _require_strong(actor: PlatformActorContext) -> None:
+def require_platform_configuration_step_up(actor: PlatformActorContext) -> None:
     require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
 
 
