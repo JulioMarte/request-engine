@@ -89,6 +89,7 @@ _GATED_WRITERS = {
 # Trigger functions fire from the gated organization-root transaction and are not
 # independently callable by runtime roles; they must not carry a late gate.
 _TRIGGER_WRITERS = {
+    ("request_engine", "adopt_platform_owner_v3"),
     ("request_engine", "seed_initial_controller_policy"),
     ("request_engine", "seed_root_staff_membership"),
     ("request_engine", "seed_root_staff_read_authority"),
