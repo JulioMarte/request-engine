@@ -298,13 +298,16 @@ def test_configuration_lifecycle_replay_and_stale_activation_are_deterministic(
     assert conflict.value.sqlstate == "23505"
 
     assert _validate(conn, 1, key="c" * 64, intent="d" * 64)[2] == "validated"
-    assert _activate(
-        conn,
-        1,
-        expected_active_revision=None,
-        key="e" * 64,
-        intent="f" * 64,
-    )[2] == "active"
+    assert (
+        _activate(
+            conn,
+            1,
+            expected_active_revision=None,
+            key="e" * 64,
+            intent="f" * 64,
+        )[2]
+        == "active"
+    )
 
     second = _stage(conn, key="1" * 64, intent="2" * 64)
     assert second[1:] == (2, "draft")
