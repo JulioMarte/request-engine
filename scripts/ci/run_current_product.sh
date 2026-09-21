@@ -194,6 +194,15 @@ uv run pytest \
   -q --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/privileged-authentication.xml"
 
+
+# P7 platform configuration HTTP governance is current product truth. Keep the
+# module-owned route/capability contract, secret-payload rejection and strong
+# step-up proof in the same evidence packet as the database governance proofs.
+uv run pytest \
+  tests/modules/platform_configuration/test_http_contract.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/platform-configuration-http.xml"
+
 # Tenant RLS catalog isolation is current-product truth. Run the adversarial
 # catalog enumeration against the accepted Alembic head so post-baseline tenant
 # tables cannot silently ship without FORCE RLS and a tenant-bound policy.
