@@ -586,6 +586,23 @@ def test_platform_configuration_runtime_has_functions_but_no_direct_table_access
     ).fetchone()
     assert runtime_can_execute == (True,)
 
+    control_read_authority = admin_conn.execute(
+        """
+        SELECT
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.read_platform_configuration_revisions(text)',
+                'EXECUTE'
+            ),
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.read_platform_secret_binding(uuid)',
+                'EXECUTE'
+            )
+        """
+    ).fetchone()
+    assert control_read_authority == (False, False)
+
     helper_is_private = admin_conn.execute(
         """
         SELECT has_function_privilege(
