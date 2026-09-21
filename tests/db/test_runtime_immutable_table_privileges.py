@@ -288,12 +288,12 @@ _EXACT_DEFINER_OWNERS = {
         "request_platform",
         "read_platform_configuration_revisions",
         "p_configuration_kind text",
-    ): "request_platform_control_definer",
+    ): "request_platform_definer",
     (
         "request_platform",
         "read_platform_secret_binding",
         "p_binding_id uuid",
-    ): "request_platform_control_definer",
+    ): "request_platform_definer",
     (
         "request_platform",
         "stage_platform_configuration",
