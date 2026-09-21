@@ -133,10 +133,17 @@ def test_platform_configuration_capabilities_are_explicit_high_risk_platform_aut
         "platform.readiness.read",
     }
     assert expected <= set(by_key)
+    runtime_surface = {
+        "platform.configuration.read",
+        "platform.configuration.stage",
+        "platform.configuration.validate",
+        "platform.configuration.activate",
+        "platform.configuration.disable",
+    }
     for key in expected:
         definition = by_key[key]
         assert definition.authority_plane.value == "platform"
-        assert definition.runtime_available is False
+        assert definition.runtime_available is (key in runtime_surface)
     for key in expected - {"platform.configuration.read", "platform.readiness.read"}:
         assert by_key[key].requires_recent_authentication is True
         assert by_key[key].idempotency is IdempotencyPolicy.REQUIRED
