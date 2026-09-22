@@ -16,6 +16,7 @@ from request_engine.bootstrap.recovery_delivery import (
     RecoveryDeliverySettings,
     build_native_recovery_messenger,
     build_recovery_secret_delivery,
+    has_recovery_secret_store_configuration,
 )
 from request_engine.bootstrap.recovery_delivery_worker import build_recovery_delivery_worker
 from request_engine.bootstrap.worker import build_worker_process
@@ -118,19 +119,22 @@ def create_worker() -> WorkerProcess:
     worker_principal_id = UUID(_required_env(WORKER_PRINCIPAL_ID_ENV))
 
     recovery_settings = RecoveryDeliverySettings()
-    bootstrap_smtp = build_native_recovery_messenger(recovery_settings)
-    managed_smtp = ManagedSmtpRecoveryDeliveryChannel(
-        resolver=ActivePlatformConfigurationResolver(
-            source=PostgresActivePlatformConfigurationSource(worker_sessions),
-            secret_store=build_platform_secret_store(),
-        ),
-        fallback=bootstrap_smtp,
-        reset_url=recovery_settings.recovery_reset_url,
-    )
-    delivery = build_recovery_secret_delivery(
-        recovery_settings,
-        channel_override=managed_smtp,
-    )
+    if has_recovery_secret_store_configuration(recovery_settings):
+        bootstrap_smtp = build_native_recovery_messenger(recovery_settings)
+        managed_smtp = ManagedSmtpRecoveryDeliveryChannel(
+            resolver=ActivePlatformConfigurationResolver(
+                source=PostgresActivePlatformConfigurationSource(worker_sessions),
+                secret_store=build_platform_secret_store(),
+            ),
+            fallback=bootstrap_smtp,
+            reset_url=recovery_settings.recovery_reset_url,
+        )
+        delivery = build_recovery_secret_delivery(
+            recovery_settings,
+            channel_override=managed_smtp,
+        )
+    else:
+        delivery = build_recovery_secret_delivery(recovery_settings)
     identity_recovery_delivery = (
         build_recovery_delivery_worker(worker_sessions, delivery) if delivery is not None else None
     )
