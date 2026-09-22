@@ -14,6 +14,9 @@ from request_engine.modules.platform_configuration.adapters.db.configuration imp
 from request_engine.modules.platform_configuration.adapters.db.provider_candidates import (
     PostgresProviderCandidateReader,
 )
+from request_engine.modules.platform_configuration.adapters.db.readiness import (
+    PostgresPlatformReadinessReader,
+)
 from request_engine.modules.platform_configuration.adapters.db.provider_secrets import (
     PostgresProviderSecretResolver,
 )
@@ -46,6 +49,9 @@ from request_engine.modules.platform_configuration.application.configuration imp
 from request_engine.modules.platform_configuration.application.provider_test import (
     PlatformProviderTestResult,
     PlatformProviderTestService,
+)
+from request_engine.modules.platform_configuration.application.readiness import (
+    PlatformReadiness,
 )
 from request_engine.modules.platform_configuration.application.provider_validation import (
     PlatformProviderValidationService,
@@ -195,6 +201,18 @@ class ConfigurationRevisionListView(BaseModel):
     items: list[ConfigurationRevisionView]
 
 
+class PlatformReadinessView(BaseModel):
+    managed_smtp_source: str
+    smtp_active_revision: int | None
+    smtp_last_validated_at: datetime | None
+    smtp_last_provider_test_outcome: str | None
+    smtp_last_provider_test_at: datetime | None
+    smtp_secret_configured: bool
+    backup_evidence: str
+    restore_drill: str
+    clone_fence: str
+
+
 class SecretBindingMetadataView(BaseModel):
     binding_id: UUID
     purpose: str
@@ -297,6 +315,7 @@ def install_platform_configuration_http(
     secret_store: PlatformSecretStore | None = None,
 ) -> None:
     reader = PostgresPlatformConfigurationReader(read_session_factory)
+    readiness_reader = PostgresPlatformReadinessReader(read_session_factory)
     commands = PostgresPlatformConfigurationCommands(write_session_factory)
     secret_service = (
         None
@@ -349,6 +368,12 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationRevisionView:
         return _revision_view(await reader.get_revision(actor, configuration_kind, revision))
+
+    async def get_platform_readiness(
+        _bearer: _NativeBearer,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+    ) -> PlatformReadinessView:
+        return _readiness_view(await readiness_reader.read(actor))
 
     async def get_secret_binding(
         binding_id: UUID,
@@ -560,6 +585,17 @@ def install_platform_configuration_http(
     )
     add_capability_route(
         router,
+        "/v1/platform/readiness",
+        get_platform_readiness,
+        capability="platform.readiness.read",
+        methods=["GET"],
+        operation_id="platform_readiness_get",
+        owner="platform_configuration",
+        response_model=PlatformReadinessView,
+        responses=read_responses,
+    )
+    add_capability_route(
+        router,
         "/v1/platform/secrets/{binding_id}",
         get_secret_binding,
         capability="platform.configuration.read",
@@ -690,6 +726,20 @@ def _revision_view(row: ConfigurationRevision) -> ConfigurationRevisionView:
         validated_at=row.validated_at,
         activated_at=row.activated_at,
         disabled_at=row.disabled_at,
+    )
+
+
+def _readiness_view(readiness: PlatformReadiness) -> PlatformReadinessView:
+    return PlatformReadinessView(
+        managed_smtp_source=readiness.managed_smtp_source,
+        smtp_active_revision=readiness.smtp_active_revision,
+        smtp_last_validated_at=readiness.smtp_last_validated_at,
+        smtp_last_provider_test_outcome=readiness.smtp_last_provider_test_outcome,
+        smtp_last_provider_test_at=readiness.smtp_last_provider_test_at,
+        smtp_secret_configured=readiness.smtp_secret_configured,
+        backup_evidence=readiness.backup_evidence,
+        restore_drill=readiness.restore_drill,
+        clone_fence=readiness.clone_fence,
     )
 
 
