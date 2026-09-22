@@ -105,4 +105,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("Runtime configuration projection is accepted security surface; roll forward")
+    raise RuntimeError(
+        "Runtime configuration projection is accepted security surface; roll forward"
+    )
