@@ -72,6 +72,8 @@ class StageConfiguration:
 class ValidateConfiguration:
     configuration_kind: str
     revision: int
+    expected_binding_revision: int | None
+    expected_backend_version: int | None
     idempotency_key: str
 
 
