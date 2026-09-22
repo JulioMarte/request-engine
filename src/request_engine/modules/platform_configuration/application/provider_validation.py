@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Protocol
-from uuid import UUID
 
 from request_engine.modules.platform_configuration.application.configuration import (
     ConfigurationMutationResult,
@@ -10,6 +9,9 @@ from request_engine.modules.platform_configuration.application.configuration imp
     PlatformConfigurationProviderInvalid,
     PlatformProviderValidationFailed,
     ValidateConfiguration,
+)
+from request_engine.modules.platform_configuration.application.provider_secrets import (
+    ProviderSecretResolver,
 )
 from request_engine.modules.platform_configuration.application.smtp import (
     ProviderValidationStatus,
@@ -41,25 +43,6 @@ class ConfigurationCommands(Protocol):
         actor: PlatformActorContext,
         command: ValidateConfiguration,
     ) -> ConfigurationMutationResult: ...
-
-
-class ProviderSecretReference(Protocol):
-    secret_id: UUID
-    purpose: str
-    backend: str
-    backend_version: int
-    status: str
-    revision: int
-
-
-class ProviderSecretResolver(Protocol):
-    async def resolve(
-        self,
-        actor: PlatformActorContext,
-        *,
-        binding_id: UUID,
-        capability_key: str,
-    ) -> ProviderSecretReference: ...
 
 
 class PlatformProviderValidationService:
