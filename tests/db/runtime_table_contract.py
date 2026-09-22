@@ -15,6 +15,7 @@ PRIVATE_GLOBAL_TABLES = {
     "platform_owner_policies",
     "platform_recovery_code_facts",
     "platform_secret_bindings",
+    "platform_secret_mutations",
     "recovery_code_sets",
     "recovery_codes",
     "setup_pending_identity",
