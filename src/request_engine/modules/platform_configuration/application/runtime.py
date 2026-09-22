@@ -13,12 +13,17 @@ from request_engine.modules.platform_configuration.application.webhook import (
     parse_webhook_configuration,
 )
 from request_engine.modules.platform_configuration.contracts.runtime import (
+    PlatformRuntimeConfigurationError,
     ResolvedWebhookConfiguration,
 )
-from request_engine.platform.secrets.platform_store import PlatformSecretStore
+from request_engine.platform.secrets.platform_store import (
+    PlatformSecretNotFound,
+    PlatformSecretStore,
+    PlatformSecretStoreUnavailable,
+)
 
 
-class ActivePlatformConfigurationError(RuntimeError):
+class ActivePlatformConfigurationError(PlatformRuntimeConfigurationError):
     pass
 
 
@@ -328,4 +333,7 @@ class ActivePlatformConfigurationResolver:
             raise ActivePlatformConfigurationError(missing_message)
         if self._secret_store is None:
             raise ActivePlatformConfigurationError(store_message)
-        return await self._secret_store.resolve(secret_id=observed.secret_id)
+        try:
+            return await self._secret_store.resolve(secret_id=observed.secret_id)
+        except (PlatformSecretNotFound, PlatformSecretStoreUnavailable) as exc:
+            raise ActivePlatformConfigurationError(store_message) from exc
