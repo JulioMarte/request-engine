@@ -21,7 +21,6 @@ from request_engine.platform.secrets.platform_store import (
 from request_engine.platform.security.platform_context import PlatformActorContext
 
 
-
 class PlatformSecretAdministrationService:
     """Coordinate PostgreSQL authority with an external secret store.
 
