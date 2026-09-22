@@ -32,8 +32,8 @@ class _NotificationConnection(Protocol):
 
 _Connect = Callable[[str], Awaitable[_NotificationConnection]]
 _asyncpg = import_module("asyncpg")
-_asyncpg_connect = cast(Callable[[str], Awaitable[object]], getattr(_asyncpg, "connect"))
-_AsyncpgPostgresError = cast(type[Exception], getattr(_asyncpg, "PostgresError"))
+_asyncpg_connect = cast(Callable[[str], Awaitable[object]], _asyncpg.connect)
+_AsyncpgPostgresError = cast(type[Exception], _asyncpg.PostgresError)
 
 
 async def _default_connect(dsn: str) -> _NotificationConnection:
