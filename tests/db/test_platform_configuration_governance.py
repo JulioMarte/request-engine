@@ -420,6 +420,7 @@ def test_concurrent_first_activation_has_one_winner_and_one_stale_conflict(
 def test_secret_binding_commands_are_version_fenced_and_metadata_only(
     admin_conn: PgConnection,
     platform_control_conn_factory: Callable[[], PgConnection],
+    platform_read_conn_factory: Callable[[], PgConnection],
 ) -> None:
     actor_id, authority_revision = _create_platform_actor(
         admin_conn,
@@ -455,7 +456,12 @@ def test_secret_binding_commands_are_version_fenced_and_metadata_only(
     binding_id = UUID(str(created[0]))
     assert created[1:] == (1, 1, "active")
 
-    cursor = conn.execute(
+    read_conn = _authenticated_control(
+        platform_read_conn_factory,
+        actor_id,
+        authority_revision,
+    )
+    cursor = read_conn.execute(
         "SELECT * FROM request_platform.read_platform_secret_binding(%s)",
         (binding_id,),
     )
