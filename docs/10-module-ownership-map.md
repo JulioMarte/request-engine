@@ -122,7 +122,7 @@ catalog              -> none
 requests             -> tenancy
 booking              -> catalog, tenancy
 queue                -> booking, tenancy
-communications       -> booking
+communications       -> booking, platform_configuration
 discovery            -> booking
 delivery             -> none
 live_capacity        -> booking, delivery, queue
