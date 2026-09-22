@@ -18,13 +18,13 @@ class _NotificationConnection(Protocol):
     async def add_listener(
         self,
         channel: str,
-        callback: Callable[["_NotificationConnection", int, str, str], None],
+        callback: Callable[[_NotificationConnection, int, str, str], None],
     ) -> None: ...
 
     async def remove_listener(
         self,
         channel: str,
-        callback: Callable[["_NotificationConnection", int, str, str], None],
+        callback: Callable[[_NotificationConnection, int, str, str], None],
     ) -> None: ...
 
     async def close(self) -> None: ...
