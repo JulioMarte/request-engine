@@ -135,6 +135,7 @@ def test_reference_factory_composes_both_recovery_delivery_streams(
         "build_recovery_secret_delivery",
         lambda *args, **kwargs: delivery,
     )
+
     def build_identity_runtime(
         factory: SessionFactory,
         configured_delivery: object,
