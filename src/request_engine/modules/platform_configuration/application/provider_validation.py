@@ -24,12 +24,14 @@ from request_engine.platform.secrets.platform_store import (
 from request_engine.platform.security.platform_context import PlatformActorContext
 
 
-class ConfigurationReader(Protocol):
-    async def get_revision(
+class ProviderCandidateReader(Protocol):
+    async def get(
         self,
         actor: PlatformActorContext,
+        *,
         configuration_kind: str,
         revision: int,
+        capability_key: str,
     ) -> ConfigurationRevision: ...
 
 
@@ -64,7 +66,7 @@ class PlatformProviderValidationService:
     def __init__(
         self,
         *,
-        reader: ConfigurationReader,
+        reader: ProviderCandidateReader,
         commands: ConfigurationCommands,
         secret_resolver: ProviderSecretResolver,
         secret_store: PlatformSecretStore | None,
@@ -84,10 +86,11 @@ class PlatformProviderValidationService:
         revision: int,
         idempotency_key: str,
     ) -> ConfigurationMutationResult:
-        candidate = await self._reader.get_revision(
+        candidate = await self._reader.get(
             actor,
-            configuration_kind,
-            revision,
+            configuration_kind=configuration_kind,
+            revision=revision,
+            capability_key="platform.configuration.validate",
         )
         if candidate.configuration_kind != "email.delivery" or candidate.provider_kind != "smtp":
             raise PlatformConfigurationInvalid()
