@@ -11,7 +11,12 @@ from request_engine.bootstrap.communication_providers import (
 from request_engine.bootstrap.native_recovery_delivery_worker import (
     build_native_recovery_delivery_worker,
 )
-from request_engine.bootstrap.recovery_delivery import build_recovery_secret_delivery
+from request_engine.bootstrap.platform_secrets import build_platform_secret_store
+from request_engine.bootstrap.recovery_delivery import (
+    RecoveryDeliverySettings,
+    build_native_recovery_messenger,
+    build_recovery_secret_delivery,
+)
 from request_engine.bootstrap.recovery_delivery_worker import build_recovery_delivery_worker
 from request_engine.bootstrap.worker import build_worker_process
 from request_engine.entrypoints.worker.app import WorkerProcess
@@ -43,6 +48,15 @@ from request_engine.modules.queue.adapters.db.released_slot_recovery import (
 )
 from request_engine.modules.queue.adapters.db.slot_offer_commands import (
     PostgresSlotOfferCommands,
+)
+from request_engine.modules.platform_configuration.adapters.db.runtime import (
+    PostgresActivePlatformConfigurationSource,
+)
+from request_engine.modules.platform_configuration.adapters.managed_smtp_delivery import (
+    ManagedSmtpRecoveryDeliveryChannel,
+)
+from request_engine.modules.platform_configuration.application.runtime import (
+    ActivePlatformConfigurationResolver,
 )
 from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
     SlotOfferExpiryScheduledHandler,
@@ -102,7 +116,21 @@ def create_worker() -> WorkerProcess:
         create_postgres_engine(_required_env(APP_DATABASE_URL_ENV))
     )
     worker_principal_id = UUID(_required_env(WORKER_PRINCIPAL_ID_ENV))
-    delivery = build_recovery_secret_delivery()
+
+    recovery_settings = RecoveryDeliverySettings()
+    bootstrap_smtp = build_native_recovery_messenger(recovery_settings)
+    managed_smtp = ManagedSmtpRecoveryDeliveryChannel(
+        resolver=ActivePlatformConfigurationResolver(
+            source=PostgresActivePlatformConfigurationSource(worker_sessions),
+            secret_store=build_platform_secret_store(),
+        ),
+        fallback=bootstrap_smtp,
+        reset_url=recovery_settings.recovery_reset_url,
+    )
+    delivery = build_recovery_secret_delivery(
+        recovery_settings,
+        channel_override=managed_smtp,
+    )
     identity_recovery_delivery = (
         build_recovery_delivery_worker(worker_sessions, delivery) if delivery is not None else None
     )
