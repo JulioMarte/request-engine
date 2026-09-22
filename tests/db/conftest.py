@@ -107,6 +107,7 @@ def platform_read_conn_factory(
     for signature in (
         "request_platform.read_platform_configuration_revisions(text)",
         "request_platform.read_platform_secret_binding(uuid)",
+        "request_platform.read_platform_readiness()",
     ):
         admin_conn.execute(
             sql.SQL("GRANT EXECUTE ON FUNCTION " + signature + " TO {}").format(
