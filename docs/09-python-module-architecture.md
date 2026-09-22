@@ -22,6 +22,7 @@ Current active business-module inventory:
 
 ```text
 tenancy
+platform_configuration
 catalog
 requests
 booking
@@ -46,6 +47,7 @@ This is not a microservice split. Modules may share one process, one PostgreSQL 
 Detailed ownership lives in `10-module-ownership-map.md`.
 
 - `tenancy`: Organization, Principal, Party, Representation and tenant/subject authority truth.
+- `platform_configuration`: installation-wide typed operational configuration lifecycle, secret-binding metadata, provider validation/test orchestration and diagnostic readiness; plaintext secret transport remains technical platform infrastructure.
 - `catalog`: Location, Offering/OfferingVersion and reusable service/capability configuration vocabulary.
 - `requests`: durable new business demand requiring later processing.
 - `booking`: Resource planning, contextual supply, availability, CapacityHold/CapacityClaim, Reservation and commitment/revalidation.
