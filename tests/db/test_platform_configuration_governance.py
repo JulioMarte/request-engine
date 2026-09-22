@@ -882,7 +882,7 @@ def test_platform_readiness_projects_active_smtp_and_provider_test_facts(
         actor_id,
         authority_revision,
     )
-    _stage(control, key="readiness-stage".encode().hex().ljust(64, "0"), intent="1" * 64)
+    _stage(control, key="a" * 64, intent="1" * 64)
     _validate(control, 1, key="2" * 64, intent="3" * 64)
 
     fact = control.execute(
