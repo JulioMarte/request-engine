@@ -42,6 +42,34 @@ def _active(
     )
 
 
+def _active_webhook(
+    *,
+    revision: int,
+    binding_revision: int = 1,
+    backend_version: int = 1,
+    secret_id: UUID | None = None,
+) -> ActivePlatformConfiguration:
+    resolved_secret_id = secret_id or uuid4()
+    return ActivePlatformConfiguration(
+        configuration_revision_id=uuid4(),
+        configuration_kind="communications.webhook",
+        provider_kind="webhook",
+        revision=revision,
+        configuration={
+            "base_url": "https://transport.example.test/handoff",
+            "auth_header_name": "Authorization",
+            "timeout_seconds": 8,
+        },
+        secret_binding_id=uuid4(),
+        secret_binding_revision=binding_revision,
+        secret_id=resolved_secret_id,
+        secret_purpose="communications.webhook.auth_header",
+        secret_backend="openbao",
+        secret_backend_version=backend_version,
+        secret_status="active",
+    )
+
+
 class _Source:
     def __init__(self, value: ActivePlatformConfiguration | None) -> None:
         self.value = value
@@ -181,3 +209,57 @@ async def test_runtime_resolver_returns_none_when_no_managed_active_revision() -
         secret_store=None,
     )
     assert await resolver.resolve_smtp() is None
+
+@pytest.mark.asyncio
+async def test_runtime_resolver_adopts_managed_webhook_and_exact_revision() -> None:
+    secret_id = uuid4()
+    source = _Source(_active_webhook(revision=4, secret_id=secret_id))
+    store = _Store()
+    store.values[secret_id] = "Bearer managed-v4"
+    resolver = ActivePlatformConfigurationResolver(
+        source=source,
+        secret_store=store,
+        poll_interval_seconds=60,
+    )
+
+    active = await resolver.resolve_webhook()
+    assert active is not None
+    assert active.configuration_revision == 4
+    assert active.auth_header_value == "Bearer managed-v4"
+
+    source.value = _active_webhook(revision=5, secret_id=secret_id)
+    exact_missing = await resolver.resolve_webhook(revision=4, force_refresh=True)
+    assert exact_missing is None
+
+    source.value = _active_webhook(revision=4, secret_id=secret_id)
+    exact = await resolver.resolve_webhook(revision=4, force_refresh=True)
+    assert exact is not None
+    assert exact.configuration_revision == 4
+
+
+@pytest.mark.asyncio
+async def test_runtime_resolver_webhook_invalidation_adopts_new_active_revision() -> None:
+    first_secret = uuid4()
+    second_secret = uuid4()
+    source = _Source(_active_webhook(revision=2, secret_id=first_secret))
+    store = _Store()
+    store.values[first_secret] = "Bearer first"
+    store.values[second_secret] = "Bearer second"
+    resolver = ActivePlatformConfigurationResolver(
+        source=source,
+        secret_store=store,
+        poll_interval_seconds=60,
+    )
+
+    first = await resolver.resolve_webhook()
+    assert first is not None
+    assert first.configuration_revision == 2
+
+    source.value = _active_webhook(revision=3, secret_id=second_secret)
+    resolver.invalidate("communications.webhook")
+    second = await resolver.resolve_webhook()
+
+    assert second is not None
+    assert second.configuration_revision == 3
+    assert second.auth_header_value == "Bearer second"
+
