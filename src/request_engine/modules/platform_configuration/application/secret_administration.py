@@ -11,13 +11,7 @@ from request_engine.modules.platform_configuration.application.secrets import (
     SecretMutationOperation,
     SecretMutationResult,
 )
-from request_engine.platform.secrets.platform_store import (
-    PlatformSecretConflict as StoreSecretConflict,
-    PlatformSecretMetadata,
-    PlatformSecretNotFound as StoreSecretNotFound,
-    PlatformSecretStore,
-    PlatformSecretStoreUnavailable,
-)
+from request_engine.platform.secrets import platform_store
 from request_engine.platform.security.platform_context import PlatformActorContext
 
 
@@ -33,7 +27,7 @@ class PlatformSecretAdministrationService:
         self,
         *,
         mutations: PlatformSecretMutationStore,
-        store: PlatformSecretStore,
+        store: platform_store.PlatformSecretStore,
     ) -> None:
         self._mutations = mutations
         self._store = store
@@ -98,9 +92,9 @@ class PlatformSecretAdministrationService:
                 expected_version=expected_version,
                 operation_id=operation.operation_id,
             )
-        except StoreSecretConflict:
+        except platform_store.PlatformSecretConflict:
             metadata = await self._recover_ambiguous_write(operation, conflict=True)
-        except PlatformSecretStoreUnavailable:
+        except platform_store.PlatformSecretStoreUnavailable:
             metadata = await self._recover_ambiguous_write(operation, conflict=False)
 
         if metadata.operation_id != operation.operation_id:
@@ -120,10 +114,10 @@ class PlatformSecretAdministrationService:
         operation: SecretMutationOperation,
         *,
         conflict: bool,
-    ) -> PlatformSecretMetadata:
+    ) -> platform_store.PlatformSecretMetadata:
         try:
             metadata = await self._store.metadata(secret_id=operation.secret_id)
-        except (StoreSecretNotFound, PlatformSecretStoreUnavailable):
+        except (platform_store.PlatformSecretNotFound, platform_store.PlatformSecretStoreUnavailable):
             if conflict:
                 raise PlatformSecretConflict() from None
             raise PlatformSecretUnavailable() from None
@@ -149,14 +143,14 @@ class PlatformSecretAdministrationService:
         expected_version = operation.expected_backend_version
         try:
             metadata = await self._store.metadata(secret_id=operation.secret_id)
-        except StoreSecretNotFound:
+        except platform_store.PlatformSecretNotFound:
             operation = await self._mutations.mark_backend_applied(
                 actor,
                 operation.operation_id,
                 expected_version,
             )
             return await self._commit(actor, operation)
-        except PlatformSecretStoreUnavailable:
+        except platform_store.PlatformSecretStoreUnavailable:
             raise PlatformSecretUnavailable() from None
 
         if metadata.version != expected_version:
@@ -164,12 +158,12 @@ class PlatformSecretAdministrationService:
 
         try:
             await self._store.revoke(secret_id=operation.secret_id)
-        except PlatformSecretStoreUnavailable:
+        except platform_store.PlatformSecretStoreUnavailable:
             try:
                 await self._store.metadata(secret_id=operation.secret_id)
-            except StoreSecretNotFound:
+            except platform_store.PlatformSecretNotFound:
                 pass
-            except PlatformSecretStoreUnavailable:
+            except platform_store.PlatformSecretStoreUnavailable:
                 raise PlatformSecretUnavailable() from None
             else:
                 raise PlatformSecretUnavailable() from None
