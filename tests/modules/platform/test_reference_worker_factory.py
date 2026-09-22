@@ -135,15 +135,29 @@ def test_reference_factory_composes_both_recovery_delivery_streams(
         "build_recovery_secret_delivery",
         lambda *args, **kwargs: delivery,
     )
+    def build_identity_runtime(
+        factory: SessionFactory,
+        configured_delivery: object,
+    ) -> object:
+        del factory, configured_delivery
+        return identity_runtime
+
+    def build_native_runtime(
+        factory: SessionFactory,
+        configured_delivery: object,
+    ) -> object:
+        del factory, configured_delivery
+        return native_runtime
+
     monkeypatch.setattr(
         reference_worker_factory,
         "build_recovery_delivery_worker",
-        lambda factory, configured_delivery: identity_runtime,  # type: ignore[reportUnknownLambdaType]
+        build_identity_runtime,
     )
     monkeypatch.setattr(
         reference_worker_factory,
         "build_native_recovery_delivery_worker",
-        lambda factory, configured_delivery: native_runtime,  # type: ignore[reportUnknownLambdaType]
+        build_native_runtime,
     )
 
     def capture_worker_process(**kwargs: Any) -> object:
