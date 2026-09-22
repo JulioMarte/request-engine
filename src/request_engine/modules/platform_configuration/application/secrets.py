@@ -4,11 +4,10 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from request_engine.platform.security.platform_context import PlatformActorContext
-
 from request_engine.modules.platform_configuration.application.configuration import (
     PlatformConfigurationError,
 )
+from request_engine.platform.security.platform_context import PlatformActorContext
 
 
 class PlatformSecretUnavailable(PlatformConfigurationError):
