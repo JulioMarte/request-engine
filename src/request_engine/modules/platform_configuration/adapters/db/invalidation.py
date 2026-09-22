@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from typing import Any, cast
 
 import asyncpg
@@ -54,19 +55,15 @@ class PlatformConfigurationInvalidationRuntime:
             except (OSError, asyncpg.PostgresError):
                 if stop_event.is_set():
                     return
-                try:
+                with suppress(TimeoutError):
                     await asyncio.wait_for(
                         stop_event.wait(),
                         timeout=self._reconnect_delay_seconds,
                     )
-                except TimeoutError:
-                    pass
             finally:
                 if connection is not None:
-                    try:
+                    with suppress(asyncpg.PostgresError, RuntimeError):
                         await connection.remove_listener(_CHANNEL, self._on_notification)
-                    except (asyncpg.PostgresError, RuntimeError):
-                        pass
                     await connection.close()
 
     def _on_notification(
