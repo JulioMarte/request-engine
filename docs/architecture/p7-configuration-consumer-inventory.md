@@ -102,18 +102,20 @@ REQUEST_ENGINE_WEBHOOK_AUTH_HEADER
 `template_key`, `template_version` and `render_context`. The current webhook
 adapter hands that semantic payload to the remote provider/orchestrator.
 
-Important P7-G gap:
+P7-G integration now governs the existing Communications webhook without
+moving rendering ownership. New deliveries resolve the ACTIVE
+`communications.webhook` revision through P7 while the existing webhook keeps
+receiving `template_key`, `template_version` and `render_context`.
 
-- Communications has no in-process email template renderer today.
-- Therefore P7 must not invent an email body from `template_key` or serialize
-  internal render context as customer-visible mail merely to claim SMTP
-  integration.
-- A real managed-SMTP Communications path requires a Communications-owned
-  rendering contract/implementation (or another explicitly accepted rendering
-  boundary) before SMTP transport can become a generic Communications provider.
+Each delivery records whether it used `bootstrap` or `managed` provider
+configuration. Managed deliveries also record the exact configuration revision.
+A later reconciliation lookup resolves that exact revision, so activating a new
+webhook cannot retarget an in-flight delivery to a different endpoint.
 
-The managed SMTP recovery channel does not satisfy P7-G by itself; it is a
-specialized recovery delivery path.
+Communications still has no in-process email template renderer. Therefore P7
+does not invent an email body merely to route generic Communications through the
+SMTP recovery channel. Generic managed SMTP remains a future Communications
+rendering concern; the managed webhook is the P7-G production path.
 
 ## 5. Outbox publisher
 
@@ -206,8 +208,8 @@ Hostname/environment-name guessing is not an acceptable fence.
 | Recovery SMTP | bootstrap + ACTIVE `email.delivery` | managed path implemented | production provider acceptance |
 | Platform secrets | OpenBao composition | implemented | production topology/restore evidence |
 | Recovery proof store | OpenBao/Vault bootstrap | intentionally separate | operational recovery evidence |
-| Communications webhook | deployment env | not migrated | P7-G rendering/provider boundary |
-| Generic Communications email | none | not implemented | Communications renderer + managed SMTP adapter |
+| Communications webhook | bootstrap env or ACTIVE `communications.webhook` | managed path implemented with revision pinning | production provider acceptance |
+| Generic Communications email | none | intentionally not invented by P7-G | Communications renderer required before generic SMTP delivery |
 | OIDC verifier metadata | PostgreSQL `identity_authorities` | existing durable source, not P7-administered | P7-H governed admin lifecycle |
 | WebAuthn decoy key | deployment secret | not a P7 signing key | keep deployment-managed unless policy changes |
 | Appointment signing key | deployment secret | not governed | P7-I key-family rotation design |
