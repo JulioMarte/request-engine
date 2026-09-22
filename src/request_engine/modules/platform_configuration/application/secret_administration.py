@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from request_engine.modules.platform_configuration.adapters.db.secrets import (
-    PostgresPlatformSecretMutations,
-)
 from request_engine.modules.platform_configuration.application.secrets import (
     CreatePlatformSecret,
     PlatformSecretConflict,
     PlatformSecretReconciliationRequired,
     PlatformSecretUnavailable,
+    PlatformSecretMutationStore,
     RevokePlatformSecret,
     RotatePlatformSecret,
     SecretMutationOperation,
@@ -38,7 +36,7 @@ class PlatformSecretAdministrationService:
     def __init__(
         self,
         *,
-        mutations: PostgresPlatformSecretMutations,
+        mutations: PlatformSecretMutationStore,
         store: PlatformSecretStore,
     ) -> None:
         self._mutations = mutations
