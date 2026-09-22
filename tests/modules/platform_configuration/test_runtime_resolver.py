@@ -51,8 +51,23 @@ class _Source:
         self,
         configuration_kind: str,
     ) -> ActivePlatformConfiguration | None:
-        assert configuration_kind == "email.delivery"
         self.reads += 1
+        if self.value is not None:
+            assert configuration_kind == self.value.configuration_kind
+        return self.value
+
+    async def read_revision(
+        self,
+        configuration_kind: str,
+        revision: int,
+    ) -> ActivePlatformConfiguration | None:
+        self.reads += 1
+        if (
+            self.value is None
+            or self.value.configuration_kind != configuration_kind
+            or self.value.revision != revision
+        ):
+            return None
         return self.value
 
 
