@@ -124,9 +124,15 @@ def create_worker() -> WorkerProcess:
         database_url=worker_database_url,
         invalidate=platform_configuration_resolver.invalidate,
     )
+    webhook_base_url = os.environ.get(WEBHOOK_BASE_URL_ENV) or None
+    webhook_auth_header = _webhook_auth_header()
+    if webhook_auth_header is not None and webhook_base_url is None:
+        raise RuntimeError(
+            f"{WEBHOOK_BASE_URL_ENV} is required when {WEBHOOK_AUTH_HEADER_ENV} is set"
+        )
     providers = build_communication_delivery_providers(
-        webhook_base_url=os.environ.get(WEBHOOK_BASE_URL_ENV) or None,
-        webhook_auth_header=_webhook_auth_header(),
+        webhook_base_url=webhook_base_url,
+        webhook_auth_header=webhook_auth_header,
         managed_webhook_resolver=platform_configuration_resolver,
     )
 
