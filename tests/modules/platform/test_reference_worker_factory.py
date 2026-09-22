@@ -133,7 +133,7 @@ def test_reference_factory_composes_both_recovery_delivery_streams(
     monkeypatch.setattr(
         reference_worker_factory,
         "build_recovery_secret_delivery",
-        lambda: delivery,
+        lambda *args, **kwargs: delivery,
     )
     monkeypatch.setattr(
         reference_worker_factory,
