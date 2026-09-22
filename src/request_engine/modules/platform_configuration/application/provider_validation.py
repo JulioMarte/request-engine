@@ -11,12 +11,17 @@ from request_engine.modules.platform_configuration.application.configuration imp
     ValidateConfiguration,
 )
 from request_engine.modules.platform_configuration.application.provider_secrets import (
+    ProviderSecretReference,
     ProviderSecretResolver,
 )
 from request_engine.modules.platform_configuration.application.smtp import (
     ProviderValidationStatus,
     SmtpConfigurationValidator,
     parse_smtp_configuration,
+)
+from request_engine.modules.platform_configuration.application.webhook import (
+    WebhookConfiguration,
+    parse_webhook_configuration,
 )
 from request_engine.platform.secrets.platform_store import (
     PlatformSecretNotFound,
@@ -75,50 +80,18 @@ class PlatformProviderValidationService:
             revision=revision,
             capability_key="platform.configuration.validate",
         )
-        if candidate.configuration_kind != "email.delivery" or candidate.provider_kind != "smtp":
+
+        binding_revision: int | None
+        backend_version: int | None
+        if candidate.configuration_kind == "email.delivery" and candidate.provider_kind == "smtp":
+            binding_revision, backend_version = await self._validate_smtp(actor, candidate)
+        elif (
+            candidate.configuration_kind == "communications.webhook"
+            and candidate.provider_kind == "webhook"
+        ):
+            binding_revision, backend_version = await self._validate_webhook(actor, candidate)
+        else:
             raise PlatformConfigurationInvalid()
-
-        try:
-            smtp = parse_smtp_configuration(candidate.configuration)
-        except (TypeError, ValueError) as exc:
-            raise PlatformConfigurationProviderInvalid() from exc
-
-        binding_revision: int | None = None
-        backend_version: int | None = None
-        password: str | None = None
-
-        if smtp.username is not None:
-            if candidate.secret_binding_id is None:
-                raise PlatformConfigurationProviderInvalid()
-            secret = await self._secret_resolver.resolve(
-                actor,
-                binding_id=candidate.secret_binding_id,
-                capability_key="platform.configuration.validate",
-            )
-            if (
-                secret.status != "active"
-                or secret.purpose != "email.smtp.password"
-                or secret.backend != "openbao"
-            ):
-                raise PlatformConfigurationProviderInvalid()
-            binding_revision = secret.revision
-            backend_version = secret.backend_version
-            if self._secret_store is None:
-                raise PlatformProviderValidationFailed()
-            try:
-                password = await self._secret_store.resolve(secret_id=secret.secret_id)
-            except PlatformSecretNotFound as exc:
-                raise PlatformConfigurationProviderInvalid() from exc
-            except PlatformSecretStoreUnavailable as exc:
-                raise PlatformProviderValidationFailed() from exc
-        elif candidate.secret_binding_id is not None:
-            raise PlatformConfigurationProviderInvalid()
-
-        result = await self._smtp_validator.validate(smtp, password=password)
-        if result.status is ProviderValidationStatus.INVALID:
-            raise PlatformConfigurationProviderInvalid(result.detail_code)
-        if result.status is ProviderValidationStatus.UNAVAILABLE:
-            raise PlatformProviderValidationFailed(result.detail_code)
 
         return await self._commands.validate(
             actor,
@@ -130,3 +103,101 @@ class PlatformProviderValidationService:
                 idempotency_key=idempotency_key,
             ),
         )
+
+    async def _validate_smtp(
+        self,
+        actor: PlatformActorContext,
+        candidate: ConfigurationRevision,
+    ) -> tuple[int | None, int | None]:
+        try:
+            smtp = parse_smtp_configuration(candidate.configuration)
+        except (TypeError, ValueError) as exc:
+            raise PlatformConfigurationProviderInvalid() from exc
+
+        secret: ProviderSecretReference | None = None
+        password: str | None = None
+        if smtp.username is not None:
+            secret = await self._validated_secret(
+                actor,
+                candidate,
+                purpose="email.smtp.password",
+            )
+            password = await self._resolve_secret_value(secret)
+        elif candidate.secret_binding_id is not None:
+            raise PlatformConfigurationProviderInvalid()
+
+        result = await self._smtp_validator.validate(smtp, password=password)
+        if result.status is ProviderValidationStatus.INVALID:
+            raise PlatformConfigurationProviderInvalid(result.detail_code)
+        if result.status is ProviderValidationStatus.UNAVAILABLE:
+            raise PlatformProviderValidationFailed(result.detail_code)
+
+        return _secret_fence(secret)
+
+    async def _validate_webhook(
+        self,
+        actor: PlatformActorContext,
+        candidate: ConfigurationRevision,
+    ) -> tuple[int | None, int | None]:
+        try:
+            webhook = parse_webhook_configuration(candidate.configuration)
+        except (TypeError, ValueError) as exc:
+            raise PlatformConfigurationProviderInvalid() from exc
+
+        secret: ProviderSecretReference | None = None
+        if webhook.auth_header_name is not None:
+            secret = await self._validated_secret(
+                actor,
+                candidate,
+                purpose="communications.webhook.auth_header",
+            )
+            await self._resolve_secret_value(secret)
+        elif candidate.secret_binding_id is not None:
+            raise PlatformConfigurationProviderInvalid()
+
+        _validate_webhook_transport_contract(webhook)
+        return _secret_fence(secret)
+
+    async def _validated_secret(
+        self,
+        actor: PlatformActorContext,
+        candidate: ConfigurationRevision,
+        *,
+        purpose: str,
+    ) -> ProviderSecretReference:
+        if candidate.secret_binding_id is None:
+            raise PlatformConfigurationProviderInvalid()
+        secret = await self._secret_resolver.resolve(
+            actor,
+            binding_id=candidate.secret_binding_id,
+            capability_key="platform.configuration.validate",
+        )
+        if secret.status != "active" or secret.purpose != purpose or secret.backend != "openbao":
+            raise PlatformConfigurationProviderInvalid()
+        return secret
+
+    async def _resolve_secret_value(self, secret: ProviderSecretReference) -> str:
+        if self._secret_store is None:
+            raise PlatformProviderValidationFailed()
+        try:
+            return await self._secret_store.resolve(secret_id=secret.secret_id)
+        except PlatformSecretNotFound as exc:
+            raise PlatformConfigurationProviderInvalid() from exc
+        except PlatformSecretStoreUnavailable as exc:
+            raise PlatformProviderValidationFailed() from exc
+
+
+def _secret_fence(secret: ProviderSecretReference | None) -> tuple[int | None, int | None]:
+    if secret is None:
+        return None, None
+    return secret.revision, secret.backend_version
+
+
+def _validate_webhook_transport_contract(webhook: WebhookConfiguration) -> None:
+    # There is no safe generic network probe for a delivery webhook: GET/HEAD
+    # semantics are provider-specific and a POST would itself be a side effect.
+    # Typed URL/header validation plus secret resolution is therefore the
+    # validation boundary. Provider behavior is proved by actual Communications
+    # delivery and its existing reconciliation semantics.
+    if not webhook.base_url.startswith("https://"):
+        raise PlatformConfigurationProviderInvalid()
