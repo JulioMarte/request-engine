@@ -14,11 +14,11 @@ from request_engine.modules.platform_configuration.adapters.db.configuration imp
 from request_engine.modules.platform_configuration.adapters.db.provider_candidates import (
     PostgresProviderCandidateReader,
 )
-from request_engine.modules.platform_configuration.adapters.db.provider_tests import (
-    PostgresProviderTestRecorder,
-)
 from request_engine.modules.platform_configuration.adapters.db.provider_secrets import (
     PostgresProviderSecretResolver,
+)
+from request_engine.modules.platform_configuration.adapters.db.provider_tests import (
+    PostgresProviderTestRecorder,
 )
 from request_engine.modules.platform_configuration.adapters.db.secrets import (
     PostgresPlatformSecretMutations,
@@ -50,9 +50,6 @@ from request_engine.modules.platform_configuration.application.provider_test imp
 from request_engine.modules.platform_configuration.application.provider_validation import (
     PlatformProviderValidationService,
 )
-from request_engine.modules.platform_configuration.application.smtp import (
-    parse_smtp_configuration,
-)
 from request_engine.modules.platform_configuration.application.secret_administration import (
     PlatformSecretAdministrationService,
 )
@@ -65,6 +62,9 @@ from request_engine.modules.platform_configuration.application.secrets import (
     RevokePlatformSecret,
     RotatePlatformSecret,
     SecretMutationResult,
+)
+from request_engine.modules.platform_configuration.application.smtp import (
+    parse_smtp_configuration,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
