@@ -35,16 +35,12 @@ def build_platform_secret_store(
     address = resolved.openbao_addr
     if address is None or not address.strip():
         if resolved.openbao_token is not None:
-            raise RuntimeError(
-                "REQUEST_ENGINE_OPENBAO_TOKEN requires REQUEST_ENGINE_OPENBAO_ADDR"
-            )
+            raise RuntimeError("REQUEST_ENGINE_OPENBAO_TOKEN requires REQUEST_ENGINE_OPENBAO_ADDR")
         return None
     return OpenBaoPlatformSecretStore(
         address=address,
         token=(
-            None
-            if resolved.openbao_token is None
-            else resolved.openbao_token.get_secret_value()
+            None if resolved.openbao_token is None else resolved.openbao_token.get_secret_value()
         ),
         mount=resolved.openbao_mount,
         path_prefix=resolved.platform_secret_path_prefix,
