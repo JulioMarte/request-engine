@@ -20,8 +20,7 @@ depends_on: str | Sequence[str] | None = None
 _DEFINER = "request_platform_control_definer"
 _RUNTIME = "request_platform_control"
 _SIGNATURE = (
-    "request_platform.record_platform_provider_test"
-    "(text,bigint,bigint,integer,text,text,text,text)"
+    "request_platform.record_platform_provider_test(text,bigint,bigint,integer,text,text,text,text)"
 )
 
 
