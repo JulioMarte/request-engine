@@ -1,6 +1,6 @@
 """Expose ACTIVE platform configuration to the trusted worker runtime.
 
-Revision ID: 0087_active_runtime_configuration
+Revision ID: 0087_active_runtime_config
 Revises: 0086_provider_test_facts
 
 The worker receives one narrow SECURITY DEFINER projection. It cannot read
@@ -12,7 +12,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0087_active_runtime_configuration"
+revision: str = "0087_active_runtime_config"
 down_revision: str | Sequence[str] | None = "0086_provider_test_facts"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
