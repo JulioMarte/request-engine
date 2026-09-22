@@ -4,7 +4,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from typing import Any, cast
+from typing import cast
 
 import asyncpg
 from sqlalchemy.engine import make_url
