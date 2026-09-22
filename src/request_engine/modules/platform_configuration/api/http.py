@@ -459,10 +459,7 @@ def install_platform_configuration_http(
         try:
             if configuration_kind == "email.delivery" and body.provider_kind == "smtp":
                 parse_smtp_configuration(body.configuration)
-            elif (
-                configuration_kind == "communications.webhook"
-                and body.provider_kind == "webhook"
-            ):
+            elif configuration_kind == "communications.webhook" and body.provider_kind == "webhook":
                 parse_webhook_configuration(body.configuration)
             else:
                 raise PlatformConfigurationInvalid()
