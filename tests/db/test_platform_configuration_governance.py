@@ -861,3 +861,69 @@ def test_platform_configuration_runtime_has_functions_but_no_direct_table_access
         """
     ).fetchone()
     assert helper_is_private == (False,)
+
+def test_platform_readiness_projects_active_smtp_and_provider_test_facts(
+    admin_conn: PgConnection,
+    platform_control_conn_factory: Callable[[], PgConnection],
+    platform_read_conn_factory: Callable[[], PgConnection],
+) -> None:
+    actor_id, authority_revision = _create_platform_actor(
+        admin_conn,
+        {
+            "platform.configuration.stage",
+            "platform.configuration.validate",
+            "platform.configuration.activate",
+            "platform.provider.test",
+            "platform.readiness.read",
+        },
+    )
+    control = _authenticated_control(
+        platform_control_conn_factory,
+        actor_id,
+        authority_revision,
+    )
+    _stage(control, key="readiness-stage".encode().hex().ljust(64, "0"), intent="1" * 64)
+    _validate(control, 1, key="2" * 64, intent="3" * 64)
+
+    fact = control.execute(
+        """
+        SELECT request_platform.record_platform_provider_test(
+            'email.delivery',
+            1,
+            NULL,
+            NULL,
+            'delivered',
+            'smtp_test_delivered',
+            %s,
+            %s
+        )
+        """,
+        ("4" * 64, "5" * 64),
+    ).fetchone()
+    assert fact is not None
+
+    _activate(
+        control,
+        1,
+        expected_active_revision=None,
+        key="6" * 64,
+        intent="7" * 64,
+    )
+
+    read_conn = _authenticated_control(
+        platform_read_conn_factory,
+        actor_id,
+        authority_revision,
+    )
+    row = read_conn.execute(
+        "SELECT * FROM request_platform.read_platform_readiness()"
+    ).fetchone()
+
+    assert row is not None
+    assert row[0] == "managed"
+    assert row[1] == 1
+    assert row[2] is not None
+    assert row[3] == "delivered"
+    assert row[4] is not None
+    assert row[5] is False
+
