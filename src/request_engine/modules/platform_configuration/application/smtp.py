@@ -89,10 +89,7 @@ def parse_smtp_configuration(payload: dict[str, object]) -> SmtpConfiguration:
         raise ValueError("SMTP security mode must be a string")
     if username_raw is not None and not isinstance(username_raw, str):
         raise ValueError("SMTP username must be a string")
-    if (
-        not isinstance(timeout_raw, (int, float))
-        or isinstance(timeout_raw, bool)
-    ):
+    if not isinstance(timeout_raw, (int, float)) or isinstance(timeout_raw, bool):
         raise ValueError("SMTP timeout must be numeric")
     if helo_raw is not None and not isinstance(helo_raw, str):
         raise ValueError("SMTP HELO name must be a string")
