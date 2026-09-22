@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID, uuid4
@@ -11,6 +10,9 @@ from request_engine.modules.platform_configuration.application.configuration imp
     ConfigurationMutationResult,
     ConfigurationRevision,
     ValidateConfiguration,
+)
+from request_engine.modules.platform_configuration.application.provider_secrets import (
+    ProviderSecretReference,
 )
 from request_engine.modules.platform_configuration.application.provider_validation import (
     PlatformProviderValidationService,
@@ -82,18 +84,8 @@ class _Commands:
         return ConfigurationMutationResult(uuid4(), command.revision, "validated")
 
 
-@dataclass
-class _SecretReference:
-    secret_id: UUID
-    purpose: str = "email.smtp.password"
-    backend: str = "openbao"
-    backend_version: int = 9
-    status: str = "active"
-    revision: int = 4
-
-
 class _SecretResolver:
-    def __init__(self, reference: _SecretReference) -> None:
+    def __init__(self, reference: ProviderSecretReference) -> None:
         self.reference = reference
         self.capability: str | None = None
 
@@ -103,7 +95,7 @@ class _SecretResolver:
         *,
         binding_id: UUID,
         capability_key: str,
-    ) -> _SecretReference:
+    ) -> ProviderSecretReference:
         del actor, binding_id
         self.capability = capability_key
         return self.reference
@@ -181,7 +173,15 @@ async def test_provider_validation_carries_exact_secret_version_to_commit() -> N
     binding_id = uuid4()
     candidate = _CandidateReader(_revision(username="smtp-user", binding_id=binding_id))
     commands = _Commands()
-    reference = _SecretReference(secret_id=uuid4())
+    reference = ProviderSecretReference(
+        binding_id=binding_id,
+        secret_id=uuid4(),
+        purpose="email.smtp.password",
+        backend="openbao",
+        backend_version=9,
+        status="active",
+        revision=4,
+    )
     resolver = _SecretResolver(reference)
     store = _SecretStore()
     validator = _Validator()
@@ -218,7 +218,17 @@ async def test_provider_validation_without_auth_has_no_secret_precondition() -> 
     service = PlatformProviderValidationService(
         reader=candidate,
         commands=commands,
-        secret_resolver=_SecretResolver(_SecretReference(secret_id=uuid4())),
+        secret_resolver=_SecretResolver(
+            ProviderSecretReference(
+                binding_id=uuid4(),
+                secret_id=uuid4(),
+                purpose="email.smtp.password",
+                backend="openbao",
+                backend_version=9,
+                status="active",
+                revision=4,
+            )
+        ),
         secret_store=None,
         smtp_validator=validator,
     )
