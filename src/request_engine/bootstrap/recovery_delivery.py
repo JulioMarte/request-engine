@@ -15,6 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from request_engine.platform.secrets.composed_delivery import ComposedRecoverySecretDelivery
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
+from request_engine.platform.secrets.delivery_parts import RecoveryDeliveryChannel
 from request_engine.platform.secrets.openbao_recovery_secret_store import (
     OpenBaoRecoverySecretStore,
 )
@@ -100,11 +101,18 @@ def build_native_recovery_messenger(
 
 def build_recovery_secret_delivery(
     settings: RecoveryDeliverySettings | None = None,
+    *,
+    channel_override: RecoveryDeliveryChannel | None = None,
 ) -> RecoverySecretDelivery | None:
     """Resolve the deployment's delivery adapter, or ``None`` when unconfigured."""
 
     resolved = settings or RecoveryDeliverySettings()
     if resolved.recovery_delivery_factory is not None:
+        if channel_override is not None:
+            raise RuntimeError(
+                "managed SMTP channel cannot be combined with "
+                "REQUEST_ENGINE_RECOVERY_DELIVERY_FACTORY"
+            )
         return _factory_delivery(resolved.recovery_delivery_factory)
 
     openbao_configured = _has_text(resolved.openbao_addr) or _has_secret(resolved.openbao_token)
@@ -117,9 +125,9 @@ def build_recovery_secret_delivery(
         or _has_secret(resolved.smtp_password)
     )
     secret_store_configured = openbao_configured or vault_configured
-    if not secret_store_configured and not smtp_configured:
+    if not secret_store_configured and not smtp_configured and channel_override is None:
         return None
-    if not (secret_store_configured and smtp_configured):
+    if not secret_store_configured or (not smtp_configured and channel_override is None):
         missing = _missing_configuration(
             openbao_configured=openbao_configured,
             vault_configured=vault_configured,
@@ -152,21 +160,23 @@ def build_recovery_secret_delivery(
             timeout_seconds=resolved.vault_timeout_seconds,
             namespace=resolved.vault_namespace,
         )
-    channel = SmtpRecoveryDeliveryChannel(
-        host=_required_text("REQUEST_ENGINE_SMTP_HOST", resolved.smtp_host),
-        port=resolved.smtp_port,
-        sender=_required_text("REQUEST_ENGINE_SMTP_SENDER", resolved.smtp_sender),
-        username=resolved.smtp_username,
-        password=(
-            resolved.smtp_password.get_secret_value()
-            if resolved.smtp_password is not None
-            else None
-        ),
-        starttls=resolved.smtp_starttls,
-        use_ssl=resolved.smtp_ssl,
-        timeout_seconds=resolved.smtp_timeout_seconds,
-        reset_url=resolved.recovery_reset_url,
-    )
+    channel = channel_override
+    if channel is None:
+        channel = SmtpRecoveryDeliveryChannel(
+            host=_required_text("REQUEST_ENGINE_SMTP_HOST", resolved.smtp_host),
+            port=resolved.smtp_port,
+            sender=_required_text("REQUEST_ENGINE_SMTP_SENDER", resolved.smtp_sender),
+            username=resolved.smtp_username,
+            password=(
+                resolved.smtp_password.get_secret_value()
+                if resolved.smtp_password is not None
+                else None
+            ),
+            starttls=resolved.smtp_starttls,
+            use_ssl=resolved.smtp_ssl,
+            timeout_seconds=resolved.smtp_timeout_seconds,
+            reset_url=resolved.recovery_reset_url,
+        )
     return ComposedRecoverySecretDelivery(store=store, channel=channel)
 
 
