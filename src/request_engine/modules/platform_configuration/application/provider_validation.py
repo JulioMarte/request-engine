@@ -67,7 +67,7 @@ class PlatformProviderValidationService:
         reader: ConfigurationReader,
         commands: ConfigurationCommands,
         secret_resolver: ProviderSecretResolver,
-        secret_store: PlatformSecretStore,
+        secret_store: PlatformSecretStore | None,
         smtp_validator: SmtpConfigurationValidator,
     ) -> None:
         self._reader = reader
@@ -117,6 +117,8 @@ class PlatformProviderValidationService:
                 raise PlatformConfigurationProviderInvalid()
             binding_revision = secret.revision
             backend_version = secret.backend_version
+            if self._secret_store is None:
+                raise PlatformProviderValidationFailed()
             try:
                 password = await self._secret_store.resolve(secret_id=secret.secret_id)
             except PlatformSecretNotFound as exc:
