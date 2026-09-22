@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import text
@@ -12,19 +11,11 @@ from request_engine.modules.platform_configuration.application.configuration imp
     PlatformConfigurationNotFound,
     PlatformConfigurationRevisionConflict,
 )
+from request_engine.modules.platform_configuration.application.provider_secrets import (
+    ProviderSecretReference,
+)
 from request_engine.platform.db.session import SessionFactory, platform_actor_transaction
 from request_engine.platform.security.platform_context import PlatformActorContext
-
-
-@dataclass(frozen=True, slots=True)
-class ProviderSecretReference:
-    binding_id: UUID
-    secret_id: UUID
-    purpose: str
-    backend: str
-    backend_version: int
-    status: str
-    revision: int
 
 
 class PostgresProviderSecretResolver:
