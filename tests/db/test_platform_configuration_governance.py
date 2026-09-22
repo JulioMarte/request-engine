@@ -862,6 +862,7 @@ def test_platform_configuration_runtime_has_functions_but_no_direct_table_access
     ).fetchone()
     assert helper_is_private == (False,)
 
+
 def test_platform_readiness_projects_active_smtp_and_provider_test_facts(
     admin_conn: PgConnection,
     platform_control_conn_factory: Callable[[], PgConnection],
@@ -915,9 +916,7 @@ def test_platform_readiness_projects_active_smtp_and_provider_test_facts(
         actor_id,
         authority_revision,
     )
-    row = read_conn.execute(
-        "SELECT * FROM request_platform.read_platform_readiness()"
-    ).fetchone()
+    row = read_conn.execute("SELECT * FROM request_platform.read_platform_readiness()").fetchone()
 
     assert row is not None
     assert row[0] == "managed"
@@ -926,4 +925,3 @@ def test_platform_readiness_projects_active_smtp_and_provider_test_facts(
     assert row[3] == "delivered"
     assert row[4] is not None
     assert row[5] is False
-

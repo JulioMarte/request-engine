@@ -210,6 +210,7 @@ async def test_runtime_resolver_returns_none_when_no_managed_active_revision() -
     )
     assert await resolver.resolve_smtp() is None
 
+
 @pytest.mark.asyncio
 async def test_runtime_resolver_adopts_managed_webhook_and_exact_revision() -> None:
     secret_id = uuid4()
@@ -262,4 +263,3 @@ async def test_runtime_resolver_webhook_invalidation_adopts_new_active_revision(
     assert second is not None
     assert second.configuration_revision == 3
     assert second.auth_header_value == "Bearer second"
-

@@ -276,9 +276,7 @@ class ActivePlatformConfigurationResolver:
         observed: ActivePlatformConfiguration,
     ) -> ResolvedWebhookConfiguration:
         if observed.provider_kind != "webhook":
-            raise ActivePlatformConfigurationError(
-                "communications.webhook provider is not webhook"
-            )
+            raise ActivePlatformConfigurationError("communications.webhook provider is not webhook")
         try:
             webhook = parse_webhook_configuration(observed.configuration)
         except (TypeError, ValueError) as exc:
@@ -291,9 +289,7 @@ class ActivePlatformConfigurationResolver:
             auth_header_value = await self._resolve_secret(
                 observed,
                 expected_purpose="communications.webhook.auth_header",
-                missing_message=(
-                    "managed webhook secret binding is unavailable or incompatible"
-                ),
+                missing_message=("managed webhook secret binding is unavailable or incompatible"),
                 store_message=(
                     "authenticated managed webhook requires a configured platform secret store"
                 ),

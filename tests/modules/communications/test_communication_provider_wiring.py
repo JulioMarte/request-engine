@@ -26,6 +26,7 @@ def test_provider_wiring_registers_webhook_only_when_configured() -> None:
     assert set(configured) == {WEBHOOK_PROVIDER_KEY}
     assert isinstance(configured[WEBHOOK_PROVIDER_KEY], WebhookDeliveryProvider)
 
+
 class _ManagedResolver:
     async def resolve_webhook(
         self,
@@ -47,4 +48,3 @@ def test_provider_wiring_registers_managed_webhook_without_bootstrap_url() -> No
         configured[WEBHOOK_PROVIDER_KEY],
         managed_webhook.ManagedWebhookDeliveryProvider,
     )
-

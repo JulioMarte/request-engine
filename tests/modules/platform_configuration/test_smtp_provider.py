@@ -270,6 +270,7 @@ async def test_provider_validation_without_auth_has_no_secret_precondition() -> 
     assert commands.command.expected_binding_revision is None
     assert commands.command.expected_backend_version is None
 
+
 def test_webhook_configuration_is_typed_and_rejects_unsafe_urls() -> None:
     parsed = parse_webhook_configuration(
         {
@@ -333,4 +334,3 @@ async def test_webhook_validation_fences_exact_auth_secret_version() -> None:
     assert commands.command is not None
     assert commands.command.expected_binding_revision == 3
     assert commands.command.expected_backend_version == 6
-
