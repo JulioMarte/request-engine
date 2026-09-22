@@ -137,9 +137,11 @@ def _validate(
     row = conn.execute(
         """
         SELECT *
-          FROM request_platform.validate_platform_configuration(
+          FROM request_platform.validate_platform_configuration_provider(
               %s,
               %s,
+              NULL,
+              NULL,
               %s,
               %s
           )
@@ -755,6 +757,30 @@ def test_platform_configuration_runtime_has_functions_but_no_direct_table_access
         """
     ).fetchone()
     assert runtime_can_execute == (True,)
+
+    provider_validation_authority = admin_conn.execute(
+        """
+        SELECT
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.validate_platform_configuration_provider'
+                '(text,bigint,bigint,integer,text,text)',
+                'EXECUTE'
+            ),
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.resolve_platform_provider_secret(uuid,text)',
+                'EXECUTE'
+            ),
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.validate_platform_configuration'
+                '(text,bigint,text,text)',
+                'EXECUTE'
+            )
+        """
+    ).fetchone()
+    assert provider_validation_authority == (True, True, False)
 
     secret_mutation_authority = admin_conn.execute(
         """
