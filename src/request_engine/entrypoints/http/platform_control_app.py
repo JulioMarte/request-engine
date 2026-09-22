@@ -34,6 +34,7 @@ from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeS
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
+from request_engine.platform.secrets.platform_store import PlatformSecretStore
 from request_engine.platform.security.instance_setup import InstanceSetupService
 from request_engine.platform.security.native_recovery_addresses import (
     NativeRecoveryAddressService,
@@ -59,6 +60,7 @@ def create_platform_control_app(
     native_authority_id: UUID,
     recovery_delivery: RecoverySecretDelivery | None = None,
     native_recovery_messenger: NativeRecoveryMessenger | None = None,
+    platform_secret_store: PlatformSecretStore | None = None,
     webauthn_policy: WebAuthnPolicy | None = None,
     webauthn_decoy_key: bytes | None = None,
 ) -> FastAPI:
@@ -149,6 +151,7 @@ def create_platform_control_app(
         read_session_factory=platform_read_session_factory,
         write_session_factory=platform_write_session_factory,
         actor_resolver=runtime.platform_actor_resolver,
+        secret_store=platform_secret_store,
     )
     install_instance_setup_http(
         app,
