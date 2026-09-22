@@ -9,7 +9,7 @@
 Request Engine is designed on three simultaneous axes:
 
 1. **horizontal responsibilities** — transport, application, domain, persistence/provider mechanics;
-2. **vertical ownership** — current business modules such as tenancy, catalog, requests, booking, queue, communications, discovery, delivery, live capacity, operational recovery and bounded operational tooling;
+2. **vertical ownership** — current business modules such as tenancy, platform configuration, catalog, requests, booking, queue, communications, discovery, delivery, live capacity, operational recovery and bounded operational tooling;
 3. **connection surfaces** — explicit contracts where information/control crosses a boundary.
 
 A component is not considered designed until its inbound and outbound connection surfaces are identified.
