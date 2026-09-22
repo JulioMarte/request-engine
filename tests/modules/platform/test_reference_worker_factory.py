@@ -130,10 +130,14 @@ def test_reference_factory_composes_both_recovery_delivery_streams(
     native_runtime = object()
     captured: dict[str, object] = {}
 
+    def build_delivery(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        return delivery
+
     monkeypatch.setattr(
         reference_worker_factory,
         "build_recovery_secret_delivery",
-        lambda *args, **kwargs: delivery,
+        build_delivery,
     )
 
     def build_identity_runtime(
