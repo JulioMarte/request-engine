@@ -83,4 +83,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("Historical runtime configuration projection is accepted history; roll forward")
+    raise RuntimeError(
+        "Historical runtime configuration projection is accepted history; roll forward"
+    )
