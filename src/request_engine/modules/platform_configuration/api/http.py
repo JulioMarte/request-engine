@@ -50,6 +50,9 @@ from request_engine.modules.platform_configuration.application.provider_test imp
 from request_engine.modules.platform_configuration.application.provider_validation import (
     PlatformProviderValidationService,
 )
+from request_engine.modules.platform_configuration.application.smtp import (
+    parse_smtp_configuration,
+)
 from request_engine.modules.platform_configuration.application.secret_administration import (
     PlatformSecretAdministrationService,
 )
@@ -425,6 +428,12 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
+        if configuration_kind != "email.delivery" or body.provider_kind != "smtp":
+            raise PlatformConfigurationInvalid()
+        try:
+            parse_smtp_configuration(body.configuration)
+        except (TypeError, ValueError) as exc:
+            raise PlatformConfigurationProviderInvalid() from exc
         result = await commands.stage(
             actor,
             StageConfiguration(
