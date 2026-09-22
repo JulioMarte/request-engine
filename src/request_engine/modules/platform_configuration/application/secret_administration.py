@@ -117,7 +117,10 @@ class PlatformSecretAdministrationService:
     ) -> platform_store.PlatformSecretMetadata:
         try:
             metadata = await self._store.metadata(secret_id=operation.secret_id)
-        except (platform_store.PlatformSecretNotFound, platform_store.PlatformSecretStoreUnavailable):
+        except (
+            platform_store.PlatformSecretNotFound,
+            platform_store.PlatformSecretStoreUnavailable,
+        ):
             if conflict:
                 raise PlatformSecretConflict() from None
             raise PlatformSecretUnavailable() from None
