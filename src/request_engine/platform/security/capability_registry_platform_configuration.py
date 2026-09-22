@@ -83,6 +83,6 @@ PLATFORM_CONFIGURATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.OPERATOR,
         "Read the diagnostic platform operational-readiness projection.",
         authority_plane=AuthorityPlane.PLATFORM,
-        runtime_available=False,
+        runtime_available=True,
     ),
 )
