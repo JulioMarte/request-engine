@@ -30,6 +30,14 @@ class PlatformConfigurationInvalid(PlatformConfigurationError):
     pass
 
 
+class PlatformConfigurationProviderInvalid(PlatformConfigurationInvalid):
+    pass
+
+
+class PlatformProviderValidationFailed(PlatformConfigurationError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class ConfigurationRevision:
     configuration_revision_id: UUID
