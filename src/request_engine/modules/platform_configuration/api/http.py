@@ -72,6 +72,9 @@ from request_engine.modules.platform_configuration.application.secrets import (
 from request_engine.modules.platform_configuration.application.smtp import (
     parse_smtp_configuration,
 )
+from request_engine.modules.platform_configuration.application.webhook import (
+    parse_webhook_configuration,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
@@ -453,10 +456,16 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
-        if configuration_kind != "email.delivery" or body.provider_kind != "smtp":
-            raise PlatformConfigurationInvalid()
         try:
-            parse_smtp_configuration(body.configuration)
+            if configuration_kind == "email.delivery" and body.provider_kind == "smtp":
+                parse_smtp_configuration(body.configuration)
+            elif (
+                configuration_kind == "communications.webhook"
+                and body.provider_kind == "webhook"
+            ):
+                parse_webhook_configuration(body.configuration)
+            else:
+                raise PlatformConfigurationInvalid()
         except (TypeError, ValueError) as exc:
             raise PlatformConfigurationProviderInvalid() from exc
         result = await commands.stage(
