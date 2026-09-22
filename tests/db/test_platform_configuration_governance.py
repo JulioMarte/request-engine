@@ -417,7 +417,7 @@ def test_concurrent_first_activation_has_one_winner_and_one_stale_conflict(
     assert active == (1,)
 
 
-def test_secret_binding_commands_are_version_fenced_and_metadata_only(
+def test_secret_mutation_ledger_is_version_fenced_replayable_and_metadata_only(
     admin_conn: PgConnection,
     platform_control_conn_factory: Callable[[], PgConnection],
     platform_read_conn_factory: Callable[[], PgConnection],
@@ -436,25 +436,66 @@ def test_secret_binding_commands_are_version_fenced_and_metadata_only(
         actor_id,
         authority_revision,
     )
-    secret_id = uuid4()
 
-    created = conn.execute(
+    created_prepare = conn.execute(
         """
         SELECT *
-          FROM request_platform.record_platform_secret_binding(
+          FROM request_platform.prepare_platform_secret_mutation(
+              'create',
               'email.smtp.password',
               'openbao',
-              %s,
-              1,
+              NULL,
+              NULL,
+              NULL,
               %s,
               %s
           )
         """,
-        (secret_id, "1" * 64, "2" * 64),
+        ("1" * 64, "2" * 64),
+    ).fetchone()
+    assert created_prepare is not None
+    create_operation_id = UUID(str(created_prepare[0]))
+    secret_id = UUID(str(created_prepare[3]))
+    assert created_prepare[9] == "prepared"
+
+    created_applied = conn.execute(
+        """
+        SELECT *
+          FROM request_platform.mark_platform_secret_backend_applied(%s, 1)
+        """,
+        (create_operation_id,),
+    ).fetchone()
+    assert created_applied is not None
+    assert created_applied[8:10] == (1, "backend_applied")
+
+    created = conn.execute(
+        "SELECT * FROM request_platform.commit_platform_secret_mutation(%s)",
+        (create_operation_id,),
     ).fetchone()
     assert created is not None
-    binding_id = UUID(str(created[0]))
-    assert created[1:] == (1, 1, "active")
+    assert created[9] == "committed"
+    binding_id = UUID(str(created[10]))
+    assert created[11:13] == (1, "active")
+
+    replay = conn.execute(
+        """
+        SELECT *
+          FROM request_platform.prepare_platform_secret_mutation(
+              'create',
+              'email.smtp.password',
+              'openbao',
+              NULL,
+              NULL,
+              NULL,
+              %s,
+              %s
+          )
+        """,
+        ("1" * 64, "2" * 64),
+    ).fetchone()
+    assert replay is not None
+    assert UUID(str(replay[0])) == create_operation_id
+    assert replay[9] == "committed"
 
     read_conn = _authenticated_control(
         platform_read_conn_factory,
@@ -473,47 +514,46 @@ def test_secret_binding_commands_are_version_fenced_and_metadata_only(
     assert metadata[0] == binding_id
     assert metadata[1:5] == ("email.smtp.password", "openbao", 1, "active")
 
+    rotate_prepare = conn.execute(
+        """
+        SELECT *
+          FROM request_platform.prepare_platform_secret_mutation(
+              'rotate',
+              NULL,
+              NULL,
+              %s,
+              1,
+              1,
+              %s,
+              %s
+          )
+        """,
+        (binding_id, "3" * 64, "4" * 64),
+    ).fetchone()
+    assert rotate_prepare is not None
+    rotate_operation_id = UUID(str(rotate_prepare[0]))
+    conn.execute(
+        "SELECT * FROM request_platform.mark_platform_secret_backend_applied(%s, 2)",
+        (rotate_operation_id,),
+    ).fetchone()
     rotated = conn.execute(
-        """
-        SELECT *
-          FROM request_platform.commit_platform_secret_rotation(
-              %s,
-              1,
-              1,
-              2,
-              %s,
-              %s
-          )
-        """,
-        (binding_id, "3" * 64, "4" * 64),
+        "SELECT * FROM request_platform.commit_platform_secret_mutation(%s)",
+        (rotate_operation_id,),
     ).fetchone()
-    assert rotated == (binding_id, 2, 2, "active")
-
-    replay = conn.execute(
-        """
-        SELECT *
-          FROM request_platform.commit_platform_secret_rotation(
-              %s,
-              1,
-              1,
-              2,
-              %s,
-              %s
-          )
-        """,
-        (binding_id, "3" * 64, "4" * 64),
-    ).fetchone()
-    assert replay == rotated
+    assert rotated is not None
+    assert rotated[8:13] == (2, "committed", binding_id, 2, "active")
 
     with pytest.raises(psycopg.Error) as stale:
         conn.execute(
             """
             SELECT *
-              FROM request_platform.commit_platform_secret_rotation(
+              FROM request_platform.prepare_platform_secret_mutation(
+                  'rotate',
+                  NULL,
+                  NULL,
                   %s,
                   1,
                   1,
-                  3,
                   %s,
                   %s
               )
@@ -522,10 +562,13 @@ def test_secret_binding_commands_are_version_fenced_and_metadata_only(
         ).fetchone()
     assert stale.value.sqlstate == "40001"
 
-    revoked = conn.execute(
+    revoke_prepare = conn.execute(
         """
         SELECT *
-          FROM request_platform.revoke_platform_secret_binding(
+          FROM request_platform.prepare_platform_secret_mutation(
+              'revoke',
+              NULL,
+              NULL,
               %s,
               2,
               2,
@@ -535,7 +578,18 @@ def test_secret_binding_commands_are_version_fenced_and_metadata_only(
         """,
         (binding_id, "7" * 64, "8" * 64),
     ).fetchone()
-    assert revoked == (binding_id, 3, 2, "revoked")
+    assert revoke_prepare is not None
+    revoke_operation_id = UUID(str(revoke_prepare[0]))
+    conn.execute(
+        "SELECT * FROM request_platform.mark_platform_secret_backend_applied(%s, 2)",
+        (revoke_operation_id,),
+    ).fetchone()
+    revoked = conn.execute(
+        "SELECT * FROM request_platform.commit_platform_secret_mutation(%s)",
+        (revoke_operation_id,),
+    ).fetchone()
+    assert revoked is not None
+    assert revoked[8:13] == (2, "committed", binding_id, 3, "revoked")
 
     stored = admin_conn.execute(
         """
@@ -547,6 +601,17 @@ def test_secret_binding_commands_are_version_fenced_and_metadata_only(
     ).fetchone()
     assert stored == (secret_id, "revoked", 3)
 
+    plaintext_columns = admin_conn.execute(
+        """
+        SELECT column_name
+          FROM information_schema.columns
+         WHERE table_schema = 'request_engine'
+           AND table_name = 'platform_secret_mutations'
+        """
+    ).fetchall()
+    assert {"value", "secret", "password"}.isdisjoint(
+        {str(row[0]).lower() for row in plaintext_columns}
+    )
 
 def test_platform_configuration_runtime_has_functions_but_no_direct_table_access(
     admin_conn: PgConnection,
