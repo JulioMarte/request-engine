@@ -165,9 +165,11 @@ class PostgresPlatformConfigurationCommands:
             actor,
             "platform.configuration.validate",
             """
-            SELECT * FROM request_platform.validate_platform_configuration(
+            SELECT * FROM request_platform.validate_platform_configuration_provider(
                 CAST(:kind AS text),
                 CAST(:revision AS bigint),
+                CAST(:expected_binding_revision AS bigint),
+                CAST(:expected_backend_version AS integer),
                 CAST(:key_digest AS text),
                 CAST(:intent_digest AS text)
             )
@@ -175,11 +177,15 @@ class PostgresPlatformConfigurationCommands:
             {
                 "kind": command.configuration_kind,
                 "revision": command.revision,
+                "expected_binding_revision": command.expected_binding_revision,
+                "expected_backend_version": command.expected_backend_version,
                 "key_digest": _digest_text(command.idempotency_key),
                 "intent_digest": _digest_json(
                     {
                         "configuration_kind": command.configuration_kind,
                         "revision": command.revision,
+                        "expected_binding_revision": command.expected_binding_revision,
+                        "expected_backend_version": command.expected_backend_version,
                     }
                 ),
             },
