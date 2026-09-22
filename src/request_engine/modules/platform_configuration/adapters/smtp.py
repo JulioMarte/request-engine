@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import smtplib
+import hashlib
 import ssl
+from email.message import EmailMessage
 
 from request_engine.modules.platform_configuration.application.smtp import (
     ProviderValidationResult,
     ProviderValidationStatus,
+    ProviderTestOutcome,
+    ProviderTestResult,
     SmtpConfiguration,
     SmtpConfigurationValidator,
+    SmtpProviderTester,
     SmtpSecurityMode,
 )
 
@@ -92,4 +97,99 @@ class SmtplibConfigurationValidator(SmtpConfigurationValidator):
         return ProviderValidationResult(
             ProviderValidationStatus.VALID,
             "smtp_valid",
+        )
+
+
+
+class SmtplibProviderTester(SmtpProviderTester):
+    async def test(
+        self,
+        configuration: SmtpConfiguration,
+        *,
+        password: str | None,
+        destination: str,
+        idempotency_key: str,
+    ) -> ProviderTestResult:
+        return await asyncio.to_thread(
+            self._test_blocking,
+            configuration,
+            password,
+            destination,
+            idempotency_key,
+        )
+
+    @staticmethod
+    def _test_blocking(
+        configuration: SmtpConfiguration,
+        password: str | None,
+        destination: str,
+        idempotency_key: str,
+    ) -> ProviderTestResult:
+        if "@" not in destination:
+            return ProviderTestResult(
+                ProviderTestOutcome.FAILED,
+                "smtp_test_destination_invalid",
+            )
+
+        message = EmailMessage()
+        message["From"] = configuration.sender
+        message["To"] = destination
+        message["Subject"] = "Request Engine SMTP configuration test"
+        digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+        message["Message-ID"] = f"<p7-{digest}@request-engine>"
+        message.set_content(
+            "This message confirms that the configured Request Engine SMTP provider "
+            "accepted a controlled test delivery."
+        )
+
+        transport: type[smtplib.SMTP]
+        transport = (
+            smtplib.SMTP_SSL
+            if configuration.security is SmtpSecurityMode.TLS
+            else smtplib.SMTP
+        )
+        transmission_started = False
+        try:
+            with transport(
+                configuration.host,
+                configuration.port,
+                timeout=configuration.timeout_seconds,
+            ) as client:
+                client.ehlo(configuration.helo_name)
+                if configuration.security is SmtpSecurityMode.STARTTLS:
+                    client.starttls(context=ssl.create_default_context())
+                    client.ehlo(configuration.helo_name)
+                if configuration.username is not None:
+                    if password is None:
+                        return ProviderTestResult(
+                            ProviderTestOutcome.FAILED,
+                            "smtp_password_required",
+                        )
+                    client.login(configuration.username, password)
+                transmission_started = True
+                client.send_message(message)
+        except (
+            smtplib.SMTPRecipientsRefused,
+            smtplib.SMTPSenderRefused,
+            smtplib.SMTPAuthenticationError,
+            smtplib.SMTPNotSupportedError,
+            ssl.SSLCertVerificationError,
+        ):
+            return ProviderTestResult(
+                ProviderTestOutcome.FAILED,
+                "smtp_test_rejected",
+            )
+        except (TimeoutError, OSError, smtplib.SMTPException):
+            if transmission_started:
+                return ProviderTestResult(
+                    ProviderTestOutcome.UNKNOWN,
+                    "smtp_test_delivery_unknown",
+                )
+            return ProviderTestResult(
+                ProviderTestOutcome.FAILED,
+                "smtp_test_unavailable",
+            )
+        return ProviderTestResult(
+            ProviderTestOutcome.DELIVERED,
+            "smtp_test_delivered",
         )
