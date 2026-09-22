@@ -212,7 +212,7 @@ async def platform_configuration_error_handler(_: Request, exc: Exception) -> JS
         PlatformSecretUnavailable: (
             503,
             "platform_secret_unavailable",
-            ErrorResolution.RETRY_LATER,
+            ErrorResolution.RETRY_SAME_REQUEST,
         ),
         PlatformSecretReconciliationRequired: (
             409,
