@@ -613,6 +613,7 @@ def test_secret_mutation_ledger_is_version_fenced_replayable_and_metadata_only(
         {str(row[0]).lower() for row in plaintext_columns}
     )
 
+
 def test_platform_configuration_runtime_has_functions_but_no_direct_table_access(
     admin_conn: PgConnection,
 ) -> None:
@@ -620,6 +621,7 @@ def test_platform_configuration_runtime_has_functions_but_no_direct_table_access
         "platform_configuration_revisions",
         "platform_secret_bindings",
         "platform_configuration_facts",
+        "platform_secret_mutations",
     ):
         privileges = admin_conn.execute(
             """
@@ -656,6 +658,47 @@ def test_platform_configuration_runtime_has_functions_but_no_direct_table_access
         """
     ).fetchone()
     assert runtime_can_execute == (True,)
+
+    secret_mutation_authority = admin_conn.execute(
+        """
+        SELECT
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.prepare_platform_secret_mutation'
+                '(text,text,text,uuid,bigint,integer,text,text)',
+                'EXECUTE'
+            ),
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.mark_platform_secret_backend_applied(uuid,integer)',
+                'EXECUTE'
+            ),
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.commit_platform_secret_mutation(uuid)',
+                'EXECUTE'
+            ),
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.record_platform_secret_binding'
+                '(text,text,uuid,integer,text,text)',
+                'EXECUTE'
+            ),
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.commit_platform_secret_rotation'
+                '(uuid,bigint,integer,integer,text,text)',
+                'EXECUTE'
+            ),
+            has_function_privilege(
+                'request_platform_control',
+                'request_platform.revoke_platform_secret_binding'
+                '(uuid,bigint,integer,text,text)',
+                'EXECUTE'
+            )
+        """
+    ).fetchone()
+    assert secret_mutation_authority == (True, True, True, False, False, False)
 
     control_read_authority = admin_conn.execute(
         """
