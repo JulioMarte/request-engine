@@ -5,8 +5,10 @@ from request_engine.entrypoints.worker.provider_event_router import (
     ProviderEventKey,
 )
 from request_engine.modules.communications.adapters.transport import (
-    managed_webhook_delivery_provider,
-    webhook_delivery_provider,
+    managed_webhook_delivery_provider as managed_webhook,
+)
+from request_engine.modules.communications.adapters.transport import (
+    webhook_delivery_provider as webhook,
 )
 from request_engine.modules.communications.adapters.worker.delivery_outcome_events import (
     DeliveryOutcomeEventHandler,
@@ -34,7 +36,7 @@ def build_communication_delivery_providers(
         raise ValueError("webhook auth header requires a bootstrap webhook URL")
 
     bootstrap = (
-        webhook_delivery_provider.WebhookDeliveryProvider(
+        webhook.WebhookDeliveryProvider(
             webhook_base_url,
             auth_header=webhook_auth_header,
         )
@@ -43,14 +45,14 @@ def build_communication_delivery_providers(
     )
     if managed_webhook_resolver is not None:
         return {
-            webhook_delivery_provider.WEBHOOK_PROVIDER_KEY: managed_webhook_delivery_provider.Managedwebhook_delivery_provider.WebhookDeliveryProvider(
+            webhook.WEBHOOK_PROVIDER_KEY: managed_webhook.ManagedWebhookDeliveryProvider(
                 resolver=managed_webhook_resolver,
                 fallback=bootstrap,
             )
         }
     if bootstrap is None:
         return {}
-    return {webhook_delivery_provider.WEBHOOK_PROVIDER_KEY: bootstrap}
+    return {webhook.WEBHOOK_PROVIDER_KEY: bootstrap}
 
 
 def build_communication_provider_event_handlers(
@@ -64,7 +66,8 @@ def build_communication_provider_event_handlers(
     """
 
     return {
-        (webhook_delivery_provider.WEBHOOK_PROVIDER_KEY, WEBHOOK_PROVIDER_CONNECTION_KEY): DeliveryOutcomeEventHandler(
-            session_factory,
-        ),
+        (
+            webhook.WEBHOOK_PROVIDER_KEY,
+            WEBHOOK_PROVIDER_CONNECTION_KEY,
+        ): DeliveryOutcomeEventHandler(session_factory),
     }
