@@ -10,6 +10,9 @@ from request_engine.modules.platform_configuration.application.configuration imp
     PlatformConfigurationProviderInvalid,
     PlatformProviderValidationFailed,
 )
+from request_engine.modules.platform_configuration.application.provider_secrets import (
+    ProviderSecretResolver,
+)
 from request_engine.modules.platform_configuration.application.smtp import (
     ProviderTestOutcome,
     ProviderTestResult,
@@ -33,25 +36,6 @@ class ProviderCandidateReader(Protocol):
         revision: int,
         capability_key: str,
     ) -> ConfigurationRevision: ...
-
-
-class ProviderSecretReference(Protocol):
-    secret_id: UUID
-    purpose: str
-    backend: str
-    backend_version: int
-    status: str
-    revision: int
-
-
-class ProviderSecretResolver(Protocol):
-    async def resolve(
-        self,
-        actor: PlatformActorContext,
-        *,
-        binding_id: UUID,
-        capability_key: str,
-    ) -> ProviderSecretReference: ...
 
 
 class ProviderTestRecorder(Protocol):
