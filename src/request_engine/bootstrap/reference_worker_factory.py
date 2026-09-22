@@ -44,12 +44,6 @@ from request_engine.modules.communications.adapters.db.reservation_lifecycle_int
 from request_engine.modules.communications.adapters.db.slot_offer_intent import (
     PostgresSlotOfferNotificationIntent,
 )
-from request_engine.modules.queue.adapters.db.released_slot_recovery import (
-    PostgresReleasedSlotRecovery,
-)
-from request_engine.modules.queue.adapters.db.slot_offer_commands import (
-    PostgresSlotOfferCommands,
-)
 from request_engine.modules.platform_configuration.adapters.db.invalidation import (
     PlatformConfigurationInvalidationRuntime,
 )
@@ -61,6 +55,12 @@ from request_engine.modules.platform_configuration.adapters.managed_smtp_deliver
 )
 from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfigurationResolver,
+)
+from request_engine.modules.queue.adapters.db.released_slot_recovery import (
+    PostgresReleasedSlotRecovery,
+)
+from request_engine.modules.queue.adapters.db.slot_offer_commands import (
+    PostgresSlotOfferCommands,
 )
 from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
     SlotOfferExpiryScheduledHandler,
