@@ -33,6 +33,9 @@ def build_communication_delivery_providers(
 ) -> Mapping[str, CommunicationDeliveryProvider]:
     """Compose Communications transports with managed-over-bootstrap precedence."""
 
+    if webhook_auth_header is not None and not webhook_base_url:
+        raise ValueError("webhook auth header requires a bootstrap webhook URL")
+
     bootstrap = (
         WebhookDeliveryProvider(
             webhook_base_url,
