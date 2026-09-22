@@ -5,8 +5,8 @@ import pytest
 from request_engine.bootstrap.communication_providers import (
     build_communication_delivery_providers,
 )
-from request_engine.modules.communications.adapters.transport.managed_webhook_delivery_provider import (
-    ManagedWebhookDeliveryProvider,
+from request_engine.modules.communications.adapters.transport import (
+    managed_webhook_delivery_provider as managed_webhook,
 )
 from request_engine.modules.communications.adapters.transport.webhook_delivery_provider import (
     WEBHOOK_PROVIDER_KEY,
@@ -43,5 +43,5 @@ def test_provider_wiring_registers_managed_webhook_without_bootstrap_url() -> No
     )
 
     assert set(configured) == {WEBHOOK_PROVIDER_KEY}
-    assert isinstance(configured[WEBHOOK_PROVIDER_KEY], ManagedWebhookDeliveryProvider)
+    assert isinstance(configured[WEBHOOK_PROVIDER_KEY], managed_webhook.ManagedWebhookDeliveryProvider)
 
