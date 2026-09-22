@@ -20,6 +20,7 @@ from request_engine.platform.secrets.platform_store import (
     PlatformSecretNotFound as StoreSecretNotFound,
 )
 from request_engine.platform.secrets.platform_store import (
+    PlatformSecretMetadata,
     PlatformSecretStore,
     PlatformSecretStoreUnavailable,
 )
@@ -125,7 +126,7 @@ class PlatformSecretAdministrationService:
         operation: SecretMutationOperation,
         *,
         conflict: bool,
-    ):
+    ) -> PlatformSecretMetadata:
         try:
             metadata = await self._store.metadata(secret_id=operation.secret_id)
         except (StoreSecretNotFound, PlatformSecretStoreUnavailable):
