@@ -180,6 +180,17 @@ def build_recovery_secret_delivery(
     return ComposedRecoverySecretDelivery(store=store, channel=channel)
 
 
+def has_recovery_secret_store_configuration(
+    settings: RecoveryDeliverySettings,
+) -> bool:
+    return (
+        _has_text(settings.openbao_addr)
+        or _has_secret(settings.openbao_token)
+        or _has_text(settings.vault_addr)
+        or _has_secret(settings.vault_token)
+    )
+
+
 def _has_text(value: str | None) -> bool:
     return value is not None and bool(value.strip())
 
