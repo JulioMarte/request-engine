@@ -23,6 +23,9 @@ from request_engine.modules.platform_configuration.application.smtp import (
     SmtpConfiguration,
     parse_smtp_configuration,
 )
+from request_engine.modules.platform_configuration.application.webhook import (
+    parse_webhook_configuration,
+)
 from request_engine.platform.secrets.platform_store import PlatformSecretMetadata
 from request_engine.platform.security.platform_context import PlatformActorContext
 
@@ -41,6 +44,28 @@ def _revision(*, username: str | None, binding_id: UUID | None) -> Configuration
         configuration_kind="email.delivery",
         provider_kind="smtp",
         revision=3,
+        configuration=configuration,
+        secret_binding_id=binding_id,
+        state="draft",
+        created_by_principal_id=uuid4(),
+        created_at=datetime.now(UTC),
+        validated_at=None,
+        activated_at=None,
+        disabled_at=None,
+    )
+
+
+def _webhook_revision(*, binding_id: UUID | None) -> ConfigurationRevision:
+    configuration: dict[str, object] = {
+        "base_url": "https://transport.example.test/handoff",
+        "auth_header_name": "Authorization",
+        "timeout_seconds": 7,
+    }
+    return ConfigurationRevision(
+        configuration_revision_id=uuid4(),
+        configuration_kind="communications.webhook",
+        provider_kind="webhook",
+        revision=5,
         configuration=configuration,
         secret_binding_id=binding_id,
         state="draft",
@@ -244,3 +269,68 @@ async def test_provider_validation_without_auth_has_no_secret_precondition() -> 
     assert commands.command is not None
     assert commands.command.expected_binding_revision is None
     assert commands.command.expected_backend_version is None
+
+def test_webhook_configuration_is_typed_and_rejects_unsafe_urls() -> None:
+    parsed = parse_webhook_configuration(
+        {
+            "base_url": "https://transport.example.test/handoff/",
+            "auth_header_name": "Authorization",
+            "timeout_seconds": 6,
+        }
+    )
+    assert parsed.base_url == "https://transport.example.test/handoff"
+    assert parsed.auth_header_name == "Authorization"
+
+    with pytest.raises(ValueError):
+        parse_webhook_configuration(
+            {
+                "base_url": "http://transport.example.test/handoff",
+                "auth_header_name": "Authorization",
+            }
+        )
+    with pytest.raises(ValueError):
+        parse_webhook_configuration(
+            {
+                "base_url": "https://user:password@transport.example.test/handoff",
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_webhook_validation_fences_exact_auth_secret_version() -> None:
+    binding_id = uuid4()
+    candidate = _CandidateReader(_webhook_revision(binding_id=binding_id))
+    commands = _Commands()
+    reference = ProviderSecretReference(
+        binding_id=binding_id,
+        secret_id=uuid4(),
+        purpose="communications.webhook.auth_header",
+        backend="openbao",
+        backend_version=6,
+        status="active",
+        revision=3,
+    )
+    resolver = _SecretResolver(reference)
+    store = _SecretStore()
+    service = PlatformProviderValidationService(
+        reader=candidate,
+        commands=commands,
+        secret_resolver=resolver,
+        secret_store=store,
+        smtp_validator=_Validator(),
+    )
+
+    result = await service.validate(
+        cast(PlatformActorContext, object()),
+        configuration_kind="communications.webhook",
+        revision=5,
+        idempotency_key="webhook-validation",
+    )
+
+    assert result.state == "validated"
+    assert store.resolved == reference.secret_id
+    assert resolver.capability == "platform.configuration.validate"
+    assert commands.command is not None
+    assert commands.command.expected_binding_revision == 3
+    assert commands.command.expected_backend_version == 6
+
