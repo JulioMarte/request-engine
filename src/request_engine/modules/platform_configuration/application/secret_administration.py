@@ -13,16 +13,12 @@ from request_engine.modules.platform_configuration.application.secrets import (
 )
 from request_engine.platform.secrets.platform_store import (
     PlatformSecretConflict as StoreSecretConflict,
-)
-from request_engine.platform.secrets.platform_store import (
     PlatformSecretMetadata,
-    PlatformSecretNotFound,
+    PlatformSecretNotFound as StoreSecretNotFound,
     PlatformSecretStore,
     PlatformSecretStoreUnavailable,
 )
 from request_engine.platform.security.platform_context import PlatformActorContext
-
-StoreSecretNotFound = PlatformSecretNotFound
 
 
 
