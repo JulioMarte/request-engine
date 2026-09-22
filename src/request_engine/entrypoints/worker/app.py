@@ -20,6 +20,7 @@ class WorkerCycleReport:
     recovery_sweep: tuple[WorkerItemOutcome, ...] = ()
     identity_recovery_delivery: tuple[WorkerItemOutcome, ...] = ()
     native_recovery_delivery: tuple[WorkerItemOutcome, ...] = ()
+    platform_configuration_invalidation: tuple[WorkerItemOutcome, ...] = ()
 
 
 class WorkerProcess:
@@ -36,6 +37,7 @@ class WorkerProcess:
         recovery_sweep: WorkerRuntime | None = None,
         identity_recovery_delivery: WorkerRuntime | None = None,
         native_recovery_delivery: WorkerRuntime | None = None,
+        platform_configuration_invalidation: WorkerRuntime | None = None,
     ) -> None:
         self._runtimes: dict[str, WorkerRuntime] = {
             "scheduled_actions": scheduled_actions,
@@ -48,6 +50,10 @@ class WorkerProcess:
             self._runtimes["identity_recovery_delivery"] = identity_recovery_delivery
         if native_recovery_delivery is not None:
             self._runtimes["native_recovery_delivery"] = native_recovery_delivery
+        if platform_configuration_invalidation is not None:
+            self._runtimes["platform_configuration_invalidation"] = (
+                platform_configuration_invalidation
+            )
         self._supervisor = WorkerSupervisor(self._runtimes)
 
     @property
@@ -64,6 +70,9 @@ class WorkerProcess:
             recovery_sweep=outcomes.get("recovery_sweep", ()),
             identity_recovery_delivery=outcomes.get("identity_recovery_delivery", ()),
             native_recovery_delivery=outcomes.get("native_recovery_delivery", ()),
+            platform_configuration_invalidation=outcomes.get(
+                "platform_configuration_invalidation", ()
+            ),
         )
 
     async def run(self, stop_event: asyncio.Event) -> None:
