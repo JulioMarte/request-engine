@@ -29,19 +29,42 @@ class PostgresActivePlatformConfigurationSource:
                     {"kind": configuration_kind},
                 )
             ).one_or_none()
-        if row is None:
-            return None
-        return ActivePlatformConfiguration(
-            configuration_revision_id=UUID(str(row[0])),
-            configuration_kind=str(row[1]),
-            provider_kind=str(row[2]),
-            revision=int(row[3]),
-            configuration=dict(row[4]),
-            secret_binding_id=None if row[5] is None else UUID(str(row[5])),
-            secret_binding_revision=None if row[6] is None else int(row[6]),
-            secret_id=None if row[7] is None else UUID(str(row[7])),
-            secret_purpose=None if row[8] is None else str(row[8]),
-            secret_backend=None if row[9] is None else str(row[9]),
-            secret_backend_version=None if row[10] is None else int(row[10]),
-            secret_status=None if row[11] is None else str(row[11]),
-        )
+        return _materialize(row)
+
+    async def read_revision(
+        self,
+        configuration_kind: str,
+        revision: int,
+    ) -> ActivePlatformConfiguration | None:
+        async with self._session_factory() as session, session.begin():
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT * FROM "
+                        "request_platform.read_platform_runtime_configuration_revision("
+                        "CAST(:kind AS text), CAST(:revision AS bigint))"
+                    ),
+                    {"kind": configuration_kind, "revision": revision},
+                )
+            ).one_or_none()
+        return _materialize(row)
+
+
+def _materialize(row: object | None) -> ActivePlatformConfiguration | None:
+    if row is None:
+        return None
+    values = row
+    return ActivePlatformConfiguration(
+        configuration_revision_id=UUID(str(values[0])),
+        configuration_kind=str(values[1]),
+        provider_kind=str(values[2]),
+        revision=int(values[3]),
+        configuration=dict(values[4]),
+        secret_binding_id=None if values[5] is None else UUID(str(values[5])),
+        secret_binding_revision=None if values[6] is None else int(values[6]),
+        secret_id=None if values[7] is None else UUID(str(values[7])),
+        secret_purpose=None if values[8] is None else str(values[8]),
+        secret_backend=None if values[9] is None else str(values[9]),
+        secret_backend_version=None if values[10] is None else int(values[10]),
+        secret_status=None if values[11] is None else str(values[11]),
+    )
