@@ -779,13 +779,19 @@ def test_platform_configuration_runtime_has_functions_but_no_direct_table_access
             ),
             has_function_privilege(
                 'request_platform_control',
+                'request_platform.record_platform_provider_test'
+                '(text,bigint,bigint,integer,text,text,text,text)',
+                'EXECUTE'
+            ),
+            has_function_privilege(
+                'request_platform_control',
                 'request_platform.validate_platform_configuration'
                 '(text,bigint,text,text)',
                 'EXECUTE'
             )
         """
     ).fetchone()
-    assert provider_validation_authority == (True, True, True, False)
+    assert provider_validation_authority == (True, True, True, True, False)
 
     secret_mutation_authority = admin_conn.execute(
         """
