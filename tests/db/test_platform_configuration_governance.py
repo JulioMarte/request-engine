@@ -614,6 +614,103 @@ def test_secret_mutation_ledger_is_version_fenced_replayable_and_metadata_only(
     )
 
 
+def test_backend_applied_then_metadata_cas_loss_persists_reconciliation_state(
+    admin_conn: PgConnection,
+    platform_control_conn_factory: Callable[[], PgConnection],
+) -> None:
+    actor_id, authority_revision = _create_platform_actor(
+        admin_conn,
+        {"platform.secret.write", "platform.secret.rotate"},
+    )
+    conn = _authenticated_control(
+        platform_control_conn_factory,
+        actor_id,
+        authority_revision,
+    )
+
+    prepared = conn.execute(
+        """
+        SELECT *
+          FROM request_platform.prepare_platform_secret_mutation(
+              'create',
+              'email.smtp.password',
+              'openbao',
+              NULL,
+              NULL,
+              NULL,
+              %s,
+              %s
+          )
+        """,
+        ("a" * 64, "b" * 64),
+    ).fetchone()
+    assert prepared is not None
+    create_operation_id = UUID(str(prepared[0]))
+    conn.execute(
+        "SELECT * FROM request_platform.mark_platform_secret_backend_applied(%s, 1)",
+        (create_operation_id,),
+    ).fetchone()
+    created = conn.execute(
+        "SELECT * FROM request_platform.commit_platform_secret_mutation(%s)",
+        (create_operation_id,),
+    ).fetchone()
+    assert created is not None
+    binding_id = UUID(str(created[10]))
+
+    rotate = conn.execute(
+        """
+        SELECT *
+          FROM request_platform.prepare_platform_secret_mutation(
+              'rotate',
+              NULL,
+              NULL,
+              %s,
+              1,
+              1,
+              %s,
+              %s
+          )
+        """,
+        (binding_id, "c" * 64, "d" * 64),
+    ).fetchone()
+    assert rotate is not None
+    operation_id = UUID(str(rotate[0]))
+    conn.execute(
+        "SELECT * FROM request_platform.mark_platform_secret_backend_applied(%s, 2)",
+        (operation_id,),
+    ).fetchone()
+
+    admin_conn.execute(
+        """
+        UPDATE request_engine.platform_secret_bindings
+           SET backend_version = 2,
+               revision = 2,
+               rotated_at = clock_timestamp()
+         WHERE id = %s
+        """,
+        (binding_id,),
+    )
+
+    result = conn.execute(
+        "SELECT * FROM request_platform.commit_platform_secret_mutation(%s)",
+        (operation_id,),
+    ).fetchone()
+    assert result is not None
+    assert result[9] == "reconcile_required"
+
+    durable = admin_conn.execute(
+        """
+        SELECT state, applied_backend_version, reconcile_required_at
+          FROM request_engine.platform_secret_mutations
+         WHERE id = %s
+        """,
+        (operation_id,),
+    ).fetchone()
+    assert durable is not None
+    assert durable[0:2] == ("reconcile_required", 2)
+    assert durable[2] is not None
+
+
 def test_platform_configuration_runtime_has_functions_but_no_direct_table_access(
     admin_conn: PgConnection,
 ) -> None:
