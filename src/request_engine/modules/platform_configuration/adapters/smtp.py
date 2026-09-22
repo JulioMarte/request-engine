@@ -40,9 +40,7 @@ class SmtplibConfigurationValidator(SmtpConfigurationValidator):
     ) -> ProviderValidationResult:
         transport: type[smtplib.SMTP]
         transport = (
-            smtplib.SMTP_SSL
-            if configuration.security is SmtpSecurityMode.TLS
-            else smtplib.SMTP
+            smtplib.SMTP_SSL if configuration.security is SmtpSecurityMode.TLS else smtplib.SMTP
         )
         try:
             with transport(
@@ -143,9 +141,7 @@ class SmtplibProviderTester(SmtpProviderTester):
 
         transport: type[smtplib.SMTP]
         transport = (
-            smtplib.SMTP_SSL
-            if configuration.security is SmtpSecurityMode.TLS
-            else smtplib.SMTP
+            smtplib.SMTP_SSL if configuration.security is SmtpSecurityMode.TLS else smtplib.SMTP
         )
         transmission_started = False
         try:
