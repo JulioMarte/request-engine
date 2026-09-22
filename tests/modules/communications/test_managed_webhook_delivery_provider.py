@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
-from request_engine.modules.communications.adapters.transport.managed_webhook_delivery_provider import (
-    ManagedWebhookDeliveryProvider,
+from request_engine.modules.communications.adapters.transport import (
+    managed_webhook_delivery_provider as managed_webhook,
 )
 from request_engine.modules.communications.contracts.delivery import (
     ProviderDeliveryResult,
@@ -96,7 +96,7 @@ class _Provider:
 async def test_managed_webhook_send_records_configuration_pin() -> None:
     resolver = _Resolver(_resolved(7))
     child = _Provider()
-    provider = ManagedWebhookDeliveryProvider(
+    provider = managed_webhook.ManagedWebhookDeliveryProvider(
         resolver=resolver,
         provider_factory=lambda _configuration: child,
     )
@@ -114,7 +114,7 @@ async def test_managed_webhook_send_records_configuration_pin() -> None:
 async def test_bootstrap_send_is_pinned_and_lookup_never_jumps_to_managed() -> None:
     resolver = _Resolver(None)
     bootstrap = _Provider()
-    provider = ManagedWebhookDeliveryProvider(
+    provider = managed_webhook.ManagedWebhookDeliveryProvider(
         resolver=resolver,
         fallback=bootstrap,
         provider_factory=lambda _configuration: pytest.fail("managed provider not expected"),
@@ -149,7 +149,7 @@ async def test_managed_lookup_resolves_exact_superseded_revision() -> None:
     def build(configuration: ResolvedWebhookConfiguration) -> _Provider:
         return children.setdefault(configuration.configuration_revision, _Provider())
 
-    provider = ManagedWebhookDeliveryProvider(
+    provider = managed_webhook.ManagedWebhookDeliveryProvider(
         resolver=resolver,
         provider_factory=build,
     )
@@ -174,7 +174,7 @@ async def test_managed_lookup_resolves_exact_superseded_revision() -> None:
 @pytest.mark.asyncio
 async def test_missing_exact_managed_revision_is_ambiguous_not_retargeted() -> None:
     resolver = _Resolver(_resolved(10))
-    provider = ManagedWebhookDeliveryProvider(
+    provider = managed_webhook.ManagedWebhookDeliveryProvider(
         resolver=resolver,
         provider_factory=lambda _configuration: pytest.fail("provider must not be contacted"),
     )
@@ -200,7 +200,7 @@ async def test_missing_exact_managed_revision_is_ambiguous_not_retargeted() -> N
 async def test_pre_send_configuration_outage_is_retryable_not_ambiguous() -> None:
     resolver = _Resolver(None)
     resolver.fail = True
-    provider = ManagedWebhookDeliveryProvider(resolver=resolver)
+    provider = managed_webhook.ManagedWebhookDeliveryProvider(resolver=resolver)
 
     result = await provider.send(_send_request())
 
