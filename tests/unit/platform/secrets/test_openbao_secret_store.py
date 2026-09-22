@@ -52,9 +52,32 @@ async def test_create_uses_cas_zero_and_internal_uuid_path() -> None:
     )
 
     assert seen["path"] == f"/v1/secret/data/{_PATH}"
-    assert seen["body"] == {"data": {"value": _VALUE}, "options": {"cas": 0}}
+    assert seen["body"] == {
+        "data": {"value": _VALUE, "operation_id": None},
+        "options": {"cas": 0},
+    }
     assert metadata.secret_id == _SECRET_ID
     assert metadata.version == 1
+
+
+@pytest.mark.asyncio
+async def test_write_persists_opaque_reconciliation_marker() -> None:
+    operation_id = UUID("99999999-8888-7777-6666-555555555555")
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"version": 1}})
+
+    metadata = await _store(handler).write(
+        secret_id=_SECRET_ID,
+        value=_VALUE,
+        expected_version=None,
+        operation_id=operation_id,
+    )
+
+    assert seen["body"]["data"]["operation_id"] == str(operation_id)
+    assert metadata.operation_id == operation_id
 
 
 @pytest.mark.asyncio
@@ -101,16 +124,24 @@ async def test_resolve_returns_runtime_plaintext_only() -> None:
 
 
 @pytest.mark.asyncio
-async def test_metadata_never_returns_plaintext() -> None:
+async def test_metadata_never_returns_plaintext_and_recovers_operation_marker() -> None:
+    operation_id = UUID("99999999-8888-7777-6666-555555555555")
+
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == f"/v1/secret/metadata/{_PATH}"
+        assert request.url.path == f"/v1/secret/data/{_PATH}"
         return httpx.Response(
             200,
             json={
                 "data": {
-                    "current_version": 4,
-                    "updated_time": "2026-09-19T10:00:00Z",
-                    "versions": {"4": {"created_time": "2026-09-19T09:00:00Z"}},
+                    "data": {
+                        "value": _VALUE,
+                        "operation_id": str(operation_id),
+                    },
+                    "metadata": {
+                        "version": 4,
+                        "created_time": "2026-09-19T09:00:00Z",
+                        "updated_time": "2026-09-19T10:00:00Z",
+                    },
                 }
             },
         )
@@ -119,6 +150,7 @@ async def test_metadata_never_returns_plaintext() -> None:
 
     assert metadata.secret_id == _SECRET_ID
     assert metadata.version == 4
+    assert metadata.operation_id == operation_id
     assert metadata.created_at is not None
     assert metadata.updated_at is not None
     assert not hasattr(metadata, "value")
