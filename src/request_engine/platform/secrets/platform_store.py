@@ -40,6 +40,7 @@ class PlatformSecretMetadata:
     version: int
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    operation_id: UUID | None = None
 
     def __post_init__(self) -> None:
         if self.version <= 0:
@@ -53,12 +54,16 @@ class PlatformSecretStore(Protocol):
         secret_id: UUID,
         value: str,
         expected_version: int | None,
+        operation_id: UUID | None = None,
     ) -> PlatformSecretMetadata:
         """Create or rotate one secret.
 
         expected_version=None means create-if-absent. Rotation requires the
         exact currently observed version. Implementations must fail closed on a
-        stale version rather than silently overwriting.
+        stale version rather than silently overwriting. operation_id is an
+        opaque reconciliation marker for proving whether an ambiguous backend
+        write belongs to a prepared durable mutation; it is never secret
+        material and must not be exposed by human/admin APIs.
         """
         ...
 
