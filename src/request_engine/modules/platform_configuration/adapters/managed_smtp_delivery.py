@@ -21,7 +21,7 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
         self,
         *,
         resolver: ActivePlatformConfigurationResolver,
-        fallback: RecoveryDeliveryChannel | None = None,
+        fallback: SmtpRecoveryDeliveryChannel | None = None,
         reset_url: str | None = None,
     ) -> None:
         self._resolver = resolver
@@ -72,11 +72,11 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
         channel = await self._resolved_channel()
         if channel is None:
             fallback = self._fallback
-            if fallback is None or not hasattr(fallback, "send_verification"):
+            if fallback is None:
                 raise RecoveryDeliveryRetryable(
                     "SMTP is neither managed nor bootstrap-configured"
                 )
-            return await fallback.send_verification(  # type: ignore[attr-defined]
+            return await fallback.send_verification(
                 secret=secret,
                 destination_reference=destination_reference,
                 idempotency_key=idempotency_key,
