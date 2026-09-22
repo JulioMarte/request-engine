@@ -78,6 +78,7 @@ class OpenBaoPlatformSecretStore:
         secret_id: UUID,
         value: str,
         expected_version: int | None,
+        operation_id: UUID | None = None,
     ) -> PlatformSecretMetadata:
         if not value:
             raise ValueError("secret value cannot be empty")
@@ -89,7 +90,13 @@ class OpenBaoPlatformSecretStore:
                 response = await client.post(
                     f"/v1/{self._mount}/data/{self._path(secret_id)}",
                     headers=self._headers(),
-                    json={"data": {"value": value}, "options": {"cas": cas}},
+                    json={
+                        "data": {
+                            "value": value,
+                            "operation_id": None if operation_id is None else str(operation_id),
+                        },
+                        "options": {"cas": cas},
+                    },
                 )
         except httpx.TransportError as exc:
             raise PlatformSecretStoreUnavailable("OpenBao secret write failed") from exc
@@ -107,6 +114,7 @@ class OpenBaoPlatformSecretStore:
             secret_id=secret_id,
             version=version,
             created_at=_optional_datetime(data.get("created_time")),
+            operation_id=operation_id,
         )
 
     async def resolve(self, *, secret_id: UUID) -> str:
@@ -132,10 +140,18 @@ class OpenBaoPlatformSecretStore:
         return value
 
     async def metadata(self, *, secret_id: UUID) -> PlatformSecretMetadata:
+        """Read current version plus the opaque mutation marker, never plaintext.
+
+        KV-v2's metadata endpoint does not return custom data fields, so
+        reconciliation reads the data endpoint and intentionally discards the
+        secret value. This lets a retry distinguish "our prior write succeeded
+        but the response was lost" from a genuinely conflicting writer.
+        """
+
         try:
             async with self._client() as client:
                 response = await client.get(
-                    f"/v1/{self._mount}/metadata/{self._path(secret_id)}",
+                    f"/v1/{self._mount}/data/{self._path(secret_id)}",
                     headers=self._headers(),
                 )
         except httpx.TransportError as exc:
@@ -145,21 +161,32 @@ class OpenBaoPlatformSecretStore:
         if not response.is_success:
             raise _backend_error(response, "metadata read")
         data = _response_data(response)
-        version = data.get("current_version")
+        secret_data = data.get("data")
+        metadata = data.get("metadata")
+        if not isinstance(secret_data, dict) or not isinstance(metadata, dict):
+            raise PlatformSecretStoreUnavailable("OpenBao returned malformed secret metadata")
+        secret_fields = cast(dict[str, Any], secret_data)
+        metadata_fields = cast(dict[str, Any], metadata)
+        version = metadata_fields.get("version")
         if not isinstance(version, int) or version <= 0:
             raise PlatformSecretStoreUnavailable("OpenBao returned malformed secret metadata")
-        versions = data.get("versions")
-        current: dict[str, Any] | None = None
-        if isinstance(versions, dict):
-            version_map = cast(dict[str, object], versions)
-            candidate = version_map.get(str(version))
-            if isinstance(candidate, dict):
-                current = cast(dict[str, Any], candidate)
+        raw_operation_id = secret_fields.get("operation_id")
+        operation_id: UUID | None = None
+        if raw_operation_id is not None:
+            if not isinstance(raw_operation_id, str):
+                raise PlatformSecretStoreUnavailable("OpenBao returned malformed operation marker")
+            try:
+                operation_id = UUID(raw_operation_id)
+            except ValueError as exc:
+                raise PlatformSecretStoreUnavailable(
+                    "OpenBao returned malformed operation marker"
+                ) from exc
         return PlatformSecretMetadata(
             secret_id=secret_id,
             version=version,
-            created_at=_optional_datetime(None if current is None else current.get("created_time")),
-            updated_at=_optional_datetime(data.get("updated_time")),
+            created_at=_optional_datetime(metadata_fields.get("created_time")),
+            updated_at=_optional_datetime(metadata_fields.get("updated_time")),
+            operation_id=operation_id,
         )
 
     async def revoke(self, *, secret_id: UUID) -> None:
