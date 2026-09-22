@@ -5,11 +5,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, FastAPI, Header, Request, Security
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from request_engine.modules.platform_configuration.adapters.db.configuration import (
     PostgresPlatformConfigurationCommands,
     PostgresPlatformConfigurationReader,
+)
+from request_engine.modules.platform_configuration.adapters.db.secrets import (
+    PostgresPlatformSecretMutations,
 )
 from request_engine.modules.platform_configuration.application.configuration import (
     ActivateConfiguration,
@@ -26,9 +29,23 @@ from request_engine.modules.platform_configuration.application.configuration imp
     StageConfiguration,
     ValidateConfiguration,
 )
+from request_engine.modules.platform_configuration.application.secret_administration import (
+    PlatformSecretAdministrationService,
+)
+from request_engine.modules.platform_configuration.application.secrets import (
+    CreatePlatformSecret,
+    PlatformSecretConflict,
+    PlatformSecretNotFound,
+    PlatformSecretReconciliationRequired,
+    PlatformSecretUnavailable,
+    RevokePlatformSecret,
+    RotatePlatformSecret,
+    SecretMutationResult,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+from request_engine.platform.secrets.platform_store import PlatformSecretStore
 from request_engine.platform.security.freshness import require_phishing_resistant_authentication
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.platform_http import PlatformActorResolver
@@ -85,6 +102,36 @@ class StageConfigurationBody(BaseModel):
 class ActivateConfigurationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_active_revision: int | None = Field(default=None, ge=1)
+
+
+class CreatePlatformSecretBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    purpose: str = Field(min_length=2, max_length=128, pattern=r"^[a-z][a-z0-9_.-]{1,127}$")
+    backend: str = Field(default="openbao", pattern=r"^openbao$")
+    value: SecretStr = Field(min_length=1)
+
+
+class RotatePlatformSecretBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
+    expected_backend_version: int = Field(ge=1)
+    value: SecretStr = Field(min_length=1)
+
+
+class RevokePlatformSecretBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
+    expected_backend_version: int = Field(ge=1)
+
+
+class SecretMutationView(BaseModel):
+    binding_id: UUID
+    revision: int
+    backend_version: int
+    status: str
 
 
 class ConfigurationMutationView(BaseModel):
@@ -152,6 +199,26 @@ async def platform_configuration_error_handler(_: Request, exc: Exception) -> JS
             "platform_configuration_invalid",
             ErrorResolution.FIX_REQUEST,
         ),
+        PlatformSecretConflict: (
+            409,
+            "platform_secret_conflict",
+            ErrorResolution.REFRESH_AND_RETRY,
+        ),
+        PlatformSecretNotFound: (
+            404,
+            "platform_secret_not_found",
+            ErrorResolution.FIX_REQUEST,
+        ),
+        PlatformSecretUnavailable: (
+            503,
+            "platform_secret_unavailable",
+            ErrorResolution.RETRY_LATER,
+        ),
+        PlatformSecretReconciliationRequired: (
+            409,
+            "platform_secret_reconciliation_required",
+            ErrorResolution.OPERATOR_INTERVENTION,
+        ),
     }
     status_code, code, resolution = errors.get(
         type(exc),
@@ -181,9 +248,18 @@ def install_platform_configuration_http(
     read_session_factory: SessionFactory,
     write_session_factory: SessionFactory,
     actor_resolver: PlatformActorResolver,
+    secret_store: PlatformSecretStore | None = None,
 ) -> None:
     reader = PostgresPlatformConfigurationReader(read_session_factory)
     commands = PostgresPlatformConfigurationCommands(write_session_factory)
+    secret_service = (
+        None
+        if secret_store is None
+        else PlatformSecretAdministrationService(
+            mutations=PostgresPlatformSecretMutations(write_session_factory),
+            store=secret_store,
+        )
+    )
     router = APIRouter(tags=["Platform configuration"])
 
     async def authenticated_actor(request: Request) -> PlatformActorContext:
@@ -218,6 +294,69 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> SecretBindingMetadataView:
         return _secret_view(await reader.get_secret_binding(actor, binding_id))
+
+    async def create_secret(
+        body: CreatePlatformSecretBody,
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+    ) -> SecretMutationView:
+        require_platform_configuration_step_up(actor)
+        if secret_service is None:
+            raise PlatformSecretUnavailable()
+        result = await secret_service.create(
+            actor,
+            CreatePlatformSecret(
+                purpose=body.purpose,
+                backend=body.backend,
+                value=body.value.get_secret_value(),
+                idempotency_key=idempotency_key,
+            ),
+        )
+        return _secret_mutation_view(result)
+
+    async def rotate_secret(
+        binding_id: UUID,
+        body: RotatePlatformSecretBody,
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+    ) -> SecretMutationView:
+        require_platform_configuration_step_up(actor)
+        if secret_service is None:
+            raise PlatformSecretUnavailable()
+        result = await secret_service.rotate(
+            actor,
+            RotatePlatformSecret(
+                binding_id=binding_id,
+                expected_revision=body.expected_revision,
+                expected_backend_version=body.expected_backend_version,
+                value=body.value.get_secret_value(),
+                idempotency_key=idempotency_key,
+            ),
+        )
+        return _secret_mutation_view(result)
+
+    async def revoke_secret(
+        binding_id: UUID,
+        body: RevokePlatformSecretBody,
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+    ) -> SecretMutationView:
+        require_platform_configuration_step_up(actor)
+        if secret_service is None:
+            raise PlatformSecretUnavailable()
+        result = await secret_service.revoke(
+            actor,
+            RevokePlatformSecret(
+                binding_id=binding_id,
+                expected_revision=body.expected_revision,
+                expected_backend_version=body.expected_backend_version,
+                idempotency_key=idempotency_key,
+            ),
+        )
+        return _secret_mutation_view(result)
 
     async def stage_configuration(
         configuration_kind: str,
@@ -348,6 +487,40 @@ def install_platform_configuration_http(
     )
     add_capability_route(
         router,
+        "/v1/platform/secrets",
+        create_secret,
+        capability="platform.secret.write",
+        methods=["POST"],
+        operation_id="platform_secret_create",
+        owner="platform_configuration",
+        status_code=201,
+        response_model=SecretMutationView,
+        responses=mutation_responses,
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/secrets/{binding_id}:rotate",
+        rotate_secret,
+        capability="platform.secret.rotate",
+        methods=["POST"],
+        operation_id="platform_secret_rotate",
+        owner="platform_configuration",
+        response_model=SecretMutationView,
+        responses=mutation_responses,
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/secrets/{binding_id}:revoke",
+        revoke_secret,
+        capability="platform.secret.revoke",
+        methods=["POST"],
+        operation_id="platform_secret_revoke",
+        owner="platform_configuration",
+        response_model=SecretMutationView,
+        responses=mutation_responses,
+    )
+    add_capability_route(
+        router,
         "/v1/platform/configurations/{configuration_kind}/revisions",
         stage_configuration,
         capability="platform.configuration.stage",
@@ -381,6 +554,15 @@ def install_platform_configuration_http(
 
 def require_platform_configuration_step_up(actor: PlatformActorContext) -> None:
     require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+
+
+def _secret_mutation_view(result: SecretMutationResult) -> SecretMutationView:
+    return SecretMutationView(
+        binding_id=result.binding_id,
+        revision=result.revision,
+        backend_version=result.backend_version,
+        status=result.status,
+    )
 
 
 def _mutation_view(result: ConfigurationMutationResult) -> ConfigurationMutationView:
