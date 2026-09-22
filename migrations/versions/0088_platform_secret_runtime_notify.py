@@ -1,7 +1,7 @@
 """Invalidate managed runtime caches when an active secret binding changes.
 
 Revision ID: 0088_secret_runtime_notify
-Revises: 0087_active_runtime_configuration
+Revises: 0087_active_runtime_config
 
 Configuration activation already emits request_engine_platform_configuration.
 Secret rotation/revocation can change the runtime fingerprint without changing
@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0088_secret_runtime_notify"
-down_revision: str | Sequence[str] | None = "0087_active_runtime_configuration"
+down_revision: str | Sequence[str] | None = "0087_active_runtime_config"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
