@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
+class PlatformRuntimeConfigurationError(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedWebhookConfiguration:
     base_url: str
