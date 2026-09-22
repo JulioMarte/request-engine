@@ -14,14 +14,14 @@ from request_engine.modules.platform_configuration.adapters.db.configuration imp
 from request_engine.modules.platform_configuration.adapters.db.provider_candidates import (
     PostgresProviderCandidateReader,
 )
-from request_engine.modules.platform_configuration.adapters.db.readiness import (
-    PostgresPlatformReadinessReader,
-)
 from request_engine.modules.platform_configuration.adapters.db.provider_secrets import (
     PostgresProviderSecretResolver,
 )
 from request_engine.modules.platform_configuration.adapters.db.provider_tests import (
     PostgresProviderTestRecorder,
+)
+from request_engine.modules.platform_configuration.adapters.db.readiness import (
+    PostgresPlatformReadinessReader,
 )
 from request_engine.modules.platform_configuration.adapters.db.secrets import (
     PostgresPlatformSecretMutations,
