@@ -4,12 +4,9 @@ from request_engine.entrypoints.worker.provider_event_router import (
     ProviderEventHandler,
     ProviderEventKey,
 )
-from request_engine.modules.communications.adapters.transport.managed_webhook_delivery_provider import (
-    ManagedWebhookDeliveryProvider,
-)
-from request_engine.modules.communications.adapters.transport.webhook_delivery_provider import (
-    WEBHOOK_PROVIDER_KEY,
-    WebhookDeliveryProvider,
+from request_engine.modules.communications.adapters.transport import (
+    managed_webhook_delivery_provider,
+    webhook_delivery_provider,
 )
 from request_engine.modules.communications.adapters.worker.delivery_outcome_events import (
     DeliveryOutcomeEventHandler,
@@ -37,7 +34,7 @@ def build_communication_delivery_providers(
         raise ValueError("webhook auth header requires a bootstrap webhook URL")
 
     bootstrap = (
-        WebhookDeliveryProvider(
+        webhook_delivery_provider.WebhookDeliveryProvider(
             webhook_base_url,
             auth_header=webhook_auth_header,
         )
@@ -46,14 +43,14 @@ def build_communication_delivery_providers(
     )
     if managed_webhook_resolver is not None:
         return {
-            WEBHOOK_PROVIDER_KEY: ManagedWebhookDeliveryProvider(
+            webhook_delivery_provider.WEBHOOK_PROVIDER_KEY: managed_webhook_delivery_provider.Managedwebhook_delivery_provider.WebhookDeliveryProvider(
                 resolver=managed_webhook_resolver,
                 fallback=bootstrap,
             )
         }
     if bootstrap is None:
         return {}
-    return {WEBHOOK_PROVIDER_KEY: bootstrap}
+    return {webhook_delivery_provider.WEBHOOK_PROVIDER_KEY: bootstrap}
 
 
 def build_communication_provider_event_handlers(
@@ -67,7 +64,7 @@ def build_communication_provider_event_handlers(
     """
 
     return {
-        (WEBHOOK_PROVIDER_KEY, WEBHOOK_PROVIDER_CONNECTION_KEY): DeliveryOutcomeEventHandler(
+        (webhook_delivery_provider.WEBHOOK_PROVIDER_KEY, WEBHOOK_PROVIDER_CONNECTION_KEY): DeliveryOutcomeEventHandler(
             session_factory,
         ),
     }
