@@ -15,6 +15,7 @@ from request_engine.bootstrap.recovery_delivery import (
     RecoveryDeliverySettings,
     build_native_recovery_messenger,
     build_recovery_secret_delivery,
+    has_recovery_secret_store_configuration,
 )
 from request_engine.bootstrap.settings import PlatformControlSettings
 from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
@@ -193,7 +194,6 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
 def create_app() -> FastAPI:
     settings = PlatformControlSettings.model_validate({})
     recovery_settings = RecoveryDeliverySettings()
-    delivery = build_recovery_secret_delivery(recovery_settings)
     bootstrap_native_recovery_messenger = build_native_recovery_messenger(recovery_settings)
     platform_secret_store = build_platform_secret_store()
     engines = tuple(
@@ -220,6 +220,14 @@ def create_app() -> FastAPI:
         resolver=managed_smtp_resolver,
         fallback=bootstrap_native_recovery_messenger,
         reset_url=recovery_settings.recovery_reset_url,
+    )
+    delivery = (
+        build_recovery_secret_delivery(
+            recovery_settings,
+            channel_override=native_recovery_messenger,
+        )
+        if has_recovery_secret_store_configuration(recovery_settings)
+        else None
     )
 
     app = create_platform_control_app(
