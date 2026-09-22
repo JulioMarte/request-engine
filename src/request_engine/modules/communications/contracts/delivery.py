@@ -36,6 +36,7 @@ class ProviderLookupRequest:
     provider_key: str
     provider_idempotency_key: str
     provider_message_id: str | None
+    provider_configuration_revision: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
