@@ -61,6 +61,7 @@ def build_worker_process(
     config: WorkerProcessConfig | None = None,
     identity_recovery_delivery: WorkerRuntime | None = None,
     native_recovery_delivery: WorkerRuntime | None = None,
+    platform_configuration_invalidation: WorkerRuntime | None = None,
 ) -> WorkerProcess:
     """Assemble production workers without crossing runtime credential boundaries."""
 
@@ -131,4 +132,5 @@ def build_worker_process(
         ),
         identity_recovery_delivery=identity_recovery_delivery,
         native_recovery_delivery=native_recovery_delivery,
+        platform_configuration_invalidation=platform_configuration_invalidation,
     )
