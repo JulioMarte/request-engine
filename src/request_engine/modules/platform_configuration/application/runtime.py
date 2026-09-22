@@ -109,9 +109,7 @@ class ActivePlatformConfigurationResolver:
             self._smtp_cache = None
             return None
         if active.provider_kind != "smtp":
-            raise ActivePlatformConfigurationError(
-                "ACTIVE email.delivery provider is not SMTP"
-            )
+            raise ActivePlatformConfigurationError("ACTIVE email.delivery provider is not SMTP")
 
         if (
             cached is not None
@@ -124,9 +122,7 @@ class ActivePlatformConfigurationResolver:
         try:
             smtp = parse_smtp_configuration(active.configuration)
         except (TypeError, ValueError) as exc:
-            raise ActivePlatformConfigurationError(
-                "ACTIVE SMTP configuration is invalid"
-            ) from exc
+            raise ActivePlatformConfigurationError("ACTIVE SMTP configuration is invalid") from exc
 
         password: str | None = None
         if smtp.username is not None:
