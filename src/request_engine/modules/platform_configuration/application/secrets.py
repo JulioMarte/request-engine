@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 from uuid import UUID
+
+from request_engine.platform.security.platform_context import PlatformActorContext
 
 from request_engine.modules.platform_configuration.application.configuration import (
     PlatformConfigurationError,
@@ -72,3 +75,36 @@ class SecretMutationResult:
     revision: int
     backend_version: int
     status: str
+
+
+class PlatformSecretMutationStore(Protocol):
+    async def prepare_create(
+        self,
+        actor: PlatformActorContext,
+        command: CreatePlatformSecret,
+    ) -> SecretMutationOperation: ...
+
+    async def prepare_rotate(
+        self,
+        actor: PlatformActorContext,
+        command: RotatePlatformSecret,
+    ) -> SecretMutationOperation: ...
+
+    async def prepare_revoke(
+        self,
+        actor: PlatformActorContext,
+        command: RevokePlatformSecret,
+    ) -> SecretMutationOperation: ...
+
+    async def mark_backend_applied(
+        self,
+        actor: PlatformActorContext,
+        operation_id: UUID,
+        backend_version: int,
+    ) -> SecretMutationOperation: ...
+
+    async def commit(
+        self,
+        actor: PlatformActorContext,
+        operation_id: UUID,
+    ) -> SecretMutationOperation: ...
