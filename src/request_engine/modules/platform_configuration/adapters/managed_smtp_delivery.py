@@ -73,9 +73,7 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
         if channel is None:
             fallback = self._fallback
             if fallback is None:
-                raise RecoveryDeliveryRetryable(
-                    "SMTP is neither managed nor bootstrap-configured"
-                )
+                raise RecoveryDeliveryRetryable("SMTP is neither managed nor bootstrap-configured")
             return await fallback.send_verification(
                 secret=secret,
                 destination_reference=destination_reference,
