@@ -66,8 +66,14 @@ class _Store:
         return self.values[secret_id]
 
     async def write(
-        self, *, secret_id: UUID, value: str, expected_version: int | None
+        self,
+        *,
+        secret_id: UUID,
+        value: str,
+        expected_version: int | None,
+        operation_id: UUID | None = None,
     ) -> PlatformSecretMetadata:
+        del operation_id
         raise AssertionError("write not expected")
 
     async def metadata(self, *, secret_id: UUID) -> PlatformSecretMetadata:
