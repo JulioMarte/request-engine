@@ -9,9 +9,11 @@ from request_engine.bootstrap import worker as worker_bootstrap
 from request_engine.bootstrap.reference_worker_factory import create_worker
 from request_engine.entrypoints.worker.app import WorkerProcess
 from request_engine.entrypoints.worker.cli import load_worker_process
+from request_engine.modules.communications.adapters.transport import (
+    managed_webhook_delivery_provider as managed_webhook,
+)
 from request_engine.modules.communications.adapters.transport.webhook_delivery_provider import (
     WEBHOOK_PROVIDER_KEY,
-    WebhookDeliveryProvider,
 )
 
 PUBLISHER_MODULE = "reference_publisher_deployment"
@@ -20,6 +22,7 @@ CANONICAL_STREAM_NAMES = (
     "outbox_messages",
     "provider_events",
     "recovery_sweep",
+    "platform_configuration_invalidation",
 )
 
 
@@ -67,7 +70,9 @@ def _capture_delivery_handler(
 
 def _assert_webhook_provider_registered(captured: list[Mapping[str, object]]) -> None:
     assert set(captured[0]) == {WEBHOOK_PROVIDER_KEY}
-    assert isinstance(captured[0][WEBHOOK_PROVIDER_KEY], WebhookDeliveryProvider)
+    assert isinstance(
+        captured[0][WEBHOOK_PROVIDER_KEY], managed_webhook.ManagedWebhookDeliveryProvider
+    )
 
 
 @pytest.mark.unit
