@@ -4,14 +4,40 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from typing import cast
+from importlib import import_module
+from typing import Protocol, cast
 
-import asyncpg
 from sqlalchemy.engine import make_url
 
 from request_engine.platform.worker.runtime import WorkerItemOutcome
 
 _CHANNEL = "request_engine_platform_configuration"
+
+
+class _NotificationConnection(Protocol):
+    async def add_listener(
+        self,
+        channel: str,
+        callback: Callable[["_NotificationConnection", int, str, str], None],
+    ) -> None: ...
+
+    async def remove_listener(
+        self,
+        channel: str,
+        callback: Callable[["_NotificationConnection", int, str, str], None],
+    ) -> None: ...
+
+    async def close(self) -> None: ...
+
+
+_Connect = Callable[[str], Awaitable[_NotificationConnection]]
+_asyncpg = import_module("asyncpg")
+_asyncpg_connect = cast(Callable[[str], Awaitable[object]], getattr(_asyncpg, "connect"))
+_AsyncpgPostgresError = cast(type[Exception], getattr(_asyncpg, "PostgresError"))
+
+
+async def _default_connect(dsn: str) -> _NotificationConnection:
+    return cast(_NotificationConnection, await _asyncpg_connect(dsn))
 
 
 class PlatformConfigurationInvalidationRuntime:
@@ -28,7 +54,7 @@ class PlatformConfigurationInvalidationRuntime:
         database_url: str,
         invalidate: Callable[[str], None],
         reconnect_delay_seconds: float = 1.0,
-        connect: Callable[..., Awaitable[asyncpg.Connection]] | None = None,
+        connect: _Connect | None = None,
     ) -> None:
         if reconnect_delay_seconds <= 0 or reconnect_delay_seconds > 30:
             raise ValueError("reconnect delay must be > 0 and <= 30 seconds")
@@ -38,7 +64,7 @@ class PlatformConfigurationInvalidationRuntime:
         self._dsn = url.set(drivername="postgresql").render_as_string(hide_password=False)
         self._invalidate = invalidate
         self._reconnect_delay_seconds = reconnect_delay_seconds
-        self._connect = connect or asyncpg.connect
+        self._connect: _Connect = connect or _default_connect
 
     async def run_once(self) -> tuple[WorkerItemOutcome, ...]:
         # LISTEN is a long-lived acceleration stream; bounded cycle work is done
@@ -47,12 +73,12 @@ class PlatformConfigurationInvalidationRuntime:
 
     async def run_forever(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
-            connection: asyncpg.Connection | None = None
+            connection: _NotificationConnection | None = None
             try:
                 connection = await self._connect(self._dsn)
                 await connection.add_listener(_CHANNEL, self._on_notification)
                 await stop_event.wait()
-            except (OSError, asyncpg.PostgresError):
+            except (OSError, _AsyncpgPostgresError):
                 if stop_event.is_set():
                     return
                 with suppress(TimeoutError):
@@ -62,13 +88,13 @@ class PlatformConfigurationInvalidationRuntime:
                     )
             finally:
                 if connection is not None:
-                    with suppress(asyncpg.PostgresError, RuntimeError):
+                    with suppress(_AsyncpgPostgresError, RuntimeError):
                         await connection.remove_listener(_CHANNEL, self._on_notification)
                     await connection.close()
 
     def _on_notification(
         self,
-        _connection: asyncpg.Connection,
+        _connection: _NotificationConnection,
         _pid: int,
         channel: str,
         payload: str,
