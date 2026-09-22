@@ -109,31 +109,30 @@ def _outbox_publisher() -> OutboxPublisher:
 def create_worker() -> WorkerProcess:
     """Assemble the production worker; misconfiguration fails before any I/O."""
 
-    providers = build_communication_delivery_providers(
-        webhook_base_url=_required_env(WEBHOOK_BASE_URL_ENV),
-        webhook_auth_header=_webhook_auth_header(),
-    )
-    worker_sessions = create_session_factory(
-        create_postgres_engine(_required_env(WORKER_DATABASE_URL_ENV))
-    )
+    worker_database_url = _required_env(WORKER_DATABASE_URL_ENV)
+    worker_sessions = create_session_factory(create_postgres_engine(worker_database_url))
     domain_sessions = create_session_factory(
         create_postgres_engine(_required_env(APP_DATABASE_URL_ENV))
     )
     worker_principal_id = UUID(_required_env(WORKER_PRINCIPAL_ID_ENV))
 
+    platform_configuration_resolver = ActivePlatformConfigurationResolver(
+        source=PostgresActivePlatformConfigurationSource(worker_sessions),
+        secret_store=build_platform_secret_store(),
+    )
+    platform_configuration_invalidation = PlatformConfigurationInvalidationRuntime(
+        database_url=worker_database_url,
+        invalidate=platform_configuration_resolver.invalidate,
+    )
+    providers = build_communication_delivery_providers(
+        webhook_base_url=os.environ.get(WEBHOOK_BASE_URL_ENV) or None,
+        webhook_auth_header=_webhook_auth_header(),
+        managed_webhook_resolver=platform_configuration_resolver,
+    )
+
     recovery_settings = RecoveryDeliverySettings()
-    platform_configuration_resolver: ActivePlatformConfigurationResolver | None = None
-    platform_configuration_invalidation = None
     if has_recovery_secret_store_configuration(recovery_settings):
         bootstrap_smtp = build_native_recovery_messenger(recovery_settings)
-        platform_configuration_resolver = ActivePlatformConfigurationResolver(
-            source=PostgresActivePlatformConfigurationSource(worker_sessions),
-            secret_store=build_platform_secret_store(),
-        )
-        platform_configuration_invalidation = PlatformConfigurationInvalidationRuntime(
-            database_url=_required_env(WORKER_DATABASE_URL_ENV),
-            invalidate=platform_configuration_resolver.invalidate,
-        )
         managed_smtp = ManagedSmtpRecoveryDeliveryChannel(
             resolver=platform_configuration_resolver,
             fallback=bootstrap_smtp,
