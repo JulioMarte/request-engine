@@ -33,6 +33,7 @@ The executable source is `tests/architecture/dependency_policy.py`. The test dis
 | Owner | Approved synchronous business-module targets |
 |---|---|
 | `tenancy` | none |
+| `platform_configuration` | none |
 | `catalog` | none |
 | `requests` | `tenancy` |
 | `booking` | `catalog`, `tenancy` |
