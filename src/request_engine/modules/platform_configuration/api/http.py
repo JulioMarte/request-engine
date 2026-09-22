@@ -14,6 +14,9 @@ from request_engine.modules.platform_configuration.adapters.db.configuration imp
 from request_engine.modules.platform_configuration.adapters.db.provider_candidates import (
     PostgresProviderCandidateReader,
 )
+from request_engine.modules.platform_configuration.adapters.db.provider_tests import (
+    PostgresProviderTestRecorder,
+)
 from request_engine.modules.platform_configuration.adapters.db.provider_secrets import (
     PostgresProviderSecretResolver,
 )
@@ -22,6 +25,7 @@ from request_engine.modules.platform_configuration.adapters.db.secrets import (
 )
 from request_engine.modules.platform_configuration.adapters.smtp import (
     SmtplibConfigurationValidator,
+    SmtplibProviderTester,
 )
 from request_engine.modules.platform_configuration.application.configuration import (
     ActivateConfiguration,
@@ -38,6 +42,10 @@ from request_engine.modules.platform_configuration.application.configuration imp
     PlatformProviderValidationFailed,
     SecretBindingMetadata,
     StageConfiguration,
+)
+from request_engine.modules.platform_configuration.application.provider_test import (
+    PlatformProviderTestResult,
+    PlatformProviderTestService,
 )
 from request_engine.modules.platform_configuration.application.provider_validation import (
     PlatformProviderValidationService,
@@ -145,6 +153,18 @@ class SecretMutationView(BaseModel):
     revision: int
     backend_version: int
     status: str
+
+
+class ProviderTestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    destination: str = Field(min_length=3, max_length=320)
+
+
+class ProviderTestView(BaseModel):
+    fact_id: UUID
+    outcome: str
+    detail_code: str
 
 
 class ConfigurationMutationView(BaseModel):
@@ -283,12 +303,21 @@ def install_platform_configuration_http(
             store=secret_store,
         )
     )
+    provider_candidate_reader = PostgresProviderCandidateReader(write_session_factory)
+    provider_secret_resolver = PostgresProviderSecretResolver(write_session_factory)
     provider_validation = PlatformProviderValidationService(
-        reader=PostgresProviderCandidateReader(write_session_factory),
+        reader=provider_candidate_reader,
         commands=commands,
-        secret_resolver=PostgresProviderSecretResolver(write_session_factory),
+        secret_resolver=provider_secret_resolver,
         secret_store=secret_store,
         smtp_validator=SmtplibConfigurationValidator(),
+    )
+    provider_test = PlatformProviderTestService(
+        reader=provider_candidate_reader,
+        secret_resolver=provider_secret_resolver,
+        secret_store=secret_store,
+        tester=SmtplibProviderTester(),
+        recorder=PostgresProviderTestRecorder(write_session_factory),
     )
     router = APIRouter(tags=["Platform configuration"])
 
@@ -425,6 +454,24 @@ def install_platform_configuration_http(
             )
         )
 
+    async def test_provider(
+        configuration_kind: str,
+        revision: int,
+        body: ProviderTestBody,
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+    ) -> ProviderTestView:
+        require_platform_configuration_step_up(actor)
+        result = await provider_test.test(
+            actor,
+            configuration_kind=configuration_kind,
+            revision=revision,
+            destination=body.destination,
+            idempotency_key=idempotency_key,
+        )
+        return _provider_test_view(result)
+
     async def activate_configuration(
         configuration_kind: str,
         revision: int,
@@ -559,6 +606,17 @@ def install_platform_configuration_http(
         response_model=ConfigurationMutationView,
         responses=mutation_responses,
     )
+    add_capability_route(
+        router,
+        "/v1/platform/providers/{configuration_kind}/{revision}:test",
+        test_provider,
+        capability="platform.provider.test",
+        methods=["POST"],
+        operation_id="platform_provider_test",
+        owner="platform_configuration",
+        response_model=ProviderTestView,
+        responses=mutation_responses,
+    )
     for action, endpoint, capability in (
         ("validate", validate_configuration, "platform.configuration.validate"),
         ("activate", activate_configuration, "platform.configuration.activate"),
@@ -590,6 +648,14 @@ def _secret_mutation_view(result: SecretMutationResult) -> SecretMutationView:
         revision=result.revision,
         backend_version=result.backend_version,
         status=result.status,
+    )
+
+
+def _provider_test_view(result: PlatformProviderTestResult) -> ProviderTestView:
+    return ProviderTestView(
+        fact_id=result.fact_id,
+        outcome=result.outcome.value,
+        detail_code=result.detail_code,
     )
 
 
