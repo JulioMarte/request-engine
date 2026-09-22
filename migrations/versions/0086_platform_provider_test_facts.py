@@ -115,7 +115,7 @@ def upgrade() -> None:
                 RETURN v_existing.id;
             END IF;
 
-            SELECT r.id, r.secret_binding_id
+            SELECT r.id, r.secret_binding_id, r.state
               INTO v_target
               FROM request_engine.platform_configuration_revisions AS r
              WHERE r.configuration_kind = p_configuration_kind
@@ -124,6 +124,10 @@ def upgrade() -> None:
             IF NOT FOUND THEN
                 RAISE EXCEPTION 'Platform configuration revision does not exist'
                     USING ERRCODE = 'P0002';
+            END IF;
+            IF v_target.state NOT IN ('validated', 'active') THEN
+                RAISE EXCEPTION 'Platform provider test requires validated configuration'
+                    USING ERRCODE = '40001';
             END IF;
 
             IF v_target.secret_binding_id IS NULL THEN
