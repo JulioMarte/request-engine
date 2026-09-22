@@ -3,9 +3,9 @@ from __future__ import annotations
 from request_engine.modules.platform_configuration.application.secrets import (
     CreatePlatformSecret,
     PlatformSecretConflict,
+    PlatformSecretMutationStore,
     PlatformSecretReconciliationRequired,
     PlatformSecretUnavailable,
-    PlatformSecretMutationStore,
     RevokePlatformSecret,
     RotatePlatformSecret,
     SecretMutationOperation,
@@ -15,14 +15,15 @@ from request_engine.platform.secrets.platform_store import (
     PlatformSecretConflict as StoreSecretConflict,
 )
 from request_engine.platform.secrets.platform_store import (
-    PlatformSecretNotFound as StoreSecretNotFound,
-)
-from request_engine.platform.secrets.platform_store import (
     PlatformSecretMetadata,
+    PlatformSecretNotFound,
     PlatformSecretStore,
     PlatformSecretStoreUnavailable,
 )
 from request_engine.platform.security.platform_context import PlatformActorContext
+
+StoreSecretNotFound = PlatformSecretNotFound
+
 
 
 class PlatformSecretAdministrationService:
