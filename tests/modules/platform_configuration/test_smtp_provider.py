@@ -118,7 +118,12 @@ class _SecretStore:
         return "governed-password"
 
     async def write(
-        self, *, secret_id: UUID, value: str, expected_version: int | None
+        self,
+        *,
+        secret_id: UUID,
+        value: str,
+        expected_version: int | None,
+        operation_id: UUID | None = None,
     ) -> PlatformSecretMetadata:
         raise AssertionError("write not expected")
 
