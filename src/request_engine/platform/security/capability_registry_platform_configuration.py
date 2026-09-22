@@ -61,18 +61,22 @@ PLATFORM_CONFIGURATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "platform.secret.write",
         "Create governed platform secret material and binding metadata.",
         revision=RevisionPolicy.SERVER_SELECTED,
+        runtime_available=True,
     ),
     _platform_command(
         "platform.secret.rotate",
         "Rotate an exact governed platform secret binding.",
+        runtime_available=True,
     ),
     _platform_command(
         "platform.secret.revoke",
         "Revoke an exact governed platform secret binding.",
+        runtime_available=True,
     ),
     _platform_command(
         "platform.provider.test",
         "Test an exact governed provider configuration revision.",
+        runtime_available=True,
     ),
     query_capability(
         "platform.readiness.read",
