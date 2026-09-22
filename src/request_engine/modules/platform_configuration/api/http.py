@@ -11,6 +11,9 @@ from request_engine.modules.platform_configuration.adapters.db.configuration imp
     PostgresPlatformConfigurationCommands,
     PostgresPlatformConfigurationReader,
 )
+from request_engine.modules.platform_configuration.adapters.db.provider_candidates import (
+    PostgresProviderCandidateReader,
+)
 from request_engine.modules.platform_configuration.adapters.db.provider_secrets import (
     PostgresProviderSecretResolver,
 )
@@ -281,7 +284,7 @@ def install_platform_configuration_http(
         )
     )
     provider_validation = PlatformProviderValidationService(
-        reader=reader,
+        reader=PostgresProviderCandidateReader(write_session_factory),
         commands=commands,
         secret_resolver=PostgresProviderSecretResolver(write_session_factory),
         secret_store=secret_store,
