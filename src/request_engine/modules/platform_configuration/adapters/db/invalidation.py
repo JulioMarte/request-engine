@@ -27,7 +27,7 @@ class PlatformConfigurationInvalidationRuntime:
         database_url: str,
         invalidate: Callable[[str], None],
         reconnect_delay_seconds: float = 1.0,
-        connect: Callable[..., Awaitable[asyncpg.Connection[Any]]] | None = None,
+        connect: Callable[..., Awaitable[asyncpg.Connection]] | None = None,
     ) -> None:
         if reconnect_delay_seconds <= 0 or reconnect_delay_seconds > 30:
             raise ValueError("reconnect delay must be > 0 and <= 30 seconds")
@@ -46,7 +46,7 @@ class PlatformConfigurationInvalidationRuntime:
 
     async def run_forever(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
-            connection: asyncpg.Connection[Any] | None = None
+            connection: asyncpg.Connection | None = None
             try:
                 connection = await self._connect(self._dsn)
                 await connection.add_listener(_CHANNEL, self._on_notification)
@@ -71,7 +71,7 @@ class PlatformConfigurationInvalidationRuntime:
 
     def _on_notification(
         self,
-        _connection: asyncpg.Connection[Any],
+        _connection: asyncpg.Connection,
         _pid: int,
         channel: str,
         payload: str,
