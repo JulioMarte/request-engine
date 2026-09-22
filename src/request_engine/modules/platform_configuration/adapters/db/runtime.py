@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import Row
 
 from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfiguration,
@@ -50,7 +52,7 @@ class PostgresActivePlatformConfigurationSource:
         return _materialize(row)
 
 
-def _materialize(row: object | None) -> ActivePlatformConfiguration | None:
+def _materialize(row: Row[Any] | None) -> ActivePlatformConfiguration | None:
     if row is None:
         return None
     values = row
