@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import smtplib
 import hashlib
+import smtplib
 import ssl
 from email.message import EmailMessage
 
@@ -98,7 +98,6 @@ class SmtplibConfigurationValidator(SmtpConfigurationValidator):
             ProviderValidationStatus.VALID,
             "smtp_valid",
         )
-
 
 
 class SmtplibProviderTester(SmtpProviderTester):
