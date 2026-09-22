@@ -35,6 +35,59 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
         destination_reference: str,
         idempotency_key: str,
     ) -> DeliveryOutcome:
+        return await self.send_recovery(
+            secret=secret,
+            destination_reference=destination_reference,
+            idempotency_key=idempotency_key,
+        )
+
+    async def send_recovery(
+        self,
+        *,
+        secret: str,
+        destination_reference: str,
+        idempotency_key: str,
+    ) -> DeliveryOutcome:
+        channel = await self._resolved_channel()
+        if channel is None:
+            assert self._fallback is not None
+            return await self._fallback.send(
+                secret=secret,
+                destination_reference=destination_reference,
+                idempotency_key=idempotency_key,
+            )
+        return await channel.send_recovery(
+            secret=secret,
+            destination_reference=destination_reference,
+            idempotency_key=idempotency_key,
+        )
+
+    async def send_verification(
+        self,
+        *,
+        secret: str,
+        destination_reference: str,
+        idempotency_key: str,
+    ) -> DeliveryOutcome:
+        channel = await self._resolved_channel()
+        if channel is None:
+            fallback = self._fallback
+            if fallback is None or not hasattr(fallback, "send_verification"):
+                raise RecoveryDeliveryRetryable(
+                    "SMTP is neither managed nor bootstrap-configured"
+                )
+            return await fallback.send_verification(  # type: ignore[attr-defined]
+                secret=secret,
+                destination_reference=destination_reference,
+                idempotency_key=idempotency_key,
+            )
+        return await channel.send_verification(
+            secret=secret,
+            destination_reference=destination_reference,
+            idempotency_key=idempotency_key,
+        )
+
+    async def _resolved_channel(self) -> SmtpRecoveryDeliveryChannel | None:
         try:
             managed = await self._resolver.resolve_smtp()
         except (ActivePlatformConfigurationError, RuntimeError) as exc:
@@ -47,14 +100,10 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
                 raise RecoveryDeliveryRetryable(
                     "SMTP is neither managed nor bootstrap-configured"
                 )
-            return await self._fallback.send(
-                secret=secret,
-                destination_reference=destination_reference,
-                idempotency_key=idempotency_key,
-            )
+            return None
 
         smtp = managed.configuration
-        channel = SmtpRecoveryDeliveryChannel(
+        return SmtpRecoveryDeliveryChannel(
             host=smtp.host,
             port=smtp.port,
             sender=smtp.sender,
@@ -64,11 +113,6 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
             use_ssl=smtp.security.value == "tls",
             timeout_seconds=smtp.timeout_seconds,
             reset_url=self._reset_url,
-        )
-        return await channel.send(
-            secret=secret,
-            destination_reference=destination_reference,
-            idempotency_key=idempotency_key,
         )
 
     async def reconcile(self, *, idempotency_key: str) -> DeliveryOutcome | None:
