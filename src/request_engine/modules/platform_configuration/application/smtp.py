@@ -91,3 +91,26 @@ def parse_smtp_configuration(payload: dict[str, object]) -> SmtpConfiguration:
         timeout_seconds=float(timeout_raw),
         helo_name=None if helo_raw is None else str(helo_raw),
     )
+
+
+class ProviderTestOutcome(StrEnum):
+    DELIVERED = "delivered"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderTestResult:
+    outcome: ProviderTestOutcome
+    detail_code: str
+
+
+class SmtpProviderTester(Protocol):
+    async def test(
+        self,
+        configuration: SmtpConfiguration,
+        *,
+        password: str | None,
+        destination: str,
+        idempotency_key: str,
+    ) -> ProviderTestResult: ...
