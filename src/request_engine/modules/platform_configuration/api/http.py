@@ -50,11 +50,11 @@ from request_engine.modules.platform_configuration.application.provider_test imp
     PlatformProviderTestResult,
     PlatformProviderTestService,
 )
-from request_engine.modules.platform_configuration.application.readiness import (
-    PlatformReadiness,
-)
 from request_engine.modules.platform_configuration.application.provider_validation import (
     PlatformProviderValidationService,
+)
+from request_engine.modules.platform_configuration.application.readiness import (
+    PlatformReadiness,
 )
 from request_engine.modules.platform_configuration.application.secret_administration import (
     PlatformSecretAdministrationService,
