@@ -7,10 +7,10 @@ import ssl
 from email.message import EmailMessage
 
 from request_engine.modules.platform_configuration.application.smtp import (
-    ProviderValidationResult,
-    ProviderValidationStatus,
     ProviderTestOutcome,
     ProviderTestResult,
+    ProviderValidationResult,
+    ProviderValidationStatus,
     SmtpConfiguration,
     SmtpConfigurationValidator,
     SmtpProviderTester,
