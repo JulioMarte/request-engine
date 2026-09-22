@@ -114,9 +114,7 @@ def platform_read_conn_factory(
             )
         )
     admin_conn.execute(
-        sql.SQL("GRANT USAGE ON SCHEMA request_platform TO {}").format(
-            sql.Identifier(role_name)
-        )
+        sql.SQL("GRANT USAGE ON SCHEMA request_platform TO {}").format(sql.Identifier(role_name))
     )
 
     parts = dict(part.split("=", 1) for part in pg_conninfo.split())
