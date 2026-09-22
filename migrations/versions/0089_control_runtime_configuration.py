@@ -1,6 +1,6 @@
 """Allow the control-plane runtime provider to resolve ACTIVE managed config.
 
-Revision ID: 0089_control_runtime_configuration
+Revision ID: 0089_control_runtime_config
 Revises: 0088_secret_runtime_notify
 
 Verified recovery-address delivery happens inside the private control process.
@@ -13,7 +13,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0089_control_runtime_configuration"
+revision: str = "0089_control_runtime_config"
 down_revision: str | Sequence[str] | None = "0088_secret_runtime_notify"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
