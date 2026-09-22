@@ -75,6 +75,7 @@ _PLATFORM_CONFIGURATION = (
     "request_platform.prepare_platform_secret_mutation(text,text,text,uuid,bigint,integer,text,text)",
     "request_platform.mark_platform_secret_backend_applied(uuid,integer)",
     "request_platform.commit_platform_secret_mutation(uuid)",
+    "request_platform.resolve_platform_provider_secret(uuid,text)",
 )
 
 
