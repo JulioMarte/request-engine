@@ -139,6 +139,11 @@ def test_platform_configuration_capabilities_are_explicit_high_risk_platform_aut
         "platform.configuration.validate",
         "platform.configuration.activate",
         "platform.configuration.disable",
+        "platform.secret.write",
+        "platform.secret.rotate",
+        "platform.secret.revoke",
+        "platform.provider.test",
+        "platform.readiness.read",
     }
     for key in expected:
         definition = by_key[key]
