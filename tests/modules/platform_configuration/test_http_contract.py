@@ -112,6 +112,11 @@ def test_platform_configuration_http_registers_canonical_capability_surface() ->
             "/v1/platform/configurations/{configuration_kind}/revisions",
             frozenset({"POST"}),
         ),
+        "platform_provider_test": (
+            "platform.provider.test",
+            "/v1/platform/providers/{configuration_kind}/{revision}:test",
+            frozenset({"POST"}),
+        ),
         "platform_configuration_validate": (
             "platform.configuration.validate",
             "/v1/platform/configurations/{configuration_kind}/revisions/{revision}:validate",
