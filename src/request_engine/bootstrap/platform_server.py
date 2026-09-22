@@ -18,6 +18,15 @@ from request_engine.bootstrap.recovery_delivery import (
 )
 from request_engine.bootstrap.settings import PlatformControlSettings
 from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
+from request_engine.modules.platform_configuration.adapters.db.runtime import (
+    PostgresActivePlatformConfigurationSource,
+)
+from request_engine.modules.platform_configuration.adapters.managed_smtp_delivery import (
+    ManagedSmtpRecoveryDeliveryChannel,
+)
+from request_engine.modules.platform_configuration.application.runtime import (
+    ActivePlatformConfigurationResolver,
+)
 from request_engine.modules.tenancy.api import NATIVE_INITIAL_CONTROLLER_POLICY
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
 from request_engine.platform.security.webauthn import WebAuthnPolicy
@@ -78,6 +87,7 @@ _PLATFORM_CONFIGURATION = (
     "request_platform.resolve_platform_provider_secret(uuid,text)",
     "request_platform.read_platform_provider_candidate(text,bigint,text)",
     "request_platform.record_platform_provider_test(text,bigint,bigint,integer,text,text,text,text)",
+    "request_platform.read_active_platform_runtime_configuration(text)",
 )
 
 
@@ -184,7 +194,7 @@ def create_app() -> FastAPI:
     settings = PlatformControlSettings.model_validate({})
     recovery_settings = RecoveryDeliverySettings()
     delivery = build_recovery_secret_delivery(recovery_settings)
-    native_recovery_messenger = build_native_recovery_messenger(recovery_settings)
+    bootstrap_native_recovery_messenger = build_native_recovery_messenger(recovery_settings)
     platform_secret_store = build_platform_secret_store()
     engines = tuple(
         create_postgres_engine(url.get_secret_value())
@@ -201,10 +211,21 @@ def create_app() -> FastAPI:
         raise ValueError(
             "Platform HTTP requires three distinct logins on the same database endpoint"
         )
+    platform_write_session_factory = create_session_factory(engines[2])
+    managed_smtp_resolver = ActivePlatformConfigurationResolver(
+        source=PostgresActivePlatformConfigurationSource(platform_write_session_factory),
+        secret_store=platform_secret_store,
+    )
+    native_recovery_messenger = ManagedSmtpRecoveryDeliveryChannel(
+        resolver=managed_smtp_resolver,
+        fallback=bootstrap_native_recovery_messenger,
+        reset_url=recovery_settings.recovery_reset_url,
+    )
+
     app = create_platform_control_app(
         auth_session_factory=create_session_factory(engines[0]),
         platform_read_session_factory=create_session_factory(engines[1]),
-        platform_write_session_factory=create_session_factory(engines[2]),
+        platform_write_session_factory=platform_write_session_factory,
         native_authority_id=settings.native_identity_authority_id,
         recovery_delivery=delivery,
         native_recovery_messenger=native_recovery_messenger,
