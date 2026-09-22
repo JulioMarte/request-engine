@@ -39,6 +39,7 @@ _READ = (
     "request_platform.read_native_identities(uuid,uuid,integer)",
     "request_platform.read_platform_configuration_revisions(text)",
     "request_platform.read_platform_secret_binding(uuid)",
+    "request_platform.read_platform_readiness()",
 )
 _PROVISIONER = "request_platform.provision_native_tenant_provisioner(uuid,uuid,uuid,uuid,text)"
 _RECOVERY_OPERATOR = "request_platform.provision_native_recovery_operator(uuid,uuid,uuid,uuid,text)"
