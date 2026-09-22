@@ -48,7 +48,7 @@ class SmtplibConfigurationValidator(SmtpConfigurationValidator):
                 configuration.port,
                 timeout=configuration.timeout_seconds,
             ) as client:
-                code, _ = client.ehlo(configuration.helo_name)
+                code, _ = client.ehlo(configuration.helo_name or "")
                 if code >= 400:
                     return ProviderValidationResult(
                         ProviderValidationStatus.INVALID,
@@ -56,7 +56,7 @@ class SmtplibConfigurationValidator(SmtpConfigurationValidator):
                     )
                 if configuration.security is SmtpSecurityMode.STARTTLS:
                     client.starttls(context=ssl.create_default_context())
-                    code, _ = client.ehlo(configuration.helo_name)
+                    code, _ = client.ehlo(configuration.helo_name or "")
                     if code >= 400:
                         return ProviderValidationResult(
                             ProviderValidationStatus.INVALID,
@@ -82,7 +82,7 @@ class SmtplibConfigurationValidator(SmtpConfigurationValidator):
                 ProviderValidationStatus.INVALID,
                 "smtp_security_incompatible",
             )
-        except (TimeoutError, OSError, smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected):
+        except (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected):
             return ProviderValidationResult(
                 ProviderValidationStatus.UNAVAILABLE,
                 "smtp_temporarily_unavailable",
@@ -91,6 +91,11 @@ class SmtplibConfigurationValidator(SmtpConfigurationValidator):
             return ProviderValidationResult(
                 ProviderValidationStatus.UNAVAILABLE,
                 "smtp_protocol_unavailable",
+            )
+        except (TimeoutError, OSError):
+            return ProviderValidationResult(
+                ProviderValidationStatus.UNAVAILABLE,
+                "smtp_temporarily_unavailable",
             )
         return ProviderValidationResult(
             ProviderValidationStatus.VALID,
@@ -150,10 +155,10 @@ class SmtplibProviderTester(SmtpProviderTester):
                 configuration.port,
                 timeout=configuration.timeout_seconds,
             ) as client:
-                client.ehlo(configuration.helo_name)
+                client.ehlo(configuration.helo_name or "")
                 if configuration.security is SmtpSecurityMode.STARTTLS:
                     client.starttls(context=ssl.create_default_context())
-                    client.ehlo(configuration.helo_name)
+                    client.ehlo(configuration.helo_name or "")
                 if configuration.username is not None:
                     if password is None:
                         return ProviderTestResult(
@@ -174,7 +179,17 @@ class SmtplibProviderTester(SmtpProviderTester):
                 ProviderTestOutcome.FAILED,
                 "smtp_test_rejected",
             )
-        except (TimeoutError, OSError, smtplib.SMTPException):
+        except smtplib.SMTPException:
+            if transmission_started:
+                return ProviderTestResult(
+                    ProviderTestOutcome.UNKNOWN,
+                    "smtp_test_delivery_unknown",
+                )
+            return ProviderTestResult(
+                ProviderTestOutcome.FAILED,
+                "smtp_test_unavailable",
+            )
+        except (TimeoutError, OSError):
             if transmission_started:
                 return ProviderTestResult(
                     ProviderTestOutcome.UNKNOWN,
