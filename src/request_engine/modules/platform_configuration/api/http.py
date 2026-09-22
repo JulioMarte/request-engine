@@ -14,6 +14,12 @@ from request_engine.modules.platform_configuration.adapters.db.configuration imp
 from request_engine.modules.platform_configuration.adapters.db.secrets import (
     PostgresPlatformSecretMutations,
 )
+from request_engine.modules.platform_configuration.adapters.db.provider_secrets import (
+    PostgresProviderSecretResolver,
+)
+from request_engine.modules.platform_configuration.adapters.smtp import (
+    SmtplibConfigurationValidator,
+)
 from request_engine.modules.platform_configuration.application.configuration import (
     ActivateConfiguration,
     ConfigurationMutationResult,
@@ -24,10 +30,15 @@ from request_engine.modules.platform_configuration.application.configuration imp
     PlatformConfigurationForbidden,
     PlatformConfigurationInvalid,
     PlatformConfigurationNotFound,
+    PlatformConfigurationProviderInvalid,
     PlatformConfigurationRevisionConflict,
+    PlatformProviderValidationFailed,
     SecretBindingMetadata,
     StageConfiguration,
     ValidateConfiguration,
+)
+from request_engine.modules.platform_configuration.application.provider_validation import (
+    PlatformProviderValidationService,
 )
 from request_engine.modules.platform_configuration.application.secret_administration import (
     PlatformSecretAdministrationService,
@@ -219,6 +230,16 @@ async def platform_configuration_error_handler(_: Request, exc: Exception) -> JS
             "platform_secret_reconciliation_required",
             ErrorResolution.OPERATOR_INTERVENTION,
         ),
+        PlatformConfigurationProviderInvalid: (
+            422,
+            "platform_configuration_provider_invalid",
+            ErrorResolution.FIX_REQUEST,
+        ),
+        PlatformProviderValidationFailed: (
+            503,
+            "platform_provider_validation_failed",
+            ErrorResolution.RETRY_SAME_REQUEST,
+        ),
     }
     status_code, code, resolution = errors.get(
         type(exc),
@@ -259,6 +280,13 @@ def install_platform_configuration_http(
             mutations=PostgresPlatformSecretMutations(write_session_factory),
             store=secret_store,
         )
+    )
+    provider_validation = PlatformProviderValidationService(
+        reader=reader,
+        commands=commands,
+        secret_resolver=PostgresProviderSecretResolver(write_session_factory),
+        secret_store=secret_store,
+        smtp_validator=SmtplibConfigurationValidator(),
     )
     router = APIRouter(tags=["Platform configuration"])
 
@@ -387,13 +415,11 @@ def install_platform_configuration_http(
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
         return _mutation_view(
-            await commands.validate(
+            await provider_validation.validate(
                 actor,
-                ValidateConfiguration(
-                    configuration_kind=configuration_kind,
-                    revision=revision,
-                    idempotency_key=idempotency_key,
-                ),
+                configuration_kind=configuration_kind,
+                revision=revision,
+                idempotency_key=idempotency_key,
             )
         )
 
