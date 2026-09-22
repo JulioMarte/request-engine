@@ -27,9 +27,8 @@ class ManagedWebhookDeliveryProvider:
         *,
         resolver: ActiveWebhookConfigurationResolver,
         fallback: CommunicationDeliveryProvider | None = None,
-        provider_factory: Callable[
-            [ResolvedWebhookConfiguration], CommunicationDeliveryProvider
-        ] | None = None,
+        provider_factory: Callable[[ResolvedWebhookConfiguration], CommunicationDeliveryProvider]
+        | None = None,
     ) -> None:
         self._resolver = resolver
         self._fallback = fallback
