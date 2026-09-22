@@ -50,6 +50,9 @@ from request_engine.modules.queue.adapters.db.released_slot_recovery import (
 from request_engine.modules.queue.adapters.db.slot_offer_commands import (
     PostgresSlotOfferCommands,
 )
+from request_engine.modules.platform_configuration.adapters.db.invalidation import (
+    PlatformConfigurationInvalidationRuntime,
+)
 from request_engine.modules.platform_configuration.adapters.db.runtime import (
     PostgresActivePlatformConfigurationSource,
 )
@@ -119,13 +122,20 @@ def create_worker() -> WorkerProcess:
     worker_principal_id = UUID(_required_env(WORKER_PRINCIPAL_ID_ENV))
 
     recovery_settings = RecoveryDeliverySettings()
+    platform_configuration_resolver: ActivePlatformConfigurationResolver | None = None
+    platform_configuration_invalidation = None
     if has_recovery_secret_store_configuration(recovery_settings):
         bootstrap_smtp = build_native_recovery_messenger(recovery_settings)
+        platform_configuration_resolver = ActivePlatformConfigurationResolver(
+            source=PostgresActivePlatformConfigurationSource(worker_sessions),
+            secret_store=build_platform_secret_store(),
+        )
+        platform_configuration_invalidation = PlatformConfigurationInvalidationRuntime(
+            database_url=_required_env(WORKER_DATABASE_URL_ENV),
+            invalidate=platform_configuration_resolver.invalidate,
+        )
         managed_smtp = ManagedSmtpRecoveryDeliveryChannel(
-            resolver=ActivePlatformConfigurationResolver(
-                source=PostgresActivePlatformConfigurationSource(worker_sessions),
-                secret_store=build_platform_secret_store(),
-            ),
+            resolver=platform_configuration_resolver,
             fallback=bootstrap_smtp,
             reset_url=recovery_settings.recovery_reset_url,
         )
@@ -174,4 +184,5 @@ def create_worker() -> WorkerProcess:
         ),
         identity_recovery_delivery=identity_recovery_delivery,
         native_recovery_delivery=native_recovery_delivery,
+        platform_configuration_invalidation=platform_configuration_invalidation,
     )
