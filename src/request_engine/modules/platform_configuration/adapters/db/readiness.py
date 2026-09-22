@@ -19,9 +19,8 @@ class PostgresPlatformReadinessReader:
         self._session_factory = session_factory
 
     async def read(self, actor: PlatformActorContext) -> PlatformReadiness:
-        if (
-            actor.principal_kind is not PrincipalKind.HUMAN
-            or not actor.allows("platform.readiness.read")
+        if actor.principal_kind is not PrincipalKind.HUMAN or not actor.allows(
+            "platform.readiness.read"
         ):
             raise PlatformConfigurationForbidden("platform.readiness.read")
 
