@@ -43,5 +43,8 @@ def test_provider_wiring_registers_managed_webhook_without_bootstrap_url() -> No
     )
 
     assert set(configured) == {WEBHOOK_PROVIDER_KEY}
-    assert isinstance(configured[WEBHOOK_PROVIDER_KEY], managed_webhook.ManagedWebhookDeliveryProvider)
+    assert isinstance(
+        configured[WEBHOOK_PROVIDER_KEY],
+        managed_webhook.ManagedWebhookDeliveryProvider,
+    )
 
