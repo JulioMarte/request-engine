@@ -71,25 +71,45 @@ def parse_smtp_configuration(payload: dict[str, object]) -> SmtpConfiguration:
     if unknown:
         raise ValueError(f"Unsupported SMTP configuration fields: {sorted(unknown)}")
 
-    try:
-        security = SmtpSecurityMode(str(payload["security"]))
-        host = str(payload["host"])
-        port = int(payload["port"])
-        sender = str(payload["sender"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("SMTP configuration is incomplete or invalid") from exc
-
+    host_raw = payload.get("host")
+    port_raw = payload.get("port")
+    sender_raw = payload.get("sender")
+    security_raw = payload.get("security")
     username_raw = payload.get("username")
     timeout_raw = payload.get("timeout_seconds", 10.0)
     helo_raw = payload.get("helo_name")
+
+    if not isinstance(host_raw, str):
+        raise ValueError("SMTP host must be a string")
+    if not isinstance(port_raw, int) or isinstance(port_raw, bool):
+        raise ValueError("SMTP port must be an integer")
+    if not isinstance(sender_raw, str):
+        raise ValueError("SMTP sender must be a string")
+    if not isinstance(security_raw, str):
+        raise ValueError("SMTP security mode must be a string")
+    if username_raw is not None and not isinstance(username_raw, str):
+        raise ValueError("SMTP username must be a string")
+    if (
+        not isinstance(timeout_raw, (int, float))
+        or isinstance(timeout_raw, bool)
+    ):
+        raise ValueError("SMTP timeout must be numeric")
+    if helo_raw is not None and not isinstance(helo_raw, str):
+        raise ValueError("SMTP HELO name must be a string")
+
+    try:
+        security = SmtpSecurityMode(security_raw)
+    except ValueError as exc:
+        raise ValueError("SMTP security mode is invalid") from exc
+
     return SmtpConfiguration(
-        host=host,
-        port=port,
-        sender=sender,
+        host=host_raw,
+        port=port_raw,
+        sender=sender_raw,
         security=security,
-        username=None if username_raw is None else str(username_raw),
+        username=username_raw,
         timeout_seconds=float(timeout_raw),
-        helo_name=None if helo_raw is None else str(helo_raw),
+        helo_name=helo_raw,
     )
 
 
