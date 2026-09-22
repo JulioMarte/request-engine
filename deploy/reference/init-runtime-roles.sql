@@ -15,3 +15,4 @@ GRANT EXECUTE ON FUNCTION request_platform.read_identity_recovery_cases(uuid,uui
 GRANT EXECUTE ON FUNCTION request_platform.read_native_identities(uuid,uuid,integer) TO request_e2e_read;
 GRANT EXECUTE ON FUNCTION request_platform.read_platform_configuration_revisions(text) TO request_e2e_read;
 GRANT EXECUTE ON FUNCTION request_platform.read_platform_secret_binding(uuid) TO request_e2e_read;
+GRANT EXECUTE ON FUNCTION request_platform.read_platform_readiness() TO request_e2e_read;
