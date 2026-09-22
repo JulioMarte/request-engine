@@ -12,6 +12,9 @@ from request_engine.entrypoints.worker.outbox_runtime import (
     RESERVATION_LIFECYCLE_EVENT_TYPES,
     ReservationLifecycleOutboxHandler,
 )
+from request_engine.modules.communications.adapters.transport.managed_webhook_delivery_provider import (
+    ManagedWebhookDeliveryProvider,
+)
 from request_engine.platform.db.session import SessionFactory
 
 PUBLISHER_MODULE = "reference_publisher_deployment"
@@ -175,3 +178,6 @@ def test_reference_factory_composes_both_recovery_delivery_streams(
 
     assert captured["identity_recovery_delivery"] is identity_runtime
     assert captured["native_recovery_delivery"] is native_runtime
+    providers = cast(Mapping[str, object], captured["communication_providers"])
+    assert isinstance(providers["webhook"], ManagedWebhookDeliveryProvider)
+    assert captured["platform_configuration_invalidation"] is not None
