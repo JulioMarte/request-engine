@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from request_engine.bootstrap.platform_secrets import build_platform_secret_store
 from request_engine.bootstrap.recovery_delivery import (
     RecoveryDeliverySettings,
     build_native_recovery_messenger,
@@ -71,9 +72,9 @@ _PLATFORM_CONFIGURATION = (
     "request_platform.validate_platform_configuration(text,bigint,text,text)",
     "request_platform.activate_platform_configuration(text,bigint,bigint,text,text)",
     "request_platform.disable_platform_configuration(text,bigint,text,text)",
-    "request_platform.record_platform_secret_binding(text,text,uuid,integer,text,text)",
-    "request_platform.commit_platform_secret_rotation(uuid,bigint,integer,integer,text,text)",
-    "request_platform.revoke_platform_secret_binding(uuid,bigint,integer,text,text)",
+    "request_platform.prepare_platform_secret_mutation(text,text,text,uuid,bigint,integer,text,text)",
+    "request_platform.mark_platform_secret_backend_applied(uuid,integer)",
+    "request_platform.commit_platform_secret_mutation(uuid)",
 )
 
 
@@ -181,6 +182,7 @@ def create_app() -> FastAPI:
     recovery_settings = RecoveryDeliverySettings()
     delivery = build_recovery_secret_delivery(recovery_settings)
     native_recovery_messenger = build_native_recovery_messenger(recovery_settings)
+    platform_secret_store = build_platform_secret_store()
     engines = tuple(
         create_postgres_engine(url.get_secret_value())
         for url in (
@@ -203,6 +205,7 @@ def create_app() -> FastAPI:
         native_authority_id=settings.native_identity_authority_id,
         recovery_delivery=delivery,
         native_recovery_messenger=native_recovery_messenger,
+        platform_secret_store=platform_secret_store,
         webauthn_policy=WebAuthnPolicy(
             rp_id=settings.webauthn_rp_id,
             rp_name=settings.webauthn_rp_name,
