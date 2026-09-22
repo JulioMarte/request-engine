@@ -92,6 +92,21 @@ def test_platform_configuration_http_registers_canonical_capability_surface() ->
             "/v1/platform/secrets/{binding_id}",
             frozenset({"GET"}),
         ),
+        "platform_secret_create": (
+            "platform.secret.write",
+            "/v1/platform/secrets",
+            frozenset({"POST"}),
+        ),
+        "platform_secret_rotate": (
+            "platform.secret.rotate",
+            "/v1/platform/secrets/{binding_id}:rotate",
+            frozenset({"POST"}),
+        ),
+        "platform_secret_revoke": (
+            "platform.secret.revoke",
+            "/v1/platform/secrets/{binding_id}:revoke",
+            frozenset({"POST"}),
+        ),
         "platform_configuration_stage": (
             "platform.configuration.stage",
             "/v1/platform/configurations/{configuration_kind}/revisions",
