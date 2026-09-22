@@ -11,11 +11,11 @@ from request_engine.modules.platform_configuration.adapters.db.configuration imp
     PostgresPlatformConfigurationCommands,
     PostgresPlatformConfigurationReader,
 )
-from request_engine.modules.platform_configuration.adapters.db.secrets import (
-    PostgresPlatformSecretMutations,
-)
 from request_engine.modules.platform_configuration.adapters.db.provider_secrets import (
     PostgresProviderSecretResolver,
+)
+from request_engine.modules.platform_configuration.adapters.db.secrets import (
+    PostgresPlatformSecretMutations,
 )
 from request_engine.modules.platform_configuration.adapters.smtp import (
     SmtplibConfigurationValidator,
@@ -35,7 +35,6 @@ from request_engine.modules.platform_configuration.application.configuration imp
     PlatformProviderValidationFailed,
     SecretBindingMetadata,
     StageConfiguration,
-    ValidateConfiguration,
 )
 from request_engine.modules.platform_configuration.application.provider_validation import (
     PlatformProviderValidationService,
