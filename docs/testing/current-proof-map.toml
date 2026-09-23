@@ -616,3 +616,8 @@ guarantee = "INV-SMTP-CONFIGURATION-001"
 path = "tests/modules/platform_configuration/test_smtp_provider.py"
 evidence = ["contract", "adversarial"]
 
+[[proofs]]
+guarantee = "INV-SMTP-TRANSPORT-SECURITY-001"
+path = "tests/modules/platform_configuration/test_smtp_tls_protocol.py"
+evidence = ["invariant", "contract", "adversarial"]
+

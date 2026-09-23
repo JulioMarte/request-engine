@@ -522,3 +522,10 @@ statement = "Staged SMTP configuration is typed and validated outside authoritat
 severity = "high"
 required_evidence = ["contract", "adversarial"]
 risk = ["security", "availability"]
+
+[[guarantees]]
+id = "INV-SMTP-TRANSPORT-SECURITY-001"
+statement = "SMTP provider TLS is authenticated before credentials or message content are sent: implicit TLS (SMTPS) and STARTTLS both verify the server certificate chain and hostname against a trusted CA, and a certificate that fails verification is treated as a definitive security failure (INVALID for validation and provider test, a non-retryable failure for recovery delivery) instead of being silently accepted."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security"]

@@ -17,7 +17,7 @@ Status: **implementation handoff; P7 is not delivered or production-certified**
 > P7-B governed DB read/command lifecycle      implemented
 > P7-C HTTP metadata/configuration surface     implemented
 > P7-D secret lifecycle/reconciliation         implemented; system/adversarial evidence incomplete
-> P7-E SMTP typed validation/test/activation   implemented; production acceptance outstanding
+> P7-E SMTP typed validation/test/activation   implemented; TLS/AUTH protocol verified vs a real SMTP server; production-provider acceptance outstanding
 > P7-F runtime resolver/hot reload/env cutover implemented; black-box hot-reload + poll convergence proven; env-free cutover acceptance outstanding
 > P7-G Communications integration              implemented
 > P7-H OIDC administration                     pending
@@ -114,7 +114,9 @@ Implemented and exercised in the current checkpoint:
 2. Governed secret write/rotate/revoke API with a durable mutation ledger, exact
    backend version/CAS fencing and an explicit reconciliation state (P7-D).
 3. SMTP staging, validation, provider test and activation through the control
-   plane, with typed configuration and secret references (P7-E).
+   plane, with typed configuration and secret references, plus certificate-
+   verifying implicit TLS and STARTTLS proven against a real SMTP server
+   (`INV-SMTP-TRANSPORT-SECURITY-001`) (P7-E).
 4. A revision-aware runtime resolver with cache fingerprint, LISTEN/NOTIFY
    invalidation and a periodic polling backstop; managed-over-bootstrap
    precedence (P7-F).
@@ -133,8 +135,11 @@ Still open and required before the corresponding slice is complete:
   `INV-PLATFORM-SECRET-LIFECYCLE-001` guarantee and its unit-level
   reconciliation proofs now exist; the real-OpenBao adversarial run is still
   outstanding.
-- P7-E: at least one controlled production SMTP acceptance beyond the
-  deterministic fake/Mailpit boundary.
+- P7-E: protocol conformance against a real RFC 5321 SMTP server (implicit TLS,
+  STARTTLS, AUTH, delivery) now exists and passes in CI, and the client was
+  fixed to verify the server certificate for implicit TLS. A controlled
+  production SMTP provider acceptance (real DNS/TLS/AUTH/trottling) is still
+  outstanding.
 - P7-F: env-free cutover acceptance (recovery delivery operating from managed
   SMTP with no SMTP credentials in the process environment). The black-box
   hot-reload journey (`platform-configuration`) and the real-PostgreSQL
@@ -784,6 +789,11 @@ INV-SMTP-CONFIGURATION-001
   staged SMTP configuration validates outside DB locks, test result is distinct
   from activation, credentials are secret references and ambiguous send outcome
   is not blindly retried.
+
+INV-SMTP-TRANSPORT-SECURITY-001
+  implicit TLS (SMTPS) and STARTTLS verify the server certificate chain and
+  hostname before credentials/message content are sent; a certificate that
+  fails verification is a definitive security failure, never silently accepted.
 
 INV-PLATFORM-CLONE-FENCE-001
   restored/cloned non-production environments cannot emit external side effects

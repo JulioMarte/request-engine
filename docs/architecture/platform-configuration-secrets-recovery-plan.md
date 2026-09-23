@@ -131,8 +131,10 @@ summary:
 
 - control-plane configuration CRUD/stage/validate/activate APIs — implemented;
 - secret admin APIs — implemented;
-- SMTP candidate validation/test/activation — implemented; production SMTP
-  acceptance outstanding;
+- SMTP candidate validation/test/activation — implemented; TLS/AUTH protocol
+  conformance proven against a real SMTP server (certificate-verifying SMTPS and
+  STARTTLS, `INV-SMTP-TRANSPORT-SECURITY-001`); production SMTP acceptance
+  outstanding;
 - runtime configuration cache + invalidation/hot reload — implemented; the
   `platform-configuration` black-box journey and the real-PostgreSQL polling
   convergence proof pass in CI; env-free cutover acceptance outstanding;

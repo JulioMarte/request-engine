@@ -9,6 +9,7 @@ and from an ambiguous post-connect failure that must not be retried blindly.
 import asyncio
 import hashlib
 import smtplib
+import ssl
 from collections.abc import Callable
 from email.message import EmailMessage
 from urllib.parse import quote
@@ -161,10 +162,22 @@ class SmtpRecoveryDeliveryChannel:
 
     def _deliver_blocking(self, message: EmailMessage) -> DeliveryOutcome:
         try:
-            with self._transport(self._host, self._port, timeout=self._timeout_seconds) as client:
+            # smtplib's built-in defaults for SMTP_SSL/starttls do not verify the
+            # server certificate or hostname; always pass a verifying context so
+            # a recovery proof cannot be leaked to an on-path impersonator.
+            if self._use_ssl:
+                client = self._transport(
+                    self._host,
+                    self._port,
+                    timeout=self._timeout_seconds,
+                    context=ssl.create_default_context(),
+                )
+            else:
+                client = self._transport(self._host, self._port, timeout=self._timeout_seconds)
+            with client:
                 client.ehlo()
                 if self._starttls and not self._use_ssl:
-                    client.starttls()
+                    client.starttls(context=ssl.create_default_context())
                 if self._username is not None:
                     client.login(self._username, self._password or "")
                 client.send_message(message)
@@ -173,6 +186,7 @@ class SmtpRecoveryDeliveryChannel:
             smtplib.SMTPSenderRefused,
             smtplib.SMTPAuthenticationError,
             smtplib.SMTPNotSupportedError,
+            ssl.SSLCertVerificationError,
         ):
             return DeliveryOutcome.FAILED
         except TimeoutError:

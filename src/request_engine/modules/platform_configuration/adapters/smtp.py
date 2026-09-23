@@ -18,6 +18,35 @@ from request_engine.modules.platform_configuration.application.smtp import (
 )
 
 
+def _verified_tls_context() -> ssl.SSLContext:
+    """TLS context that verifies the server certificate and hostname.
+
+    ``smtplib`` defaults to ``ssl._create_stdlib_context()`` for both
+    ``SMTP_SSL`` and ``starttls``, which performs **no** certificate or
+    hostname verification. Callers must pass a verifying context explicitly so
+    an on-path attacker cannot impersonate the SMTP provider.
+    """
+
+    return ssl.create_default_context()
+
+
+def _connect(configuration: SmtpConfiguration) -> smtplib.SMTP:
+    """Open a connection using certificate-verifying TLS for implicit-TLS mode."""
+
+    if configuration.security is SmtpSecurityMode.TLS:
+        return smtplib.SMTP_SSL(
+            configuration.host,
+            configuration.port,
+            timeout=configuration.timeout_seconds,
+            context=_verified_tls_context(),
+        )
+    return smtplib.SMTP(
+        configuration.host,
+        configuration.port,
+        timeout=configuration.timeout_seconds,
+    )
+
+
 class SmtplibConfigurationValidator(SmtpConfigurationValidator):
     """Validate SMTP connectivity/TLS/auth without sending a message."""
 
@@ -38,16 +67,8 @@ class SmtplibConfigurationValidator(SmtpConfigurationValidator):
         configuration: SmtpConfiguration,
         password: str | None,
     ) -> ProviderValidationResult:
-        transport: type[smtplib.SMTP]
-        transport = (
-            smtplib.SMTP_SSL if configuration.security is SmtpSecurityMode.TLS else smtplib.SMTP
-        )
         try:
-            with transport(
-                configuration.host,
-                configuration.port,
-                timeout=configuration.timeout_seconds,
-            ) as client:
+            with _connect(configuration) as client:
                 code, _ = client.ehlo(configuration.helo_name or "")
                 if code >= 400:
                     return ProviderValidationResult(
@@ -55,7 +76,7 @@ class SmtplibConfigurationValidator(SmtpConfigurationValidator):
                         "smtp_ehlo_rejected",
                     )
                 if configuration.security is SmtpSecurityMode.STARTTLS:
-                    client.starttls(context=ssl.create_default_context())
+                    client.starttls(context=_verified_tls_context())
                     code, _ = client.ehlo(configuration.helo_name or "")
                     if code >= 400:
                         return ProviderValidationResult(
@@ -144,20 +165,12 @@ class SmtplibProviderTester(SmtpProviderTester):
             "accepted a controlled test delivery."
         )
 
-        transport: type[smtplib.SMTP]
-        transport = (
-            smtplib.SMTP_SSL if configuration.security is SmtpSecurityMode.TLS else smtplib.SMTP
-        )
         transmission_started = False
         try:
-            with transport(
-                configuration.host,
-                configuration.port,
-                timeout=configuration.timeout_seconds,
-            ) as client:
+            with _connect(configuration) as client:
                 client.ehlo(configuration.helo_name or "")
                 if configuration.security is SmtpSecurityMode.STARTTLS:
-                    client.starttls(context=ssl.create_default_context())
+                    client.starttls(context=_verified_tls_context())
                     client.ehlo(configuration.helo_name or "")
                 if configuration.username is not None:
                     if password is None:
