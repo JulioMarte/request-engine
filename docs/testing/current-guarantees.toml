@@ -501,3 +501,24 @@ statement = "A platform configuration revision must be validated before activati
 severity = "critical"
 required_evidence = ["invariant", "adversarial", "concurrency"]
 risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-PLATFORM-SECRET-LIFECYCLE-001"
+statement = "Platform secret administration never replays plaintext: create/rotate/revoke are backend-version safe, a stale rotation fails closed, and a partial cross-system failure (backend write succeeded but the PostgreSQL metadata commit did not, or vice versa) is recorded as an explicit reconcilable state that a retry with the same intent can finish or report, rather than silently diverging metadata from backend material."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security", "availability"]
+
+[[guarantees]]
+id = "INV-PLATFORM-CONFIG-HOT-RELOAD-001"
+statement = "Runtime consumers converge on the PostgreSQL ACTIVE configuration revision without a process restart: a cache keyed by configuration kind plus exact revision/secret-binding fingerprint adopts a newly activated revision (or a rotated secret) while LISTEN/NOTIFY is only an invalidation fast path and periodic revision polling remains the correctness backstop when a notification is missed."
+severity = "high"
+required_evidence = ["contract", "adversarial"]
+risk = ["availability"]
+
+[[guarantees]]
+id = "INV-SMTP-CONFIGURATION-001"
+statement = "Staged SMTP configuration is typed and validated outside authoritative database locks, a provider test result is distinct from activation (an append-only fact, not the ACTIVE state), the credential is a secret reference rather than a value in the configuration JSON, and an ambiguous post-transmission send outcome is recorded UNKNOWN and never blindly retried."
+severity = "high"
+required_evidence = ["contract", "adversarial"]
+risk = ["security", "availability"]

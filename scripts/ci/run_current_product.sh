@@ -203,6 +203,18 @@ uv run pytest \
   -q --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/platform-configuration-http.xml"
 
+# P7 secret administration and managed runtime are current product truth. Keep
+# the secret-lifecycle reconciliation, hot-reload cache/invalidation and typed
+# SMTP provider proofs in the same evidence packet so the corresponding
+# guarantees are backed by executed evidence rather than dormant unit files.
+uv run pytest \
+  tests/unit/platform/secrets/test_platform_secret_administration.py \
+  tests/modules/platform_configuration/test_runtime_resolver.py \
+  tests/modules/platform_configuration/test_runtime_invalidation.py \
+  tests/modules/platform_configuration/test_smtp_provider.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/platform-configuration-runtime.xml"
+
 # Tenant RLS catalog isolation is current-product truth. Run the adversarial
 # catalog enumeration against the accepted Alembic head so post-baseline tenant
 # tables cannot silently ship without FORCE RLS and a tenant-bound policy.
