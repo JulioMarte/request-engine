@@ -133,8 +133,9 @@ summary:
 - secret admin APIs — implemented;
 - SMTP candidate validation/test/activation — implemented; production SMTP
   acceptance outstanding;
-- runtime configuration cache + invalidation/hot reload — implemented; black-box
-  system journey outstanding;
+- runtime configuration cache + invalidation/hot reload — implemented; the
+  `platform-configuration` black-box journey and the real-PostgreSQL polling
+  convergence proof pass in CI; env-free cutover acceptance outstanding;
 - notification intents/templates — managed webhook path implemented; generic
   Communications email rendering still absent by design;
 - product readiness projection — partial (SMTP-centric);
