@@ -164,6 +164,7 @@ def _activate(
     assert str(row[2]) == "active"
 
 
+@pytest.mark.asyncio
 async def test_active_runtime_resolver_converges_by_polling_without_notification(
     admin_conn: PgConnection,
     platform_control_conn_factory: Callable[[], PgConnection],
