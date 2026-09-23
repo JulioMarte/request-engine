@@ -184,13 +184,13 @@ async def test_active_runtime_resolver_converges_by_polling_without_notification
         authority_revision,
     )
 
-    first_revision = _stage(conn, host="smtp-one.example.test", key="h" * 64, intent="1" * 64)
-    _validate(conn, first_revision, key="i" * 64, intent="1" * 64)
+    first_revision = _stage(conn, host="smtp-one.example.test", key="a" * 64, intent="1" * 64)
+    _validate(conn, first_revision, key="b" * 64, intent="1" * 64)
     _activate(
         conn,
         first_revision,
         expected_active_revision=None,
-        key="j" * 64,
+        key="c" * 64,
         intent="1" * 64,
     )
 
@@ -205,13 +205,13 @@ async def test_active_runtime_resolver_converges_by_polling_without_notification
     assert cached_first.active_revision == first_revision
     assert cached_first.configuration.host == "smtp-one.example.test"
 
-    second_revision = _stage(conn, host="smtp-two.example.test", key="k" * 64, intent="2" * 64)
-    _validate(conn, second_revision, key="l" * 64, intent="2" * 64)
+    second_revision = _stage(conn, host="smtp-two.example.test", key="d" * 64, intent="2" * 64)
+    _validate(conn, second_revision, key="e" * 64, intent="2" * 64)
     _activate(
         conn,
         second_revision,
         expected_active_revision=first_revision,
-        key="m" * 64,
+        key="f" * 64,
         intent="2" * 64,
     )
 
