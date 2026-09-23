@@ -146,9 +146,58 @@ def upgrade() -> None:
         ALTER TABLE request_engine.platform_secret_mutations
             OWNER TO request_engine_schema_owner;
         REVOKE ALL ON request_engine.platform_secret_mutations FROM PUBLIC;
-        GRANT SELECT, INSERT, UPDATE
-            ON request_engine.platform_secret_mutations
-            TO request_platform_control_definer;
+        GRANT SELECT (
+            id,
+            operation_kind,
+            capability_key,
+            actor_principal_id,
+            actor_authentication_method,
+            correlation_id,
+            binding_id,
+            secret_id,
+            purpose,
+            backend,
+            expected_binding_revision,
+            expected_backend_version,
+            applied_backend_version,
+            state,
+            idempotency_key_digest,
+            intent_digest,
+            result_binding_id,
+            result_binding_revision,
+            result_binding_status,
+            created_at,
+            backend_applied_at,
+            committed_at,
+            reconcile_required_at
+        ),
+        INSERT (
+            operation_kind,
+            capability_key,
+            actor_principal_id,
+            actor_authentication_method,
+            correlation_id,
+            binding_id,
+            secret_id,
+            purpose,
+            backend,
+            expected_binding_revision,
+            expected_backend_version,
+            idempotency_key_digest,
+            intent_digest
+        ),
+        UPDATE (
+            state,
+            applied_backend_version,
+            backend_applied_at,
+            reconcile_required_at,
+            result_binding_id,
+            result_binding_revision,
+            result_binding_status,
+            committed_at
+        )
+        ON request_engine.platform_secret_mutations
+        TO request_platform_control_definer;
 
         GRANT USAGE, CREATE ON SCHEMA request_platform
             TO request_platform_control_definer;

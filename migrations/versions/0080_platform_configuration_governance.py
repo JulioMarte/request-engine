@@ -331,6 +331,7 @@ def upgrade() -> None:
         TO {_CONTROL_DEFINER};
 
         GRANT SELECT (
+            id,
             event_kind,
             configuration_revision_id,
             configuration_kind,
@@ -1538,12 +1539,12 @@ def upgrade() -> None:
                     USING ERRCODE = '40001';
             END IF;
 
-            UPDATE request_engine.platform_secret_bindings
+            UPDATE request_engine.platform_secret_bindings AS binding
                SET backend_version = p_new_backend_version,
-                   revision = revision + 1,
+                   revision = binding.revision + 1,
                    rotated_at = clock_timestamp()
-             WHERE id = p_binding_id
-            RETURNING revision INTO v_revision;
+             WHERE binding.id = p_binding_id
+            RETURNING binding.revision INTO v_revision;
 
             INSERT INTO request_engine.platform_configuration_facts (
                 event_kind,
@@ -1696,12 +1697,12 @@ def upgrade() -> None:
                     USING ERRCODE = '40001';
             END IF;
 
-            UPDATE request_engine.platform_secret_bindings
+            UPDATE request_engine.platform_secret_bindings AS binding
                SET status = 'revoked',
-                   revision = revision + 1,
+                   revision = binding.revision + 1,
                    revoked_at = clock_timestamp()
-             WHERE id = p_binding_id
-            RETURNING revision INTO v_revision;
+             WHERE binding.id = p_binding_id
+            RETURNING binding.revision INTO v_revision;
 
             INSERT INTO request_engine.platform_configuration_facts (
                 event_kind,
