@@ -215,6 +215,14 @@ uv run pytest \
   -q --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/platform-configuration-runtime.xml"
 
+# The resolver's polling backstop must converge on the PostgreSQL ACTIVE revision
+# even when no LISTEN/NOTIFY invalidation reaches the process. Run the real
+# Postgres poll-convergence proof on the accepted migration head.
+uv run pytest \
+  tests/db/test_platform_configuration_hot_reload.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/platform-configuration-hot-reload.xml"
+
 # Tenant RLS catalog isolation is current-product truth. Run the adversarial
 # catalog enumeration against the accepted Alembic head so post-baseline tenant
 # tables cannot silently ship without FORCE RLS and a tenant-bound policy.

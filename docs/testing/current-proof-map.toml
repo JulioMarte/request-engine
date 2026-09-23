@@ -607,6 +607,11 @@ path = "tests/modules/platform_configuration/test_runtime_invalidation.py"
 evidence = ["contract", "adversarial"]
 
 [[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-HOT-RELOAD-001"
+path = "tests/db/test_platform_configuration_hot_reload.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
 guarantee = "INV-SMTP-CONFIGURATION-001"
 path = "tests/modules/platform_configuration/test_smtp_provider.py"
 evidence = ["contract", "adversarial"]
