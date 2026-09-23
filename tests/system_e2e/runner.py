@@ -897,7 +897,7 @@ def _run_f01_foundation(
             workload_authority_id=workload_authority_id,
             expires_at=expires_at,
         )
-    if phase == "main" or _active_suite == "recovery-delivery":
+    if phase == "main" or _active_suite in {"recovery-delivery", "platform-configuration"}:
         recovery_login = "f01-recovery-operator@example.invalid"
         recovery_password = _derived_password(platform_password, "f01-recovery-operator")
         recovery_identity_id = _native_identity(
@@ -1973,6 +1973,356 @@ def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> Non
     )
 
 
+def _p7_stage_smtp_configuration(
+    control_url: str,
+    token: str,
+    *,
+    secret_binding_id: str,
+    sender: str,
+    idempotency_key: str,
+) -> int:
+    response = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/configurations/email.delivery/revisions",
+        bearer=token,
+        idempotency_key=idempotency_key,
+        payload={
+            "provider_kind": "smtp",
+            "configuration": {
+                "host": "mailpit",
+                "port": 1025,
+                "sender": sender,
+                "security": "plain",
+                "username": "managed-smtp",
+            },
+            "secret_binding_id": secret_binding_id,
+        },
+        expected_statuses=(201,),
+    )
+    revision = response.get("revision")
+    if not isinstance(revision, int):
+        raise RuntimeError("staged platform configuration is missing an integer revision")
+    return revision
+
+
+def _p7_validate_configuration(
+    control_url: str,
+    token: str,
+    *,
+    revision: int,
+    idempotency_key: str,
+) -> None:
+    response = _http_json(
+        "POST",
+        (f"{control_url}/v1/platform/configurations/email.delivery/revisions/{revision}:validate"),
+        bearer=token,
+        idempotency_key=idempotency_key,
+    )
+    if response.get("state") != "validated":
+        raise RuntimeError("platform configuration did not reach validated state")
+
+
+def _p7_activate_configuration(
+    control_url: str,
+    token: str,
+    *,
+    revision: int,
+    expected_active_revision: int | None,
+    idempotency_key: str,
+) -> None:
+    response = _http_json(
+        "POST",
+        (f"{control_url}/v1/platform/configurations/email.delivery/revisions/{revision}:activate"),
+        bearer=token,
+        idempotency_key=idempotency_key,
+        payload={"expected_active_revision": expected_active_revision},
+    )
+    if response.get("state") != "active":
+        raise RuntimeError("platform configuration did not reach active state")
+
+
+def _p7_issue_governed_recovery(
+    control_url: str,
+    *,
+    platform_token: str,
+    operator_token: str,
+    target_identity_id: str,
+    suffix: str,
+    destination: str,
+) -> str:
+    case = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases",
+        bearer=platform_token,
+        idempotency_key=f"p7-config-recovery-case-{suffix}-v1",
+        payload={
+            "target_native_identity_id": target_identity_id,
+            "reason_code": "lost_credential",
+            "evidence_reference": "e2e:platform-configuration",
+            "delivery_destination_reference": destination,
+        },
+        expected_statuses=(201,),
+    )
+    case_id = _required_string(case, "case_id", "recovery case create response")
+    approved = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
+        bearer=operator_token,
+        idempotency_key=f"p7-config-recovery-approve-{suffix}-v1",
+        payload={"expected_revision": 1, "reason_code": "ownership_verified"},
+    )
+    if approved.get("status") != "approved":
+        raise RuntimeError("governed recovery case was not independently approved")
+    issued = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:issue",
+        bearer=platform_token,
+        idempotency_key=f"p7-config-recovery-issue-{suffix}-v1",
+        payload={"expected_revision": 2},
+        expected_statuses=(202,),
+    )
+    if issued.get("status") != "issued":
+        raise RuntimeError("governed recovery case did not reach issued state")
+    return case_id
+
+
+def _p7_wait_for_case_delivery(
+    control_url: str,
+    token: str,
+    case_id: str,
+    *,
+    timeout_seconds: float = 60.0,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last_status = "unknown"
+    while time.monotonic() < deadline:
+        current = _http_json(
+            "GET",
+            f"{control_url}/v1/platform/identity-recovery-cases/{case_id}",
+            bearer=token,
+        )
+        last_status = str(current.get("delivery_status", "unknown"))
+        if last_status == "delivered":
+            return
+        if last_status in {"failed", "unknown"}:
+            raise RuntimeError(
+                f"recovery delivery reached terminal status {last_status!r} before completion"
+            )
+        time.sleep(1)
+    raise RuntimeError(f"recovery case was not delivered; last status {last_status!r}")
+
+
+def _p7_mailpit_recovery_senders() -> list[str]:
+    payload = _http_get_json("http://mailpit:8025/api/v1/messages?limit=100")
+    raw_messages = payload.get("messages")
+    if not isinstance(raw_messages, list):
+        return []
+    senders: list[str] = []
+    for raw in cast(list[object], raw_messages):
+        if not isinstance(raw, dict):
+            continue
+        message = cast(dict[str, object], raw)
+        if message.get("Subject") != "Request Engine identity recovery":
+            continue
+        raw_from = message.get("From")
+        if not isinstance(raw_from, dict):
+            continue
+        address = cast(dict[str, object], raw_from).get("Address")
+        if isinstance(address, str):
+            senders.append(address)
+    return senders
+
+
+def _p7_wait_for_recovery_sender(expected: str, *, timeout_seconds: float = 90.0) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    seen: list[str] = []
+    while time.monotonic() < deadline:
+        try:
+            seen = _p7_mailpit_recovery_senders()
+        except (RuntimeError, urllib.error.URLError):
+            seen = []
+        if expected in seen:
+            return
+        time.sleep(1)
+    raise RuntimeError(
+        f"Mailpit never received a managed recovery message from {expected!r}; seen={seen!r}"
+    )
+
+
+def _run_platform_configuration(checkpoints: list[dict[str, str]], phase: str) -> None:
+    if phase == "prepare-worker":
+        _run_f01_foundation(checkpoints, phase)
+        return
+    if phase != "main":
+        raise RuntimeError("platform-configuration requires prepare-worker then main")
+
+    state_dir, controller = _handoff()
+    foundation = _json_object(state_dir / "f01-foundation.json")
+    control_url = "http://control-plane:8001"
+    platform_login = _required_string(controller, "login_handle", "platform-controller secret")
+    platform_password = _required_string(controller, "password", "platform-controller secret")
+    target_identity_id = _required_string(
+        foundation, "tenant_native_identity_id", "F01 foundation state"
+    )
+
+    platform_token = _strong_native_session(control_url, platform_login, platform_password)
+    recovery_login = "f01-recovery-operator@example.invalid"
+    recovery_password = _derived_password(platform_password, "f01-recovery-operator")
+    recovery_operator_token = _strong_native_session(
+        control_url,
+        recovery_login,
+        recovery_password,
+    )
+
+    created = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/secrets",
+        bearer=platform_token,
+        idempotency_key="p7-config-secret-create-v1",
+        payload={"purpose": "email.smtp.password", "value": "managed-smtp-secret-v1"},
+        expected_statuses=(201,),
+    )
+    binding_id = _required_string(created, "binding_id", "platform secret create response")
+    checkpoints.append(
+        _checkpoint(
+            "p7-01-secret-create",
+            "passed",
+            "managed SMTP credential stored as an opaque secret binding over HTTP",
+        )
+    )
+
+    revision_one = _p7_stage_smtp_configuration(
+        control_url,
+        platform_token,
+        secret_binding_id=binding_id,
+        sender="managed-one@example.invalid",
+        idempotency_key="p7-config-stage-one-v1",
+    )
+    _p7_validate_configuration(
+        control_url,
+        platform_token,
+        revision=revision_one,
+        idempotency_key="p7-config-validate-one-v1",
+    )
+    checkpoints.append(
+        _checkpoint(
+            "p7-02-stage-validate",
+            "passed",
+            "typed SMTP revision staged and validated against the live provider",
+        )
+    )
+
+    provider_test = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/providers/email.delivery/{revision_one}:test",
+        bearer=platform_token,
+        idempotency_key="p7-config-provider-test-v1",
+        payload={"destination": "p7-probe@example.invalid"},
+    )
+    if str(provider_test.get("outcome")) not in {"delivered", "unknown"}:
+        raise RuntimeError("provider test did not record a controlled outcome")
+
+    _p7_activate_configuration(
+        control_url,
+        platform_token,
+        revision=revision_one,
+        expected_active_revision=None,
+        idempotency_key="p7-config-activate-one-v1",
+    )
+    checkpoints.append(
+        _checkpoint("p7-03-activate", "passed", "validated SMTP revision activated with one ACTIVE")
+    )
+
+    case_one = _p7_issue_governed_recovery(
+        control_url,
+        platform_token=platform_token,
+        operator_token=recovery_operator_token,
+        target_identity_id=target_identity_id,
+        suffix="one",
+        destination="p7-recovery-one@example.invalid",
+    )
+    _p7_wait_for_case_delivery(control_url, platform_token, case_one)
+    _p7_wait_for_recovery_sender("managed-one@example.invalid")
+    checkpoints.append(
+        _checkpoint(
+            "p7-04-worker-managed-delivery",
+            "passed",
+            "live worker delivered a governed recovery through the ACTIVE managed SMTP revision",
+        )
+    )
+
+    rotated = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/secrets/{binding_id}:rotate",
+        bearer=platform_token,
+        idempotency_key="p7-config-secret-rotate-v1",
+        payload={
+            "expected_revision": created["revision"],
+            "expected_backend_version": created["backend_version"],
+            "value": "managed-smtp-secret-v2",
+        },
+    )
+    if rotated.get("status") != "active":
+        raise RuntimeError("rotated secret binding did not remain active")
+
+    revision_two = _p7_stage_smtp_configuration(
+        control_url,
+        platform_token,
+        secret_binding_id=binding_id,
+        sender="managed-two@example.invalid",
+        idempotency_key="p7-config-stage-two-v1",
+    )
+    _p7_validate_configuration(
+        control_url,
+        platform_token,
+        revision=revision_two,
+        idempotency_key="p7-config-validate-two-v1",
+    )
+    _p7_activate_configuration(
+        control_url,
+        platform_token,
+        revision=revision_two,
+        expected_active_revision=revision_one,
+        idempotency_key="p7-config-activate-two-v1",
+    )
+
+    case_two = _p7_issue_governed_recovery(
+        control_url,
+        platform_token=platform_token,
+        operator_token=recovery_operator_token,
+        target_identity_id=target_identity_id,
+        suffix="two",
+        destination="p7-recovery-two@example.invalid",
+    )
+    _p7_wait_for_case_delivery(control_url, platform_token, case_two)
+    _p7_wait_for_recovery_sender("managed-two@example.invalid")
+    checkpoints.append(
+        _checkpoint(
+            "p7-05-worker-hot-reload",
+            "passed",
+            "same worker process adopted the rotated secret and newly active "
+            "revision without restart",
+        )
+    )
+
+    readiness = _http_json(
+        "GET",
+        f"{control_url}/v1/platform/readiness",
+        bearer=platform_token,
+    )
+    if readiness.get("managed_smtp_source") != "managed":
+        raise RuntimeError("readiness did not report the managed SMTP source")
+    if readiness.get("smtp_active_revision") != revision_two:
+        raise RuntimeError("readiness did not report the newly active revision")
+    checkpoints.append(
+        _checkpoint(
+            "p7-06-readiness",
+            "passed",
+            "readiness reported the managed source and the exact ACTIVE revision",
+        )
+    )
+
+
 Suite = Callable[[list[dict[str, str]], str], None]
 SUITES: dict[str, Suite] = {
     "smoke": _run_smoke,
@@ -1981,6 +2331,7 @@ SUITES: dict[str, Suite] = {
     "f01-foundation": _run_f01_foundation,
     "worker-runtime": _run_worker_runtime,
     "recovery-delivery": _run_recovery_delivery,
+    "platform-configuration": _run_platform_configuration,
 }
 
 

@@ -107,3 +107,21 @@ merge = true
 nightly = true
 manual = true
 enabled = true
+
+[suites.platform-configuration]
+description = "Governed managed SMTP lifecycle over HTTP plus live worker adoption of a rotated/activated revision without restart"
+selector = "platform-configuration"
+profiles = ["worker", "secrets", "delivery"]
+services = ["api", "control-plane", "worker"]
+deferred_services = ["worker"]
+runtime_env_from_state = ["REQUEST_ENGINE_WORKER_PRINCIPAL_ID=f01-foundation.json:worker_principal_id"]
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "large"
+artifact_namespace = "platform-configuration"
+pr = true
+merge = true
+nightly = true
+manual = true
+enabled = true

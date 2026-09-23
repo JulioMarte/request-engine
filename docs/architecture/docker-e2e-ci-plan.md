@@ -492,6 +492,8 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 - Python quality/architecture exact-head verde después de introducir los nuevos guardrails.
 - retry Docker transitorio acotado (máximo 3 intentos por defecto) para build/arranque de infraestructura, limitado a firmas de red/registry conocidas; los fallos deterministas no se reintentan y la evidencia no imprime argumentos del comando;
 - el workflow Docker E2E ya no usa `continue-on-error`: una suite fallida produce un check fallido; el lane sigue siendo advisory mientras el ruleset no lo configure como required.
+- suite black-box `platform-configuration` (`profiles=[worker,secrets,delivery]`): reclama el Instance, hace login fuerte del Platform Owner, crea un secreto, hace stage/validate/provider-test/activate de SMTP administrado por HTTP, deja que el worker vivo entregue un recovery gobernado por Mailpit, rota el secreto y activa una nueva revisión, y prueba que el mismo proceso worker adopta la nueva revisión sin reinicio; cierra con `GET /v1/platform/readiness` reportando `managed` y la revisión activa exacta.
+- el perfil `delivery` (Mailpit) acepta autenticación SMTP insegura (`MP_SMTP_AUTH_ACCEPT_ANY`) para poder validar/entregar una configuración SMTP con credencial administrada sin TLS real; sigue siendo plumbing de evidencia, no certificación de deliverability.
 
 ### Implementado pero todavía requiere una demostración dedicada más fuerte
 

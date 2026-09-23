@@ -52,6 +52,12 @@ services:
   mailpit:
     image: axllent/mailpit:v1.27
     profiles: [delivery]
+    environment:
+      # The delivery profile must be able to validate/serve a *credentialed*
+      # managed SMTP configuration: accept any auth over the in-cluster plain
+      # transport so governed SMTP validation/auth is exercised without real TLS.
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
     networks: [edge, backend]
 
   migrate:
