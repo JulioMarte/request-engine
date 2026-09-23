@@ -6,6 +6,30 @@ Baseline checkpoint before this handoff: `195ec7204aac75fa3699ffce7fca556e4f758e
 Authority: ADR 0015 + current guarantee inventory + current ownership/API/connection contracts  
 Status: **implementation handoff; P7 is not delivered or production-certified**
 
+> **Checkpoint 2026-09-23 — `feature/platform-config-openbao-recovery` @ `79b257fa`, PR #133 (draft).**
+>
+> Exact-head GitHub CI and Docker E2E are green. That only means the HEAD
+> satisfies the gates that currently exist; it does **not** mean every
+> P7-required gate has been created. Slice state:
+>
+> ```text
+> P7-A ownership/capabilities/reconciliation   implemented
+> P7-B governed DB read/command lifecycle      implemented
+> P7-C HTTP metadata/configuration surface     implemented
+> P7-D secret lifecycle/reconciliation         implemented; system/adversarial evidence incomplete
+> P7-E SMTP typed validation/test/activation   implemented; production acceptance outstanding
+> P7-F runtime resolver/hot reload/env cutover implemented; black-box system journey outstanding
+> P7-G Communications integration              implemented
+> P7-H OIDC administration                     pending
+> P7-I signing key lifecycle                   pending (inventory done; real consumers identified)
+> P7-J readiness projection                    partial (SMTP-centric)
+> P7-K backup/restore/clone fencing            pending
+> ```
+>
+> Section 2 is the present-truth checkpoint for slice state. Sections 4-15 remain
+> the unchanged acceptance obligations: an implemented slice is not a closed
+> slice until its required evidence class exists.
+
 ## 0. Executive decision
 
 P1-P6 are now the trust root. Do not reopen them merely because P7 needs
@@ -78,37 +102,52 @@ work to reimplement:
 Do not rewrite accepted migrations. Discover the actual Alembic head before each
 new migration and append from it.
 
-## 2. Current gaps and facts that must not be misrepresented
+## 2. Checkpoint: implemented slices vs open work
 
-P7 is **not** delivered merely because OpenBao and revision tables exist.
+P7 is **not** delivered merely because OpenBao and revision tables exist. This
+section is the present-truth checkpoint; it supersedes the original gap list and
+must be read together with the checkpoint block in section 0.
 
-The following remain open:
+Implemented and exercised in the current checkpoint:
 
-1. There is no governed configuration command/read API over the 0069 tables.
-2. There is no governed secret write/rotate/revoke API.
-3. SMTP cannot yet be staged, validated, test-sent and activated through the
-   control plane.
-4. Runtime consumers do not yet resolve active configuration through a
-   revision-aware hot-reload boundary.
-5. Recovery/SMTP runtime still has deployment-time composition assumptions that
-   must be replaced by active configuration before claiming environment-free
-   SMTP credentials.
-6. Notification/provider configuration is not yet a durable product contract.
-7. OIDC administration and any provider credentials are not yet governed by this
-   configuration plane.
-8. Signing-key/keyring rotation is not yet a governed product surface.
-9. Platform operational readiness is not yet projected as a dedicated read-only
-   capability.
-10. Production backup automation, OpenBao Raft snapshot automation, encrypted
-    off-host copies, restore drill and clone fencing are not certified.
-11. The reference worker currently composes the older
-    `identity_recovery_delivery` stream but must be checked and updated to
-    compose `native_recovery_delivery` whenever verified-address recovery is
-    exposed. Do not assume generic `WorkerProcess` support means the reference
-    production factory is wired.
+1. Governed configuration command/read API over the 0069 tables (P7-B/P7-C).
+2. Governed secret write/rotate/revoke API with a durable mutation ledger, exact
+   backend version/CAS fencing and an explicit reconciliation state (P7-D).
+3. SMTP staging, validation, provider test and activation through the control
+   plane, with typed configuration and secret references (P7-E).
+4. A revision-aware runtime resolver with cache fingerprint, LISTEN/NOTIFY
+   invalidation and a periodic polling backstop; managed-over-bootstrap
+   precedence (P7-F).
+5. A real Communications webhook path that resolves the ACTIVE
+   `communications.webhook` revision with exact revision pinning per delivery
+   (P7-G).
+6. A first diagnostic readiness projection exposing managed-SMTP facts (P7-J).
+7. The reference worker composes `native_recovery_delivery` and
+   `platform_configuration_invalidation` alongside `identity_recovery_delivery`,
+   so exposing verified-address recovery cannot silently omit its worker stream
+   (P7.0 prerequisite resolved).
 
-The last point is a prerequisite defect to reconcile in P7.0. Do not defer it
-until after dynamic SMTP activation.
+Still open and required before the corresponding slice is complete:
+
+- P7-D: adversarial real-OpenBao split-brain/concurrency evidence and a normative
+  secret-lifecycle guarantee.
+- P7-E: at least one controlled production SMTP acceptance beyond the
+  deterministic fake/Mailpit boundary.
+- P7-F: a black-box Docker journey proving HTTP activation propagates to a live
+  worker (including missed-NOTIFY polling convergence) plus the env-cutover
+  guarantee.
+- P7-J: readiness beyond SMTP (owner continuity, secret-store reachability,
+  recovery-delivery source, OIDC state).
+- P7-H: governed OIDC provider administration (no client secret while no current
+  flow needs one).
+- P7-I: per-key-family purpose/lifetime/overlap/rotation/retirement design for
+  the identified signing-key consumers.
+- P7-K: backup/snapshot/restore/clone-fence implementation and operational
+  certification.
+- P7 observability: activation/validation/reconciliation/invalidation telemetry.
+
+Do not infer P7 completion from a green exact-head; several required gates do not
+exist yet.
 
 ## 3. Ownership decision before code
 

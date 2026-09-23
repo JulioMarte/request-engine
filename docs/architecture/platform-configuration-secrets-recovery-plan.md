@@ -119,26 +119,32 @@ foundation without prematurely granting application mutation authority:
 - append-only configuration facts;
 - no direct `request_engine_app` CRUD on these private global tables.
 
-The governed command/API surface remains pending P5.
+The governed command/API surface was delivered in the P7-B/P7-C slices (see
+section 3).
 
-## 3. Deliberately not claimed as delivered yet
+## 3. Slice status (checkpoint 2026-09-23, HEAD `79b257fa`)
 
-The following remain future P7 product work and must not be inferred from the
-secret-store foundation:
+This section originally listed surfaces that were not yet built. Slice-level
+status is now tracked in
+`p7-platform-configuration-secrets-implementation-handoff.md` section 0/2. In
+summary:
 
-- control-plane configuration CRUD/stage/validate/activate APIs;
-- secret admin APIs;
-- SMTP candidate validation/test/activation;
-- runtime configuration cache + invalidation/hot reload;
-- notification intents/templates;
-- signing-key keyrings/rotation;
-- OIDC provider administration;
-- product readiness projection;
-- automatic backup scheduling;
-- clone fencing implementation.
+- control-plane configuration CRUD/stage/validate/activate APIs — implemented;
+- secret admin APIs — implemented;
+- SMTP candidate validation/test/activation — implemented; production SMTP
+  acceptance outstanding;
+- runtime configuration cache + invalidation/hot reload — implemented; black-box
+  system journey outstanding;
+- notification intents/templates — managed webhook path implemented; generic
+  Communications email rendering still absent by design;
+- product readiness projection — partial (SMTP-centric);
+- signing-key keyrings/rotation — pending;
+- OIDC provider administration — pending;
+- automatic backup scheduling — pending;
+- clone fencing implementation — pending.
 
-Those surfaces should follow P5 so their mutations can require governed Platform
-Owner authority plus recent phishing-resistant authentication.
+Mutations require governed Platform Owner authority plus recent phishing-resistant
+authentication as required by the P7-DoD and handoff.
 
 ## 4. Required P7 lifecycle
 
