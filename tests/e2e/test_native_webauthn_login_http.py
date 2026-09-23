@@ -17,6 +17,13 @@ from httpx import ASGITransport, AsyncClient
 from software_webauthn_authenticator import SoftwareAuthenticator
 
 from request_engine.bootstrap.platform_server import create_app
+from request_engine.modules.platform_configuration.adapters.smtp import (
+    SmtplibConfigurationValidator,
+)
+from request_engine.modules.platform_configuration.application.smtp import (
+    ProviderValidationResult,
+    ProviderValidationStatus,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.native_auth import parse_opaque_token
 
@@ -825,7 +832,21 @@ async def test_offline_recovery_restricts_sensitive_authority_until_webauthn_com
 async def test_platform_configuration_http_is_governed_and_never_replays_secret_material(
     private_runtime_configuration: UUID,
     e2e_admin_conn: PgConnection,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    async def _accept_smtp_transport(
+        _validator: SmtplibConfigurationValidator,
+        _configuration: object,
+        *,
+        password: str | None,
+    ) -> ProviderValidationResult:
+        del _configuration, password
+        return ProviderValidationResult(ProviderValidationStatus.VALID, "smtp_valid")
+
+    # SMTP DNS/TCP/TLS connectivity is an external boundary proved by the module
+    # provider tests and the Docker E2E provider profile. This journey proves the
+    # governed HTTP/secret surface, so it must not depend on live SMTP transport.
+    monkeypatch.setattr(SmtplibConfigurationValidator, "validate", _accept_smtp_transport)
     _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
     app = create_app()
     async with (
@@ -886,6 +907,7 @@ async def test_platform_configuration_http_is_governed_and_never_replays_secret_
             "configuration": {
                 "host": "mail.example.test",
                 "port": 587,
+                "sender": "noreply@example.test",
                 "security": "starttls",
             },
         }
@@ -943,6 +965,7 @@ async def test_platform_configuration_http_is_governed_and_never_replays_secret_
                 "configuration": {
                     "host": "mail-two.example.test",
                     "port": 587,
+                    "sender": "noreply@example.test",
                     "security": "starttls",
                 },
             },
