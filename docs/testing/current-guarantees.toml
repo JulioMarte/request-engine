@@ -544,3 +544,11 @@ statement = "Platform readiness is a diagnostic-only composition of durable Post
 severity = "high"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security", "availability", "provenance"]
+
+
+[[guarantees]]
+id = "INV-RECOVERY-BUNDLE-001"
+statement = "Recovery tooling treats PostgreSQL and OpenBao as one recovery package: backup captures a PostgreSQL custom-format dump and OpenBao Raft snapshot, records checksums, encrypts the package with age before retention, requires an off-host copy unless local-only mode is explicitly selected, and prunes only matching local encrypted bundles after a successful backup/copy when an operator-selected positive retention is configured. Restore requires an explicit destructive confirmation and active outbound fence, verifies exact bundle membership and checksums before restore, uses ordinary pg_restore plus non-force OpenBao Raft restore, and emits restore-completion evidence only after both authoritative restore steps succeed. Backup scheduling is rendered only from an operator-supplied systemd OnCalendar value and positive retention; no default RPO/RTO or recovery acceptance is fabricated."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security", "availability", "provenance"]

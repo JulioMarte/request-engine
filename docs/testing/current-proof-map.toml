@@ -642,3 +642,14 @@ evidence = ["invariant", "contract", "adversarial"]
 guarantee = "INV-PLATFORM-READINESS-001"
 path = "tests/system_e2e/runner.py"
 evidence = ["contract", "invariant", "adversarial"]
+
+
+[[proofs]]
+guarantee = "INV-RECOVERY-BUNDLE-001"
+path = "tests/unit/scripts/test_recovery_bundle.py"
+evidence = ["invariant", "contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-RECOVERY-BUNDLE-001"
+path = "tests/unit/scripts/test_render_recovery_backup_systemd.py"
+evidence = ["contract", "adversarial", "security"]

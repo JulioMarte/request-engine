@@ -144,8 +144,8 @@ summary:
 - product readiness projection — implemented for durable SMTP plus deployment clone-fence, secret-store, recovery-delivery and optional-OIDC facts; backup/restore evidence remains unknown until P7-K;
 - signing-key keyrings/rotation — pending;
 - OIDC provider administration — pending;
-- automatic backup scheduling — pending;
-- clone fencing implementation — implemented and black-box proven; backup/snapshot/restore drill remains pending.
+- automatic backup scheduling — implementation available through the systemd renderer; deployment schedule and retention must be selected and activated by the operator;
+- clone fencing implementation — implemented and black-box proven; encrypted PostgreSQL+OpenBao recovery bundle, explicit local retention, off-host-copy requirement, fenced restore command and restore-completion evidence are implemented; clean-environment restore drill and RPO/RTO acceptance remain pending.
 
 Mutations require governed Platform Owner authority plus recent phishing-resistant
 authentication as required by the P7-DoD and handoff.

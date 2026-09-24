@@ -23,7 +23,7 @@ Status: **implementation handoff; P7 is not delivered or production-certified**
 > P7-H OIDC administration                     pending
 > P7-I signing key lifecycle                   pending (inventory done; real consumers identified)
 > P7-J readiness projection                    implemented for durable SMTP + deployment fence/secret-store/recovery-delivery/OIDC facts; backup/restore evidence awaits P7-K
-> P7-K backup/restore/clone fencing            clone fencing implemented/proven; backup/snapshot/restore pending
+> P7-K backup/restore/clone fencing            tooling implemented: encrypted PostgreSQL+OpenBao bundle, explicit schedule/retention, fenced restore evidence, clone fence proven; clean-environment restore drill + RPO/RTO acceptance pending
 > ```
 >
 > Section 2 is the present-truth checkpoint for slice state. Sections 4-15 remain
@@ -159,8 +159,16 @@ Still open and required before the corresponding slice is complete:
 - P7-K: clone fencing is implemented fail-closed at production composition
   boundaries and proven black-box by the `clone-fence` Docker E2E suite: SMTP
   recovery and ordinary outbox traffic do not reach Mailpit/event-sink while
-  fenced. PostgreSQL backup automation, OpenBao Raft snapshots, encrypted
-  off-host copies and an exercised restore drill remain outstanding.
+  fenced. Recovery tooling now creates one encrypted bundle containing a
+  PostgreSQL custom-format dump plus OpenBao Raft snapshot, requires an off-host
+  copy unless local-only mode is explicitly selected, verifies bundle membership
+  and checksums, restores only while outbound-fenced, can emit restore-completion
+  evidence only after both authoritative restore steps succeed, and can render a
+  systemd timer with operator-selected schedule and local retention. The
+  remaining P7-K acceptance gate is an exercised restore into a clean
+  environment/host with post-restore Request Engine reads, governed secret
+  resolution, offline owner recovery and clone-fence verification. Observed
+  RPO/RTO must then be recorded and accepted; no value is invented by the repo.
 - P7 observability: activation/validation/reconciliation/invalidation telemetry.
 
 Do not infer P7 completion from a green exact-head; several required gates do not
