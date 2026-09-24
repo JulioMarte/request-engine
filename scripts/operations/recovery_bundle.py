@@ -130,6 +130,25 @@ def _copy_offsite(artifact: Path, template: str) -> None:
     _run(command)
 
 
+def _prune_local_backups(
+    output_dir: Path,
+    retention_days: int,
+    *,
+    now: datetime | None = None,
+) -> tuple[Path, ...]:
+    if retention_days <= 0:
+        raise RecoveryBundleError("local retention days must be positive")
+    reference = now or datetime.now(UTC)
+    cutoff = reference.timestamp() - (retention_days * 86400)
+    removed: list[Path] = []
+    for candidate in output_dir.glob("request-engine-recovery-*.tar.gz.age"):
+        if not candidate.is_file() or candidate.stat().st_mtime >= cutoff:
+            continue
+        candidate.unlink()
+        removed.append(candidate)
+    return tuple(sorted(removed))
+
+
 def create_backup(args: argparse.Namespace) -> Path:
     pg_dump = _require_program("pg_dump")
     bao = _require_program(args.bao_command)
@@ -173,6 +192,8 @@ def create_backup(args: argparse.Namespace) -> Path:
 
     if offsite:
         _copy_offsite(final, offsite)
+    if args.local_retention_days is not None:
+        _prune_local_backups(output_dir, args.local_retention_days)
     return final
 
 
@@ -338,6 +359,14 @@ def _parser() -> argparse.ArgumentParser:
         default="REQUEST_ENGINE_BACKUP_OFFSITE_COMMAND",
     )
     backup.add_argument("--local-only", action="store_true")
+    backup.add_argument(
+        "--local-retention-days",
+        type=int,
+        help=(
+            "delete only local request-engine-recovery-*.tar.gz.age files older than "
+            "this many days, after the new backup and off-host copy succeed"
+        ),
+    )
     backup.set_defaults(handler=create_backup)
 
     verify = sub.add_parser("verify")

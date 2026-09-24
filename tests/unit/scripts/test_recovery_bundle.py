@@ -301,3 +301,41 @@ def test_restore_failure_does_not_write_false_evidence(
         )
 
     assert not evidence.exists()
+
+
+def test_local_retention_prunes_only_old_recovery_bundles(tmp_path: Path) -> None:
+    module = _module()
+    old = tmp_path / "request-engine-recovery-20260101T000000Z.tar.gz.age"
+    recent = tmp_path / "request-engine-recovery-20260924T000000Z.tar.gz.age"
+    unrelated = tmp_path / "other-backup.tar.gz.age"
+    old.write_bytes(b"old")
+    recent.write_bytes(b"recent")
+    unrelated.write_bytes(b"keep")
+
+    reference = module.datetime(2026, 9, 24, tzinfo=module.UTC)  # type: ignore[attr-defined]
+    old_timestamp = module.datetime(2026, 1, 1, tzinfo=module.UTC).timestamp()  # type: ignore[attr-defined]
+    recent_timestamp = module.datetime(2026, 9, 23, tzinfo=module.UTC).timestamp()  # type: ignore[attr-defined]
+    old.touch()
+    recent.touch()
+    import os
+
+    os.utime(old, (old_timestamp, old_timestamp))
+    os.utime(recent, (recent_timestamp, recent_timestamp))
+
+    removed = module._prune_local_backups(  # type: ignore[attr-defined]
+        tmp_path,
+        30,
+        now=reference,
+    )
+
+    assert removed == (old,)
+    assert not old.exists()
+    assert recent.exists()
+    assert unrelated.exists()
+
+
+def test_local_retention_rejects_non_positive_days(tmp_path: Path) -> None:
+    module = _module()
+    error = cast(type[RuntimeError], module.RecoveryBundleError)  # type: ignore[attr-defined]
+    with pytest.raises(error, match="retention days"):
+        module._prune_local_backups(tmp_path, 0)  # type: ignore[attr-defined]

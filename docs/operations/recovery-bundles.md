@@ -44,7 +44,9 @@ reuse Request Engine's bounded runtime AppRole token.
 ## Create an encrypted off-host backup
 
 ```bash
-python scripts/operations/recovery_bundle.py backup --output-dir /var/backups/request-engine
+python scripts/operations/recovery_bundle.py backup \
+  --output-dir /var/backups/request-engine \
+  --local-retention-days <operator-selected-days>
 ```
 
 Success means all of the following completed:
@@ -56,8 +58,15 @@ Success means all of the following completed:
 5. age encryption;
 6. configured off-host copy.
 
-A failure in any step returns non-zero. Do not delete older known-good backups
-until the new off-host artifact has been independently verified.
+A failure in any step returns non-zero. Local retention is optional at the raw
+CLI level and must be selected explicitly by production automation. When
+`--local-retention-days` is present, pruning runs only after the new encrypted
+bundle has been created and the configured off-host copy has succeeded. It only
+matches `request-engine-recovery-*.tar.gz.age`; unrelated files are untouched.
+
+The retention value is not an RPO/RTO declaration. Off-host retention must be
+configured independently in the storage provider. Do not delete older known-good
+off-host backups until the new artifact has been independently verified.
 
 ## Verify a backup without restoring
 
