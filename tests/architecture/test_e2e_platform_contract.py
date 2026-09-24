@@ -135,7 +135,7 @@ def test_enabled_registry_selectors_are_executable_by_generic_runner() -> None:
 
 def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
     allowed_services = {"api", "control-plane", "worker"}
-    allowed_profiles = {"worker", "secrets", "delivery", "oidc"}
+    allowed_profiles = {"worker", "secrets", "delivery", "managed-delivery", "oidc"}
     allowed_fault_actions = {"kill-restart"}
     mapping_pattern = re.compile(r"^[A-Z][A-Z0-9_]*=[^/:]+\.json:[A-Za-z0-9_.-]+$")
     for name, spec in _enabled_suites().items():
@@ -165,6 +165,28 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
             assert separator and target in services, f"{name} has invalid fault target: {fault}"
             assert action in allowed_fault_actions, f"{name} has unsupported fault action: {fault}"
 
+
+
+def test_managed_platform_configuration_suite_has_no_bootstrap_smtp_profile() -> None:
+    """P7 managed SMTP acceptance must not inherit bootstrap SMTP settings."""
+
+    spec = _enabled_suites()["platform-configuration"]
+    profiles = set(_string_list(spec, "profiles", "platform-configuration"))
+    assert "managed-delivery" in profiles
+    assert "delivery" not in profiles
+
+    harness = (ROOT / "scripts" / "ci" / "run_e2e_suite.sh").read_text(encoding="utf-8")
+    managed_case = harness.split("    managed-delivery)", 1)[1].split("      ;;", 1)[0]
+    for variable in (
+        "REQUEST_ENGINE_SMTP_HOST",
+        "REQUEST_ENGINE_SMTP_PORT",
+        "REQUEST_ENGINE_SMTP_SENDER",
+        "REQUEST_ENGINE_SMTP_USERNAME",
+        "REQUEST_ENGINE_SMTP_PASSWORD",
+        "REQUEST_ENGINE_SMTP_STARTTLS",
+        "REQUEST_ENGINE_SMTP_SSL",
+    ):
+        assert variable in managed_case and "unset" in managed_case
 
 def test_black_box_runner_image_cannot_install_application_shortcuts() -> None:
     dockerfile = RUNNER_DOCKERFILE.read_text(encoding="utf-8").lower()
