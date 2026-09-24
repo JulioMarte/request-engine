@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import tarfile
 from argparse import Namespace
 from pathlib import Path
@@ -317,8 +318,6 @@ def test_local_retention_prunes_only_old_recovery_bundles(tmp_path: Path) -> Non
     recent_timestamp = module.datetime(2026, 9, 23, tzinfo=module.UTC).timestamp()  # type: ignore[attr-defined]
     old.touch()
     recent.touch()
-    import os
-
     os.utime(old, (old_timestamp, old_timestamp))
     os.utime(recent, (recent_timestamp, recent_timestamp))
 
