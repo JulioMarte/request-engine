@@ -153,6 +153,7 @@ def test_restore_uses_standard_openbao_restore_without_force(
             bao_command="bao",
             age_identity_file_env="REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE",
             confirm_destructive=True,
+            evidence_output=None,
         )
     )
     assert calls[0][0] == "pg_restore"
@@ -171,3 +172,134 @@ def test_manifest_contains_only_expected_recovery_files(tmp_path: Path) -> None:
         "openbao.snap",
     }
     assert "password" not in manifest_path.read_text(encoding="utf-8").lower()
+
+
+def test_restore_evidence_is_written_only_after_both_restore_steps(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    bundle = tmp_path / "bundle.age"
+    bundle.write_bytes(b"encrypted-recovery-bundle")
+    identity = tmp_path / "identity.txt"
+    identity.write_text("AGE-SECRET-KEY-TEST\n", encoding="utf-8")
+    evidence = tmp_path / "evidence" / "restore.json"
+
+    monkeypatch.setenv("REQUEST_ENGINE_OUTBOUND_FENCED", "true")
+    monkeypatch.setenv(
+        "REQUEST_ENGINE_RESTORE_DATABASE_URL",
+        "postgresql://restore-user:restore-pass@db/request_engine",
+    )
+    monkeypatch.setenv("REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE", str(identity))
+
+    def fake_require_program(name: str) -> str:
+        return name
+
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], *, env: dict[str, str] | None = None) -> None:
+        del env
+        calls.append(command)
+
+    def fake_extract(
+        bundle_path: Path,
+        identity_path: Path,
+        root: Path,
+    ) -> dict[str, object]:
+        del bundle_path, identity_path
+        extracted = root / "extracted"
+        extracted.mkdir()
+        (extracted / "postgres.dump").write_bytes(b"pg")
+        (extracted / "openbao.snap").write_bytes(b"bao")
+        return {
+            "schema": "request-engine/recovery-bundle/v1",
+            "created_at": "2026-09-24T00:00:00+00:00",
+        }
+
+    monkeypatch.setattr(module, "_require_program", fake_require_program)
+    monkeypatch.setattr(module, "_run", fake_run)
+    monkeypatch.setattr(module, "_extract_verified", fake_extract)
+
+    result = module.restore_backup(  # type: ignore[attr-defined]
+        Namespace(
+            bundle=str(bundle),
+            postgres_dsn_env="REQUEST_ENGINE_RESTORE_DATABASE_URL",
+            bao_command="bao",
+            age_identity_file_env="REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE",
+            confirm_destructive=True,
+            evidence_output=str(evidence),
+        )
+    )
+
+    assert result == evidence.resolve()
+    assert [call[0] for call in calls] == ["pg_restore", "bao"]
+    payload = json.loads(evidence.read_text(encoding="utf-8"))
+    assert payload["schema"] == "request-engine/restore-evidence/v1"
+    assert payload["outcome"] == "restore_completed"
+    assert payload["outbound_fenced"] is True
+    assert payload["bundle_manifest_created_at"] == "2026-09-24T00:00:00+00:00"
+    assert payload["completed_steps"] == [
+        "bundle_integrity_verified",
+        "postgres_restore_completed",
+        "openbao_raft_restore_completed",
+    ]
+    assert "password" not in evidence.read_text(encoding="utf-8").lower()
+
+
+def test_restore_failure_does_not_write_false_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    error = subprocess.CalledProcessError if False else None
+    del error
+    bundle = tmp_path / "bundle.age"
+    bundle.write_bytes(b"encrypted")
+    identity = tmp_path / "identity.txt"
+    identity.write_text("AGE-SECRET-KEY-TEST\n", encoding="utf-8")
+    evidence = tmp_path / "restore.json"
+
+    monkeypatch.setenv("REQUEST_ENGINE_OUTBOUND_FENCED", "true")
+    monkeypatch.setenv(
+        "REQUEST_ENGINE_RESTORE_DATABASE_URL",
+        "postgresql://restore-user:restore-pass@db/request_engine",
+    )
+    monkeypatch.setenv("REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE", str(identity))
+
+    def fake_require_program(name: str) -> str:
+        return name
+
+    def fake_run(command: list[str], *, env: dict[str, str] | None = None) -> None:
+        del env
+        if command[0] == "bao":
+            raise RuntimeError("simulated OpenBao restore failure")
+
+    def fake_extract(
+        bundle_path: Path,
+        identity_path: Path,
+        root: Path,
+    ) -> dict[str, object]:
+        del bundle_path, identity_path
+        extracted = root / "extracted"
+        extracted.mkdir()
+        (extracted / "postgres.dump").write_bytes(b"pg")
+        (extracted / "openbao.snap").write_bytes(b"bao")
+        return {"schema": "request-engine/recovery-bundle/v1"}
+
+    monkeypatch.setattr(module, "_require_program", fake_require_program)
+    monkeypatch.setattr(module, "_run", fake_run)
+    monkeypatch.setattr(module, "_extract_verified", fake_extract)
+
+    with pytest.raises(RuntimeError, match="simulated OpenBao"):
+        module.restore_backup(  # type: ignore[attr-defined]
+            Namespace(
+                bundle=str(bundle),
+                postgres_dsn_env="REQUEST_ENGINE_RESTORE_DATABASE_URL",
+                bao_command="bao",
+                age_identity_file_env="REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE",
+                confirm_destructive=True,
+                evidence_output=str(evidence),
+            )
+        )
+
+    assert not evidence.exists()

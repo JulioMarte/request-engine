@@ -241,7 +241,35 @@ def _require_restore_fence() -> None:
         )
 
 
-def restore_backup(args: argparse.Namespace) -> None:
+def _write_restore_evidence(
+    target: Path,
+    *,
+    bundle: Path,
+    manifest: dict[str, object],
+    started_at: datetime,
+    completed_at: datetime,
+) -> Path:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    evidence = {
+        "schema": "request-engine/restore-evidence/v1",
+        "outcome": "restore_completed",
+        "started_at": started_at.isoformat(),
+        "completed_at": completed_at.isoformat(),
+        "duration_seconds": max(0.0, (completed_at - started_at).total_seconds()),
+        "bundle_sha256": _sha256(bundle),
+        "bundle_manifest_created_at": manifest.get("created_at"),
+        "outbound_fenced": True,
+        "completed_steps": [
+            "bundle_integrity_verified",
+            "postgres_restore_completed",
+            "openbao_raft_restore_completed",
+        ],
+    }
+    target.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return target
+
+
+def restore_backup(args: argparse.Namespace) -> Path | None:
     if not args.confirm_destructive:
         raise RecoveryBundleError("restore requires --confirm-destructive")
     _require_restore_fence()
@@ -251,10 +279,14 @@ def restore_backup(args: argparse.Namespace) -> None:
     pg_env, database = _postgres_environment(dsn)
     bundle = Path(args.bundle).resolve()
     identity = Path(_require_env(args.age_identity_file_env)).resolve()
+    evidence_output = (
+        None if args.evidence_output is None else Path(args.evidence_output).resolve()
+    )
+    started_at = datetime.now(UTC)
 
     with tempfile.TemporaryDirectory(prefix="request-engine-restore-") as raw:
         root = Path(raw)
-        _extract_verified(bundle, identity, root)
+        manifest = _extract_verified(bundle, identity, root)
         extracted = root / "extracted"
         _run(
             [
@@ -280,6 +312,16 @@ def restore_backup(args: argparse.Namespace) -> None:
                 str(extracted / _OPENBAO_SNAPSHOT),
             ]
         )
+
+    if evidence_output is None:
+        return None
+    return _write_restore_evidence(
+        evidence_output,
+        bundle=bundle,
+        manifest=manifest,
+        started_at=started_at,
+        completed_at=datetime.now(UTC),
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -317,6 +359,13 @@ def _parser() -> argparse.ArgumentParser:
         default="REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE",
     )
     restore.add_argument("--confirm-destructive", action="store_true")
+    restore.add_argument(
+        "--evidence-output",
+        help=(
+            "write machine-readable evidence only after PostgreSQL and OpenBao restore "
+            "both complete successfully"
+        ),
+    )
     restore.set_defaults(handler=restore_backup)
     return parser
 

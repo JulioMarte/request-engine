@@ -84,7 +84,8 @@ export REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE='/secure/offline/recovery.agekey'
 
 python scripts/operations/recovery_bundle.py restore \
   /path/to/request-engine-recovery-....tar.gz.age \
-  --confirm-destructive
+  --confirm-destructive \
+  --evidence-output /var/lib/request-engine/recovery-evidence/restore-20260924.json
 ```
 
 Use an isolated network/host for a drill. The target Request Engine deployment
@@ -101,5 +102,19 @@ After restore, verify:
 - Request Engine can resolve governed secret references;
 - the clone fence still blocks SMTP/webhook/outbox side effects;
 - a retained offline Platform Owner recovery code still works when applicable.
+
+When `--evidence-output` is supplied, the command writes the evidence file only
+after bundle integrity verification, PostgreSQL restore and OpenBao Raft restore
+all complete. The evidence contains timestamps, elapsed restore time, the
+encrypted bundle SHA-256, the bundle manifest timestamp and confirmation that the
+restore ran with the outbound fence enabled. It contains no database password,
+OpenBao token, age identity or secret value.
+
+This file proves that the two authoritative restore operations completed; it does
+**not** by itself prove a full recovery drill. The post-restore checks above still
+have to be exercised and recorded. In particular, Request Engine reads, governed
+secret resolution, clone-fence behavior and offline Platform Owner recovery must
+be demonstrated before a drill can be called successful. Observed recovery time
+may be recorded from the evidence, but no acceptable RPO/RTO is implied.
 
 Only then may an operator explicitly unfence the restored environment.
