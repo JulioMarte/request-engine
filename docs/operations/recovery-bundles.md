@@ -127,3 +127,40 @@ be demonstrated before a drill can be called successful. Observed recovery time
 may be recorded from the evidence, but no acceptable RPO/RTO is implied.
 
 Only then may an operator explicitly unfence the restored environment.
+
+
+## Automate backups with an explicit schedule
+
+The repository provides a systemd unit renderer instead of choosing a backup
+frequency or retention policy on behalf of an operator. Both values are required:
+
+```bash
+python scripts/operations/render_recovery_backup_systemd.py \
+  --on-calendar '<operator-selected-systemd-calendar>' \
+  --local-retention-days <operator-selected-days> \
+  --repo-root /opt/request-engine \
+  --backup-output-dir /var/backups/request-engine \
+  --unit-dir ./generated-recovery-units
+```
+
+Validate the selected calendar before installation:
+
+```bash
+systemd-analyze calendar '<operator-selected-systemd-calendar>'
+```
+
+The generated service reads secrets and provider configuration from
+`/etc/request-engine/recovery-backup.env` by default. That file should be
+root-readable only and normally contains the PostgreSQL backup DSN, age recipient,
+off-host copy command and the OpenBao CLI environment. The generated unit embeds
+only the selected schedule-independent local retention count and paths; it does
+not copy secret values into the unit.
+
+After review, install the two generated files under the host's systemd unit
+directory, run `systemctl daemon-reload`, enable the timer and inspect it with
+`systemctl list-timers request-engine-recovery-backup.timer`.
+
+The renderer deliberately does not call `systemctl` itself. Installation and
+activation remain explicit operational actions. The chosen `OnCalendar` value
+and retention count must be recorded with the deployment's accepted recovery
+policy; generating a timer does not by itself establish an acceptable RPO.
