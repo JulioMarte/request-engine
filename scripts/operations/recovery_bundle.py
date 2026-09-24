@@ -323,11 +323,17 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+
 def main() -> int:
     args = _parser().parse_args()
     try:
         result = args.handler(args)
-    except (\n        RecoveryBundleError,\n        subprocess.CalledProcessError,\n        OSError,\n        json.JSONDecodeError,\n    ) as exc:
+    except (
+        RecoveryBundleError,
+        subprocess.CalledProcessError,
+        OSError,
+        json.JSONDecodeError,
+    ) as exc:
         raise SystemExit(f"recovery bundle operation failed: {exc}") from exc
     if isinstance(result, Path):
         print(result)
