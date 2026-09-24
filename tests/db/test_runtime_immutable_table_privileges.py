@@ -384,6 +384,11 @@ _EXACT_DEFINER_OWNERS = {
     ): "request_platform_definer",
     (
         "request_platform",
+        "read_active_appointment_option_signing_keyring",
+        "",
+    ): "request_platform_definer",
+    (
+        "request_platform",
         "read_platform_runtime_configuration_revision",
         "p_configuration_kind text, p_revision bigint",
     ): "request_platform_definer",

@@ -222,6 +222,13 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
         ),
         (
             "request_platform",
+            "read_active_appointment_option_signing_keyring",
+            "",
+            True,
+            ["search_path=pg_catalog, request_engine, pg_temp"],
+        ),
+        (
+            "request_platform",
             "read_active_platform_runtime_configuration",
             "p_configuration_kind text",
             True,
