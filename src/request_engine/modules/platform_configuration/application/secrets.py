@@ -52,12 +52,16 @@ class CreatePlatformSecret:
 
 
 @dataclass(frozen=True, slots=True)
-class RotatePlatformSecret:
+class RotatePlatformSecretIntent:
     binding_id: UUID
     expected_revision: int
     expected_backend_version: int
-    value: str
     idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class RotatePlatformSecret(RotatePlatformSecretIntent):
+    value: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +90,7 @@ class PlatformSecretMutationStore(Protocol):
     async def prepare_rotate(
         self,
         actor: PlatformActorContext,
-        command: RotatePlatformSecret,
+        command: RotatePlatformSecretIntent,
     ) -> SecretMutationOperation: ...
 
     async def prepare_revoke(

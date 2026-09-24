@@ -69,6 +69,7 @@ from request_engine.modules.platform_configuration.application.secrets import (
     PlatformSecretUnavailable,
     RevokePlatformSecret,
     RotatePlatformSecret,
+    RotatePlatformSecretIntent,
     SecretMutationResult,
 )
 from request_engine.modules.platform_configuration.application.smtp import (
@@ -80,6 +81,11 @@ from request_engine.modules.platform_configuration.application.webhook import (
     parse_webhook_configuration,
 )
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.security.appointment_option_keyring import (
+    create_appointment_option_keyring,
+    rotate_appointment_option_keyring,
+    validate_appointment_option_key_id,
+)
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 from request_engine.platform.secrets.platform_store import PlatformSecretStore
@@ -155,6 +161,30 @@ class RotatePlatformSecretBody(BaseModel):
     expected_revision: int = Field(ge=1)
     expected_backend_version: int = Field(ge=1)
     value: SecretStr = Field(min_length=1)
+
+
+class CreateAppointmentSigningKeyringBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    key_id: str = Field(min_length=1, max_length=80)
+
+    @field_validator("key_id")
+    @classmethod
+    def validate_key_id(cls, value: str) -> str:
+        return validate_appointment_option_key_id(value)
+
+
+class RotateAppointmentSigningKeyringBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    expected_revision: int = Field(ge=1)
+    expected_backend_version: int = Field(ge=1)
+    new_key_id: str = Field(min_length=1, max_length=80)
+
+    @field_validator("new_key_id")
+    @classmethod
+    def validate_key_id(cls, value: str) -> str:
+        return validate_appointment_option_key_id(value)
 
 
 class RevokePlatformSecretBody(BaseModel):
@@ -405,6 +435,8 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> SecretMutationView:
         require_platform_configuration_step_up(actor)
+        if body.purpose == "security.appointment_option_signing":
+            raise PlatformConfigurationInvalid()
         if secret_service is None:
             raise PlatformSecretUnavailable()
         result = await secret_service.create(
@@ -426,6 +458,9 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> SecretMutationView:
         require_platform_configuration_step_up(actor)
+        metadata = await reader.get_secret_binding(actor, binding_id)
+        if metadata.purpose == "security.appointment_option_signing":
+            raise PlatformConfigurationInvalid()
         if secret_service is None:
             raise PlatformSecretUnavailable()
         result = await secret_service.rotate(
@@ -436,6 +471,52 @@ def install_platform_configuration_http(
                 expected_backend_version=body.expected_backend_version,
                 value=body.value.get_secret_value(),
                 idempotency_key=idempotency_key,
+            ),
+        )
+        return _secret_mutation_view(result)
+
+    async def create_appointment_signing_keyring(
+        body: CreateAppointmentSigningKeyringBody,
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+    ) -> SecretMutationView:
+        require_platform_configuration_step_up(actor)
+        if secret_service is None:
+            raise PlatformSecretUnavailable()
+        result = await secret_service.create(
+            actor,
+            CreatePlatformSecret(
+                purpose="security.appointment_option_signing",
+                backend="openbao",
+                value=create_appointment_option_keyring(body.key_id),
+                idempotency_key=idempotency_key,
+            ),
+        )
+        return _secret_mutation_view(result)
+
+    async def rotate_appointment_signing_keyring(
+        binding_id: UUID,
+        body: RotateAppointmentSigningKeyringBody,
+        _bearer: _NativeBearer,
+        idempotency_key: _IdempotencyKey,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+    ) -> SecretMutationView:
+        require_platform_configuration_step_up(actor)
+        if secret_service is None:
+            raise PlatformSecretUnavailable()
+        result = await secret_service.rotate_transformed(
+            actor,
+            RotatePlatformSecretIntent(
+                binding_id=binding_id,
+                expected_revision=body.expected_revision,
+                expected_backend_version=body.expected_backend_version,
+                idempotency_key=idempotency_key,
+            ),
+            expected_purpose="security.appointment_option_signing",
+            transform=lambda current: rotate_appointment_option_keyring(
+                current,
+                new_key_id=body.new_key_id,
             ),
         )
         return _secret_mutation_view(result)
@@ -474,6 +555,13 @@ def install_platform_configuration_http(
                 parse_smtp_configuration(body.configuration)
             elif configuration_kind == "communications.webhook" and body.provider_kind == "webhook":
                 parse_webhook_configuration(body.configuration)
+            elif (
+                configuration_kind == "security.appointment_option_signing"
+                and body.provider_kind == "hmac-sha256-keyring"
+                and body.secret_binding_id is not None
+                and not body.configuration
+            ):
+                pass
             else:
                 raise PlatformConfigurationInvalid()
         except (TypeError, ValueError) as exc:
@@ -643,6 +731,29 @@ def install_platform_configuration_http(
         capability="platform.secret.rotate",
         methods=["POST"],
         operation_id="platform_secret_rotate",
+        owner="platform_configuration",
+        response_model=SecretMutationView,
+        responses=mutation_responses,
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/signing-keyrings/appointment-option",
+        create_appointment_signing_keyring,
+        capability="platform.secret.write",
+        methods=["POST"],
+        operation_id="platform_appointment_signing_keyring_create",
+        owner="platform_configuration",
+        status_code=201,
+        response_model=SecretMutationView,
+        responses=mutation_responses,
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/signing-keyrings/appointment-option/{binding_id}:rotate",
+        rotate_appointment_signing_keyring,
+        capability="platform.secret.rotate",
+        methods=["POST"],
+        operation_id="platform_appointment_signing_keyring_rotate",
         owner="platform_configuration",
         response_model=SecretMutationView,
         responses=mutation_responses,

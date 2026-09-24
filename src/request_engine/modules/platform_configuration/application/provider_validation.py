@@ -23,6 +23,9 @@ from request_engine.modules.platform_configuration.application.webhook import (
     WebhookConfiguration,
     parse_webhook_configuration,
 )
+from request_engine.platform.security.appointment_option_keyring import (
+    parse_appointment_option_keyring,
+)
 from request_engine.platform.secrets.platform_store import (
     PlatformSecretNotFound,
     PlatformSecretStore,
@@ -90,6 +93,13 @@ class PlatformProviderValidationService:
             and candidate.provider_kind == "webhook"
         ):
             binding_revision, backend_version = await self._validate_webhook(actor, candidate)
+        elif (
+            candidate.configuration_kind == "security.appointment_option_signing"
+            and candidate.provider_kind == "hmac-sha256-keyring"
+        ):
+            binding_revision, backend_version = await self._validate_appointment_signing(
+                actor, candidate
+            )
         else:
             raise PlatformConfigurationInvalid()
 
@@ -156,6 +166,25 @@ class PlatformProviderValidationService:
             raise PlatformConfigurationProviderInvalid()
 
         _validate_webhook_transport_contract(webhook)
+        return _secret_fence(secret)
+
+    async def _validate_appointment_signing(
+        self,
+        actor: PlatformActorContext,
+        candidate: ConfigurationRevision,
+    ) -> tuple[int | None, int | None]:
+        if candidate.configuration:
+            raise PlatformConfigurationProviderInvalid()
+        secret = await self._validated_secret(
+            actor,
+            candidate,
+            purpose="security.appointment_option_signing",
+        )
+        value = await self._resolve_secret_value(secret)
+        try:
+            parse_appointment_option_keyring(value)
+        except ValueError as exc:
+            raise PlatformConfigurationProviderInvalid() from exc
         return _secret_fence(secret)
 
     async def _validated_secret(

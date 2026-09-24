@@ -18,7 +18,7 @@ from request_engine.modules.platform_configuration.application.secrets import (
     PlatformSecretConflict,
     PlatformSecretNotFound,
     RevokePlatformSecret,
-    RotatePlatformSecret,
+    RotatePlatformSecretIntent,
     SecretMutationOperation,
 )
 from request_engine.platform.db.session import SessionFactory, platform_actor_transaction
@@ -55,7 +55,7 @@ class PostgresPlatformSecretMutations:
     async def prepare_rotate(
         self,
         actor: PlatformActorContext,
-        command: RotatePlatformSecret,
+        command: RotatePlatformSecretIntent,
     ) -> SecretMutationOperation:
         _require(actor, "platform.secret.rotate")
         return await self._prepare(

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
+from request_engine.modules.platform_configuration.application.configuration import (
+    PlatformConfigurationInvalid,
+)
 from request_engine.modules.platform_configuration.application.secrets import (
     CreatePlatformSecret,
     PlatformSecretConflict,
@@ -8,6 +13,7 @@ from request_engine.modules.platform_configuration.application.secrets import (
     PlatformSecretUnavailable,
     RevokePlatformSecret,
     RotatePlatformSecret,
+    RotatePlatformSecretIntent,
     SecretMutationOperation,
     SecretMutationResult,
 )
@@ -56,6 +62,44 @@ class PlatformSecretAdministrationService:
             actor,
             operation,
             value=command.value,
+            expected_version=command.expected_backend_version,
+        )
+        return _result(operation)
+
+    async def rotate_transformed(
+        self,
+        actor: PlatformActorContext,
+        command: RotatePlatformSecretIntent,
+        *,
+        expected_purpose: str,
+        transform: Callable[[str], str],
+    ) -> SecretMutationResult:
+        """Rotate a structured secret through the normal CAS/reconciliation path."""
+
+        operation = await self._mutations.prepare_rotate(actor, command)
+        terminal = _terminal(operation)
+        if terminal is not None:
+            return _result(terminal)
+        if operation.purpose != expected_purpose:
+            raise PlatformConfigurationInvalid()
+        if operation.state != "prepared":
+            raise PlatformSecretReconciliationRequired()
+
+        try:
+            current = await self._store.resolve(secret_id=operation.secret_id)
+        except platform_store.PlatformSecretNotFound:
+            raise PlatformSecretReconciliationRequired() from None
+        except platform_store.PlatformSecretStoreUnavailable:
+            raise PlatformSecretUnavailable() from None
+
+        try:
+            value = transform(current)
+        except ValueError as exc:
+            raise PlatformConfigurationInvalid() from exc
+        operation = await self._resume_write(
+            actor,
+            operation,
+            value=value,
             expected_version=command.expected_backend_version,
         )
         return _result(operation)
