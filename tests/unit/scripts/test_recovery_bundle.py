@@ -51,7 +51,10 @@ def test_offsite_command_requires_artifact_placeholder(
 ) -> None:
     module = _module()
     error = cast(type[RuntimeError], module.RecoveryBundleError)  # type: ignore[attr-defined]
-    monkeypatch.setattr(module, "_run", lambda command, env=None: None)
+    def fake_run(command: list[str], *, env: dict[str, str] | None = None) -> None:
+        del command, env
+
+    monkeypatch.setattr(module, "_run", fake_run)
     with pytest.raises(error, match="artifact"):
         module._copy_offsite(tmp_path / "bundle.age", "rclone copy remote:path")  # type: ignore[attr-defined]
 
