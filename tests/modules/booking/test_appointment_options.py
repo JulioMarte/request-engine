@@ -1,3 +1,5 @@
+import base64
+
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
@@ -155,3 +157,84 @@ def test_slot_requires_positive_assignment_revision() -> None:
 
     with pytest.raises(ValueError, match="positive assignment revision"):
         _codec().issue(uuid4(), slot)
+
+
+@pytest.mark.unit
+def test_rotated_keyring_verifies_retiring_key_during_overlap() -> None:
+    organization_id = uuid4()
+    slot = _contextual_slot()
+    old_key = b"request-engine-appointment-option-old-key-0001"
+    new_key = b"request-engine-appointment-option-new-key-0002"
+
+    old_codec = SignedAppointmentOptionCodec(
+        old_key,
+        signing_key_id="appointment-2026-09-a",
+        now=lambda: _NOW,
+    )
+    old_token = old_codec.issue(organization_id, slot)
+
+    rotated = SignedAppointmentOptionCodec(
+        new_key,
+        signing_key_id="appointment-2026-09-b",
+        verification_keys={"appointment-2026-09-a": old_key},
+        now=lambda: _NOW,
+    )
+
+    assert rotated.decode(organization_id, old_token).location_id == slot.location_id
+    new_token = rotated.issue(organization_id, slot)
+    assert rotated.decode(organization_id, new_token).location_id == slot.location_id
+
+
+@pytest.mark.unit
+def test_retired_key_is_rejected_after_overlap_is_removed() -> None:
+    organization_id = uuid4()
+    slot = _contextual_slot()
+    old_key = b"request-engine-appointment-option-old-key-0001"
+    new_key = b"request-engine-appointment-option-new-key-0002"
+    old_token = SignedAppointmentOptionCodec(
+        old_key,
+        signing_key_id="appointment-old",
+        now=lambda: _NOW,
+    ).issue(organization_id, slot)
+
+    retired = SignedAppointmentOptionCodec(
+        new_key,
+        signing_key_id="appointment-new",
+        now=lambda: _NOW,
+    )
+
+    with pytest.raises(AppointmentOptionInvalid, match="signing key is not accepted"):
+        retired.decode(organization_id, old_token)
+
+
+@pytest.mark.unit
+def test_signing_key_id_is_covered_by_signature() -> None:
+    organization_id = uuid4()
+    token = SignedAppointmentOptionCodec(
+        _KEY,
+        signing_key_id="appointment-current",
+        now=lambda: _NOW,
+    ).issue(organization_id, _contextual_slot())
+    prefix, payload, signature = token.split(".")
+    raw = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+    changed = raw.replace(b"appointment-current", b"appointment-retired")
+    changed_payload = base64.urlsafe_b64encode(changed).rstrip(b"=").decode("ascii")
+    tampered = f"{prefix}.{changed_payload}.{signature}"
+
+    codec = SignedAppointmentOptionCodec(
+        _KEY,
+        signing_key_id="appointment-retired",
+        now=lambda: _NOW,
+    )
+    with pytest.raises(AppointmentOptionInvalid, match="signature verification failed"):
+        codec.decode(organization_id, tampered)
+
+
+@pytest.mark.unit
+def test_keyring_rejects_conflicting_active_key_material() -> None:
+    with pytest.raises(ValueError, match="conflicts"):
+        SignedAppointmentOptionCodec(
+            _KEY,
+            signing_key_id="current",
+            verification_keys={"current": b"different-appointment-option-signing-key-0002"},
+        )
