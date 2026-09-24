@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from threading import RLock
 from typing import cast
 from uuid import UUID
 
@@ -15,9 +16,11 @@ from request_engine.modules.booking.application.errors import (
 )
 from request_engine.modules.booking.contracts.appointment_options import DecodedAppointmentOption
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
+from request_engine.platform.security.appointment_option_keyring import AppointmentOptionKeyring
 
 _PREFIX = "aptopt_v2"
 _FORMAT = 2
+_MAX_CLOCK_SKEW = timedelta(seconds=30)
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,10 +193,15 @@ class SignedAppointmentOptionCodec:
         start_at = _datetime_field(payload, "start_at")
         end_at = _datetime_field(payload, "end_at")
         expires_at = _datetime_field(payload, "expires_at")
-        _datetime_field(payload, "issued_at")
+        issued_at = _datetime_field(payload, "issued_at")
+        now = _require_aware(self._now(), "codec clock")
         if end_at <= start_at:
             raise AppointmentOptionInvalid("slot interval is invalid")
-        if expires_at <= _require_aware(self._now(), "codec clock"):
+        if issued_at > now + _MAX_CLOCK_SKEW:
+            raise AppointmentOptionInvalid("token issued_at is in the future")
+        if expires_at <= issued_at or expires_at - issued_at > self._ttl:
+            raise AppointmentOptionInvalid("token lifetime exceeds the accepted ttl")
+        if expires_at <= now:
             raise AppointmentOptionExpired()
 
         return _DecodedCommon(
@@ -205,6 +213,64 @@ class SignedAppointmentOptionCodec:
             resources=_resource_fields(payload),
             expires_at=expires_at,
         )
+
+
+class ReloadableSignedAppointmentOptionCodec:
+    """Thread-safe sync facade whose managed keyring can be hot-replaced."""
+
+    def __init__(
+        self,
+        initial_signing_key: bytes | None = None,
+        *,
+        ttl: timedelta = timedelta(minutes=10),
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
+        if ttl <= timedelta(0):
+            raise ValueError("appointment option ttl must be positive")
+        self._ttl = ttl
+        self._now = now or (lambda: datetime.now(UTC))
+        self._lock = RLock()
+        self._delegate = (
+            None
+            if initial_signing_key is None
+            else SignedAppointmentOptionCodec(
+                initial_signing_key,
+                ttl=ttl,
+                now=self._now,
+            )
+        )
+
+    def replace_keyring(self, keyring: AppointmentOptionKeyring) -> None:
+        accepted = keyring.accepted_keys(now=self._now())
+        active = accepted.get(keyring.active_key_id)
+        if active is None:
+            raise ValueError("appointment option keyring has no accepted active key")
+        replacement = SignedAppointmentOptionCodec(
+            active,
+            signing_key_id=keyring.active_key_id,
+            verification_keys=accepted,
+            ttl=self._ttl,
+            now=self._now,
+        )
+        with self._lock:
+            self._delegate = replacement
+
+    def disable(self) -> None:
+        with self._lock:
+            self._delegate = None
+
+    def issue(self, organization_id: UUID, slot: AppointmentSlot) -> str:
+        return self._current().issue(organization_id, slot)
+
+    def decode(self, organization_id: UUID, token: str) -> DecodedAppointmentOption:
+        return self._current().decode(organization_id, token)
+
+    def _current(self) -> SignedAppointmentOptionCodec:
+        with self._lock:
+            delegate = self._delegate
+        if delegate is None:
+            raise AppointmentOptionInvalid("appointment option signing is unavailable")
+        return delegate
 
 
 def _validate_signing_key(key: bytes) -> None:

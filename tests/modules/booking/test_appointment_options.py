@@ -6,9 +6,15 @@ from uuid import uuid4
 import pytest
 
 from request_engine.modules.booking.adapters.appointment_options import (
+    ReloadableSignedAppointmentOptionCodec,
     SignedAppointmentOptionCodec,
 )
 from request_engine.modules.booking.application.errors import AppointmentOptionInvalid
+from request_engine.platform.security.appointment_option_keyring import (
+    create_appointment_option_keyring,
+    parse_appointment_option_keyring,
+    rotate_appointment_option_keyring,
+)
 from request_engine.modules.booking.contracts.appointments import (
     AppointmentSlot,
     ResourceChoice,
@@ -236,4 +242,64 @@ def test_keyring_rejects_conflicting_active_key_material() -> None:
             _KEY,
             signing_key_id="current",
             verification_keys={"current": b"different-appointment-option-signing-key-0002"},
+        )
+
+
+@pytest.mark.unit
+def test_reloadable_codec_switches_active_key_and_keeps_bounded_overlap() -> None:
+    organization_id = uuid4()
+    slot = _contextual_slot()
+    wrapper = ReloadableSignedAppointmentOptionCodec(_KEY, now=lambda: _NOW)
+    legacy = wrapper.issue(organization_id, slot)
+
+    initial = create_appointment_option_keyring(
+        "k1",
+        key=b"appointment-managed-key-one-000000000000001",
+    )
+    rotated = rotate_appointment_option_keyring(
+        initial,
+        new_key_id="k2",
+        now=_NOW,
+        new_key=b"appointment-managed-key-two-000000000000002",
+    )
+    wrapper.replace_keyring(parse_appointment_option_keyring(rotated))
+    managed = wrapper.issue(organization_id, slot)
+
+    assert ".k2" not in managed
+    assert wrapper.decode(organization_id, managed).location_id == slot.location_id
+    with pytest.raises(AppointmentOptionInvalid):
+        wrapper.decode(organization_id, legacy)
+
+
+@pytest.mark.unit
+def test_reloadable_codec_fails_closed_when_disabled() -> None:
+    wrapper = ReloadableSignedAppointmentOptionCodec(_KEY, now=lambda: _NOW)
+    wrapper.disable()
+    with pytest.raises(AppointmentOptionInvalid, match="unavailable"):
+        wrapper.issue(uuid4(), _contextual_slot())
+
+
+@pytest.mark.unit
+def test_signed_token_cannot_extend_lifetime_beyond_codec_ttl() -> None:
+    organization_id = uuid4()
+    token = _codec().issue(organization_id, _contextual_slot())
+    prefix, encoded_payload, _signature = token.split(".")
+    import json
+    import hmac
+    import hashlib
+
+    padding = "=" * (-len(encoded_payload) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(encoded_payload + padding))
+    payload["expires_at"] = (_NOW + timedelta(hours=4)).isoformat()
+    tampered_payload = base64.urlsafe_b64encode(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).rstrip(b"=").decode()
+    forged_signature = base64.urlsafe_b64encode(
+        hmac.new(_KEY, f"{prefix}.{tampered_payload}".encode(), hashlib.sha256).digest()
+    ).rstrip(b"=").decode()
+
+    with pytest.raises(AppointmentOptionInvalid, match="lifetime"):
+        _codec().decode(
+            organization_id,
+            f"{prefix}.{tampered_payload}.{forged_signature}",
         )
