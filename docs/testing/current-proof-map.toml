@@ -653,3 +653,9 @@ evidence = ["invariant", "contract", "adversarial", "security"]
 guarantee = "INV-RECOVERY-BUNDLE-001"
 path = "tests/unit/scripts/test_render_recovery_backup_systemd.py"
 evidence = ["contract", "adversarial", "security"]
+
+
+[[proofs]]
+guarantee = "INV-APPOINTMENT-OPTION-KEY-OVERLAP-001"
+path = "tests/modules/booking/test_appointment_options.py"
+evidence = ["invariant", "adversarial", "security"]

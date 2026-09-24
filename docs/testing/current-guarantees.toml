@@ -552,3 +552,11 @@ statement = "Recovery tooling treats PostgreSQL and OpenBao as one recovery pack
 severity = "critical"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security", "availability", "provenance"]
+
+
+[[guarantees]]
+id = "INV-APPOINTMENT-OPTION-KEY-OVERLAP-001"
+statement = "Appointment-option HMAC artifacts carry a signed key identifier; issuance uses exactly one active key, verification may accept explicitly configured retiring keys during overlap, removing a retiring key makes its artifacts invalid, changing the key identifier without recomputing the signature is rejected, and legacy no-key-id artifacts can be verified only through explicitly retained legacy key material."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "availability"]
