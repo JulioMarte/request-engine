@@ -327,7 +327,7 @@ def main() -> int:
     args = _parser().parse_args()
     try:
         result = args.handler(args)
-    except (RecoveryBundleError, subprocess.CalledProcessError, OSError, json.JSONDecodeError) as exc:
+    except (\n        RecoveryBundleError,\n        subprocess.CalledProcessError,\n        OSError,\n        json.JSONDecodeError,\n    ) as exc:
         raise SystemExit(f"recovery bundle operation failed: {exc}") from exc
     if isinstance(result, Path):
         print(result)
