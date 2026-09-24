@@ -63,7 +63,7 @@ class OutboundSideEffectFence:
     fenced: bool
 
     @classmethod
-    def from_environment(cls) -> "OutboundSideEffectFence":
+    def from_environment(cls) -> OutboundSideEffectFence:
         return cls(fenced=OutboundFenceSettings().outbound_fenced)
 
     def outbox(self, publisher: OutboxPublisher) -> OutboxPublisher:
