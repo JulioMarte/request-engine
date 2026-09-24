@@ -11,11 +11,9 @@ from request_engine.entrypoints.http.native_runtime import (
     resolve_webauthn_decoy_key,
 )
 from request_engine.modules.platform_configuration.api.http import (
-    install_platform_configuration_http,
-)
-from request_engine.modules.platform_configuration.application.smtp import (
     SmtpConfigurationValidator,
     SmtpProviderTester,
+    install_platform_configuration_http,
 )
 from request_engine.modules.tenancy.api.identity_recovery import install_identity_recovery_http
 from request_engine.modules.tenancy.api.native_platform_provisioning import (
