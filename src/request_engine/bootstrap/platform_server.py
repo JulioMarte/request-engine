@@ -20,7 +20,6 @@ from request_engine.bootstrap.recovery_delivery import (
 )
 from request_engine.bootstrap.settings import PlatformControlSettings
 from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
-from request_engine.modules.platform_configuration.api.http import PlatformDeploymentReadinessFacts
 from request_engine.modules.platform_configuration.adapters.db.runtime import (
     PostgresActivePlatformConfigurationSource,
 )
@@ -31,6 +30,7 @@ from request_engine.modules.platform_configuration.adapters.smtp import (
     SmtplibConfigurationValidator,
     SmtplibProviderTester,
 )
+from request_engine.modules.platform_configuration.api.http import PlatformDeploymentReadinessFacts
 from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfigurationResolver,
 )
