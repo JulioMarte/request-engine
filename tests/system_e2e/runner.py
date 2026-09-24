@@ -2318,11 +2318,20 @@ def _run_platform_configuration(checkpoints: list[dict[str, str]], phase: str) -
         raise RuntimeError("readiness did not report the managed SMTP source")
     if readiness.get("smtp_active_revision") != revision_two:
         raise RuntimeError("readiness did not report the newly active revision")
+    if readiness.get("secret_store") != "configured":
+        raise RuntimeError("readiness did not report the configured secret store")
+    if readiness.get("recovery_delivery_source") != "managed":
+        raise RuntimeError("readiness did not report managed recovery delivery")
+    if readiness.get("clone_fence") != "open":
+        raise RuntimeError("normal P7 runtime did not report its explicitly open clone fence")
+    if readiness.get("oidc") != "optional":
+        raise RuntimeError("native-only runtime did not report OIDC as optional")
     checkpoints.append(
         _checkpoint(
             "p7-06-readiness",
             "passed",
-            "readiness reported the managed source and the exact ACTIVE revision",
+            "readiness reported ACTIVE managed SMTP plus deployment fence, secret-store, "
+            "recovery-delivery and optional-OIDC facts without becoming an authority source",
         )
     )
 

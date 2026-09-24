@@ -141,7 +141,7 @@ summary:
   hot reload, and the real-PostgreSQL polling convergence proof passes in CI;
 - notification intents/templates — managed webhook path implemented; generic
   Communications email rendering still absent by design;
-- product readiness projection — partial (SMTP-centric);
+- product readiness projection — implemented for durable SMTP plus deployment clone-fence, secret-store, recovery-delivery and optional-OIDC facts; backup/restore evidence remains unknown until P7-K;
 - signing-key keyrings/rotation — pending;
 - OIDC provider administration — pending;
 - automatic backup scheduling — pending;

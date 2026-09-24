@@ -631,3 +631,14 @@ evidence = ["invariant", "contract", "adversarial", "security"]
 guarantee = "INV-CLONE-FENCE-001"
 path = "tests/architecture/test_e2e_platform_contract.py"
 evidence = ["contract", "adversarial"]
+
+
+[[proofs]]
+guarantee = "INV-PLATFORM-READINESS-001"
+path = "tests/modules/platform_configuration/test_readiness_deployment_facts.py"
+evidence = ["invariant", "contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-READINESS-001"
+path = "tests/system_e2e/runner.py"
+evidence = ["contract", "invariant", "adversarial"]

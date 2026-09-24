@@ -22,7 +22,7 @@ Status: **implementation handoff; P7 is not delivered or production-certified**
 > P7-G Communications integration              implemented
 > P7-H OIDC administration                     pending
 > P7-I signing key lifecycle                   pending (inventory done; real consumers identified)
-> P7-J readiness projection                    partial (SMTP-centric)
+> P7-J readiness projection                    implemented for durable SMTP + deployment fence/secret-store/recovery-delivery/OIDC facts; backup/restore evidence awaits P7-K
 > P7-K backup/restore/clone fencing            clone fencing implemented/proven; backup/snapshot/restore pending
 > ```
 >
@@ -146,8 +146,12 @@ Still open and required before the corresponding slice is complete:
   governed P7 HTTP + OpenBao path, proves live worker delivery, rotates the secret
   and ACTIVE revision without restarting the worker, and the real-PostgreSQL
   missed-NOTIFY polling proof remains the correctness backstop.
-- P7-J: readiness beyond SMTP (owner continuity, secret-store reachability,
-  recovery-delivery source, OIDC state).
+- P7-J: the projection now composes durable SMTP state with explicit deployment
+  facts for clone fencing, secret-store configuration, recovery-delivery source
+  and native-only OIDC posture. Backup/restore evidence intentionally remains
+  unknown until P7-K records real operational evidence. Owner-continuity and
+  strong-auth posture remain candidates for a later diagnostic expansion, not
+  blockers for the current P7 configuration readiness contract.
 - P7-H: governed OIDC provider administration (no client secret while no current
   flow needs one).
 - P7-I: per-key-family purpose/lifetime/overlap/rotation/retirement design for

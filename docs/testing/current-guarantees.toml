@@ -536,3 +536,11 @@ statement = "Production-shaped Request Engine processes start with outbound side
 severity = "critical"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security", "availability"]
+
+
+[[guarantees]]
+id = "INV-PLATFORM-READINESS-001"
+statement = "Platform readiness is a diagnostic-only composition of durable PostgreSQL configuration facts and explicit deployment facts: it reports the exact ACTIVE managed SMTP revision, secret-store configuration state, recovery-delivery source, clone-fence state and optional OIDC posture without deriving, granting or caching authority from those diagnostics; managed delivery takes precedence over bootstrap fallback and unknown backup/restore evidence is never fabricated as ready."
+severity = "high"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security", "availability", "provenance"]
