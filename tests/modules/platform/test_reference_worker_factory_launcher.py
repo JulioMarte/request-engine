@@ -32,6 +32,7 @@ class _PublisherDouble:
 
 
 def _configure_reference_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REQUEST_ENGINE_OUTBOUND_FENCED", "false")
     monkeypatch.setenv("REQUEST_ENGINE_WEBHOOK_BASE_URL", "https://transport.example.test/handoff")
     monkeypatch.setenv("REQUEST_ENGINE_WEBHOOK_AUTH_HEADER", "Authorization: Bearer reference-1")
     monkeypatch.setenv(

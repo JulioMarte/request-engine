@@ -13,6 +13,10 @@ from request_engine.entrypoints.http.native_runtime import (
 from request_engine.modules.platform_configuration.api.http import (
     install_platform_configuration_http,
 )
+from request_engine.modules.platform_configuration.application.smtp import (
+    SmtpConfigurationValidator,
+    SmtpProviderTester,
+)
 from request_engine.modules.tenancy.api.identity_recovery import install_identity_recovery_http
 from request_engine.modules.tenancy.api.native_platform_provisioning import (
     install_native_platform_provisioning_http,
@@ -61,6 +65,8 @@ def create_platform_control_app(
     recovery_delivery: RecoverySecretDelivery | None = None,
     native_recovery_messenger: NativeRecoveryMessenger | None = None,
     platform_secret_store: PlatformSecretStore | None = None,
+    smtp_validator: SmtpConfigurationValidator | None = None,
+    smtp_tester: SmtpProviderTester | None = None,
     webauthn_policy: WebAuthnPolicy | None = None,
     webauthn_decoy_key: bytes | None = None,
 ) -> FastAPI:
@@ -152,6 +158,8 @@ def create_platform_control_app(
         write_session_factory=platform_write_session_factory,
         actor_resolver=runtime.platform_actor_resolver,
         secret_store=platform_secret_store,
+        smtp_validator=smtp_validator,
+        smtp_tester=smtp_tester,
     )
     install_instance_setup_http(
         app,

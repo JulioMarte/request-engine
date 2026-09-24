@@ -70,6 +70,8 @@ from request_engine.modules.platform_configuration.application.secrets import (
     SecretMutationResult,
 )
 from request_engine.modules.platform_configuration.application.smtp import (
+    SmtpConfigurationValidator,
+    SmtpProviderTester,
     parse_smtp_configuration,
 )
 from request_engine.modules.platform_configuration.application.webhook import (
@@ -316,6 +318,8 @@ def install_platform_configuration_http(
     write_session_factory: SessionFactory,
     actor_resolver: PlatformActorResolver,
     secret_store: PlatformSecretStore | None = None,
+    smtp_validator: SmtpConfigurationValidator | None = None,
+    smtp_tester: SmtpProviderTester | None = None,
 ) -> None:
     reader = PostgresPlatformConfigurationReader(read_session_factory)
     readiness_reader = PostgresPlatformReadinessReader(read_session_factory)
@@ -335,13 +339,13 @@ def install_platform_configuration_http(
         commands=commands,
         secret_resolver=provider_secret_resolver,
         secret_store=secret_store,
-        smtp_validator=SmtplibConfigurationValidator(),
+        smtp_validator=smtp_validator or SmtplibConfigurationValidator(),
     )
     provider_test = PlatformProviderTestService(
         reader=provider_candidate_reader,
         secret_resolver=provider_secret_resolver,
         secret_store=secret_store,
-        tester=SmtplibProviderTester(),
+        tester=smtp_tester or SmtplibProviderTester(),
         recorder=PostgresProviderTestRecorder(write_session_factory),
     )
     router = APIRouter(tags=["Platform configuration"])

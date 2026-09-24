@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Protocol
+from uuid import UUID
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -32,6 +35,8 @@ from request_engine.modules.platform_configuration.application.smtp import (
 from request_engine.platform.secrets.delivery import (
     DeliveryOutcome,
     RecoveryDeliveryRetryable,
+    RecoverySecretDelivery,
+    StagedRecoverySecret,
 )
 from request_engine.platform.secrets.delivery_parts import RecoveryDeliveryChannel
 from request_engine.platform.security.native_recovery_addresses import NativeRecoveryMessenger
@@ -49,7 +54,7 @@ class OutboundFenceSettings(BaseSettings):
     outbound_fenced: bool = True
 
 
-class RecoveryOutboundChannel(RecoveryDeliveryChannel, NativeRecoveryMessenger):
+class RecoveryOutboundChannel(RecoveryDeliveryChannel, NativeRecoveryMessenger, Protocol):
     """Combined structural contract implemented by the reference SMTP channels."""
 
 
@@ -62,12 +67,14 @@ class OutboundSideEffectFence:
         return cls(fenced=OutboundFenceSettings().outbound_fenced)
 
     def outbox(self, publisher: OutboxPublisher) -> OutboxPublisher:
-        return _FencedOutboxPublisher(publisher, self)
+        return publisher if not self.fenced else _FencedOutboxPublisher(publisher, self)
 
     def communications(
         self,
         providers: Mapping[str, CommunicationDeliveryProvider],
     ) -> Mapping[str, CommunicationDeliveryProvider]:
+        if not self.fenced:
+            return providers
         return {
             key: _FencedCommunicationDeliveryProvider(provider, self)
             for key, provider in providers.items()
@@ -77,16 +84,26 @@ class OutboundSideEffectFence:
         self,
         channel: RecoveryOutboundChannel | None,
     ) -> RecoveryOutboundChannel | None:
-        return None if channel is None else _FencedRecoveryDeliveryChannel(channel, self)
+        if channel is None or not self.fenced:
+            return channel
+        return _FencedRecoveryDeliveryChannel(channel, self)
+
+    def secret_delivery(
+        self,
+        delivery: RecoverySecretDelivery | None,
+    ) -> RecoverySecretDelivery | None:
+        if delivery is None or not self.fenced:
+            return delivery
+        return _FencedRecoverySecretDelivery(delivery, self)
 
     def smtp_validator(
         self,
         validator: SmtpConfigurationValidator,
     ) -> SmtpConfigurationValidator:
-        return _FencedSmtpConfigurationValidator(validator, self)
+        return validator if not self.fenced else _FencedSmtpConfigurationValidator(validator, self)
 
     def smtp_tester(self, tester: SmtpProviderTester) -> SmtpProviderTester:
-        return _FencedSmtpProviderTester(tester, self)
+        return tester if not self.fenced else _FencedSmtpProviderTester(tester, self)
 
 
 class _FencedOutboxPublisher:
@@ -192,6 +209,64 @@ class _FencedRecoveryDeliveryChannel:
     async def reconcile(self, *, idempotency_key: str) -> DeliveryOutcome | None:
         self._require_open()
         return await self._inner.reconcile(idempotency_key=idempotency_key)
+
+
+class _FencedRecoverySecretDelivery:
+    """Allow local secret staging while preventing provider publication."""
+
+    def __init__(
+        self,
+        inner: RecoverySecretDelivery,
+        fence: OutboundSideEffectFence,
+    ) -> None:
+        self._inner = inner
+        self._fence = fence
+
+    async def stage(
+        self,
+        *,
+        case_id: UUID,
+        generation: int,
+        secret: str,
+        expires_at: datetime,
+    ) -> StagedRecoverySecret:
+        return await self._inner.stage(
+            case_id=case_id,
+            generation=generation,
+            secret=secret,
+            expires_at=expires_at,
+        )
+
+    async def discard(self, *, case_id: UUID, generation: int) -> None:
+        await self._inner.discard(case_id=case_id, generation=generation)
+
+    async def publish(
+        self,
+        *,
+        reference: str,
+        destination_reference: str,
+        idempotency_key: str,
+    ) -> DeliveryOutcome:
+        if self._fence.fenced:
+            raise RecoveryDeliveryRetryable("outbound recovery delivery is fenced")
+        return await self._inner.publish(
+            reference=reference,
+            destination_reference=destination_reference,
+            idempotency_key=idempotency_key,
+        )
+
+    async def reconcile(
+        self,
+        *,
+        reference: str,
+        idempotency_key: str,
+    ) -> DeliveryOutcome | None:
+        if self._fence.fenced:
+            raise RecoveryDeliveryRetryable("outbound recovery delivery is fenced")
+        return await self._inner.reconcile(
+            reference=reference,
+            idempotency_key=idempotency_key,
+        )
 
 
 class _FencedSmtpConfigurationValidator:

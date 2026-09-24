@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from request_engine.bootstrap.outbound_fence import OutboundSideEffectFence
 from request_engine.bootstrap.platform_secrets import build_platform_secret_store
 from request_engine.bootstrap.recovery_delivery import (
     RecoveryDeliverySettings,
@@ -24,6 +25,10 @@ from request_engine.modules.platform_configuration.adapters.db.runtime import (
 )
 from request_engine.modules.platform_configuration.adapters.managed_smtp_delivery import (
     ManagedSmtpRecoveryDeliveryChannel,
+)
+from request_engine.modules.platform_configuration.adapters.smtp import (
+    SmtplibConfigurationValidator,
+    SmtplibProviderTester,
 )
 from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfigurationResolver,
@@ -195,6 +200,7 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
 def create_app() -> FastAPI:
     settings = PlatformControlSettings.model_validate({})
     recovery_settings = RecoveryDeliverySettings()
+    outbound_fence = OutboundSideEffectFence.from_environment()
     bootstrap_native_recovery_messenger = build_native_recovery_messenger(recovery_settings)
     platform_secret_store = build_platform_secret_store()
     engines = tuple(
@@ -217,12 +223,14 @@ def create_app() -> FastAPI:
         source=PostgresActivePlatformConfigurationSource(platform_write_session_factory),
         secret_store=platform_secret_store,
     )
-    native_recovery_messenger = ManagedSmtpRecoveryDeliveryChannel(
+    managed_native_recovery_messenger = ManagedSmtpRecoveryDeliveryChannel(
         resolver=managed_smtp_resolver,
         fallback=bootstrap_native_recovery_messenger,
         reset_url=recovery_settings.recovery_reset_url,
     )
-    delivery = (
+    native_recovery_messenger = outbound_fence.recovery(managed_native_recovery_messenger)
+    assert native_recovery_messenger is not None
+    delivery = outbound_fence.secret_delivery(
         build_recovery_secret_delivery(
             recovery_settings,
             channel_override=native_recovery_messenger,
@@ -239,6 +247,8 @@ def create_app() -> FastAPI:
         recovery_delivery=delivery,
         native_recovery_messenger=native_recovery_messenger,
         platform_secret_store=platform_secret_store,
+        smtp_validator=outbound_fence.smtp_validator(SmtplibConfigurationValidator()),
+        smtp_tester=outbound_fence.smtp_tester(SmtplibProviderTester()),
         webauthn_policy=WebAuthnPolicy(
             rp_id=settings.webauthn_rp_id,
             rp_name=settings.webauthn_rp_name,

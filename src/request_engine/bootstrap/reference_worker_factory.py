@@ -8,6 +8,7 @@ from request_engine.bootstrap.communication_providers import (
     build_communication_delivery_providers,
     build_communication_provider_event_handlers,
 )
+from request_engine.bootstrap.outbound_fence import OutboundSideEffectFence
 from request_engine.bootstrap.native_recovery_delivery_worker import (
     build_native_recovery_delivery_worker,
 )
@@ -115,6 +116,7 @@ def create_worker() -> WorkerProcess:
         create_postgres_engine(_required_env(APP_DATABASE_URL_ENV))
     )
     worker_principal_id = UUID(_required_env(WORKER_PRINCIPAL_ID_ENV))
+    outbound_fence = OutboundSideEffectFence.from_environment()
 
     platform_configuration_resolver = ActivePlatformConfigurationResolver(
         source=PostgresActivePlatformConfigurationSource(worker_sessions),
@@ -130,10 +132,12 @@ def create_worker() -> WorkerProcess:
         raise RuntimeError(
             f"{WEBHOOK_BASE_URL_ENV} is required when {WEBHOOK_AUTH_HEADER_ENV} is set"
         )
-    providers = build_communication_delivery_providers(
-        webhook_base_url=webhook_base_url,
-        webhook_auth_header=webhook_auth_header,
-        managed_webhook_resolver=platform_configuration_resolver,
+    providers = outbound_fence.communications(
+        build_communication_delivery_providers(
+            webhook_base_url=webhook_base_url,
+            webhook_auth_header=webhook_auth_header,
+            managed_webhook_resolver=platform_configuration_resolver,
+        )
     )
 
     recovery_settings = RecoveryDeliverySettings()
@@ -150,6 +154,7 @@ def create_worker() -> WorkerProcess:
         )
     else:
         delivery = build_recovery_secret_delivery(recovery_settings)
+    delivery = outbound_fence.secret_delivery(delivery)
     identity_recovery_delivery = (
         build_recovery_delivery_worker(worker_sessions, delivery) if delivery is not None else None
     )
@@ -173,7 +178,7 @@ def create_worker() -> WorkerProcess:
             )
         ),
         communication_providers=providers,
-        outbox_publisher=_outbox_publisher(),
+        outbox_publisher=outbound_fence.outbox(_outbox_publisher()),
         outbox_internal_handlers={},
         provider_event_handlers=build_communication_provider_event_handlers(domain_sessions),
         reservation_lifecycle_factory=lambda factory: ReservationLifecycleOutboxHandler(
