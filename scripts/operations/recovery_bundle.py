@@ -279,9 +279,7 @@ def restore_backup(args: argparse.Namespace) -> Path | None:
     pg_env, database = _postgres_environment(dsn)
     bundle = Path(args.bundle).resolve()
     identity = Path(_require_env(args.age_identity_file_env)).resolve()
-    evidence_output = (
-        None if args.evidence_output is None else Path(args.evidence_output).resolve()
-    )
+    evidence_output = None if args.evidence_output is None else Path(args.evidence_output).resolve()
     started_at = datetime.now(UTC)
 
     with tempfile.TemporaryDirectory(prefix="request-engine-restore-") as raw:
