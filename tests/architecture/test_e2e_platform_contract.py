@@ -166,7 +166,6 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
             assert action in allowed_fault_actions, f"{name} has unsupported fault action: {fault}"
 
 
-
 def test_managed_platform_configuration_suite_has_no_bootstrap_smtp_profile() -> None:
     """P7 managed SMTP acceptance must not inherit bootstrap SMTP settings."""
 
@@ -187,6 +186,7 @@ def test_managed_platform_configuration_suite_has_no_bootstrap_smtp_profile() ->
         "REQUEST_ENGINE_SMTP_SSL",
     ):
         assert variable in managed_case and "unset" in managed_case
+
 
 def test_black_box_runner_image_cannot_install_application_shortcuts() -> None:
     dockerfile = RUNNER_DOCKERFILE.read_text(encoding="utf-8").lower()
