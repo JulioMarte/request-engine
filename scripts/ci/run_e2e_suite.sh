@@ -31,6 +31,7 @@ print(spec["artifact_namespace"])
 for profile in spec.get("profiles", []): print(f"profile:{profile}")
 for service in spec.get("services", []): print(f"service:{service}")
 for service in spec.get("deferred_services", []): print(f"deferred:{service}")
+for item in spec.get("environment", []): print(f"environment:{item}")
 for mapping in spec.get("runtime_env_from_state", []): print(f"runtimeenv:{mapping}")
 for fault in spec.get("faults", []): print(f"fault:{fault}")
 PY
@@ -40,6 +41,7 @@ namespace="${resolved[1]}"
 profiles=()
 runtime_services=()
 deferred_services=()
+static_environment=()
 runtime_env_from_state=()
 faults=()
 for item in "${resolved[@]:2}"; do
@@ -47,9 +49,19 @@ for item in "${resolved[@]:2}"; do
     profile:*) profiles+=("${item#profile:}") ;;
     service:*) runtime_services+=("${item#service:}") ;;
     deferred:*) deferred_services+=("${item#deferred:}") ;;
+    environment:*) static_environment+=("${item#environment:}") ;;
     runtimeenv:*) runtime_env_from_state+=("${item#runtimeenv:}") ;;
     fault:*) faults+=("${item#fault:}") ;;
   esac
+done
+for assignment in "${static_environment[@]}"; do
+  variable="${assignment%%=*}"
+  value="${assignment#*=}"
+  [[ "$variable" =~ ^[A-Z][A-Z0-9_]*$ && "$assignment" != "$variable" ]] || {
+    echo "invalid suite environment assignment: $assignment" >&2
+    exit 2
+  }
+  export "$variable=$value"
 done
 ((${#runtime_services[@]} > 0)) || { echo "suite '$requested' declares no runtime services" >&2; exit 2; }
 

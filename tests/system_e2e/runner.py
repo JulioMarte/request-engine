@@ -2323,6 +2323,72 @@ def _run_platform_configuration(checkpoints: list[dict[str, str]], phase: str) -
     )
 
 
+def _run_clone_fence(checkpoints: list[dict[str, str]], phase: str) -> None:
+    if phase == "prepare-worker":
+        _run_f01_foundation(checkpoints, phase)
+        _prepare_durable_booking(checkpoints)
+        return
+    if phase != "main":
+        raise RuntimeError("clone-fence requires prepare-worker then main")
+
+    state_dir, controller = _handoff()
+    foundation = _json_object(state_dir / "f01-foundation.json")
+    booking = _json_object(state_dir / "worker-booking.json")
+    reservation_id = _required_string(booking, "reservation_id", "worker booking state")
+    control_url = "http://control-plane:8001"
+
+    platform_login = _required_string(controller, "login_handle", "platform-controller secret")
+    platform_password = _required_string(controller, "password", "platform-controller secret")
+    platform_token = _strong_native_session(control_url, platform_login, platform_password)
+    recovery_login = "f01-recovery-operator@example.invalid"
+    recovery_password = _derived_password(platform_password, "f01-recovery-operator")
+    operator_token = _strong_native_session(control_url, recovery_login, recovery_password)
+    target_identity_id = _required_string(
+        foundation, "tenant_native_identity_id", "F01 foundation state"
+    )
+
+    case_id = _p7_issue_governed_recovery(
+        control_url,
+        platform_token=platform_token,
+        operator_token=operator_token,
+        target_identity_id=target_identity_id,
+        suffix="clone-fence",
+        destination="clone-fence@example.invalid",
+    )
+
+    time.sleep(5)
+
+    sink_status = _http_get_json("http://event-sink:8090/status")
+    if sink_status.get("attempt_count") != 0 or sink_status.get("accepted_count") != 0:
+        raise RuntimeError("clone fence allowed an outbox request to reach the external sink")
+    if _matching_sink_event(_sink_events("attempts"), reservation_id):
+        raise RuntimeError("clone fence allowed the durable reservation event to leave the worker")
+
+    try:
+        senders = _p7_mailpit_recovery_senders()
+    except (RuntimeError, urllib.error.URLError):
+        senders = []
+    if senders:
+        raise RuntimeError(f"clone fence allowed recovery SMTP delivery: senders={senders!r}")
+
+    current = _http_json(
+        "GET",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}",
+        bearer=platform_token,
+    )
+    if current.get("delivery_status") == "delivered":
+        raise RuntimeError("clone fence reported recovery delivery despite blocking SMTP")
+
+    checkpoints.append(
+        _checkpoint(
+            "p7-clone-fence",
+            "passed",
+            "fenced worker/control-plane stayed live while SMTP and outbox side effects "
+            "were blocked before reaching Mailpit or the event sink",
+        )
+    )
+
+
 Suite = Callable[[list[dict[str, str]], str], None]
 SUITES: dict[str, Suite] = {
     "smoke": _run_smoke,
@@ -2332,6 +2398,7 @@ SUITES: dict[str, Suite] = {
     "worker-runtime": _run_worker_runtime,
     "recovery-delivery": _run_recovery_delivery,
     "platform-configuration": _run_platform_configuration,
+    "clone-fence": _run_clone_fence,
 }
 
 

@@ -142,6 +142,15 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
         services = set(_string_list(spec, "services", name))
         profiles = set(_string_list(spec, "profiles", name))
         deferred = set(_string_list(spec, "deferred_services", name))
+        environment_raw = spec.get("environment", [])
+        assert isinstance(environment_raw, list), f"{name}.environment must be a list"
+        environment = cast(list[object], environment_raw)
+        for assignment in environment:
+            assert isinstance(assignment, str), f"{name}.environment must contain strings"
+            variable, separator, _value = assignment.partition("=")
+            assert separator and re.fullmatch(r"[A-Z][A-Z0-9_]*", variable), (
+                f"{name} has invalid environment assignment: {assignment}"
+            )
         mappings = _string_list(spec, "runtime_env_from_state", name)
         faults = _string_list(spec, "faults", name)
         assert services, f"{name} must declare at least one runtime service"
