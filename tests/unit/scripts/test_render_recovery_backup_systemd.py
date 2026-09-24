@@ -38,7 +38,7 @@ def test_render_units_requires_explicit_schedule_and_retention(tmp_path: Path) -
     assert "Persistent=true" in timer
     assert "--local-retention-days 21" in service
     assert "recovery_bundle.py" in service
-    assert "EnvironmentFile=\"/etc/request-engine/recovery-backup.env\"" in service
+    assert 'EnvironmentFile="/etc/request-engine/recovery-backup.env"' in service
     assert "UMask=0077" in service
     assert "NoNewPrivileges=true" in service
 
