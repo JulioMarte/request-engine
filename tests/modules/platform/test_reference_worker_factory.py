@@ -128,6 +128,10 @@ def test_reference_factory_composes_both_recovery_delivery_streams(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure_reference_environment(monkeypatch)
+    # This test verifies the underlying production provider composition, not
+    # clone fencing. Open the deployment fence explicitly so the provider is
+    # observable without its fail-closed wrapper.
+    monkeypatch.setenv("REQUEST_ENGINE_OUTBOUND_FENCED", "false")
     delivery = object()
     identity_runtime = object()
     native_runtime = object()
