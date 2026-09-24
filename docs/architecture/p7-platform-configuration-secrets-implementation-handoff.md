@@ -18,7 +18,7 @@ Status: **implementation handoff; P7 is not delivered or production-certified**
 > P7-C HTTP metadata/configuration surface     implemented
 > P7-D secret lifecycle/reconciliation         implemented; system/adversarial evidence incomplete
 > P7-E SMTP typed validation/test/activation   implemented; TLS/AUTH protocol verified vs a real SMTP server; production-provider acceptance outstanding
-> P7-F runtime resolver/hot reload/env cutover implemented; black-box hot-reload + poll convergence proven; env-free cutover acceptance outstanding
+> P7-F runtime resolver/hot reload/env cutover implemented; black-box hot-reload, poll convergence and SMTP-env-free managed delivery proven
 > P7-G Communications integration              implemented
 > P7-H OIDC administration                     pending
 > P7-I signing key lifecycle                   pending (inventory done; real consumers identified)
@@ -140,10 +140,12 @@ Still open and required before the corresponding slice is complete:
   fixed to verify the server certificate for implicit TLS. A controlled
   production SMTP provider acceptance (real DNS/TLS/AUTH/trottling) is still
   outstanding.
-- P7-F: env-free cutover acceptance (recovery delivery operating from managed
-  SMTP with no SMTP credentials in the process environment). The black-box
-  hot-reload journey (`platform-configuration`) and the real-PostgreSQL
-  missed-notification poll-convergence proof now exist and pass in CI.
+- P7-F: closed for the managed SMTP cutover contract. The black-box
+  `platform-configuration` suite now starts control-plane/worker with no
+  `REQUEST_ENGINE_SMTP_*` bootstrap settings, configures SMTP only through the
+  governed P7 HTTP + OpenBao path, proves live worker delivery, rotates the secret
+  and ACTIVE revision without restarting the worker, and the real-PostgreSQL
+  missed-NOTIFY polling proof remains the correctness backstop.
 - P7-J: readiness beyond SMTP (owner continuity, secret-store reachability,
   recovery-delivery source, OIDC state).
 - P7-H: governed OIDC provider administration (no client secret while no current

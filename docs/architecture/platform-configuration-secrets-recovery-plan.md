@@ -136,8 +136,9 @@ summary:
   STARTTLS, `INV-SMTP-TRANSPORT-SECURITY-001`); production SMTP acceptance
   outstanding;
 - runtime configuration cache + invalidation/hot reload — implemented; the
-  `platform-configuration` black-box journey and the real-PostgreSQL polling
-  convergence proof pass in CI; env-free cutover acceptance outstanding;
+  `platform-configuration` black-box journey now runs without any
+  `REQUEST_ENGINE_SMTP_*` bootstrap configuration, proves managed delivery and
+  hot reload, and the real-PostgreSQL polling convergence proof passes in CI;
 - notification intents/templates — managed webhook path implemented; generic
   Communications email rendering still absent by design;
 - product readiness projection — partial (SMTP-centric);
