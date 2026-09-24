@@ -1,5 +1,4 @@
 import base64
-
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
