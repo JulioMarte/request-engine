@@ -51,6 +51,7 @@ def test_offsite_command_requires_artifact_placeholder(
 ) -> None:
     module = _module()
     error = cast(type[RuntimeError], module.RecoveryBundleError)  # type: ignore[attr-defined]
+
     def fake_run(command: list[str], *, env: dict[str, str] | None = None) -> None:
         del command, env
 
