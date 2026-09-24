@@ -847,6 +847,10 @@ async def test_platform_configuration_http_is_governed_and_never_replays_secret_
     # provider tests and the Docker E2E provider profile. This journey proves the
     # governed HTTP/secret surface, so it must not depend on live SMTP transport.
     monkeypatch.setattr(SmtplibConfigurationValidator, "validate", _accept_smtp_transport)
+    # This journey explicitly exercises provider validation/activation. Production-shaped
+    # composition is fenced by default, so the test must opt into outbound transport rather
+    # than weakening the safe deployment default for unrelated journeys.
+    monkeypatch.setenv("REQUEST_ENGINE_OUTBOUND_FENCED", "false")
     _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
     app = create_app()
     async with (
