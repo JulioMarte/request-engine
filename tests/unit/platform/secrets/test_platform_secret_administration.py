@@ -6,6 +6,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from request_engine.modules.platform_configuration.application.configuration import (
+    PlatformConfigurationInvalid,
+)
 from request_engine.modules.platform_configuration.application.secret_administration import (
     PlatformSecretAdministrationService,
 )
@@ -15,7 +18,13 @@ from request_engine.modules.platform_configuration.application.secrets import (
     PlatformSecretReconciliationRequired,
     RevokePlatformSecret,
     RotatePlatformSecret,
+    RotatePlatformSecretIntent,
     SecretMutationOperation,
+)
+from request_engine.platform.security.appointment_option_keyring import (
+    create_appointment_option_keyring,
+    parse_appointment_option_keyring,
+    rotate_appointment_option_keyring,
 )
 from request_engine.platform.secrets.platform_store import (
     PlatformSecretConflict as StoreSecretConflict,
@@ -62,7 +71,7 @@ class FakeMutations:
         return self.operation
 
     async def prepare_rotate(
-        self, actor: PlatformActorContext, command: RotatePlatformSecret
+        self, actor: PlatformActorContext, command: RotatePlatformSecretIntent
     ) -> SecretMutationOperation:
         return self.operation
 
@@ -112,6 +121,7 @@ class FakeMutations:
 class FakeStore:
     def __init__(self) -> None:
         self.write_conflict = False
+        self.current_value: str | None = None
         self.metadata_value: PlatformSecretMetadata | None = None
         self.writes: list[tuple[UUID, str, int | None, UUID | None]] = []
         self.revoked: list[UUID] = []
@@ -135,7 +145,9 @@ class FakeStore:
         )
 
     async def resolve(self, *, secret_id: UUID) -> str:
-        raise AssertionError("admin orchestration must never resolve plaintext")
+        if self.current_value is None:
+            raise AssertionError("unexpected plaintext resolve")
+        return self.current_value
 
     async def metadata(self, *, secret_id: UUID) -> PlatformSecretMetadata:
         if self.metadata_value is None:
@@ -151,13 +163,14 @@ def _operation(
     *,
     expected_revision: int | None = None,
     expected_backend_version: int | None = None,
+    purpose: str = "email.smtp.password",
 ) -> SecretMutationOperation:
     return SecretMutationOperation(
         operation_id=uuid4(),
         operation_kind=kind,
         binding_id=None if kind == "create" else uuid4(),
         secret_id=uuid4(),
-        purpose="email.smtp.password",
+        purpose=purpose,
         backend="openbao",
         expected_binding_revision=expected_revision,
         expected_backend_version=expected_backend_version,
@@ -293,3 +306,72 @@ async def test_revoke_reconciles_backend_already_absent_to_revoked_metadata() ->
     assert store.revoked == []
     assert mutations.marked_versions == [5]
     assert result.status == "revoked"
+
+
+@pytest.mark.asyncio
+async def test_structured_rotation_reuses_cas_path_and_never_returns_key_material() -> None:
+    operation = _operation(
+        "rotate",
+        expected_revision=2,
+        expected_backend_version=4,
+        purpose="security.appointment_option_signing",
+    )
+    mutations = FakeMutations(operation)
+    store = FakeStore()
+    store.current_value = create_appointment_option_keyring(
+        "k1",
+        key=b"appointment-keyring-current-key-0000000001",
+    )
+    service = PlatformSecretAdministrationService(mutations=mutations, store=store)
+
+    result = await service.rotate_transformed(
+        _actor(),
+        RotatePlatformSecretIntent(
+            binding_id=operation.binding_id or uuid4(),
+            expected_revision=2,
+            expected_backend_version=4,
+            idempotency_key="rotate-keyring-1",
+        ),
+        expected_purpose="security.appointment_option_signing",
+        transform=lambda value: rotate_appointment_option_keyring(
+            value,
+            new_key_id="k2",
+            now=datetime(2030, 1, 1, 12, tzinfo=UTC),
+            new_key=b"appointment-keyring-new-key-00000000000002",
+        ),
+    )
+
+    assert result.backend_version == 5
+    assert len(store.writes) == 1
+    written = parse_appointment_option_keyring(store.writes[0][1])
+    assert written.active_key_id == "k2"
+    assert {item.key_id for item in written.keys} == {"k1", "k2"}
+    assert "appointment-keyring-new-key" not in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_structured_rotation_rejects_wrong_secret_purpose_before_reading_store() -> None:
+    operation = _operation(
+        "rotate",
+        expected_revision=2,
+        expected_backend_version=4,
+        purpose="email.smtp.password",
+    )
+    mutations = FakeMutations(operation)
+    store = FakeStore()
+    service = PlatformSecretAdministrationService(mutations=mutations, store=store)
+
+    with pytest.raises(PlatformConfigurationInvalid):
+        await service.rotate_transformed(
+            _actor(),
+            RotatePlatformSecretIntent(
+                binding_id=operation.binding_id or uuid4(),
+                expected_revision=2,
+                expected_backend_version=4,
+                idempotency_key="wrong-purpose",
+            ),
+            expected_purpose="security.appointment_option_signing",
+            transform=lambda value: value,
+        )
+
+    assert store.writes == []

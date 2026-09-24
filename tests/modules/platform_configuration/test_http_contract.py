@@ -107,6 +107,16 @@ def test_platform_configuration_http_registers_canonical_capability_surface() ->
             "/v1/platform/secrets/{binding_id}:rotate",
             frozenset({"POST"}),
         ),
+        "platform_appointment_signing_keyring_create": (
+            "platform.secret.write",
+            "/v1/platform/signing-keyrings/appointment-option",
+            frozenset({"POST"}),
+        ),
+        "platform_appointment_signing_keyring_rotate": (
+            "platform.secret.rotate",
+            "/v1/platform/signing-keyrings/appointment-option/{binding_id}:rotate",
+            frozenset({"POST"}),
+        ),
         "platform_secret_revoke": (
             "platform.secret.revoke",
             "/v1/platform/secrets/{binding_id}:revoke",
