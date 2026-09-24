@@ -92,7 +92,7 @@ infra=(postgres)
 for profile in "${profiles[@]}"; do
   case "$profile" in
     secrets) infra+=(openbao) ;;
-    delivery) infra+=(mailpit) ;;
+    delivery|managed-delivery) infra+=(mailpit) ;;
     worker) infra+=(event-sink) ;;
   esac
 done
@@ -106,11 +106,22 @@ for profile in "${profiles[@]}"; do
       export REQUEST_ENGINE_OPENBAO_TOKEN="ci-root-token"
       ;;
     delivery)
+      # Legacy/bootstrap SMTP is intentionally injected only for suites whose
+      # contract exercises that fallback. Managed P7 suites use
+      # `managed-delivery` so the processes receive no REQUEST_ENGINE_SMTP_*
+      # values and must resolve SMTP entirely from ACTIVE governed config.
       export REQUEST_ENGINE_SMTP_HOST="mailpit"
       export REQUEST_ENGINE_SMTP_PORT="1025"
       export REQUEST_ENGINE_SMTP_SENDER="recovery@example.test"
       export REQUEST_ENGINE_SMTP_STARTTLS="false"
       export REQUEST_ENGINE_SMTP_SSL="false"
+      ;;
+    managed-delivery)
+      # Infrastructure only. Do not export bootstrap SMTP configuration.
+      unset REQUEST_ENGINE_SMTP_HOST REQUEST_ENGINE_SMTP_PORT
+      unset REQUEST_ENGINE_SMTP_SENDER REQUEST_ENGINE_SMTP_USERNAME
+      unset REQUEST_ENGINE_SMTP_PASSWORD REQUEST_ENGINE_SMTP_STARTTLS
+      unset REQUEST_ENGINE_SMTP_SSL
       ;;
   esac
 done
