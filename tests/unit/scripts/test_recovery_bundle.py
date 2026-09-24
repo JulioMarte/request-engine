@@ -113,6 +113,7 @@ def test_restore_uses_standard_openbao_restore_without_force(
         "postgresql://restore-user:restore-pass@db/request_engine",
     )
     monkeypatch.setenv("REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE", str(identity))
+
     def fake_require_program(name: str) -> str:
         return name
 
