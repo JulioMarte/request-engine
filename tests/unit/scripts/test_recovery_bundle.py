@@ -85,11 +85,11 @@ def test_bundle_verification_rejects_tampered_payload(
         for name in ("manifest.json", "postgres.dump", "openbao.snap"):
             bundle.add(source / name, arcname=name)
 
-    monkeypatch.setattr(
-        module,
-        "_decrypt",
-        lambda bundle, output, identity: output.write_bytes(archive.read_bytes()),
-    )
+    def fake_decrypt(bundle_path: Path, output: Path, identity_path: Path) -> None:
+        del bundle_path, identity_path
+        output.write_bytes(archive.read_bytes())
+
+    monkeypatch.setattr(module, "_decrypt", fake_decrypt)
     with pytest.raises(error, match="checksum mismatch"):
         module._extract_verified(  # type: ignore[attr-defined]
             tmp_path / "fake.age",
@@ -113,7 +113,10 @@ def test_restore_uses_standard_openbao_restore_without_force(
         "postgresql://restore-user:restore-pass@db/request_engine",
     )
     monkeypatch.setenv("REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE", str(identity))
-    monkeypatch.setattr(module, "_require_program", lambda name: name)
+    def fake_require_program(name: str) -> str:
+        return name
+
+    monkeypatch.setattr(module, "_require_program", fake_require_program)
 
     calls: list[list[str]] = []
 
