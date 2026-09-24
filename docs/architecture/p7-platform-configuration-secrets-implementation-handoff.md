@@ -23,7 +23,7 @@ Status: **implementation handoff; P7 is not delivered or production-certified**
 > P7-H OIDC administration                     pending
 > P7-I signing key lifecycle                   pending (inventory done; real consumers identified)
 > P7-J readiness projection                    partial (SMTP-centric)
-> P7-K backup/restore/clone fencing            pending
+> P7-K backup/restore/clone fencing            clone fencing implemented/proven; backup/snapshot/restore pending
 > ```
 >
 > Section 2 is the present-truth checkpoint for slice state. Sections 4-15 remain
@@ -152,8 +152,11 @@ Still open and required before the corresponding slice is complete:
   flow needs one).
 - P7-I: per-key-family purpose/lifetime/overlap/rotation/retirement design for
   the identified signing-key consumers.
-- P7-K: backup/snapshot/restore/clone-fence implementation and operational
-  certification.
+- P7-K: clone fencing is implemented fail-closed at production composition
+  boundaries and proven black-box by the `clone-fence` Docker E2E suite: SMTP
+  recovery and ordinary outbox traffic do not reach Mailpit/event-sink while
+  fenced. PostgreSQL backup automation, OpenBao Raft snapshots, encrypted
+  off-host copies and an exercised restore drill remain outstanding.
 - P7 observability: activation/validation/reconciliation/invalidation telemetry.
 
 Do not infer P7 completion from a green exact-head; several required gates do not

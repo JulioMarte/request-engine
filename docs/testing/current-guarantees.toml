@@ -529,3 +529,10 @@ statement = "SMTP provider TLS is authenticated before credentials or message co
 severity = "critical"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-CLONE-FENCE-001"
+statement = "Production-shaped Request Engine processes start with outbound side effects fenced unless a deployment explicitly opens them; while fenced, recovery SMTP, Communications provider send/lookup and ordinary outbox publication are stopped before external network transport, while the application and worker may remain healthy for inspection or restore validation."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security", "availability"]

@@ -145,7 +145,7 @@ summary:
 - signing-key keyrings/rotation — pending;
 - OIDC provider administration — pending;
 - automatic backup scheduling — pending;
-- clone fencing implementation — pending.
+- clone fencing implementation — implemented and black-box proven; backup/snapshot/restore drill remains pending.
 
 Mutations require governed Platform Owner authority plus recent phishing-resistant
 authentication as required by the P7-DoD and handoff.
