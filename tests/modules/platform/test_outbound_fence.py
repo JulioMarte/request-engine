@@ -252,9 +252,9 @@ async def test_open_fence_delegates_normally() -> None:
     recovery = _Recovery()
 
     await fence.outbox(outbox).publish(_event())
-    sent = await fence.communications(
-        {"webhook": cast(CommunicationDeliveryProvider, provider)}
-    )["webhook"].send(_send_request())
+    sent = await fence.communications({"webhook": cast(CommunicationDeliveryProvider, provider)})[
+        "webhook"
+    ].send(_send_request())
     channel = fence.recovery(cast(RecoveryOutboundChannel, recovery))
     assert channel is not None
     delivered = await channel.send_recovery(
