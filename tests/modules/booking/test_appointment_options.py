@@ -1,4 +1,7 @@
 import base64
+import hashlib
+import hmac
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
@@ -284,10 +287,6 @@ def test_signed_token_cannot_extend_lifetime_beyond_codec_ttl() -> None:
     organization_id = uuid4()
     token = _codec().issue(organization_id, _contextual_slot())
     prefix, encoded_payload, _signature = token.split(".")
-    import json
-    import hmac
-    import hashlib
-
     padding = "=" * (-len(encoded_payload) % 4)
     payload = json.loads(base64.urlsafe_b64decode(encoded_payload + padding))
     payload["expires_at"] = (_NOW + timedelta(hours=4)).isoformat()
