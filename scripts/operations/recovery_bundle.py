@@ -321,7 +321,6 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-
 def main() -> int:
     args = _parser().parse_args()
     try:
