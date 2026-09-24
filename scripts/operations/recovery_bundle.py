@@ -68,8 +68,7 @@ def _postgres_environment(dsn: str) -> tuple[dict[str, str], str]:
     unsupported = set(query) - set(_PG_QUERY_ENV)
     if unsupported:
         raise RecoveryBundleError(
-            "unsupported PostgreSQL DSN query parameters: "
-            + ", ".join(sorted(unsupported))
+            "unsupported PostgreSQL DSN query parameters: " + ", ".join(sorted(unsupported))
         )
     for key, values in query.items():
         if len(values) != 1:
@@ -126,8 +125,7 @@ def _copy_offsite(artifact: Path, template: str) -> None:
     if not parts or not any("{artifact}" in part for part in parts):
         raise RecoveryBundleError("offsite command must contain the {artifact} placeholder")
     command = [
-        part.replace("{artifact}", str(artifact)).replace("{name}", artifact.name)
-        for part in parts
+        part.replace("{artifact}", str(artifact)).replace("{name}", artifact.name) for part in parts
     ]
     _run(command)
 
