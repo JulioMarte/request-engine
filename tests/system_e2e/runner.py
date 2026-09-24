@@ -897,7 +897,11 @@ def _run_f01_foundation(
             workload_authority_id=workload_authority_id,
             expires_at=expires_at,
         )
-    if phase == "main" or _active_suite in {"recovery-delivery", "platform-configuration", "clone-fence"}:
+    if phase == "main" or _active_suite in {
+        "recovery-delivery",
+        "platform-configuration",
+        "clone-fence",
+    }:
         recovery_login = "f01-recovery-operator@example.invalid"
         recovery_password = _derived_password(platform_password, "f01-recovery-operator")
         recovery_identity_id = _native_identity(
