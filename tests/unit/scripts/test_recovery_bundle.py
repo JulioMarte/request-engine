@@ -251,8 +251,6 @@ def test_restore_failure_does_not_write_false_evidence(
     tmp_path: Path,
 ) -> None:
     module = _module()
-    error = subprocess.CalledProcessError if False else None
-    del error
     bundle = tmp_path / "bundle.age"
     bundle.write_bytes(b"encrypted")
     identity = tmp_path / "identity.txt"
