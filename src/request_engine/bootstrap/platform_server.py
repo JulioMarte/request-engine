@@ -20,6 +20,7 @@ from request_engine.bootstrap.recovery_delivery import (
 )
 from request_engine.bootstrap.settings import PlatformControlSettings
 from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
+from request_engine.modules.platform_configuration.api.http import PlatformDeploymentReadinessFacts
 from request_engine.modules.platform_configuration.adapters.db.runtime import (
     PostgresActivePlatformConfigurationSource,
 )
@@ -249,6 +250,12 @@ def create_app() -> FastAPI:
         platform_secret_store=platform_secret_store,
         smtp_validator=outbound_fence.smtp_validator(SmtplibConfigurationValidator()),
         smtp_tester=outbound_fence.smtp_tester(SmtplibProviderTester()),
+        deployment_readiness=PlatformDeploymentReadinessFacts(
+            clone_fence="fenced" if outbound_fence.fenced else "open",
+            secret_store="configured" if platform_secret_store is not None else "unconfigured",
+            bootstrap_recovery_delivery_configured=bootstrap_native_recovery_messenger is not None,
+            oidc="optional",
+        ),
         webauthn_policy=WebAuthnPolicy(
             rp_id=settings.webauthn_rp_id,
             rp_name=settings.webauthn_rp_name,

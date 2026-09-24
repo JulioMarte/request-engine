@@ -54,7 +54,9 @@ from request_engine.modules.platform_configuration.application.provider_validati
     PlatformProviderValidationService,
 )
 from request_engine.modules.platform_configuration.application.readiness import (
+    PlatformDeploymentReadinessFacts,
     PlatformReadiness,
+    apply_deployment_readiness,
 )
 from request_engine.modules.platform_configuration.application.secret_administration import (
     PlatformSecretAdministrationService,
@@ -216,6 +218,9 @@ class PlatformReadinessView(BaseModel):
     backup_evidence: str
     restore_drill: str
     clone_fence: str
+    secret_store: str
+    recovery_delivery_source: str
+    oidc: str
 
 
 class SecretBindingMetadataView(BaseModel):
@@ -320,6 +325,7 @@ def install_platform_configuration_http(
     secret_store: PlatformSecretStore | None = None,
     smtp_validator: SmtpConfigurationValidator | None = None,
     smtp_tester: SmtpProviderTester | None = None,
+    deployment_readiness: PlatformDeploymentReadinessFacts | None = None,
 ) -> None:
     reader = PostgresPlatformConfigurationReader(read_session_factory)
     readiness_reader = PostgresPlatformReadinessReader(read_session_factory)
@@ -380,7 +386,10 @@ def install_platform_configuration_http(
         _bearer: _NativeBearer,
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> PlatformReadinessView:
-        return _readiness_view(await readiness_reader.read(actor))
+        readiness = await readiness_reader.read(actor)
+        if deployment_readiness is not None:
+            readiness = apply_deployment_readiness(readiness, deployment_readiness)
+        return _readiness_view(readiness)
 
     async def get_secret_binding(
         binding_id: UUID,
@@ -750,6 +759,9 @@ def _readiness_view(readiness: PlatformReadiness) -> PlatformReadinessView:
         backup_evidence=readiness.backup_evidence,
         restore_drill=readiness.restore_drill,
         clone_fence=readiness.clone_fence,
+        secret_store=readiness.secret_store,
+        recovery_delivery_source=readiness.recovery_delivery_source,
+        oidc=readiness.oidc,
     )
 
 

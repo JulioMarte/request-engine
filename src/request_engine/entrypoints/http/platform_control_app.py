@@ -11,6 +11,7 @@ from request_engine.entrypoints.http.native_runtime import (
     resolve_webauthn_decoy_key,
 )
 from request_engine.modules.platform_configuration.api.http import (
+    PlatformDeploymentReadinessFacts,
     SmtpConfigurationValidator,
     SmtpProviderTester,
     install_platform_configuration_http,
@@ -65,6 +66,7 @@ def create_platform_control_app(
     platform_secret_store: PlatformSecretStore | None = None,
     smtp_validator: SmtpConfigurationValidator | None = None,
     smtp_tester: SmtpProviderTester | None = None,
+    deployment_readiness: PlatformDeploymentReadinessFacts | None = None,
     webauthn_policy: WebAuthnPolicy | None = None,
     webauthn_decoy_key: bytes | None = None,
 ) -> FastAPI:
@@ -158,6 +160,7 @@ def create_platform_control_app(
         secret_store=platform_secret_store,
         smtp_validator=smtp_validator,
         smtp_tester=smtp_tester,
+        deployment_readiness=deployment_readiness,
     )
     install_instance_setup_http(
         app,

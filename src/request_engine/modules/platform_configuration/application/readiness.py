@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 
@@ -13,3 +13,37 @@ class PlatformReadiness:
     backup_evidence: str = "unknown"
     restore_drill: str = "unknown"
     clone_fence: str = "unknown"
+    secret_store: str = "unknown"
+    recovery_delivery_source: str = "unknown"
+    oidc: str = "optional"
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformDeploymentReadinessFacts:
+    """Non-authoritative process/deployment facts composed outside PostgreSQL."""
+
+    clone_fence: str = "unknown"
+    secret_store: str = "unknown"
+    bootstrap_recovery_delivery_configured: bool = False
+    oidc: str = "optional"
+
+
+def apply_deployment_readiness(
+    readiness: PlatformReadiness,
+    facts: PlatformDeploymentReadinessFacts,
+) -> PlatformReadiness:
+    """Merge deployment diagnostics without changing durable authorization state."""
+
+    if readiness.managed_smtp_source == "managed":
+        recovery_delivery_source = "managed"
+    elif facts.bootstrap_recovery_delivery_configured:
+        recovery_delivery_source = "bootstrap"
+    else:
+        recovery_delivery_source = "unconfigured"
+    return replace(
+        readiness,
+        clone_fence=facts.clone_fence,
+        secret_store=facts.secret_store,
+        recovery_delivery_source=recovery_delivery_source,
+        oidc=facts.oidc,
+    )
