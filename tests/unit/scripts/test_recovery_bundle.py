@@ -94,11 +94,13 @@ def test_bundle_verification_rejects_tampered_payload(
         output.write_bytes(archive.read_bytes())
 
     monkeypatch.setattr(module, "_decrypt", fake_decrypt)
+    verify_root = tmp_path / "verify"
+    verify_root.mkdir()
     with pytest.raises(error, match="checksum mismatch"):
         module._extract_verified(  # type: ignore[attr-defined]
             tmp_path / "fake.age",
             tmp_path / "identity.txt",
-            tmp_path / "verify",
+            verify_root,
         )
 
 
