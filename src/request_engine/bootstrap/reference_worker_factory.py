@@ -8,10 +8,10 @@ from request_engine.bootstrap.communication_providers import (
     build_communication_delivery_providers,
     build_communication_provider_event_handlers,
 )
-from request_engine.bootstrap.outbound_fence import OutboundSideEffectFence
 from request_engine.bootstrap.native_recovery_delivery_worker import (
     build_native_recovery_delivery_worker,
 )
+from request_engine.bootstrap.outbound_fence import OutboundSideEffectFence
 from request_engine.bootstrap.platform_secrets import build_platform_secret_store
 from request_engine.bootstrap.recovery_delivery import (
     RecoveryDeliverySettings,
