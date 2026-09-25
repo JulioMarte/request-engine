@@ -14,6 +14,7 @@ import request_engine.modules.queue.api as queue_api
 import request_engine.modules.queue.api.onboarding as queue_onboarding
 import request_engine.modules.tenancy.api as tenancy_api
 from request_engine.modules.booking.api import install_http as install_booking_http
+from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.booking.api.authority_inspection import (
     build_resource_authority_inspector,
 )
@@ -48,7 +49,8 @@ def install_business_modules(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     slot_offer_ports: queue_api.QueueSlotOfferHttpPorts | None,
-    appointment_option_signing_key: bytes,
+    appointment_option_signing_key: bytes | None = None,
+    appointment_option_codec: AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
 ) -> None:
@@ -68,6 +70,7 @@ def install_business_modules(
         actor_resolver=actor_resolver,
         party_authority_reader=tenancy_api.build_party_authority_reader(session_factory),
         appointment_option_signing_key=appointment_option_signing_key,
+        appointment_option_codec=appointment_option_codec,
     )
     queue_api.install_http(
         app,
