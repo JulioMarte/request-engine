@@ -290,12 +290,20 @@ def test_signed_token_cannot_extend_lifetime_beyond_codec_ttl() -> None:
     padding = "=" * (-len(encoded_payload) % 4)
     payload = json.loads(base64.urlsafe_b64decode(encoded_payload + padding))
     payload["expires_at"] = (_NOW + timedelta(hours=4)).isoformat()
-    tampered_payload = base64.urlsafe_b64encode(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    ).rstrip(b"=").decode()
-    forged_signature = base64.urlsafe_b64encode(
-        hmac.new(_KEY, f"{prefix}.{tampered_payload}".encode(), hashlib.sha256).digest()
-    ).rstrip(b"=").decode()
+    tampered_payload = (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        )
+        .rstrip(b"=")
+        .decode()
+    )
+    forged_signature = (
+        base64.urlsafe_b64encode(
+            hmac.new(_KEY, f"{prefix}.{tampered_payload}".encode(), hashlib.sha256).digest()
+        )
+        .rstrip(b"=")
+        .decode()
+    )
 
     with pytest.raises(AppointmentOptionInvalid, match="lifetime"):
         _codec().decode(

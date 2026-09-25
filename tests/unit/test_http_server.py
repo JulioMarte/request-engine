@@ -67,7 +67,6 @@ def test_settings_hide_secrets_and_default_to_native_only() -> None:
     assert "a" * 64 not in repr(settings)
 
 
-
 @pytest.mark.usefixtures("configured_environment")
 def test_managed_signing_allows_legacy_appointment_key_to_be_absent(
     monkeypatch: pytest.MonkeyPatch,

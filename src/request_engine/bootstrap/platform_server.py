@@ -124,16 +124,27 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
         if allowed is not True:
             raise RuntimeError("Platform HTTP database login violates least-privilege requirements")
         if group == "request_engine_app":
-            platform_access = await connection.scalar(
+            signing_runtime = (
+                "request_platform.read_active_appointment_option_signing_keyring()"
+            )
+            signing_access = await connection.scalar(
+                text(
+                    "SELECT has_function_privilege(current_user, :function, 'EXECUTE')"
+                ),
+                {"function": signing_runtime},
+            )
+            extra_platform_access = await connection.scalar(
                 text("""
                 SELECT EXISTS (
                     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
                      WHERE n.nspname = 'request_platform'
+                       AND p.oid::regprocedure::text <> CAST(:permitted AS text)
                        AND has_function_privilege(current_user, p.oid, 'EXECUTE')
                 )
-                """)
+                """),
+                {"permitted": signing_runtime},
             )
-            if platform_access is not False:
+            if signing_access is not True or extra_platform_access is not False:
                 raise RuntimeError("App authentication connection has private platform authority")
             return
         direct_authority = await connection.scalar(

@@ -57,15 +57,13 @@ def test_http_runtime_reads_only_active_appointment_signing_reference(
     try:
         with app_role_conn_factory() as app:
             row = app.execute(
-                "SELECT * FROM "
-                "request_platform.read_active_appointment_option_signing_keyring()"
+                "SELECT * FROM request_platform.read_active_appointment_option_signing_keyring()"
             ).fetchone()
             assert row == (7, 2, secret_id, 3)
 
             with pytest.raises(InsufficientPrivilege):
                 app.execute(
-                    "SELECT * FROM "
-                    "request_platform.read_active_platform_runtime_configuration(%s)",
+                    "SELECT * FROM request_platform.read_active_platform_runtime_configuration(%s)",
                     ("email.delivery",),
                 )
     finally:

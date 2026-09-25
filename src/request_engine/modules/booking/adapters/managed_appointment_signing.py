@@ -72,11 +72,7 @@ class ManagedAppointmentSigningKeyringResolver:
         if reference is None:
             self._cache = None
             return None
-        if (
-            cached is not None
-            and cached.fingerprint == reference.fingerprint
-            and not force_refresh
-        ):
+        if cached is not None and cached.fingerprint == reference.fingerprint and not force_refresh:
             cached.checked_at = now
             return cached.keyring
 
