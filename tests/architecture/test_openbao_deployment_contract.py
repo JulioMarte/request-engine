@@ -44,6 +44,7 @@ def test_production_openbao_reference_is_not_dev_mode_or_root_token_bootstrap() 
 def test_openbao_runtime_and_control_policies_are_separate_and_prefix_bounded() -> None:
     runtime = _text("deploy/openbao/policies/request-engine-runtime.hcl")
     control = _text("deploy/openbao/policies/request-engine-control.hcl")
+    signing = _text("deploy/openbao/policies/request-engine-signing-runtime.hcl")
 
     for policy in (runtime, control):
         assert "request-engine/platform/*" in policy
@@ -58,6 +59,15 @@ def test_openbao_runtime_and_control_policies_are_separate_and_prefix_bounded() 
     assert '"create"' in control
     assert '"update"' in control
     assert '"delete"' in control
+    assert "request-engine/signing/*" in control
+
+    assert "request-engine/signing/*" in signing
+    assert "request-engine/platform/*" not in signing
+    assert "request-engine/identity-recovery/*" not in signing
+    assert 'capabilities = ["read"]' in signing
+    assert '"create"' not in signing
+    assert '"update"' not in signing
+    assert '"delete"' not in signing
 
 
 def test_reusable_e2e_secrets_profile_certifies_openbao_not_hashicorp_vault() -> None:
