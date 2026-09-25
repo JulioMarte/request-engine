@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+import request_engine.modules.booking.api as booking_api
 import request_engine.modules.booking.api.live_capacity as booking_live_capacity
 import request_engine.modules.booking.api.onboarding as booking_onboarding
 import request_engine.modules.booking.api.operational_schedule as booking_operational_schedule
@@ -13,10 +14,6 @@ import request_engine.modules.operational_recovery.api as recovery_api
 import request_engine.modules.queue.api as queue_api
 import request_engine.modules.queue.api.onboarding as queue_onboarding
 import request_engine.modules.tenancy.api as tenancy_api
-from request_engine.modules.booking.api import (
-    AppointmentOptionCodec,
-    install_http as install_booking_http,
-)
 from request_engine.modules.booking.api.authority_inspection import (
     build_resource_authority_inspector,
 )
@@ -52,7 +49,7 @@ def install_business_modules(
     actor_resolver: ActorResolver,
     slot_offer_ports: queue_api.QueueSlotOfferHttpPorts | None,
     appointment_option_signing_key: bytes | None = None,
-    appointment_option_codec: AppointmentOptionCodec | None = None,
+    appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
 ) -> None:
@@ -66,7 +63,7 @@ def install_business_modules(
     )
     install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
-    install_booking_http(
+    booking_api.install_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
