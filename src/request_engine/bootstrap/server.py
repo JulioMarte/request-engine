@@ -85,7 +85,9 @@ def create_app() -> FastAPI:
         session_factory=sessions,
         native_identity_authority_id=settings.native_identity_authority_id,
         appointment_option_codec=signing_codec,
-        identity_exchange_fingerprint_key=settings.identity_exchange_fingerprint_key.get_secret_value().encode(),
+        identity_exchange_fingerprint_key=(
+            settings.identity_exchange_fingerprint_key.get_secret_value().encode()
+        ),
         oidc_subject_resolver=oidc,
         identity_link_verifier=identity_link_verifier,
         webauthn_policy=WebAuthnPolicy(
@@ -204,7 +206,15 @@ def create_app() -> FastAPI:
     async def ready() -> JSONResponse:
         try:
             available = await native_authority_ready()
-        except (SQLAlchemyError, OSError, TimeoutError):
+            if signing_resolver is not None:
+                await refresh_managed_signing()
+                available = available and signing_codec.enabled
+        except (
+            AppointmentSigningKeyringUnavailable,
+            SQLAlchemyError,
+            OSError,
+            TimeoutError,
+        ):
             available = False
         return JSONResponse(
             {"status": "ready" if available else "unavailable"},
