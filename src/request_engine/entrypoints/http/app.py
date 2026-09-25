@@ -19,6 +19,7 @@ from request_engine.entrypoints.http.operator_resolution import (
     OperatorCapabilitySource,
 )
 from request_engine.entrypoints.http.security import build_identity_principal_resolver
+from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.tenancy.api import build_principal_authority_reader
 from request_engine.platform.db.agent_budget_enforcer import PostgresAgentBudgetEnforcer
@@ -88,6 +89,7 @@ def create_app(
     actor_resolver: ActorResolver,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
+    appointment_option_codec: AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
     operator_actor_resolver: OperatorActorResolver | None = None,
@@ -120,12 +122,12 @@ def create_app(
     """
 
     signing_key = appointment_option_signing_key
-    if signing_key is None:
+    if appointment_option_codec is None and signing_key is None:
         configured_key = os.environ.get(_APPOINTMENT_OPTION_SIGNING_KEY_ENV)
         if configured_key is None:
             raise RuntimeError(
                 f"{_APPOINTMENT_OPTION_SIGNING_KEY_ENV} must be configured when no signing key "
-                "is supplied explicitly"
+                "or codec is supplied explicitly"
             )
         signing_key = configured_key.encode("utf-8")
     identity_key = identity_exchange_fingerprint_key
@@ -191,6 +193,7 @@ def create_app(
         actor_resolver=execution_actor_resolver,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=signing_key,
+        appointment_option_codec=appointment_option_codec,
         identity_exchange_fingerprint_key=identity_key,
         identity_link_verifier=identity_link_verifier,
     )
@@ -209,6 +212,7 @@ def create_authenticated_app(
     subject_resolver: HttpSubjectResolver,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
+    appointment_option_codec: AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
     operator_actor_resolver: OperatorActorResolver | None = None,
@@ -225,6 +229,7 @@ def create_authenticated_app(
         actor_resolver=actor_resolver,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=appointment_option_signing_key,
+        appointment_option_codec=appointment_option_codec,
         identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
         tenant_capability_policy=tenant_capability_policy,
         operator_actor_resolver=operator_actor_resolver,
@@ -238,6 +243,7 @@ def create_native_app(
     native_identity_authority_id: UUID,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
+    appointment_option_codec: AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
     operator_actor_resolver: OperatorActorResolver | None = None,
@@ -299,6 +305,7 @@ def create_native_app(
         ),
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=appointment_option_signing_key,
+        appointment_option_codec=appointment_option_codec,
         identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
         tenant_capability_policy=tenant_capability_policy,
         operator_actor_resolver=operator_actor_resolver,
