@@ -245,6 +245,15 @@ class ReloadableSignedAppointmentOptionCodec:
         with self._lock:
             return self._delegate is not None
 
+    def replace_signing_key(self, signing_key: bytes) -> None:
+        replacement = SignedAppointmentOptionCodec(
+            signing_key,
+            ttl=self._ttl,
+            now=self._now,
+        )
+        with self._lock:
+            self._delegate = replacement
+
     def replace_keyring(self, keyring: AppointmentOptionKeyring) -> None:
         accepted = keyring.accepted_keys(now=self._now())
         active = accepted.get(keyring.active_key_id)
