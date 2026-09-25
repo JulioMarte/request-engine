@@ -21,7 +21,7 @@ Status: **implementation handoff; P7 is not delivered or production-certified**
 > P7-F runtime resolver/hot reload/env cutover implemented; black-box hot-reload, poll convergence and SMTP-env-free managed delivery proven
 > P7-G Communications integration              implemented
 > P7-H OIDC administration                     pending
-> P7-I signing key lifecycle                   partial: appointment-option key IDs + retiring-key verification overlap implemented; governed OpenBao-backed runtime keyring/rotation command pending
+> P7-I signing key lifecycle                   implemented for appointment-option HMAC: governed keyring create/rotate, OpenBao signing-only runtime resolution, retiring-key overlap and poll-based hot reload; exact-head CI revalidation pending
 > P7-J readiness projection                    implemented for durable SMTP + deployment fence/secret-store/recovery-delivery/OIDC facts; backup/restore evidence awaits P7-K
 > P7-K backup/restore/clone fencing            tooling implemented: encrypted PostgreSQL+OpenBao bundle, explicit schedule/retention, fenced restore evidence, clone fence proven; clean-environment restore drill + RPO/RTO acceptance pending
 > ```
@@ -154,14 +154,18 @@ Still open and required before the corresponding slice is complete:
   blockers for the current P7 configuration readiness contract.
 - P7-H: governed OIDC provider administration (no client secret while no current
   flow needs one).
-- P7-I: appointment-option HMAC now has explicit active key IDs and
-  retiring-key verification overlap at the codec boundary. Legitimate
-  short-lived tokens survive rotation while the retiring key is accepted and
-  fail once it is removed. Remaining work is the governed runtime keyring source
-  and rotation/retirement command through the platform secret-store boundary.
-  The identity-exchange fingerprint key is intentionally not treated as the same
-  key family because it contributes to persisted equality fingerprints and
-  requires an explicit migration strategy rather than blind replacement.
+- P7-I: appointment-option HMAC now has explicit active key IDs, bounded
+  retiring-key verification overlap, governed keyring create/rotate commands,
+  an ACTIVE PostgreSQL runtime reference, and a dedicated signing-only OpenBao
+  boundary. The public HTTP process hot-reloads the governed keyring by polling
+  PostgreSQL truth and fails closed if an ACTIVE managed keyring cannot be
+  resolved; the legacy bootstrap key is used only when no managed ACTIVE
+  keyring exists. Current-product CI now executes the codec, keyring, managed
+  resolver and runtime-projection proofs instead of allowing them to remain
+  dormant. The identity-exchange fingerprint key is intentionally not treated
+  as the same key family because it contributes to persisted equality
+  fingerprints and requires an explicit migration strategy rather than blind
+  replacement.
 - P7-K: clone fencing is implemented fail-closed at production composition
   boundaries and proven black-box by the `clone-fence` Docker E2E suite: SMTP
   recovery and ordinary outbox traffic do not reach Mailpit/event-sink while
