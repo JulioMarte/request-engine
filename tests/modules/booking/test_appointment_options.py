@@ -13,14 +13,14 @@ from request_engine.modules.booking.adapters.appointment_options import (
     SignedAppointmentOptionCodec,
 )
 from request_engine.modules.booking.application.errors import AppointmentOptionInvalid
+from request_engine.modules.booking.contracts.appointments import (
+    AppointmentSlot,
+    ResourceChoice,
+)
 from request_engine.platform.security.appointment_option_keyring import (
     create_appointment_option_keyring,
     parse_appointment_option_keyring,
     rotate_appointment_option_keyring,
-)
-from request_engine.modules.booking.contracts.appointments import (
-    AppointmentSlot,
-    ResourceChoice,
 )
 
 _NOW = datetime(2030, 1, 7, 12, tzinfo=UTC)
