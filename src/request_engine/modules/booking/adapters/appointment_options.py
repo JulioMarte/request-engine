@@ -240,6 +240,11 @@ class ReloadableSignedAppointmentOptionCodec:
             )
         )
 
+    @property
+    def enabled(self) -> bool:
+        with self._lock:
+            return self._delegate is not None
+
     def replace_keyring(self, keyring: AppointmentOptionKeyring) -> None:
         accepted = keyring.accepted_keys(now=self._now())
         active = accepted.get(keyring.active_key_id)
