@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -186,10 +186,8 @@ def create_app() -> FastAPI:
         finally:
             if signing_task is not None:
                 signing_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await signing_task
-                except asyncio.CancelledError:
-                    pass
             try:
                 if identity_link_verifier is not None:
                     await identity_link_verifier.aclose()
