@@ -124,13 +124,9 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
         if allowed is not True:
             raise RuntimeError("Platform HTTP database login violates least-privilege requirements")
         if group == "request_engine_app":
-            signing_runtime = (
-                "request_platform.read_active_appointment_option_signing_keyring()"
-            )
+            signing_runtime = "request_platform.read_active_appointment_option_signing_keyring()"
             signing_access = await connection.scalar(
-                text(
-                    "SELECT has_function_privilege(current_user, :function, 'EXECUTE')"
-                ),
+                text("SELECT has_function_privilege(current_user, :function, 'EXECUTE')"),
                 {"function": signing_runtime},
             )
             extra_platform_access = await connection.scalar(
