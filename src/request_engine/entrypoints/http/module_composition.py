@@ -14,12 +14,12 @@ import request_engine.modules.queue.api as queue_api
 import request_engine.modules.queue.api.onboarding as queue_onboarding
 import request_engine.modules.tenancy.api as tenancy_api
 from request_engine.modules.booking.api import install_http as install_booking_http
-from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.booking.api.authority_inspection import (
     build_resource_authority_inspector,
 )
 from request_engine.modules.booking.api.copilot import build_copilot_booking_reader
 from request_engine.modules.booking.api.recovery import build_recovery_booking_port
+from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.catalog.api import install_http as install_catalog_http
 from request_engine.modules.catalog.api.copilot import build_copilot_catalog_reader
 from request_engine.modules.communications.api import install_http as install_communications_http
