@@ -353,6 +353,7 @@ def install_platform_configuration_http(
     write_session_factory: SessionFactory,
     actor_resolver: PlatformActorResolver,
     secret_store: PlatformSecretStore | None = None,
+    appointment_signing_secret_store: PlatformSecretStore | None = None,
     smtp_validator: SmtpConfigurationValidator | None = None,
     smtp_tester: SmtpProviderTester | None = None,
     deployment_readiness: PlatformDeploymentReadinessFacts | None = None,
@@ -360,12 +361,21 @@ def install_platform_configuration_http(
     reader = PostgresPlatformConfigurationReader(read_session_factory)
     readiness_reader = PostgresPlatformReadinessReader(read_session_factory)
     commands = PostgresPlatformConfigurationCommands(write_session_factory)
+    secret_mutations = PostgresPlatformSecretMutations(write_session_factory)
     secret_service = (
         None
         if secret_store is None
         else PlatformSecretAdministrationService(
-            mutations=PostgresPlatformSecretMutations(write_session_factory),
+            mutations=secret_mutations,
             store=secret_store,
+        )
+    )
+    appointment_signing_secret_service = (
+        None
+        if appointment_signing_secret_store is None
+        else PlatformSecretAdministrationService(
+            mutations=secret_mutations,
+            store=appointment_signing_secret_store,
         )
     )
     provider_candidate_reader = PostgresProviderCandidateReader(write_session_factory)
@@ -375,6 +385,7 @@ def install_platform_configuration_http(
         commands=commands,
         secret_resolver=provider_secret_resolver,
         secret_store=secret_store,
+        appointment_signing_secret_store=appointment_signing_secret_store,
         smtp_validator=smtp_validator or SmtplibConfigurationValidator(),
     )
     provider_test = PlatformProviderTestService(
@@ -482,9 +493,9 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> SecretMutationView:
         require_platform_configuration_step_up(actor)
-        if secret_service is None:
+        if appointment_signing_secret_service is None:
             raise PlatformSecretUnavailable()
-        result = await secret_service.create(
+        result = await appointment_signing_secret_service.create(
             actor,
             CreatePlatformSecret(
                 purpose="security.appointment_option_signing",
@@ -503,9 +514,9 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> SecretMutationView:
         require_platform_configuration_step_up(actor)
-        if secret_service is None:
+        if appointment_signing_secret_service is None:
             raise PlatformSecretUnavailable()
-        result = await secret_service.rotate_transformed(
+        result = await appointment_signing_secret_service.rotate_transformed(
             actor,
             RotatePlatformSecretIntent(
                 binding_id=binding_id,
@@ -529,9 +540,15 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> SecretMutationView:
         require_platform_configuration_step_up(actor)
-        if secret_service is None:
+        metadata = await reader.get_secret_binding(actor, binding_id)
+        selected_secret_service = (
+            appointment_signing_secret_service
+            if metadata.purpose == "security.appointment_option_signing"
+            else secret_service
+        )
+        if selected_secret_service is None:
             raise PlatformSecretUnavailable()
-        result = await secret_service.revoke(
+        result = await selected_secret_service.revoke(
             actor,
             RevokePlatformSecret(
                 binding_id=binding_id,
