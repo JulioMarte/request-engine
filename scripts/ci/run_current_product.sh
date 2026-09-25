@@ -333,6 +333,9 @@ uv run pytest \
   tests/unit/scripts/test_recovery_bundle.py \
   tests/unit/scripts/test_render_recovery_backup_systemd.py \
   tests/modules/booking/test_appointment_options.py \
+  tests/unit/platform/security/test_appointment_option_keyring.py \
+  tests/unit/test_managed_appointment_signing.py \
+  tests/db/test_appointment_signing_runtime_projection.py \
   -q --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/p7-operational-safety.xml"
 
