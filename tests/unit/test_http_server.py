@@ -65,3 +65,30 @@ def test_settings_hide_secrets_and_default_to_native_only() -> None:
     assert settings.oidc_enabled is False
     assert "test-only" not in repr(settings)
     assert "a" * 64 not in repr(settings)
+
+
+
+@pytest.mark.usefixtures("configured_environment")
+def test_managed_signing_allows_legacy_appointment_key_to_be_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY")
+    monkeypatch.setenv(
+        "REQUEST_ENGINE_APPOINTMENT_SIGNING_OPENBAO_ADDR",
+        "http://127.0.0.1:18100",
+    )
+
+    app = create_app()
+
+    assert app is not None
+
+
+@pytest.mark.usefixtures("configured_environment")
+def test_appointment_signing_fails_closed_without_legacy_or_managed_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY")
+    monkeypatch.delenv("REQUEST_ENGINE_APPOINTMENT_SIGNING_OPENBAO_ADDR", raising=False)
+
+    with pytest.raises(RuntimeError, match="appointment option signing requires"):
+        create_app()
