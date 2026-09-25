@@ -23,13 +23,13 @@ from request_engine.modules.platform_configuration.application.webhook import (
     WebhookConfiguration,
     parse_webhook_configuration,
 )
-from request_engine.platform.security.appointment_option_keyring import (
-    parse_appointment_option_keyring,
-)
 from request_engine.platform.secrets.platform_store import (
     PlatformSecretNotFound,
     PlatformSecretStore,
     PlatformSecretStoreUnavailable,
+)
+from request_engine.platform.security.appointment_option_keyring import (
+    parse_appointment_option_keyring,
 )
 from request_engine.platform.security.platform_context import PlatformActorContext
 
