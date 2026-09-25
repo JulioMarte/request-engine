@@ -21,11 +21,7 @@ from request_engine.modules.platform_configuration.application.secrets import (
     RotatePlatformSecretIntent,
     SecretMutationOperation,
 )
-from request_engine.platform.secrets.platform_store import (
-    PlatformSecretConflict as StoreSecretConflict,
-    PlatformSecretMetadata,
-    PlatformSecretNotFound,
-)
+from request_engine.platform.secrets import platform_store
 from request_engine.platform.security.appointment_option_keyring import (
     create_appointment_option_keyring,
     parse_appointment_option_keyring,
@@ -120,7 +116,7 @@ class FakeStore:
     def __init__(self) -> None:
         self.write_conflict = False
         self.current_value: str | None = None
-        self.metadata_value: PlatformSecretMetadata | None = None
+        self.metadata_value: platform_store.PlatformSecretMetadata | None = None
         self.writes: list[tuple[UUID, str, int | None, UUID | None]] = []
         self.revoked: list[UUID] = []
 
@@ -131,12 +127,12 @@ class FakeStore:
         value: str,
         expected_version: int | None,
         operation_id: UUID | None = None,
-    ) -> PlatformSecretMetadata:
+    ) -> platform_store.PlatformSecretMetadata:
         self.writes.append((secret_id, value, expected_version, operation_id))
         if self.write_conflict:
-            raise StoreSecretConflict()
+            raise platform_store.PlatformSecretConflict()
         version = 1 if expected_version is None else expected_version + 1
-        return PlatformSecretMetadata(
+        return platform_store.PlatformSecretMetadata(
             secret_id=secret_id,
             version=version,
             operation_id=operation_id,
@@ -147,9 +143,9 @@ class FakeStore:
             raise AssertionError("unexpected plaintext resolve")
         return self.current_value
 
-    async def metadata(self, *, secret_id: UUID) -> PlatformSecretMetadata:
+    async def metadata(self, *, secret_id: UUID) -> platform_store.PlatformSecretMetadata:
         if self.metadata_value is None:
-            raise PlatformSecretNotFound()
+            raise platform_store.PlatformSecretNotFound()
         return self.metadata_value
 
     async def revoke(self, *, secret_id: UUID) -> None:
@@ -212,7 +208,7 @@ async def test_rotation_recovers_ambiguous_prior_write_only_with_same_marker() -
     mutations = FakeMutations(operation)
     store = FakeStore()
     store.write_conflict = True
-    store.metadata_value = PlatformSecretMetadata(
+    store.metadata_value = platform_store.PlatformSecretMetadata(
         secret_id=operation.secret_id,
         version=8,
         operation_id=operation.operation_id,
@@ -240,7 +236,7 @@ async def test_rotation_rejects_cas_conflict_owned_by_different_operation() -> N
     mutations = FakeMutations(operation)
     store = FakeStore()
     store.write_conflict = True
-    store.metadata_value = PlatformSecretMetadata(
+    store.metadata_value = platform_store.PlatformSecretMetadata(
         secret_id=operation.secret_id,
         version=8,
         operation_id=uuid4(),
