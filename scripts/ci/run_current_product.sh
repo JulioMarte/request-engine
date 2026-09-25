@@ -322,6 +322,20 @@ uv run pytest \
   -q --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/platform-secret-store.xml"
 
+# P7 operational safety and signing-key overlap are current product guarantees.
+# Execute their mapped proofs in this gate so clone fencing, readiness,
+# recovery-package generation and retiring-key verification cannot become
+# dormant evidence that exists in the repository but never runs.
+uv run pytest \
+  tests/modules/platform/test_outbound_fence.py \
+  tests/architecture/test_e2e_platform_contract.py \
+  tests/modules/platform_configuration/test_readiness_deployment_facts.py \
+  tests/unit/scripts/test_recovery_bundle.py \
+  tests/unit/scripts/test_render_recovery_backup_systemd.py \
+  tests/modules/booking/test_appointment_options.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/p7-operational-safety.xml"
+
 # A proof-map entry counts only when its test actually ran in this gate. This
 # prevents dormant legacy files from silently satisfying current guarantees.
 uv run python scripts/ci/validate_current_proof_execution.py \
