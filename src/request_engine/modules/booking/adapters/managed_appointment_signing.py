@@ -7,14 +7,14 @@ from typing import Protocol
 from request_engine.modules.booking.adapters.appointment_signing_reference import (
     ActiveAppointmentSigningReference,
 )
-from request_engine.platform.security.appointment_option_keyring import (
-    AppointmentOptionKeyring,
-    parse_appointment_option_keyring,
-)
 from request_engine.platform.secrets.platform_store import (
     PlatformSecretNotFound,
     PlatformSecretStore,
     PlatformSecretStoreUnavailable,
+)
+from request_engine.platform.security.appointment_option_keyring import (
+    AppointmentOptionKeyring,
+    parse_appointment_option_keyring,
 )
 
 
