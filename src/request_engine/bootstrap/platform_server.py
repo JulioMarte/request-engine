@@ -10,6 +10,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from request_engine.bootstrap.appointment_signing import (
+    AppointmentSigningSecretStoreSettings,
+    build_appointment_signing_secret_store,
+)
 from request_engine.bootstrap.outbound_fence import OutboundSideEffectFence
 from request_engine.bootstrap.platform_secrets import build_platform_secret_store
 from request_engine.bootstrap.recovery_delivery import (
@@ -204,6 +208,9 @@ def create_app() -> FastAPI:
     outbound_fence = OutboundSideEffectFence.from_environment()
     bootstrap_native_recovery_messenger = build_native_recovery_messenger(recovery_settings)
     platform_secret_store = build_platform_secret_store()
+    appointment_signing_secret_store = build_appointment_signing_secret_store(
+        AppointmentSigningSecretStoreSettings()
+    )
     engines = tuple(
         create_postgres_engine(url.get_secret_value())
         for url in (
@@ -248,6 +255,7 @@ def create_app() -> FastAPI:
         recovery_delivery=delivery,
         native_recovery_messenger=native_recovery_messenger,
         platform_secret_store=platform_secret_store,
+        appointment_signing_secret_store=appointment_signing_secret_store,
         smtp_validator=outbound_fence.smtp_validator(SmtplibConfigurationValidator()),
         smtp_tester=outbound_fence.smtp_tester(SmtplibProviderTester()),
         deployment_readiness=PlatformDeploymentReadinessFacts(
