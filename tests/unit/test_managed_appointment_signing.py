@@ -11,12 +11,12 @@ from request_engine.modules.booking.adapters.managed_appointment_signing import 
     AppointmentSigningKeyringUnavailable,
     ManagedAppointmentSigningKeyringResolver,
 )
-from request_engine.platform.security.appointment_option_keyring import (
-    create_appointment_option_keyring,
-)
 from request_engine.platform.secrets.platform_store import (
     PlatformSecretMetadata,
     PlatformSecretNotFound,
+)
+from request_engine.platform.security.appointment_option_keyring import (
+    create_appointment_option_keyring,
 )
 
 pytestmark = pytest.mark.unit
