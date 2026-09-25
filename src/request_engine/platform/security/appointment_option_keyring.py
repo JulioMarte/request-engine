@@ -43,9 +43,9 @@ class AppointmentOptionKeyring:
         observed_at = _aware(now or datetime.now(UTC), "keyring clock")
         accepted: dict[str, bytes] = {}
         for item in self.keys:
-            if item.key_id == self.active_key_id:
-                accepted[item.key_id] = item.key
-            elif item.verify_until is not None and item.verify_until > observed_at:
+            if item.key_id == self.active_key_id or (
+                item.verify_until is not None and item.verify_until > observed_at
+            ):
                 accepted[item.key_id] = item.key
         return accepted
 
