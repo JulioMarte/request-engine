@@ -52,6 +52,7 @@ Enable KV v2 at `secret/` and load the bounded policies:
 bao secrets enable -path=secret -version=2 kv
 bao policy write request-engine-runtime policies/request-engine-runtime.hcl
 bao policy write request-engine-control policies/request-engine-control.hcl
+bao policy write request-engine-signing-runtime policies/request-engine-signing-runtime.hcl
 bao auth enable approle
 ```
 
@@ -59,6 +60,15 @@ Create separate AppRoles for runtime read and control-plane mutation. The sample
 Proxy config names `request-engine-runtime`; deployments that expose mutation
 through a separate control-plane process should run a second Proxy/role with the
 control policy rather than giving one super-role to every Request Engine process.
+
+Managed appointment-option signing uses a third, narrower trust boundary. The
+public HTTP process must use a dedicated Proxy/AppRole carrying only
+`request-engine-signing-runtime`, which can read
+`request-engine/signing/*` and nothing under `platform/*` or
+`identity-recovery/*`. Configure that process with the
+`REQUEST_ENGINE_APPOINTMENT_SIGNING_*` settings. The private control plane may
+point the same signing settings at its control Proxy, whose policy is permitted
+to create/update that isolated signing prefix.
 
 Issue SecretIDs with response wrapping and deliver the wrapping token into
 `./auth/secret-id`; place the RoleID in `./auth/role-id`. Proxy consumes and
