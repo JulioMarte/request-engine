@@ -20,7 +20,7 @@ class HttpSettings(BaseSettings):
 
     database_url: SecretStr
     native_identity_authority_id: UUID
-    appointment_option_signing_key: SecretStr
+    appointment_option_signing_key: SecretStr | None = None
     identity_exchange_fingerprint_key: SecretStr
     webauthn_decoy_key: SecretStr
     webauthn_rp_id: str = "localhost"
@@ -52,8 +52,8 @@ class HttpSettings(BaseSettings):
         "webauthn_decoy_key",
     )
     @classmethod
-    def validate_signing_key(cls, value: SecretStr) -> SecretStr:
-        if len(value.get_secret_value().encode()) < 32:
+    def validate_signing_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value().encode()) < 32:
             raise ValueError("signing keys must contain at least 32 bytes")
         return value
 
