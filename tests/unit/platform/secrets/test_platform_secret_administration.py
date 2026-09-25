@@ -21,17 +21,15 @@ from request_engine.modules.platform_configuration.application.secrets import (
     RotatePlatformSecretIntent,
     SecretMutationOperation,
 )
+from request_engine.platform.secrets.platform_store import (
+    PlatformSecretConflict as StoreSecretConflict,
+    PlatformSecretMetadata,
+    PlatformSecretNotFound,
+)
 from request_engine.platform.security.appointment_option_keyring import (
     create_appointment_option_keyring,
     parse_appointment_option_keyring,
     rotate_appointment_option_keyring,
-)
-from request_engine.platform.secrets.platform_store import (
-    PlatformSecretConflict as StoreSecretConflict,
-)
-from request_engine.platform.secrets.platform_store import (
-    PlatformSecretMetadata,
-    PlatformSecretNotFound,
 )
 from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.context import PrincipalKind
