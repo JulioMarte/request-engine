@@ -61,12 +61,14 @@ class PlatformProviderValidationService:
         commands: ConfigurationCommands,
         secret_resolver: ProviderSecretResolver,
         secret_store: PlatformSecretStore | None,
+        appointment_signing_secret_store: PlatformSecretStore | None = None,
         smtp_validator: SmtpConfigurationValidator,
     ) -> None:
         self._reader = reader
         self._commands = commands
         self._secret_resolver = secret_resolver
         self._secret_store = secret_store
+        self._appointment_signing_secret_store = appointment_signing_secret_store
         self._smtp_validator = smtp_validator
 
     async def validate(
@@ -180,7 +182,10 @@ class PlatformProviderValidationService:
             candidate,
             purpose="security.appointment_option_signing",
         )
-        value = await self._resolve_secret_value(secret)
+        value = await self._resolve_secret_value(
+            secret,
+            store=self._appointment_signing_secret_store,
+        )
         try:
             parse_appointment_option_keyring(value)
         except ValueError as exc:
@@ -205,11 +210,17 @@ class PlatformProviderValidationService:
             raise PlatformConfigurationProviderInvalid()
         return secret
 
-    async def _resolve_secret_value(self, secret: ProviderSecretReference) -> str:
-        if self._secret_store is None:
+    async def _resolve_secret_value(
+        self,
+        secret: ProviderSecretReference,
+        *,
+        store: PlatformSecretStore | None = None,
+    ) -> str:
+        selected_store = self._secret_store if store is None else store
+        if selected_store is None:
             raise PlatformProviderValidationFailed()
         try:
-            return await self._secret_store.resolve(secret_id=secret.secret_id)
+            return await selected_store.resolve(secret_id=secret.secret_id)
         except PlatformSecretNotFound as exc:
             raise PlatformConfigurationProviderInvalid() from exc
         except PlatformSecretStoreUnavailable as exc:
