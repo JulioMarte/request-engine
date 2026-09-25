@@ -6,7 +6,10 @@ from fastapi import FastAPI, Request, Response
 
 from request_engine.entrypoints.http.capabilities import create_capability_router
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
-from request_engine.entrypoints.http.module_composition import install_business_modules
+from request_engine.entrypoints.http.module_composition import (
+    AppointmentOptionCodec,
+    install_business_modules,
+)
 from request_engine.entrypoints.http.native_auth import create_native_auth_router
 from request_engine.entrypoints.http.native_runtime import (
     OidcAuthRuntime,
@@ -19,7 +22,6 @@ from request_engine.entrypoints.http.operator_resolution import (
     OperatorCapabilitySource,
 )
 from request_engine.entrypoints.http.security import build_identity_principal_resolver
-from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.tenancy.api import build_principal_authority_reader
 from request_engine.platform.db.agent_budget_enforcer import PostgresAgentBudgetEnforcer
