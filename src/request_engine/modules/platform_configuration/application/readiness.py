@@ -45,5 +45,5 @@ def apply_deployment_readiness(
         clone_fence=facts.clone_fence,
         secret_store=facts.secret_store,
         recovery_delivery_source=recovery_delivery_source,
-        oidc=facts.oidc,
+        oidc=readiness.oidc,
     )
