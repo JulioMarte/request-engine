@@ -13,7 +13,6 @@ class DeploymentReconciliationState(StrEnum):
     IN_SYNC = "in_sync"
     DRIFTED = "drifted"
     MISSING = "missing"
-    UNAVAILABLE = "unavailable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +53,10 @@ class DeploymentRecoveryAdapter(Protocol):
     @property
     def provider_kind(self) -> str: ...
 
-    async def inspect_backup(self, target: DeploymentBackupTarget) -> DeploymentBackupState | None: ...
+    async def inspect_backup(
+        self,
+        target: DeploymentBackupTarget,
+    ) -> DeploymentBackupState | None: ...
 
     async def create_backup(
         self,
