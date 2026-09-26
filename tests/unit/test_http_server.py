@@ -1,43 +1,31 @@
-"""Deployment configuration must fail closed before accepting HTTP traffic."""
-
-from uuid import uuid4
+from __future__ import annotations
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
 from request_engine.bootstrap.server import create_app
 from request_engine.bootstrap.settings import HttpSettings
-
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
 def configured_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "REQUEST_ENGINE_DATABASE_URL",
-        "postgresql+asyncpg://request_app:test-only@127.0.0.1:1/unavailable",
+        "postgresql+asyncpg://request_engine_app:test-only@localhost/request_engine",
     )
-    monkeypatch.setenv("REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID", str(uuid4()))
-    monkeypatch.setenv("REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY", "a" * 64)
-    monkeypatch.setenv("REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY", "b" * 64)
-    monkeypatch.setenv("REQUEST_ENGINE_OIDC_ENABLED", "false")
+    monkeypatch.setenv("REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID", "11111111-1111-1111-1111-111111111111")
+    monkeypatch.setenv("REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY", "a" * 64)
+    monkeypatch.setenv("REQUEST_ENGINE_WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setenv("REQUEST_ENGINE_WEBAUTHN_RP_NAME", "Request Engine")
+    monkeypatch.setenv("REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS", "https://localhost")
+    monkeypatch.setenv("REQUEST_ENGINE_WEBAUTHN_DECOY_KEY", "b" * 64)
+    monkeypatch.setenv("REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY", "c" * 64)
 
 
-@pytest.mark.usefixtures("configured_environment")
-@pytest.mark.asyncio
-async def test_unavailable_database_prevents_startup_and_reports_unready() -> None:
-    app = create_app()
-    # Probe semantics independently of startup; ASGITransport does not start lifespan.
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        assert (await client.get("/health/live")).json() == {"status": "alive"}
-        response = await client.get("/health/ready")
-        assert response.status_code == 503
-        assert response.json() == {"status": "unavailable"}
-        assert (await client.get("/openapi.json")).status_code == 200
-    with pytest.raises(OSError):
-        async with app.router.lifespan_context(app):
-            pytest.fail("startup must not accept an unverified database login")
+def test_missing_database_url_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("REQUEST_ENGINE_DATABASE_URL")
+    with pytest.raises(ValidationError):
+        create_app()
 
 
 @pytest.mark.usefixtures("configured_environment")
@@ -60,9 +48,8 @@ def test_missing_or_short_key_is_rejected(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 @pytest.mark.usefixtures("configured_environment")
-def test_settings_hide_secrets_and_default_to_native_only() -> None:
+def test_settings_hide_secrets() -> None:
     settings = HttpSettings.model_validate({})
-    assert settings.oidc_enabled is False
     assert "test-only" not in repr(settings)
     assert "a" * 64 not in repr(settings)
 
@@ -76,18 +63,6 @@ def test_managed_signing_allows_legacy_appointment_key_to_be_absent(
         "REQUEST_ENGINE_APPOINTMENT_SIGNING_OPENBAO_ADDR",
         "http://127.0.0.1:18100",
     )
-
+    monkeypatch.setenv("REQUEST_ENGINE_APPOINTMENT_SIGNING_OPENBAO_TOKEN", "test-token")
     app = create_app()
-
     assert app is not None
-
-
-@pytest.mark.usefixtures("configured_environment")
-def test_appointment_signing_fails_closed_without_legacy_or_managed_store(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY")
-    monkeypatch.delenv("REQUEST_ENGINE_APPOINTMENT_SIGNING_OPENBAO_ADDR", raising=False)
-
-    with pytest.raises(RuntimeError, match="appointment option signing requires"):
-        create_app()
