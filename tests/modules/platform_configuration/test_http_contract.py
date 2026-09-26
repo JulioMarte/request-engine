@@ -14,6 +14,9 @@ from request_engine.modules.platform_configuration.api.http import (
     require_platform_configuration_step_up,
     validate_stage_configuration_contract,
 )
+from request_engine.modules.platform_configuration.application.configuration import (
+    PlatformConfigurationInvalid,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.context import PrincipalKind
@@ -218,9 +221,5 @@ def test_stage_contract_accepts_governed_oidc_without_secret_binding() -> None:
 def test_stage_contract_fails_closed_for_invalid_oidc_shape(
     body: StageConfigurationBody,
 ) -> None:
-    from request_engine.modules.platform_configuration.application.configuration import (
-        PlatformConfigurationInvalid,
-    )
-
     with pytest.raises(PlatformConfigurationInvalid):
         validate_stage_configuration_contract("identity.oidc", body)
