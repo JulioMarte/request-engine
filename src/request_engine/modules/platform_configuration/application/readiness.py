@@ -15,7 +15,7 @@ class PlatformReadiness:
     clone_fence: str = "unknown"
     secret_store: str = "unknown"
     recovery_delivery_source: str = "unknown"
-    oidc: str = "optional"
+    oidc: str = "unconfigured"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +32,13 @@ def apply_deployment_readiness(
     readiness: PlatformReadiness,
     facts: PlatformDeploymentReadinessFacts,
 ) -> PlatformReadiness:
-    """Merge deployment diagnostics without changing durable authorization state."""
+    """Merge deployment diagnostics without changing durable authorization state.
+
+    PostgreSQL owns whether managed OIDC is configured, healthy, or degraded.
+    Deployment policy may classify only the durable ``unconfigured`` state as
+    optional. It must never hide an active managed provider or a broken runtime
+    projection.
+    """
 
     if readiness.managed_smtp_source == "managed":
         recovery_delivery_source = "managed"
@@ -40,10 +46,12 @@ def apply_deployment_readiness(
         recovery_delivery_source = "bootstrap"
     else:
         recovery_delivery_source = "unconfigured"
+
+    oidc = facts.oidc if readiness.oidc == "unconfigured" else readiness.oidc
     return replace(
         readiness,
         clone_fence=facts.clone_fence,
         secret_store=facts.secret_store,
         recovery_delivery_source=recovery_delivery_source,
-        oidc=readiness.oidc,
+        oidc=oidc,
     )
