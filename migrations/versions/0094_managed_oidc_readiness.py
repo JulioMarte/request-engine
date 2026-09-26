@@ -22,6 +22,15 @@ _SIGNATURE = "request_platform.read_platform_readiness()"
 
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
+    op.execute(
+        f"""
+        GRANT SELECT (
+            id, kind, issuer_or_environment, status, configuration_ref
+        )
+        ON request_engine.identity_authorities
+        TO {_READ_DEFINER};
+        """
+    )
     op.execute(f"DROP FUNCTION {_SIGNATURE}")
     op.execute(
         r"""
@@ -60,11 +69,28 @@ def upgrade() -> None:
                 LIMIT 1
             ),
             active_oidc AS (
-                SELECT config.revision
+                SELECT
+                    config.revision,
+                    config.configuration ->> 'issuer' AS issuer,
+                    config.configuration ->> 'jwks_uri' AS jwks_uri,
+                    config.configuration ->> 'audience' AS audience
                 FROM request_engine.platform_configuration_revisions AS config
                 WHERE config.configuration_kind = 'identity.oidc'
                   AND config.provider_kind = 'oidc'
                   AND config.state = 'active'
+                LIMIT 1
+            ),
+            projected_oidc AS (
+                SELECT authority.id
+                FROM active_oidc AS config
+                JOIN request_engine.identity_authorities AS authority
+                  ON authority.kind = 'oidc'
+                 AND authority.issuer_or_environment = config.issuer
+                 AND authority.status = 'active'
+                 AND authority.configuration_ref::jsonb ->> 'jwks_uri' = config.jwks_uri
+                 AND authority.configuration_ref::jsonb ->> 'audience' = config.audience
+                 AND (authority.configuration_ref::jsonb ->> 'managed_configuration_revision')::bigint
+                     = config.revision
                 LIMIT 1
             ),
             latest_test AS (
@@ -85,10 +111,15 @@ def upgrade() -> None:
                 latest.outcome,
                 latest.created_at,
                 active.secret_binding_id IS NOT NULL,
-                CASE WHEN oidc.revision IS NULL THEN 'unconfigured' ELSE 'managed' END
+                CASE
+                    WHEN oidc.revision IS NULL THEN 'unconfigured'
+                    WHEN projected.id IS NULL THEN 'degraded'
+                    ELSE 'managed'
+                END
             FROM (SELECT 1) AS singleton
             LEFT JOIN active_smtp AS active ON true
             LEFT JOIN active_oidc AS oidc ON true
+            LEFT JOIN projected_oidc AS projected ON true
             LEFT JOIN latest_test AS latest ON true;
         END
         $function$;
