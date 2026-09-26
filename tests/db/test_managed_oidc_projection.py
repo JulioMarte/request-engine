@@ -96,7 +96,7 @@ def _stage_oidc(
               %s
           )
         """,
-        (configuration, revision_marker * 64, revision_marker.upper() * 64),
+        (configuration, (revision_marker * 64)[:64], (revision_marker.upper() * 64)[:64]),
     ).fetchone()
     assert row is not None
     return UUID(str(row[0])), int(row[1]), str(row[2])
@@ -110,7 +110,7 @@ def _validate(conn: PgConnection, revision: int, marker: str) -> None:
               'identity.oidc', %s, NULL, NULL, %s, %s
           )
         """,
-        (revision, marker * 64, marker.upper() * 64),
+        (revision, (marker * 64)[:64], (marker.upper() * 64)[:64]),
     ).fetchone()
     assert row is not None
     assert row[2] == "validated"
@@ -133,8 +133,8 @@ def _activate(
         (
             revision,
             expected_active_revision,
-            marker * 64,
-            marker.upper() * 64,
+            (marker * 64)[:64],
+            (marker.upper() * 64)[:64],
         ),
     ).fetchone()
     assert row is not None
@@ -149,7 +149,7 @@ def _disable(conn: PgConnection, revision: int, marker: str) -> str:
               'identity.oidc', %s, %s, %s
           )
         """,
-        (revision, marker * 64, marker.upper() * 64),
+        (revision, (marker * 64)[:64], (marker.upper() * 64)[:64]),
     ).fetchone()
     assert row is not None
     return str(row[2])
