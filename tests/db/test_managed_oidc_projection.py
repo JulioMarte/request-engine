@@ -7,6 +7,7 @@ existing IdentityBinding rows.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -24,6 +25,10 @@ pytestmark = [
     pytest.mark.invariant,
     pytest.mark.security,
 ]
+
+
+def _digest(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
 def _create_actor(admin_conn: PgConnection, capabilities: Iterable[str]) -> tuple[UUID, int]:
@@ -96,7 +101,7 @@ def _stage_oidc(
               %s
           )
         """,
-        (configuration, (revision_marker * 64)[:64], (revision_marker.upper() * 64)[:64]),
+        (configuration, _digest(f"stage-key:{revision_marker}"), _digest(f"stage-intent:{revision_marker}")),
     ).fetchone()
     assert row is not None
     return UUID(str(row[0])), int(row[1]), str(row[2])
@@ -110,7 +115,7 @@ def _validate(conn: PgConnection, revision: int, marker: str) -> None:
               'identity.oidc', %s, NULL, NULL, %s, %s
           )
         """,
-        (revision, (marker * 64)[:64], (marker.upper() * 64)[:64]),
+        (revision, _digest(f"validate-key:{marker}"), _digest(f"validate-intent:{marker}")),
     ).fetchone()
     assert row is not None
     assert row[2] == "validated"
@@ -133,8 +138,8 @@ def _activate(
         (
             revision,
             expected_active_revision,
-            (marker * 64)[:64],
-            (marker.upper() * 64)[:64],
+            _digest(f"activate-key:{marker}"),
+            _digest(f"activate-intent:{marker}"),
         ),
     ).fetchone()
     assert row is not None
@@ -149,7 +154,7 @@ def _disable(conn: PgConnection, revision: int, marker: str) -> str:
               'identity.oidc', %s, %s, %s
           )
         """,
-        (revision, (marker * 64)[:64], (marker.upper() * 64)[:64]),
+        (revision, _digest(f"disable-key:{marker}"), _digest(f"disable-intent:{marker}")),
     ).fetchone()
     assert row is not None
     return str(row[2])
@@ -214,8 +219,6 @@ def test_managed_oidc_projection_tracks_replace_and_disable(
     assert readiness is not None
     assert readiness[6] == "managed"
 
-    # Readiness must expose projection drift rather than trusting the control
-    # revision alone. This simulates a broken/disabled runtime projection.
     admin_conn.execute(
         """
         UPDATE request_engine.identity_authorities
