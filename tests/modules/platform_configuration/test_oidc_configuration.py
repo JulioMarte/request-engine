@@ -8,6 +8,7 @@ from request_engine.modules.platform_configuration.application.configuration imp
     ConfigurationMutationResult,
     ConfigurationRevision,
     PlatformConfigurationProviderInvalid,
+    PlatformProviderValidationFailed,
     ValidateConfiguration,
 )
 from request_engine.modules.platform_configuration.application.oidc import (
@@ -174,6 +175,7 @@ async def test_oidc_revision_rejects_secret_binding() -> None:
     "status,expected_exception",
     [
         (OidcValidationStatus.INVALID, PlatformConfigurationProviderInvalid),
+        (OidcValidationStatus.UNAVAILABLE, PlatformProviderValidationFailed),
     ],
 )
 @pytest.mark.asyncio
@@ -196,6 +198,6 @@ async def test_oidc_provider_validation_rejects_invalid_external_jwks(
             cast(PlatformActorContext, object()),
             configuration_kind=OIDC_CONFIGURATION_KIND,
             revision=3,
-            idempotency_key="oidc-invalid-jwks",
+            idempotency_key=f"oidc-{status.value}-jwks",
         )
     assert validator.configuration is not None
