@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from enum import StrEnum
+from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 from request_engine.modules.platform_configuration.application.configuration import (
@@ -11,6 +12,25 @@ from request_engine.platform.security.oidc_auth import validate_https_endpoint
 
 OIDC_CONFIGURATION_KIND = "identity.oidc"
 OIDC_PROVIDER_KIND = "oidc"
+
+
+class OidcValidationStatus(StrEnum):
+    VALID = "valid"
+    INVALID = "invalid"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True, slots=True)
+class OidcValidationResult:
+    status: OidcValidationStatus
+    detail_code: str
+
+
+class OidcConfigurationValidator(Protocol):
+    async def validate(
+        self,
+        configuration: "OidcProviderConfiguration",
+    ) -> OidcValidationResult: ...
 
 
 @dataclass(frozen=True, slots=True)
