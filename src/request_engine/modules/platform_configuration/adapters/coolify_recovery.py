@@ -18,7 +18,12 @@ class CoolifyRecoveryAdapter:
         api_token: str,
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._base_url = base_url.rstrip("/")
+        url = httpx.URL(base_url.rstrip("/"))
+        if url.scheme != "https" or not url.host or url.query or url.fragment:
+            raise ValueError("Coolify base_url must be an HTTPS origin/path without query or fragment")
+        if not api_token:
+            raise ValueError("Coolify api_token must not be empty")
+        self._base_url = str(url).rstrip("/")
         self._api_token = api_token
         self._client = client
 
@@ -26,21 +31,25 @@ class CoolifyRecoveryAdapter:
     def provider_kind(self) -> str:
         return "coolify"
 
-    async def inspect_backup(self, target: DeploymentBackupTarget) -> DeploymentBackupState | None:
+    async def inspect_backup(
+        self,
+        target: DeploymentBackupTarget,
+    ) -> DeploymentBackupState | None:
         response = await self._request("GET", f"/databases/{target.resource_id}/backups")
         response.raise_for_status()
         rows = _backup_rows(response.json())
         if target.schedule_id is not None:
-            row = next((item for item in rows if str(item.get("uuid")) == target.schedule_id), None)
+            row = next(
+                (item for item in rows if str(item.get("uuid")) == target.schedule_id),
+                None,
+            )
         elif len(rows) == 1:
             row = rows[0]
         elif not rows:
             return None
         else:
             raise RuntimeError("multiple Coolify backup schedules require an explicit schedule_id")
-        if row is None:
-            return None
-        return _state(row)
+        return None if row is None else _state(row)
 
     async def create_backup(
         self,
@@ -53,8 +62,7 @@ class CoolifyRecoveryAdapter:
             json=_payload(target, desired),
         )
         response.raise_for_status()
-        body = _mapping(response.json())
-        schedule_id = _optional_string(body.get("uuid"))
+        schedule_id = _optional_string(_mapping(response.json()).get("uuid"))
         if schedule_id is None:
             raise RuntimeError("Coolify create backup response did not return a schedule uuid")
         return await self._inspect_explicit(target, schedule_id)
@@ -80,29 +88,35 @@ class CoolifyRecoveryAdapter:
         target: DeploymentBackupTarget,
         schedule_id: str,
     ) -> DeploymentBackupState:
-        explicit = DeploymentBackupTarget(
-            resource_id=target.resource_id,
-            schedule_id=schedule_id,
-            offsite_storage_id=target.offsite_storage_id,
+        state = await self.inspect_backup(
+            DeploymentBackupTarget(
+                resource_id=target.resource_id,
+                schedule_id=schedule_id,
+                offsite_storage_id=target.offsite_storage_id,
+            )
         )
-        state = await self.inspect_backup(explicit)
         if state is None:
             raise RuntimeError("Coolify backup schedule disappeared after mutation")
         return state
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         headers = {"Authorization": f"Bearer {self._api_token}"}
+        url = f"{self._base_url}{path}"
         if self._client is not None:
-            return await self._client.request(method, f"{self._base_url}{path}", headers=headers, **kwargs)
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            return await client.request(method, f"{self._base_url}{path}", headers=headers, **kwargs)
+            return await self._client.request(method, url, headers=headers, **kwargs)
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+            return await client.request(method, url, headers=headers, **kwargs)
 
 
 def _payload(
     target: DeploymentBackupTarget,
     desired: DeploymentBackupState,
 ) -> dict[str, object]:
-    if desired.frequency is None or desired.local_retention_days is None:
+    if (
+        desired.frequency is None
+        or desired.local_retention_days is None
+        or desired.timeout_seconds is None
+    ):
         raise ValueError("desired backup state is incomplete")
     if desired.offsite_enabled and target.offsite_storage_id is None:
         raise ValueError("offsite_storage_id is required when offsite backup is enabled")
@@ -114,6 +128,8 @@ def _payload(
         "timeout": desired.timeout_seconds,
     }
     if desired.offsite_enabled:
+        if desired.offsite_retention_days is None:
+            raise ValueError("offsite retention is required when offsite backup is enabled")
         payload["s3_storage_uuid"] = cast(str, target.offsite_storage_id)
         payload["database_backup_retention_days_s3"] = desired.offsite_retention_days
     return payload
@@ -127,16 +143,16 @@ def _backup_rows(value: object) -> list[dict[str, object]]:
         rows = mapping.get(key)
         if isinstance(rows, list):
             return [_mapping(item) for item in cast(list[object], rows)]
-    if "uuid" in mapping:
-        return [mapping]
-    return []
+    return [mapping] if "uuid" in mapping else []
 
 
 def _state(row: dict[str, object]) -> DeploymentBackupState:
     return DeploymentBackupState(
         schedule_id=_optional_string(row.get("uuid")),
         frequency=_optional_string(row.get("frequency")),
-        local_retention_days=_optional_int(row.get("database_backup_retention_days_locally")),
+        local_retention_days=_optional_int(
+            row.get("database_backup_retention_days_locally")
+        ),
         offsite_retention_days=_optional_int(row.get("database_backup_retention_days_s3")),
         timeout_seconds=_optional_int(row.get("timeout")),
         offsite_enabled=_optional_bool(row.get("save_s3")),
