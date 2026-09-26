@@ -12,7 +12,7 @@ _CRON_FIELD: Final = re.compile(r"^[0-9*/?,\-]+$")
 
 
 @dataclass(frozen=True, slots=True)
-class CoolifyPostgresBackupPolicy:
+class PostgresBackupPolicy:
     frequency: str
     local_retention_days: int
     s3_retention_days: int
@@ -39,7 +39,7 @@ class RecoverySetPolicy:
 
 @dataclass(frozen=True, slots=True)
 class RecoveryPolicy:
-    postgres: CoolifyPostgresBackupPolicy
+    postgres: PostgresBackupPolicy
     openbao: OpenBaoSnapshotPolicy
     recovery_set: RecoverySetPolicy
 
@@ -50,7 +50,7 @@ def recovery_policy_preset_name() -> str:
 
 def recovery_policy_preset() -> RecoveryPolicy:
     return RecoveryPolicy(
-        postgres=CoolifyPostgresBackupPolicy(
+        postgres=PostgresBackupPolicy(
             frequency="hourly",
             local_retention_days=7,
             s3_retention_days=30,
@@ -85,23 +85,12 @@ def parse_recovery_policy(payload: dict[str, object]) -> RecoveryPolicy:
 
     _exact_keys(
         postgres,
-        {
-            "frequency",
-            "local_retention_days",
-            "s3_retention_days",
-            "timeout_seconds",
-            "require_s3",
-        },
+        {"frequency", "local_retention_days", "s3_retention_days", "timeout_seconds", "require_s3"},
         "postgres",
     )
     _exact_keys(
         openbao,
-        {
-            "frequency",
-            "local_retention_days",
-            "offsite_retention_days",
-            "require_offsite",
-        },
+        {"frequency", "local_retention_days", "offsite_retention_days", "require_offsite"},
         "openbao",
     )
     _exact_keys(
@@ -117,46 +106,28 @@ def parse_recovery_policy(payload: dict[str, object]) -> RecoveryPolicy:
     )
 
     return RecoveryPolicy(
-        postgres=CoolifyPostgresBackupPolicy(
+        postgres=PostgresBackupPolicy(
             frequency=_frequency(postgres.get("frequency"), "postgres.frequency"),
             local_retention_days=_integer_between(
-                postgres.get("local_retention_days"),
-                "postgres.local_retention_days",
-                1,
-                3650,
+                postgres.get("local_retention_days"), "postgres.local_retention_days", 1, 3650
             ),
             s3_retention_days=_integer_between(
-                postgres.get("s3_retention_days"),
-                "postgres.s3_retention_days",
-                1,
-                3650,
+                postgres.get("s3_retention_days"), "postgres.s3_retention_days", 1, 3650
             ),
             timeout_seconds=_integer_between(
-                postgres.get("timeout_seconds"),
-                "postgres.timeout_seconds",
-                60,
-                36000,
+                postgres.get("timeout_seconds"), "postgres.timeout_seconds", 60, 36000
             ),
             require_s3=_boolean(postgres.get("require_s3"), "postgres.require_s3"),
         ),
         openbao=OpenBaoSnapshotPolicy(
             frequency=_frequency(openbao.get("frequency"), "openbao.frequency"),
             local_retention_days=_integer_between(
-                openbao.get("local_retention_days"),
-                "openbao.local_retention_days",
-                1,
-                3650,
+                openbao.get("local_retention_days"), "openbao.local_retention_days", 1, 3650
             ),
             offsite_retention_days=_integer_between(
-                openbao.get("offsite_retention_days"),
-                "openbao.offsite_retention_days",
-                1,
-                3650,
+                openbao.get("offsite_retention_days"), "openbao.offsite_retention_days", 1, 3650
             ),
-            require_offsite=_boolean(
-                openbao.get("require_offsite"),
-                "openbao.require_offsite",
-            ),
+            require_offsite=_boolean(openbao.get("require_offsite"), "openbao.require_offsite"),
         ),
         recovery_set=RecoverySetPolicy(
             max_component_skew_minutes=_integer_between(
@@ -172,20 +143,13 @@ def parse_recovery_policy(payload: dict[str, object]) -> RecoveryPolicy:
                 365,
             ),
             target_rpo_minutes=_integer_between(
-                recovery_set.get("target_rpo_minutes"),
-                "recovery_set.target_rpo_minutes",
-                1,
-                10080,
+                recovery_set.get("target_rpo_minutes"), "recovery_set.target_rpo_minutes", 1, 10080
             ),
             target_rto_minutes=_integer_between(
-                recovery_set.get("target_rto_minutes"),
-                "recovery_set.target_rto_minutes",
-                1,
-                10080,
+                recovery_set.get("target_rto_minutes"), "recovery_set.target_rto_minutes", 1, 10080
             ),
             require_clone_fence=_boolean(
-                recovery_set.get("require_clone_fence"),
-                "recovery_set.require_clone_fence",
+                recovery_set.get("require_clone_fence"), "recovery_set.require_clone_fence"
             ),
         ),
     )
