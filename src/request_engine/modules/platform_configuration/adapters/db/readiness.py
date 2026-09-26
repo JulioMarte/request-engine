@@ -43,4 +43,5 @@ class PostgresPlatformReadinessReader:
             smtp_last_provider_test_outcome=None if row[3] is None else str(row[3]),
             smtp_last_provider_test_at=row[4],
             smtp_secret_configured=bool(row[5]),
+            oidc=str(row[6]),
         )
