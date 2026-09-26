@@ -17,6 +17,9 @@ from request_engine.modules.platform_configuration.adapters.db.configuration imp
 from request_engine.modules.platform_configuration.adapters.db.provider_secrets import (
     PostgresProviderSecretResolver,
 )
+from request_engine.modules.platform_configuration.api.http import (
+    require_platform_configuration_step_up,
+)
 from request_engine.modules.platform_configuration.application.configuration import (
     ActivateConfiguration,
     StageConfiguration,
@@ -27,9 +30,6 @@ from request_engine.modules.platform_configuration.application.deployment_bindin
     DEPLOYMENT_BINDING_PROVIDER,
     DeploymentBinding,
     DeploymentRecoveryService,
-)
-from request_engine.modules.platform_configuration.api.http import (
-    require_platform_configuration_step_up,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
