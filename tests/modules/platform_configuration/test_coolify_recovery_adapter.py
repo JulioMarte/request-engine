@@ -39,10 +39,13 @@ async def test_inspect_maps_coolify_schedule_without_leaking_token() -> None:
             api_token="super-secret",
             client=client,
         )
-        state = await adapter.inspect_backup(DeploymentBackupTarget("db-1", "backup-1", "s3-1"))
+        state = await adapter.inspect_backup(
+            DeploymentBackupTarget("db-1", "backup-1", "s3-1")
+        )
 
     assert state == DeploymentBackupState("backup-1", "hourly", 7, 30, 3600, True)
-    assert seen[0].url == httpx.URL("https://coolify.example/api/v1/databases/db-1/backups")
+    expected_url = httpx.URL("https://coolify.example/api/v1/databases/db-1/backups")
+    assert seen[0].url == expected_url
     assert seen[0].headers["authorization"] == "Bearer super-secret"
     assert "super-secret" not in str(state)
 
@@ -146,3 +149,13 @@ async def test_offsite_policy_requires_storage_id_before_side_effect() -> None:
             await adapter.create_backup(DeploymentBackupTarget("db-1"), desired)
 
     assert called is False
+
+
+def test_coolify_adapter_refuses_plain_http_for_api_token() -> None:
+    with pytest.raises(ValueError, match="HTTPS"):
+        CoolifyRecoveryAdapter(base_url="http://coolify.example/api/v1", api_token="token")
+
+
+def test_coolify_adapter_refuses_empty_token() -> None:
+    with pytest.raises(ValueError, match="api_token"):
+        CoolifyRecoveryAdapter(base_url="https://coolify.example/api/v1", api_token="")
