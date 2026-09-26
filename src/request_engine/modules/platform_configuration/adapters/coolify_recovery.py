@@ -20,7 +20,9 @@ class CoolifyRecoveryAdapter:
     ) -> None:
         url = httpx.URL(base_url.rstrip("/"))
         if url.scheme != "https" or not url.host or url.query or url.fragment:
-            raise ValueError("Coolify base_url must be an HTTPS origin/path without query or fragment")
+            raise ValueError(
+                "Coolify base_url must be an HTTPS origin/path without query or fragment"
+            )
         if not api_token:
             raise ValueError("Coolify api_token must not be empty")
         self._base_url = str(url).rstrip("/")
