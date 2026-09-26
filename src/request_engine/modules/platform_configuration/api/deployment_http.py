@@ -43,18 +43,12 @@ _NativeBearer = Annotated[
 ]
 _IdempotencyKey = Annotated[
     str,
-    Header(
-        alias="Idempotency-Key",
-        min_length=1,
-        max_length=160,
-        pattern=r"\S",
-    ),
+    Header(alias="Idempotency-Key", min_length=1, max_length=160, pattern=r"\S"),
 ]
 
 
 class DeploymentBindingBody(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
     base_url: str = Field(pattern=r"^https://")
     database_uuid: str = Field(min_length=1, max_length=200)
     scheduled_backup_uuid: str | None = Field(default=None, max_length=200)
@@ -73,24 +67,18 @@ class DeploymentBindingView(BaseModel):
     secret_binding_id: UUID
 
 
-class DeploymentChangeView(BaseModel):
-    field: str
-    actual: object | None
-    desired: object | None
-
-
 class DeploymentPlanView(BaseModel):
     binding: DeploymentBindingView
-    status: str
-    changes: list[DeploymentChangeView]
+    state: str
+    changes: list[str]
 
 
 class DeploymentReconcileView(BaseModel):
     binding: DeploymentBindingView
-    action: str
-    before_status: str
-    after_status: str
-    changes: list[DeploymentChangeView]
+    state: str
+    changed: bool
+    schedule_id: str | None
+    changes: list[str]
 
 
 def install_deployment_recovery_http(
@@ -109,8 +97,7 @@ def install_deployment_recovery_http(
         secret_resolver=secret_resolver,
         secret_store=secret_store,
         adapter_factory=lambda binding, token: CoolifyRecoveryAdapter(
-            base_url=binding.base_url,
-            api_token=token,
+            base_url=binding.base_url, api_token=token
         ),
     )
     router = APIRouter(tags=["Platform deployment recovery"])
@@ -162,16 +149,17 @@ def install_deployment_recovery_http(
         )
         rows = await reader.list_revisions(actor, DEPLOYMENT_BINDING_KIND)
         active = next(row for row in rows if row.revision == staged.revision)
-        binding = DeploymentBinding(
-            provider_kind=active.provider_kind,
-            base_url=str(active.configuration["base_url"]),
-            database_uuid=str(active.configuration["database_uuid"]),
-            scheduled_backup_uuid=_optional(active.configuration["scheduled_backup_uuid"]),
-            s3_storage_uuid=_optional(active.configuration["s3_storage_uuid"]),
-            secret_binding_id=body.secret_binding_id,
-            revision=active.revision,
+        return _binding_view(
+            DeploymentBinding(
+                provider_kind=active.provider_kind,
+                base_url=str(active.configuration["base_url"]),
+                database_uuid=str(active.configuration["database_uuid"]),
+                scheduled_backup_uuid=_optional(active.configuration["scheduled_backup_uuid"]),
+                s3_storage_uuid=_optional(active.configuration["s3_storage_uuid"]),
+                secret_binding_id=body.secret_binding_id,
+                revision=active.revision,
+            )
         )
-        return _binding_view(binding)
 
     async def plan(
         _bearer: _NativeBearer,
@@ -180,15 +168,8 @@ def install_deployment_recovery_http(
         binding, result = await service.plan(actor)
         return DeploymentPlanView(
             binding=_binding_view(binding),
-            status=result.status,
-            changes=[
-                DeploymentChangeView(
-                    field=change.field,
-                    actual=change.actual,
-                    desired=change.desired,
-                )
-                for change in result.changes
-            ],
+            state=result.state.value,
+            changes=list(result.changes),
         )
 
     async def reconcile(
@@ -199,17 +180,10 @@ def install_deployment_recovery_http(
         binding, result = await service.reconcile(actor)
         return DeploymentReconcileView(
             binding=_binding_view(binding),
-            action=result.action,
-            before_status=result.before.status,
-            after_status=result.after.status,
-            changes=[
-                DeploymentChangeView(
-                    field=change.field,
-                    actual=change.actual,
-                    desired=change.desired,
-                )
-                for change in result.before.changes
-            ],
+            state=result.state.value,
+            changed=result.changed,
+            schedule_id=result.schedule_id,
+            changes=list(result.changes),
         )
 
     add_capability_route(
