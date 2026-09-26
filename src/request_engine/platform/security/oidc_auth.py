@@ -80,7 +80,6 @@ def validate_https_endpoint(value: str) -> None:
         raise ValueError(
             "OIDC authority endpoint must be an absolute HTTPS URL without credentials"
         )
-    # Accessing port validates malformed/out-of-range ports too.
     if parsed.port == 0:
         raise ValueError("OIDC authority endpoint port is invalid")
 
@@ -92,14 +91,7 @@ class JwksFetcher(Protocol):
 
 
 class HttpxJwksFetcher:
-    """Fetch provider JWKS documents over HTTP with a per-instance TTL cache.
-
-    Maximum staleness is the configured TTL (at most 300 seconds). Unknown
-    kids do not trigger forced refreshes: rotate by publishing overlapping
-    keys at least one TTL before using them. Failed refreshes never serve stale
-    keys. A single-flight cache and short failure cooldown bound provider load.
-    Injected clients belong to their caller and are not closed here.
-    """
+    """Fetch provider JWKS documents over HTTP with a per-instance TTL cache."""
 
     def __init__(
         self,
@@ -130,7 +122,6 @@ class HttpxJwksFetcher:
                     if cached[1] is None:
                         raise OidcAuthenticationRequired("the OIDC key set is unavailable")
                     return cached[1]
-                # Endpoint count is bounded even across configuration churn.
                 if jwks_uri not in self._cache and len(self._cache) >= 64:
                     self._cache.pop(next(iter(self._cache)))
                 self._cache[jwks_uri] = (now + 5, None)
@@ -180,15 +171,7 @@ class HttpxJwksFetcher:
 
 
 class OidcTokenAuthenticator:
-    """Verify one OIDC JWT against a single authority and emit identity only.
-
-    The token must be signed with RS256 by a key in the authority's JWKS, and
-    its ``exp``/``nbf`` claims are verified with a 30-second leeway for clock
-    skew between RE and the identity provider. The ``iss``, ``aud`` and ``sub``
-    claims are mandatory. ``kid`` routing is fail-closed: a token without a
-    ``kid``, or with a ``kid`` absent from the fetched key set, is rejected
-    rather than tried against every key.
-    """
+    """Verify one OIDC JWT against a single authority and emit identity only."""
 
     def __init__(self, config: OidcAuthorityConfig, jwks_fetcher: JwksFetcher) -> None:
         self.config = config
@@ -203,7 +186,6 @@ class OidcTokenAuthenticator:
                 raise OidcAuthenticationRequired("an RFC 9068 access token is required")
             if "crit" in header or "b64" in header:
                 raise OidcAuthenticationRequired("unsupported OIDC token header extension")
-            # Reject ambiguous JSON rather than inheriting a parser's last-wins behavior.
             for segment in token.split(".")[:2]:
                 json.loads(base64url_decode(segment), object_pairs_hook=_unique_json_object)
             if header.get("alg") != _ALLOWED_SIGNING_ALGORITHM:
@@ -315,26 +297,20 @@ def _select_signing_key(jwks: Mapping[str, Any], kid: str) -> RSAPublicKey:
 
 
 def validate_jwks_document(jwks: Mapping[str, Any]) -> None:
-    """Require at least one uniquely routable RS256 verification key.
-
-    Provider validation uses the same key acceptance rules as authentication so
-    an administrator cannot activate a JWKS document the runtime will reject.
-    Providers may publish additional key types; Request Engine only requires one
-    currently usable RS256 verification key for this authentication arm.
-    """
+    """Require at least one uniquely routable RS256 verification key."""
     keys = jwks.get("keys")
     if not isinstance(keys, list) or not keys or len(cast(list[Any], keys)) > 64:
         raise OidcAuthenticationRequired("the OIDC identity provider key set is malformed")
-    candidate_kids = {
-        entry.get("kid")
-        for entry in cast(list[Any], keys)
-        if isinstance(entry, dict)
-        and isinstance(cast(dict[str, Any], entry).get("kid"), str)
-        and cast(dict[str, Any], entry).get("kid")
-    }
+    candidate_kids: set[str] = set()
+    for entry in cast(list[Any], keys):
+        if not isinstance(entry, dict):
+            continue
+        kid = cast(dict[str, Any], entry).get("kid")
+        if isinstance(kid, str) and kid:
+            candidate_kids.add(kid)
     for kid in candidate_kids:
         try:
-            _select_signing_key(jwks, cast(str, kid))
+            _select_signing_key(jwks, kid)
         except OidcAuthenticationRequired:
             continue
         return
