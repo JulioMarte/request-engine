@@ -663,7 +663,7 @@ evidence = ["invariant", "adversarial", "security"]
 
 [[proofs]]
 guarantee = "INV-RECOVERY-POLICY-001"
-path = "tests/modules/platform_configuration/test_recovery_policy.py"
+path = "tests/modules/platform_configuration/test_platform_recovery_policy.py"
 evidence = ["contract", "invariant", "adversarial"]
 
 [[proofs]]
