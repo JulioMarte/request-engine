@@ -20,11 +20,7 @@ import pytest
 from psycopg import Connection
 
 PgConnection = Connection[Any]
-pytestmark = [
-    pytest.mark.postgres,
-    pytest.mark.invariant,
-    pytest.mark.security,
-]
+pytestmark = [pytest.mark.postgres, pytest.mark.invariant, pytest.mark.security]
 
 
 def _digest(value: str) -> str:
@@ -59,10 +55,8 @@ def _create_actor(admin_conn: PgConnection, capabilities: Iterable[str]) -> tupl
     return actor_id, int(row[0])
 
 
-def _control(
-    factory: Callable[[], PgConnection],
-    actor_id: UUID,
-    authority_revision: int,
+def _authenticated(
+    factory: Callable[[], PgConnection], actor_id: UUID, authority_revision: int
 ) -> PgConnection:
     conn = factory()
     conn.autocommit = True
@@ -77,10 +71,7 @@ def _control(
 
 
 def _stage_oidc(
-    conn: PgConnection,
-    revision_marker: str,
-    *,
-    issuer: str = "https://id.example.test",
+    conn: PgConnection, revision_marker: str, *, issuer: str = "https://id.example.test"
 ) -> tuple[UUID, int, str]:
     configuration = json.dumps(
         {
@@ -91,17 +82,15 @@ def _stage_oidc(
     )
     row = conn.execute(
         """
-        SELECT *
-          FROM request_platform.stage_platform_configuration(
-              'identity.oidc',
-              'oidc',
-              %s::jsonb,
-              NULL,
-              %s,
-              %s
-          )
+        SELECT * FROM request_platform.stage_platform_configuration(
+            'identity.oidc', 'oidc', %s::jsonb, NULL, %s, %s
+        )
         """,
-        (configuration, _digest(f"stage-key:{revision_marker}"), _digest(f"stage-intent:{revision_marker}")),
+        (
+            configuration,
+            _digest(f"stage-key:{revision_marker}"),
+            _digest(f"stage-intent:{revision_marker}"),
+        ),
     ).fetchone()
     assert row is not None
     return UUID(str(row[0])), int(row[1]), str(row[2])
@@ -110,10 +99,9 @@ def _stage_oidc(
 def _validate(conn: PgConnection, revision: int, marker: str) -> None:
     row = conn.execute(
         """
-        SELECT *
-          FROM request_platform.validate_platform_configuration_provider(
-              'identity.oidc', %s, NULL, NULL, %s, %s
-          )
+        SELECT * FROM request_platform.validate_platform_configuration_provider(
+            'identity.oidc', %s, NULL, NULL, %s, %s
+        )
         """,
         (revision, _digest(f"validate-key:{marker}"), _digest(f"validate-intent:{marker}")),
     ).fetchone()
@@ -130,10 +118,9 @@ def _activate(
 ) -> str:
     row = conn.execute(
         """
-        SELECT *
-          FROM request_platform.activate_platform_configuration(
-              'identity.oidc', %s, %s, %s, %s
-          )
+        SELECT * FROM request_platform.activate_platform_configuration(
+            'identity.oidc', %s, %s, %s, %s
+        )
         """,
         (
             revision,
@@ -149,10 +136,9 @@ def _activate(
 def _disable(conn: PgConnection, revision: int, marker: str) -> str:
     row = conn.execute(
         """
-        SELECT *
-          FROM request_platform.disable_platform_configuration(
-              'identity.oidc', %s, %s, %s
-          )
+        SELECT * FROM request_platform.disable_platform_configuration(
+            'identity.oidc', %s, %s, %s
+        )
         """,
         (revision, _digest(f"disable-key:{marker}"), _digest(f"disable-intent:{marker}")),
     ).fetchone()
@@ -163,6 +149,7 @@ def _disable(conn: PgConnection, revision: int, marker: str) -> str:
 def test_managed_oidc_projection_tracks_replace_and_disable(
     admin_conn: PgConnection,
     platform_control_conn_factory: Callable[[], PgConnection],
+    platform_read_conn_factory: Callable[[], PgConnection],
 ) -> None:
     actor_id, authority_revision = _create_actor(
         admin_conn,
@@ -174,7 +161,8 @@ def test_managed_oidc_projection_tracks_replace_and_disable(
             "platform.readiness.read",
         },
     )
-    control = _control(platform_control_conn_factory, actor_id, authority_revision)
+    control = _authenticated(platform_control_conn_factory, actor_id, authority_revision)
+    read_conn = _authenticated(platform_read_conn_factory, actor_id, authority_revision)
 
     assert _stage_oidc(control, "a")[1:] == (1, "draft")
     _validate(control, 1, "b")
@@ -213,7 +201,7 @@ def test_managed_oidc_projection_tracks_replace_and_disable(
     assert replacement_ref["audience"] == "request-engine-d"
     assert int(replacement[3]) > int(first[3])
 
-    readiness = control.execute(
+    readiness = read_conn.execute(
         "SELECT * FROM request_platform.read_platform_readiness()"
     ).fetchone()
     assert readiness is not None
@@ -227,7 +215,7 @@ def test_managed_oidc_projection_tracks_replace_and_disable(
         """,
         (authority_id,),
     )
-    degraded = control.execute(
+    degraded = read_conn.execute(
         "SELECT * FROM request_platform.read_platform_readiness()"
     ).fetchone()
     assert degraded is not None
@@ -260,7 +248,7 @@ def test_managed_oidc_projection_tracks_replace_and_disable(
         """
     ).fetchone()
     assert disabled == (authority_id, "disabled")
-    readiness_after_disable = control.execute(
+    readiness_after_disable = read_conn.execute(
         "SELECT * FROM request_platform.read_platform_readiness()"
     ).fetchone()
     assert readiness_after_disable is not None
@@ -279,7 +267,7 @@ def test_concurrent_managed_oidc_activation_projects_only_the_winner(
             "platform.configuration.activate",
         },
     )
-    setup = _control(platform_control_conn_factory, actor_id, authority_revision)
+    setup = _authenticated(platform_control_conn_factory, actor_id, authority_revision)
     _stage_oidc(setup, "h")
     _stage_oidc(setup, "i")
     _validate(setup, 1, "j")
@@ -288,23 +276,15 @@ def test_concurrent_managed_oidc_activation_projects_only_the_winner(
     barrier = Barrier(2)
 
     def activate(revision: int, marker: str) -> str:
-        conn = _control(platform_control_conn_factory, actor_id, authority_revision)
+        conn = _authenticated(platform_control_conn_factory, actor_id, authority_revision)
         barrier.wait(timeout=5)
         try:
-            return _activate(
-                conn,
-                revision,
-                expected_active_revision=None,
-                marker=marker,
-            )
+            return _activate(conn, revision, expected_active_revision=None, marker=marker)
         except psycopg.Error as exc:
             return str(exc.sqlstate)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = [
-            pool.submit(activate, 1, "l"),
-            pool.submit(activate, 2, "m"),
-        ]
+        results = [pool.submit(activate, 1, "l"), pool.submit(activate, 2, "m")]
         outcomes = [future.result() for future in results]
 
     assert sorted(outcomes) == ["40001", "active"]
