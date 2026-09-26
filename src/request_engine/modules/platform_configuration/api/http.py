@@ -53,15 +53,15 @@ from request_engine.modules.platform_configuration.application.provider_test imp
 from request_engine.modules.platform_configuration.application.provider_validation import (
     PlatformProviderValidationService,
 )
-from request_engine.modules.platform_configuration.application.recovery_policy import (
-    parse_recovery_policy,
-    recovery_policy_preset_name,
-    recovery_policy_preset_payload,
-)
 from request_engine.modules.platform_configuration.application.readiness import (
     PlatformDeploymentReadinessFacts,
     PlatformReadiness,
     apply_deployment_readiness,
+)
+from request_engine.modules.platform_configuration.application.recovery_policy import (
+    parse_recovery_policy,
+    recovery_policy_preset_name,
+    recovery_policy_preset_payload,
 )
 from request_engine.modules.platform_configuration.application.secret_administration import (
     PlatformSecretAdministrationService,
