@@ -6,7 +6,7 @@ on:
       - "migrations/versions/0080_platform_configuration_governance.py"
       - "migrations/versions/0081_platform_configuration_read_boundary.py"
       - "migrations/versions/0090_platform_readiness_projection.py"
-      - "migrations/versions/0093_managed_oidc_projection.py"
+      - "migrations/versions/0093_managed_oidc_authority_projection.py"
       - "migrations/versions/0094_managed_oidc_readiness.py"
       - "src/request_engine/modules/platform_configuration/**"
       - "src/request_engine/platform/security/oidc_auth.py"
