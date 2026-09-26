@@ -20,9 +20,7 @@ depends_on: str | Sequence[str] | None = None
 _READ_DEFINER = "request_platform_definer"
 _SCHEMA_OWNER = "request_engine_schema_owner"
 _SIGNATURE = "request_platform.read_platform_readiness()"
-_PROJECTION_SIGNATURE = (
-    "request_platform.managed_oidc_projection_matches(text, text, text, bigint)"
-)
+_PROJECTION_SIGNATURE = "request_platform.managed_oidc_projection_matches(text, text, text, bigint)"
 
 
 def upgrade() -> None:
