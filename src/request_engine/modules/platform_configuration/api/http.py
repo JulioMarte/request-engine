@@ -53,6 +53,11 @@ from request_engine.modules.platform_configuration.application.provider_test imp
 from request_engine.modules.platform_configuration.application.provider_validation import (
     PlatformProviderValidationService,
 )
+from request_engine.modules.platform_configuration.application.recovery_policy import (
+    parse_recovery_policy,
+    recovery_policy_preset_name,
+    recovery_policy_preset_payload,
+)
 from request_engine.modules.platform_configuration.application.readiness import (
     PlatformDeploymentReadinessFacts,
     PlatformReadiness,
@@ -236,6 +241,14 @@ class ConfigurationRevisionView(BaseModel):
 
 class ConfigurationRevisionListView(BaseModel):
     items: list[ConfigurationRevisionView]
+
+
+class RecoveryPolicyView(BaseModel):
+    source: str
+    preset_name: str
+    active_revision: int | None
+    provider_kind: str
+    configuration: dict[str, Any]
 
 
 class PlatformReadinessView(BaseModel):
@@ -423,6 +436,29 @@ def install_platform_configuration_http(
     ) -> ConfigurationRevisionView:
         return _revision_view(await reader.get_revision(actor, configuration_kind, revision))
 
+    async def get_recovery_policy(
+        _bearer: _NativeBearer,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+    ) -> RecoveryPolicyView:
+        revisions = await reader.list_revisions(actor, "operations.recovery_policy")
+        active = next((row for row in revisions if row.state == "active"), None)
+        if active is None:
+            return RecoveryPolicyView(
+                source="preset",
+                preset_name=recovery_policy_preset_name(),
+                active_revision=None,
+                provider_kind="coolify-postgres-openbao",
+                configuration=recovery_policy_preset_payload(),
+            )
+        parse_recovery_policy(active.configuration)
+        return RecoveryPolicyView(
+            source="managed",
+            preset_name=recovery_policy_preset_name(),
+            active_revision=active.revision,
+            provider_kind=active.provider_kind,
+            configuration=active.configuration,
+        )
+
     async def get_platform_readiness(
         _bearer: _NativeBearer,
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
@@ -579,6 +615,12 @@ def install_platform_configuration_http(
                 and not body.configuration
             ):
                 pass
+            elif (
+                configuration_kind == "operations.recovery_policy"
+                and body.provider_kind == "coolify-postgres-openbao"
+                and body.secret_binding_id is None
+            ):
+                parse_recovery_policy(body.configuration)
             else:
                 raise PlatformConfigurationInvalid()
         except (TypeError, ValueError) as exc:
@@ -705,6 +747,17 @@ def install_platform_configuration_http(
         operation_id="platform_configuration_revision_get",
         owner="platform_configuration",
         response_model=ConfigurationRevisionView,
+        responses=read_responses,
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/recovery-policy",
+        get_recovery_policy,
+        capability="platform.configuration.read",
+        methods=["GET"],
+        operation_id="platform_recovery_policy_get",
+        owner="platform_configuration",
+        response_model=RecoveryPolicyView,
         responses=read_responses,
     )
     add_capability_route(
