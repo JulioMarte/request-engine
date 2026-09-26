@@ -659,3 +659,19 @@ evidence = ["contract", "adversarial", "security"]
 guarantee = "INV-APPOINTMENT-OPTION-KEY-OVERLAP-001"
 path = "tests/modules/booking/test_appointment_options.py"
 evidence = ["invariant", "adversarial", "security"]
+
+
+[[proofs]]
+guarantee = "INV-RECOVERY-POLICY-001"
+path = "tests/modules/platform_configuration/test_recovery_policy.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-RECOVERY-POLICY-001"
+path = "tests/modules/platform_configuration/test_recovery_policy_validation.py"
+evidence = ["contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-RECOVERY-POLICY-001"
+path = "tests/modules/platform_configuration/test_http_contract.py"
+evidence = ["contract"]
