@@ -10,6 +10,9 @@ from request_engine.entrypoints.http.native_runtime import (
     build_native_auth_runtime,
     resolve_webauthn_decoy_key,
 )
+from request_engine.modules.platform_configuration.api.deployment_http import (
+    install_deployment_recovery_http,
+)
 from request_engine.modules.platform_configuration.api.http import (
     PlatformDeploymentReadinessFacts,
     SmtpConfigurationValidator,
@@ -30,9 +33,7 @@ from request_engine.modules.tenancy.api.platform_provisioner_management import (
     install_native_platform_provisioner_management_http,
 )
 from request_engine.platform.db.instance_setup_store import PostgresInstanceSetupStore
-from request_engine.platform.db.native_recovery_address_store import (
-    PostgresNativeRecoveryAddressStore,
-)
+from request_engine.platform.db.native_recovery_address_store import PostgresNativeRecoveryAddressStore
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
@@ -71,11 +72,7 @@ def create_platform_control_app(
     webauthn_policy: WebAuthnPolicy | None = None,
     webauthn_decoy_key: bytes | None = None,
 ) -> FastAPI:
-    """Explicit private control-plane composition; caller owns pool lifecycles.
-
-    No tenant business router or external identity service is required. The
-    ordinary native API factory never installs this separate control-plane API.
-    """
+    """Explicit private control-plane composition; caller owns pool lifecycles."""
     runtime = build_native_auth_runtime(
         auth_session_factory, platform_session_factory=platform_read_session_factory
     )
@@ -91,9 +88,7 @@ def create_platform_control_app(
         identities=webauthn_store,
         decoy_key=resolve_webauthn_decoy_key(webauthn_decoy_key),
     )
-    recovery_codes = NativeRecoveryCodeService(
-        store=PostgresRecoveryCodeStore(auth_session_factory)
-    )
+    recovery_codes = NativeRecoveryCodeService(store=PostgresRecoveryCodeStore(auth_session_factory))
     app = FastAPI(title="Request Engine platform control", version="1.0.0")
 
     async def uncached_control_response(
@@ -163,6 +158,13 @@ def create_platform_control_app(
         smtp_validator=smtp_validator,
         smtp_tester=smtp_tester,
         deployment_readiness=deployment_readiness,
+    )
+    install_deployment_recovery_http(
+        app,
+        read_session_factory=platform_read_session_factory,
+        write_session_factory=platform_write_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
+        secret_store=platform_secret_store,
     )
     install_instance_setup_http(
         app,
