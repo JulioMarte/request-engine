@@ -36,6 +36,8 @@ from request_engine.platform.security.appointment_option_keyring import (
 )
 from request_engine.platform.security.platform_context import PlatformActorContext
 
+_RECOVERY_POLICY_PROVIDERS = frozenset({"deployment-recovery", "coolify-postgres-openbao"})
+
 
 class ProviderCandidateReader(Protocol):
     async def get(
@@ -107,7 +109,7 @@ class PlatformProviderValidationService:
             )
         elif (
             candidate.configuration_kind == "operations.recovery_policy"
-            and candidate.provider_kind == "coolify-postgres-openbao"
+            and candidate.provider_kind in _RECOVERY_POLICY_PROVIDERS
         ):
             if candidate.secret_binding_id is not None:
                 raise PlatformConfigurationProviderInvalid()
@@ -143,11 +145,7 @@ class PlatformProviderValidationService:
         secret: ProviderSecretReference | None = None
         password: str | None = None
         if smtp.username is not None:
-            secret = await self._validated_secret(
-                actor,
-                candidate,
-                purpose="email.smtp.password",
-            )
+            secret = await self._validated_secret(actor, candidate, purpose="email.smtp.password")
             password = await self._resolve_secret_value(secret)
         elif candidate.secret_binding_id is not None:
             raise PlatformConfigurationProviderInvalid()
@@ -157,7 +155,6 @@ class PlatformProviderValidationService:
             raise PlatformConfigurationProviderInvalid(result.detail_code)
         if result.status is ProviderValidationStatus.UNAVAILABLE:
             raise PlatformProviderValidationFailed(result.detail_code)
-
         return _secret_fence(secret)
 
     async def _validate_webhook(
@@ -173,9 +170,7 @@ class PlatformProviderValidationService:
         secret: ProviderSecretReference | None = None
         if webhook.auth_header_name is not None:
             secret = await self._validated_secret(
-                actor,
-                candidate,
-                purpose="communications.webhook.auth_header",
+                actor, candidate, purpose="communications.webhook.auth_header"
             )
             await self._resolve_secret_value(secret)
         elif candidate.secret_binding_id is not None:
@@ -192,13 +187,10 @@ class PlatformProviderValidationService:
         if candidate.configuration:
             raise PlatformConfigurationProviderInvalid()
         secret = await self._validated_secret(
-            actor,
-            candidate,
-            purpose="security.appointment_option_signing",
+            actor, candidate, purpose="security.appointment_option_signing"
         )
         value = await self._resolve_secret_value(
-            secret,
-            store=self._appointment_signing_secret_store,
+            secret, store=self._appointment_signing_secret_store
         )
         try:
             parse_appointment_option_keyring(value)
@@ -248,10 +240,5 @@ def _secret_fence(secret: ProviderSecretReference | None) -> tuple[int | None, i
 
 
 def _validate_webhook_transport_contract(webhook: WebhookConfiguration) -> None:
-    # There is no safe generic network probe for a delivery webhook: GET/HEAD
-    # semantics are provider-specific and a POST would itself be a side effect.
-    # Typed URL/header validation plus secret resolution is therefore the
-    # validation boundary. Provider behavior is proved by actual Communications
-    # delivery and its existing reconciliation semantics.
     if not webhook.base_url.startswith("https://"):
         raise PlatformConfigurationProviderInvalid()
