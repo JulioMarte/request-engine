@@ -314,6 +314,35 @@ def _select_signing_key(jwks: Mapping[str, Any], kid: str) -> RSAPublicKey:
         raise OidcAuthenticationRequired("the OIDC key could not be materialized") from exc
 
 
+def validate_jwks_document(jwks: Mapping[str, Any]) -> None:
+    """Require at least one uniquely routable RS256 verification key.
+
+    Provider validation uses the same key acceptance rules as authentication so
+    an administrator cannot activate a JWKS document the runtime will reject.
+    Providers may publish additional key types; Request Engine only requires one
+    currently usable RS256 verification key for this authentication arm.
+    """
+    keys = jwks.get("keys")
+    if not isinstance(keys, list) or not keys or len(cast(list[Any], keys)) > 64:
+        raise OidcAuthenticationRequired("the OIDC identity provider key set is malformed")
+    candidate_kids = {
+        entry.get("kid")
+        for entry in cast(list[Any], keys)
+        if isinstance(entry, dict)
+        and isinstance(cast(dict[str, Any], entry).get("kid"), str)
+        and cast(dict[str, Any], entry).get("kid")
+    }
+    for kid in candidate_kids:
+        try:
+            _select_signing_key(jwks, cast(str, kid))
+        except OidcAuthenticationRequired:
+            continue
+        return
+    raise OidcAuthenticationRequired(
+        "the OIDC identity provider publishes no supported verification key"
+    )
+
+
 def rsa_jwk(public_numbers: Any, *, kid: str) -> dict[str, str]:
     """Render one RSA public key as a single-entry verification JWK dict."""
 
@@ -338,4 +367,5 @@ __all__ = [
     "OidcAuthorityConfig",
     "OidcTokenAuthenticator",
     "rsa_jwk",
+    "validate_jwks_document",
 ]
