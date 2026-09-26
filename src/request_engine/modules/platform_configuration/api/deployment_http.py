@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends, FastAPI, Header, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
-from request_engine.modules.platform_configuration.adapters.coolify_recovery import CoolifyRecoveryAdapter
+from request_engine.modules.platform_configuration.adapters.coolify_recovery import (
+    CoolifyRecoveryAdapter,
+)
 from request_engine.modules.platform_configuration.adapters.db.configuration import (
     PostgresPlatformConfigurationCommands,
     PostgresPlatformConfigurationReader,
@@ -26,7 +28,9 @@ from request_engine.modules.platform_configuration.application.deployment_bindin
     DeploymentBinding,
     DeploymentRecoveryService,
 )
-from request_engine.modules.platform_configuration.api.http import require_platform_configuration_step_up
+from request_engine.modules.platform_configuration.api.http import (
+    require_platform_configuration_step_up,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.secrets.platform_store import PlatformSecretStore
@@ -38,7 +42,13 @@ _NativeBearer = Annotated[
     Security(HTTPBearer(scheme_name="NativeSessionBearer", auto_error=False)),
 ]
 _IdempotencyKey = Annotated[
-    str, Header(alias="Idempotency-Key", min_length=1, max_length=160, pattern=r"\S")
+    str,
+    Header(
+        alias="Idempotency-Key",
+        min_length=1,
+        max_length=160,
+        pattern=r"\S",
+    ),
 ]
 
 
@@ -99,7 +109,8 @@ def install_deployment_recovery_http(
         secret_resolver=secret_resolver,
         secret_store=secret_store,
         adapter_factory=lambda binding, token: CoolifyRecoveryAdapter(
-            base_url=binding.base_url, api_token=token
+            base_url=binding.base_url,
+            api_token=token,
         ),
     )
     router = APIRouter(tags=["Platform deployment recovery"])
@@ -155,7 +166,9 @@ def install_deployment_recovery_http(
             provider_kind=active.provider_kind,
             base_url=str(active.configuration["base_url"]),
             database_uuid=str(active.configuration["database_uuid"]),
-            scheduled_backup_uuid=_optional(active.configuration["scheduled_backup_uuid"]),
+            scheduled_backup_uuid=_optional(
+                active.configuration["scheduled_backup_uuid"]
+            ),
             s3_storage_uuid=_optional(active.configuration["s3_storage_uuid"]),
             secret_binding_id=body.secret_binding_id,
             revision=active.revision,
@@ -170,7 +183,14 @@ def install_deployment_recovery_http(
         return DeploymentPlanView(
             binding=_binding_view(binding),
             status=result.status,
-            changes=[DeploymentChangeView(field=c.field, actual=c.actual, desired=c.desired) for c in result.changes],
+            changes=[
+                DeploymentChangeView(
+                    field=change.field,
+                    actual=change.actual,
+                    desired=change.desired,
+                )
+                for change in result.changes
+            ],
         )
 
     async def reconcile(
@@ -185,8 +205,12 @@ def install_deployment_recovery_http(
             before_status=result.before.status,
             after_status=result.after.status,
             changes=[
-                DeploymentChangeView(field=c.field, actual=c.actual, desired=c.desired)
-                for c in result.before.changes
+                DeploymentChangeView(
+                    field=change.field,
+                    actual=change.actual,
+                    desired=change.desired,
+                )
+                for change in result.before.changes
             ],
         )
 
