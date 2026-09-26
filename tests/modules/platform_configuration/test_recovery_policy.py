@@ -1,6 +1,6 @@
-import pytest
-
 from typing import cast
+
+import pytest
 
 from request_engine.modules.platform_configuration.application.recovery_policy import (
     parse_recovery_policy,
