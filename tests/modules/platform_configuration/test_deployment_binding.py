@@ -21,7 +21,9 @@ from request_engine.modules.platform_configuration.application.deployment_reconc
     DeploymentBackupState,
     DeploymentBackupTarget,
 )
-from request_engine.modules.platform_configuration.application.provider_secrets import ProviderSecretReference
+from request_engine.modules.platform_configuration.application.provider_secrets import (
+    ProviderSecretReference,
+)
 
 ACTOR_ID = UUID("00000000-0000-0000-0000-000000000001")
 BINDING_ID = UUID("00000000-0000-0000-0000-000000000002")
@@ -71,7 +73,10 @@ def test_binding_parser_rejects_plain_http_and_missing_secret_binding() -> None:
         configuration_kind=row.configuration_kind,
         provider_kind=row.provider_kind,
         revision=row.revision,
-        configuration={**row.configuration, "base_url": "http://coolify.example/api/v1"},
+        configuration={
+            **row.configuration,
+            "base_url": "http://coolify.example/api/v1",
+        },
         secret_binding_id=row.secret_binding_id,
         state=row.state,
         created_by_principal_id=row.created_by_principal_id,
@@ -90,7 +95,9 @@ def test_binding_parser_rejects_plain_http_and_missing_secret_binding() -> None:
 class FakeReader:
     binding: ConfigurationRevision
 
-    async def list_revisions(self, actor: object, configuration_kind: str | None = None):
+    async def list_revisions(
+        self, actor: object, configuration_kind: str | None = None
+    ) -> list[ConfigurationRevision]:
         del actor
         if configuration_kind == DEPLOYMENT_BINDING_KIND:
             return [self.binding]
@@ -103,7 +110,13 @@ class FakeResolver:
     def __init__(self) -> None:
         self.calls: list[tuple[UUID, str]] = []
 
-    async def resolve(self, actor: object, *, binding_id: UUID, capability_key: str):
+    async def resolve(
+        self,
+        actor: object,
+        *,
+        binding_id: UUID,
+        capability_key: str,
+    ) -> ProviderSecretReference:
         del actor
         self.calls.append((binding_id, capability_key))
         return ProviderSecretReference(
@@ -122,24 +135,28 @@ class FakeStore:
         assert secret_id == SECRET_ID
         return "token-from-openbao"
 
-    async def put(self, **kwargs: object):
-        raise AssertionError("not used")
-
-    async def delete(self, **kwargs: object):
-        raise AssertionError("not used")
-
 
 class FakeAdapter:
     provider_kind = "coolify"
 
-    async def inspect_backup(self, target: DeploymentBackupTarget):
+    async def inspect_backup(
+        self, target: DeploymentBackupTarget
+    ) -> DeploymentBackupState | None:
         assert target == DeploymentBackupTarget("db-1", "backup-1", "s3-1")
         return DeploymentBackupState("backup-1", "daily", 3, 30, 3600, True)
 
-    async def create_backup(self, target: DeploymentBackupTarget, desired: DeploymentBackupState):
+    async def create_backup(
+        self,
+        target: DeploymentBackupTarget,
+        desired: DeploymentBackupState,
+    ) -> DeploymentBackupState:
         raise AssertionError("existing schedule must not be created")
 
-    async def update_backup(self, target: DeploymentBackupTarget, desired: DeploymentBackupState):
+    async def update_backup(
+        self,
+        target: DeploymentBackupTarget,
+        desired: DeploymentBackupState,
+    ) -> DeploymentBackupState:
         return DeploymentBackupState("backup-1", "hourly", 7, 30, 3600, True)
 
 
@@ -148,12 +165,12 @@ async def test_service_resolves_token_only_server_side_and_reports_drift() -> No
     resolver = FakeResolver()
     captured: list[tuple[DeploymentBinding, str]] = []
 
-    def factory(binding: DeploymentBinding, token: str):
+    def factory(binding: DeploymentBinding, token: str) -> FakeAdapter:
         captured.append((binding, token))
         return FakeAdapter()
 
     service = DeploymentRecoveryService(
-        reader=FakeReader(_revision()),
+        reader=FakeReader(_revision()),  # type: ignore[arg-type]
         secret_resolver=resolver,  # type: ignore[arg-type]
         secret_store=FakeStore(),  # type: ignore[arg-type]
         adapter_factory=factory,
@@ -161,7 +178,10 @@ async def test_service_resolves_token_only_server_side_and_reports_drift() -> No
     binding, plan = await service.plan(object())  # type: ignore[arg-type]
     assert binding.database_uuid == "db-1"
     assert plan.status == "drifted"
-    assert {change.field for change in plan.changes} == {"frequency", "local_retention_days"}
+    assert {change.field for change in plan.changes} == {
+        "frequency",
+        "local_retention_days",
+    }
     assert captured[0][1] == "token-from-openbao"
     assert resolver.calls == [(BINDING_ID, "platform.configuration.read")]
     assert "token-from-openbao" not in repr(binding)
@@ -172,7 +192,7 @@ async def test_service_resolves_token_only_server_side_and_reports_drift() -> No
 async def test_reconcile_uses_mutation_capability_and_verifies_convergence() -> None:
     resolver = FakeResolver()
     service = DeploymentRecoveryService(
-        reader=FakeReader(_revision()),
+        reader=FakeReader(_revision()),  # type: ignore[arg-type]
         secret_resolver=resolver,  # type: ignore[arg-type]
         secret_store=FakeStore(),  # type: ignore[arg-type]
         adapter_factory=lambda binding, token: FakeAdapter(),
