@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass
 from typing import Final
 
@@ -7,6 +8,7 @@ _PRESET_NAME: Final = "coolify_balanced_v1"
 _ALLOWED_FREQUENCIES: Final = frozenset(
     {"every_minute", "hourly", "daily", "weekly", "monthly", "yearly"}
 )
+_CRON_FIELD: Final = re.compile(r"^[0-9*/?,\-]+$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,9 +207,15 @@ def _exact_keys(payload: dict[str, object], expected: set[str], name: str) -> No
 
 
 def _frequency(value: object, name: str) -> str:
-    if not isinstance(value, str) or value not in _ALLOWED_FREQUENCIES:
-        raise ValueError(f"{name} must be a supported named backup frequency")
-    return value
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a named frequency or five-field cron expression")
+    normalized = " ".join(value.strip().split())
+    if normalized in _ALLOWED_FREQUENCIES:
+        return normalized
+    fields = normalized.split(" ")
+    if len(fields) == 5 and all(_CRON_FIELD.fullmatch(field) for field in fields):
+        return normalized
+    raise ValueError(f"{name} must be a named frequency or five-field cron expression")
 
 
 def _integer_between(value: object, name: str, minimum: int, maximum: int) -> int:
