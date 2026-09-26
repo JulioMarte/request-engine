@@ -4,7 +4,9 @@ Revision ID: 0094_managed_oidc_readiness
 Revises: 0093_managed_oidc_projection
 
 OIDC readiness is now a durable fact derived from the governed ACTIVE revision,
-not from a deployment/environment flag.
+not from a deployment/environment flag. A platform with no ACTIVE managed OIDC
+revision remains healthy because Native authentication is a complete supported
+path; readiness therefore reports OIDC as optional until it is configured.
 """
 
 from collections.abc import Sequence
@@ -113,7 +115,7 @@ def upgrade() -> None:
                 latest.created_at,
                 active.secret_binding_id IS NOT NULL,
                 CASE
-                    WHEN oidc.revision IS NULL THEN 'unconfigured'
+                    WHEN oidc.revision IS NULL THEN 'optional'
                     WHEN projected.id IS NULL THEN 'degraded'
                     ELSE 'managed'
                 END
