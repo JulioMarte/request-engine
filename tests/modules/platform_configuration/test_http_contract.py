@@ -12,6 +12,7 @@ from request_engine.modules.platform_configuration.api.http import (
     StageConfigurationBody,
     install_platform_configuration_http,
     require_platform_configuration_step_up,
+    validate_stage_configuration_contract,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.assurance import AuthenticationAssurance
@@ -178,3 +179,48 @@ def test_configuration_mutation_requires_phishing_resistant_step_up() -> None:
         require_platform_configuration_step_up(_actor(strong=False))
 
     require_platform_configuration_step_up(_actor(strong=True))
+
+
+def test_stage_contract_accepts_governed_oidc_without_secret_binding() -> None:
+    body = StageConfigurationBody(
+        provider_kind="oidc",
+        configuration={
+            "issuer": "https://id.example.test",
+            "jwks_uri": "https://id.example.test/.well-known/jwks.json",
+            "audience": "request-engine",
+        },
+    )
+    validate_stage_configuration_contract("identity.oidc", body)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        StageConfigurationBody(
+            provider_kind="smtp",
+            configuration={
+                "issuer": "https://id.example.test",
+                "jwks_uri": "https://id.example.test/.well-known/jwks.json",
+                "audience": "request-engine",
+            },
+        ),
+        StageConfigurationBody(
+            provider_kind="oidc",
+            configuration={
+                "issuer": "https://id.example.test",
+                "jwks_uri": "https://id.example.test/.well-known/jwks.json",
+                "audience": "request-engine",
+            },
+            secret_binding_id=uuid4(),
+        ),
+    ],
+)
+def test_stage_contract_fails_closed_for_invalid_oidc_shape(
+    body: StageConfigurationBody,
+) -> None:
+    from request_engine.modules.platform_configuration.application.configuration import (
+        PlatformConfigurationInvalid,
+    )
+
+    with pytest.raises(PlatformConfigurationInvalid):
+        validate_stage_configuration_contract("identity.oidc", body)
