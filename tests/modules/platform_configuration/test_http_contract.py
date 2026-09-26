@@ -87,6 +87,11 @@ def test_platform_configuration_http_registers_canonical_capability_surface() ->
             "/v1/platform/configurations/{configuration_kind}/revisions/{revision}",
             frozenset({"GET"}),
         ),
+        "platform_recovery_policy_get": (
+            "platform.configuration.read",
+            "/v1/platform/recovery-policy",
+            frozenset({"GET"}),
+        ),
         "platform_readiness_get": (
             "platform.readiness.read",
             "/v1/platform/readiness",
