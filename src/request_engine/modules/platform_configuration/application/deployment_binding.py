@@ -17,13 +17,17 @@ from request_engine.modules.platform_configuration.application.deployment_reconc
     DeploymentRecoveryAdapter,
     DeploymentRecoveryReconciler,
 )
-from request_engine.modules.platform_configuration.application.provider_secrets import ProviderSecretResolver
+from request_engine.modules.platform_configuration.application.provider_secrets import (
+    ProviderSecretResolver,
+)
 from request_engine.modules.platform_configuration.application.recovery_policy import (
     RecoveryPolicy,
     parse_recovery_policy,
     recovery_policy_preset,
 )
-from request_engine.modules.platform_configuration.application.secrets import PlatformSecretUnavailable
+from request_engine.modules.platform_configuration.application.secrets import (
+    PlatformSecretUnavailable,
+)
 from request_engine.platform.secrets.platform_store import (
     PlatformSecretNotFound,
     PlatformSecretStore,
@@ -58,7 +62,10 @@ class DeploymentBinding:
 def parse_deployment_binding(revision: ConfigurationRevision) -> DeploymentBinding:
     if revision.configuration_kind != DEPLOYMENT_BINDING_KIND:
         raise PlatformConfigurationInvalid()
-    if revision.provider_kind != DEPLOYMENT_BINDING_PROVIDER or revision.secret_binding_id is None:
+    if (
+        revision.provider_kind != DEPLOYMENT_BINDING_PROVIDER
+        or revision.secret_binding_id is None
+    ):
         raise PlatformConfigurationInvalid()
     payload = revision.configuration
     expected = {"base_url", "database_uuid", "scheduled_backup_uuid", "s3_storage_uuid"}
@@ -145,7 +152,9 @@ class DeploymentRecoveryService:
             raise PlatformConfigurationNotFound()
         binding = parse_deployment_binding(active)
         reference = await self._secret_resolver.resolve(
-            actor, binding_id=binding.secret_binding_id, capability_key=capability_key
+            actor,
+            binding_id=binding.secret_binding_id,
+            capability_key=capability_key,
         )
         if reference.purpose != DEPLOYMENT_TOKEN_PURPOSE or reference.status != "active":
             raise PlatformConfigurationInvalid()
