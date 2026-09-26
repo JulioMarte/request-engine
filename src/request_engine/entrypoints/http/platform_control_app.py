@@ -19,7 +19,9 @@ from request_engine.modules.platform_configuration.api.http import (
     SmtpProviderTester,
     install_platform_configuration_http,
 )
-from request_engine.modules.tenancy.api.identity_recovery import install_identity_recovery_http
+from request_engine.modules.tenancy.api.identity_recovery import (
+    install_identity_recovery_http,
+)
 from request_engine.modules.tenancy.api.native_platform_provisioning import (
     install_native_platform_provisioning_http,
 )
@@ -33,7 +35,9 @@ from request_engine.modules.tenancy.api.platform_provisioner_management import (
     install_native_platform_provisioner_management_http,
 )
 from request_engine.platform.db.instance_setup_store import PostgresInstanceSetupStore
-from request_engine.platform.db.native_recovery_address_store import PostgresNativeRecoveryAddressStore
+from request_engine.platform.db.native_recovery_address_store import (
+    PostgresNativeRecoveryAddressStore,
+)
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
@@ -74,7 +78,8 @@ def create_platform_control_app(
 ) -> FastAPI:
     """Explicit private control-plane composition; caller owns pool lifecycles."""
     runtime = build_native_auth_runtime(
-        auth_session_factory, platform_session_factory=platform_read_session_factory
+        auth_session_factory,
+        platform_session_factory=platform_read_session_factory,
     )
     if runtime.platform_actor_resolver is None:
         raise RuntimeError("Platform control requires an explicit authority read connection")
@@ -88,11 +93,14 @@ def create_platform_control_app(
         identities=webauthn_store,
         decoy_key=resolve_webauthn_decoy_key(webauthn_decoy_key),
     )
-    recovery_codes = NativeRecoveryCodeService(store=PostgresRecoveryCodeStore(auth_session_factory))
+    recovery_codes = NativeRecoveryCodeService(
+        store=PostgresRecoveryCodeStore(auth_session_factory)
+    )
     app = FastAPI(title="Request Engine platform control", version="1.0.0")
 
     async def uncached_control_response(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
