@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass
-from typing import Final
+from typing import Final, cast
 
 _PRESET_NAME: Final = "coolify_balanced_v1"
 _ALLOWED_FREQUENCIES: Final = frozenset(
@@ -194,7 +194,8 @@ def parse_recovery_policy(payload: dict[str, object]) -> RecoveryPolicy:
 def _mapping(value: object, name: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError(f"{name} must be an object")
-    return {str(key): item for key, item in value.items()}
+    mapping = cast(dict[object, object], value)
+    return {str(key): item for key, item in mapping.items()}
 
 
 def _exact_keys(payload: dict[str, object], expected: set[str], name: str) -> None:
