@@ -1,5 +1,7 @@
 import pytest
 
+from typing import cast
+
 from request_engine.modules.platform_configuration.application.recovery_policy import (
     parse_recovery_policy,
     recovery_policy_preset,
@@ -32,12 +34,12 @@ def test_preset_payload_round_trips_through_typed_parser() -> None:
 
 def test_recovery_policy_accepts_operator_overrides() -> None:
     payload = recovery_policy_preset_payload()
-    postgres = dict(payload["postgres"])
+    postgres = dict(cast(dict[str, object], payload["postgres"]))
     postgres["frequency"] = "daily"
     postgres["local_retention_days"] = 14
     payload["postgres"] = postgres
 
-    recovery_set = dict(payload["recovery_set"])
+    recovery_set = dict(cast(dict[str, object], payload["recovery_set"]))
     recovery_set["target_rpo_minutes"] = 240
     recovery_set["target_rto_minutes"] = 360
     payload["recovery_set"] = recovery_set
@@ -65,7 +67,7 @@ def test_recovery_policy_accepts_operator_overrides() -> None:
 def test_recovery_policy_rejects_invalid_operational_values(path: str, value: object) -> None:
     payload = recovery_policy_preset_payload()
     section_name, field_name = path.split(".")
-    section = dict(payload[section_name])
+    section = dict(cast(dict[str, object], payload[section_name]))
     section[field_name] = value
     payload[section_name] = section
 
