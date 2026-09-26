@@ -214,6 +214,30 @@ def test_managed_oidc_projection_tracks_replace_and_disable(
     assert readiness is not None
     assert readiness[6] == "managed"
 
+    # Readiness must expose projection drift rather than trusting the control
+    # revision alone. This simulates a broken/disabled runtime projection.
+    admin_conn.execute(
+        """
+        UPDATE request_engine.identity_authorities
+           SET status = 'disabled', revision = revision + 1
+         WHERE id = %s
+        """,
+        (authority_id,),
+    )
+    degraded = control.execute(
+        "SELECT * FROM request_platform.read_platform_readiness()"
+    ).fetchone()
+    assert degraded is not None
+    assert degraded[6] == "degraded"
+    admin_conn.execute(
+        """
+        UPDATE request_engine.identity_authorities
+           SET status = 'active', revision = revision + 1
+         WHERE id = %s
+        """,
+        (authority_id,),
+    )
+
     states = admin_conn.execute(
         """
         SELECT revision, state
