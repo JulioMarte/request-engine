@@ -548,7 +548,7 @@ risk = ["security", "availability", "provenance"]
 
 [[guarantees]]
 id = "INV-RECOVERY-BUNDLE-001"
-statement = "Recovery tooling treats PostgreSQL and OpenBao as one recovery package: backup captures a PostgreSQL custom-format dump and OpenBao Raft snapshot, records checksums, encrypts the package with age before retention, requires an off-host copy unless local-only mode is explicitly selected, and prunes only matching local encrypted bundles after a successful backup/copy when an operator-selected positive retention is configured. Restore requires an explicit destructive confirmation and active outbound fence, verifies exact bundle membership and checksums before restore, uses ordinary pg_restore plus non-force OpenBao Raft restore, and emits restore-completion evidence only after both authoritative restore steps succeed. Backup scheduling is rendered only from an operator-supplied systemd OnCalendar value and positive retention; no default RPO/RTO or recovery acceptance is fabricated."
+statement = "Recovery tooling can create and restore a self-contained PostgreSQL + OpenBao package for non-Coolify deployments, drills and fallback recovery: it verifies exact bundle membership/checksums, encrypts retained material, requires explicit destructive restore confirmation plus the outbound fence, and emits completion evidence only after both authoritative restore steps succeed. In the Coolify reference deployment this bundle is not the primary PostgreSQL scheduler: Coolify owns engine-aware PostgreSQL backup/retention while Request Engine owns OpenBao snapshot/recovery coordination."
 severity = "critical"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security", "availability", "provenance"]
@@ -560,3 +560,11 @@ statement = "Appointment-option HMAC artifacts carry a signed key identifier; is
 severity = "high"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security", "availability"]
+
+
+[[guarantees]]
+id = "INV-RECOVERY-POLICY-001"
+statement = "The effective recovery policy is typed, revision-governed and secret-free: before any managed revision is ACTIVE the API returns the documented coolify_balanced_v1 preset, and after activation it returns the exact ACTIVE operations.recovery_policy revision. Schedule, local/off-host retention, component-skew budget, restore-drill interval and RPO/RTO targets are operator-editable through normal P7 stage/validate/activate semantics; embedded credentials or secret bindings are rejected, and configured RPO/RTO values are targets rather than fabricated evidence of achieved recovery."
+severity = "high"
+required_evidence = ["contract", "invariant", "adversarial"]
+risk = ["availability", "provenance"]
