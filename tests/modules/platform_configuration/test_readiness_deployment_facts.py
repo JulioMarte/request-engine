@@ -32,7 +32,7 @@ def test_deployment_readiness_reports_fence_store_and_bootstrap_delivery() -> No
     assert merged.clone_fence == "fenced"
     assert merged.secret_store == "configured"
     assert merged.recovery_delivery_source == "bootstrap"
-    assert merged.oidc == "unconfigured"
+    assert merged.oidc == "optional"
 
 
 def test_managed_delivery_takes_precedence_over_bootstrap_fallback() -> None:
@@ -72,3 +72,12 @@ def test_deployment_facts_cannot_override_managed_oidc_truth() -> None:
     )
 
     assert merged.oidc == "managed"
+
+
+def test_deployment_facts_cannot_hide_degraded_managed_oidc() -> None:
+    merged = apply_deployment_readiness(
+        _readiness(oidc="degraded"),
+        PlatformDeploymentReadinessFacts(oidc="optional"),
+    )
+
+    assert merged.oidc == "degraded"
