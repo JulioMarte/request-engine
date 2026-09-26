@@ -152,9 +152,7 @@ def _state(row: dict[str, object]) -> DeploymentBackupState:
     return DeploymentBackupState(
         schedule_id=_optional_string(row.get("uuid")),
         frequency=_optional_string(row.get("frequency")),
-        local_retention_days=_optional_int(
-            row.get("database_backup_retention_days_locally")
-        ),
+        local_retention_days=_optional_int(row.get("database_backup_retention_days_locally")),
         offsite_retention_days=_optional_int(row.get("database_backup_retention_days_s3")),
         timeout_seconds=_optional_int(row.get("timeout")),
         offsite_enabled=_optional_bool(row.get("save_s3")),
