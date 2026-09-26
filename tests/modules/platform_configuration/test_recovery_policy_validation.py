@@ -10,12 +10,16 @@ from request_engine.modules.platform_configuration.application.configuration imp
     PlatformConfigurationProviderInvalid,
     ValidateConfiguration,
 )
+from request_engine.modules.platform_configuration.application.provider_secrets import (
+    ProviderSecretResolver,
+)
 from request_engine.modules.platform_configuration.application.provider_validation import (
     PlatformProviderValidationService,
 )
 from request_engine.modules.platform_configuration.application.recovery_policy import (
     recovery_policy_preset_payload,
 )
+from request_engine.modules.platform_configuration.application.smtp import SmtpConfigurationValidator
 from request_engine.platform.security.platform_context import PlatformActorContext
 
 
@@ -72,9 +76,9 @@ async def test_recovery_policy_validation_commits_without_secret_fence() -> None
     service = PlatformProviderValidationService(
         reader=_Reader(_candidate(recovery_policy_preset_payload())),
         commands=commands,
-        secret_resolver=cast(object, None),
+        secret_resolver=cast(ProviderSecretResolver, object()),
         secret_store=None,
-        smtp_validator=cast(object, None),
+        smtp_validator=cast(SmtpConfigurationValidator, object()),
     )
 
     result = await service.validate(
@@ -110,9 +114,9 @@ async def test_recovery_policy_validation_rejects_secret_binding() -> None:
     service = PlatformProviderValidationService(
         reader=_Reader(candidate),
         commands=_Commands(),
-        secret_resolver=cast(object, None),
+        secret_resolver=cast(ProviderSecretResolver, object()),
         secret_store=None,
-        smtp_validator=cast(object, None),
+        smtp_validator=cast(SmtpConfigurationValidator, object()),
     )
 
     with pytest.raises(PlatformConfigurationProviderInvalid):
