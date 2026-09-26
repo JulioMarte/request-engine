@@ -29,7 +29,7 @@ class OidcValidationResult:
 class OidcConfigurationValidator(Protocol):
     async def validate(
         self,
-        configuration: "OidcProviderConfiguration",
+        configuration: OidcProviderConfiguration,
     ) -> OidcValidationResult: ...
 
 
@@ -38,7 +38,7 @@ class OidcProviderConfiguration:
     """Typed, non-secret configuration for the optional federated HUMAN arm.
 
     Activation state deliberately lives in the governed configuration revision
-    lifecycle rather than being duplicated inside the payload.  No client secret
+    lifecycle rather than being duplicated inside the payload. No client secret
     is accepted: Request Engine's current OIDC bearer/JWKS flow does not need one.
     """
 
@@ -71,7 +71,7 @@ def parse_oidc_configuration(
 ) -> OidcProviderConfiguration:
     """Validate the exact P7 OIDC administrative payload.
 
-    Unknown fields fail closed.  In particular ``client_secret`` is rejected so
+    Unknown fields fail closed. In particular ``client_secret`` is rejected so
     an operator cannot accidentally place reversible credentials in PostgreSQL.
     """
 
