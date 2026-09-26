@@ -1,11 +1,11 @@
 """Project governed OIDC configuration into the runtime identity authority.
 
-Revision ID: 0093_managed_oidc_authority_projection
+Revision ID: 0093_managed_oidc_projection
 Revises: 0092_appointment_signing_runtime
 
-platform_configuration_revisions remains the source of truth.  The existing
+platform_configuration_revisions remains the source of truth. The existing
 identity_authorities row is a derived compatibility/runtime projection because
-IdentityBinding stores its stable authority id.  Projection happens in the same
+IdentityBinding stores its stable authority id. Projection happens in the same
 transaction as activation/disable, so the two trust surfaces cannot commit in a
 divergent state.
 """
@@ -14,7 +14,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0093_managed_oidc_authority_projection"
+revision: str = "0093_managed_oidc_projection"
 down_revision: str | Sequence[str] | None = "0092_appointment_signing_runtime"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -79,9 +79,6 @@ def upgrade() -> None:
                     configuration_ref = EXCLUDED.configuration_ref,
                     revision = request_engine.identity_authorities.revision + 1;
             ELSIF OLD.state = 'active' AND NEW.state IN ('superseded', 'disabled') THEN
-                -- During replacement, the old row is superseded before the new
-                -- revision becomes active.  Disable only when no other active
-                -- governed revision for this issuer exists at this statement.
                 UPDATE request_engine.identity_authorities AS authority
                    SET status = 'disabled',
                        revision = authority.revision + 1
