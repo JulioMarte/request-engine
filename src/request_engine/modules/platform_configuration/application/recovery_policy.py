@@ -58,7 +58,7 @@ def recovery_policy_preset() -> RecoveryPolicy:
             require_s3=True,
         ),
         openbao=OpenBaoSnapshotPolicy(
-            frequency="hourly",
+            frequency="5 * * * *",
             local_retention_days=7,
             offsite_retention_days=30,
             require_offsite=True,
