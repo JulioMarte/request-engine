@@ -7,7 +7,7 @@ from request_engine.modules.platform_configuration.application.readiness import 
 )
 
 
-def _readiness(source: str = "none") -> PlatformReadiness:
+def _readiness(source: str = "none", *, oidc: str = "unconfigured") -> PlatformReadiness:
     return PlatformReadiness(
         managed_smtp_source=source,
         smtp_active_revision=None,
@@ -15,6 +15,7 @@ def _readiness(source: str = "none") -> PlatformReadiness:
         smtp_last_provider_test_outcome=None,
         smtp_last_provider_test_at=None,
         smtp_secret_configured=False,
+        oidc=oidc,
     )
 
 
@@ -31,7 +32,7 @@ def test_deployment_readiness_reports_fence_store_and_bootstrap_delivery() -> No
     assert merged.clone_fence == "fenced"
     assert merged.secret_store == "configured"
     assert merged.recovery_delivery_source == "bootstrap"
-    assert merged.oidc == "optional"
+    assert merged.oidc == "unconfigured"
 
 
 def test_managed_delivery_takes_precedence_over_bootstrap_fallback() -> None:
@@ -62,3 +63,12 @@ def test_unconfigured_delivery_is_reported_without_fabricating_readiness() -> No
     assert merged.secret_store == "unconfigured"
     assert merged.backup_evidence == "unknown"
     assert merged.restore_drill == "unknown"
+
+
+def test_deployment_facts_cannot_override_managed_oidc_truth() -> None:
+    merged = apply_deployment_readiness(
+        _readiness(oidc="managed"),
+        PlatformDeploymentReadinessFacts(oidc="optional"),
+    )
+
+    assert merged.oidc == "managed"
