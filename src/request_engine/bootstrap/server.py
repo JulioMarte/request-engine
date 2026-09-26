@@ -42,18 +42,15 @@ from request_engine.platform.security.webauthn import WebAuthnPolicy
 
 
 def create_app() -> FastAPI:
-    """Fail on missing configuration; external identity is explicitly opt-in."""
+    """Fail on missing bootstrap config; managed OIDC is governed by database state."""
     settings = HttpSettings.model_validate({})
     engine = create_postgres_engine(settings.database_url.get_secret_value())
     sessions = create_session_factory(engine)
-    oidc = (
-        OidcHttpSubjectResolver(authority_reader=PostgresOidcAuthorityReader(sessions))
-        if settings.oidc_enabled
-        else None
-    )
-    identity_link_verifier = (
-        build_identity_link_verifier(sessions) if settings.oidc_enabled else None
-    )
+    # The resolver is always present, but it has no routing authority until an
+    # identity.oidc revision is activated.  This removes the second source of
+    # truth that REQUEST_ENGINE_OIDC_ENABLED previously created.
+    oidc = OidcHttpSubjectResolver(authority_reader=PostgresOidcAuthorityReader(sessions))
+    identity_link_verifier = build_identity_link_verifier(sessions)
     outbound_fence = OutboundSideEffectFence.from_environment()
     bootstrap_recovery_messenger = build_native_recovery_messenger()
     native_recovery_messenger = outbound_fence.recovery(bootstrap_recovery_messenger)
@@ -189,10 +186,8 @@ def create_app() -> FastAPI:
                 with suppress(asyncio.CancelledError):
                     await signing_task
             try:
-                if identity_link_verifier is not None:
-                    await identity_link_verifier.aclose()
-                if oidc is not None:
-                    await oidc.aclose()
+                await identity_link_verifier.aclose()
+                await oidc.aclose()
             finally:
                 await engine.dispose()
 
