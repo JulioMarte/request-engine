@@ -19,7 +19,9 @@ from request_engine.modules.platform_configuration.application.provider_validati
 from request_engine.modules.platform_configuration.application.recovery_policy import (
     recovery_policy_preset_payload,
 )
-from request_engine.modules.platform_configuration.application.smtp import SmtpConfigurationValidator
+from request_engine.modules.platform_configuration.application.smtp import (
+    SmtpConfigurationValidator,
+)
 from request_engine.platform.security.platform_context import PlatformActorContext
 
 
