@@ -3,10 +3,9 @@
 Revision ID: 0094_managed_oidc_readiness
 Revises: 0093_managed_oidc_projection
 
-OIDC readiness is now a durable fact derived from the governed ACTIVE revision,
-not from a deployment/environment flag. A platform with no ACTIVE managed OIDC
-revision remains healthy because Native authentication is a complete supported
-path; readiness therefore reports OIDC as optional until it is configured.
+The database reports whether managed OIDC is configured and internally healthy.
+Whether an unconfigured provider is optional is a deployment/product-policy fact
+composed above this durable PostgreSQL projection.
 """
 
 from collections.abc import Sequence
@@ -19,20 +18,55 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _READ_DEFINER = "request_platform_definer"
+_SCHEMA_OWNER = "request_engine_schema_owner"
 _SIGNATURE = "request_platform.read_platform_readiness()"
+_PROJECTION_SIGNATURE = (
+    "request_platform.managed_oidc_projection_matches(text, text, text, bigint)"
+)
 
 
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
+
+    # Keep the platform read definer on its reviewed column-level surface.  The
+    # OIDC authority table belongs to the identity trust root, so readiness gets
+    # only a boolean projection through a narrow SECURITY DEFINER boundary rather
+    # than broadening request_platform_definer's direct table privileges.
+    op.execute(f"GRANT USAGE, CREATE ON SCHEMA request_platform TO {_SCHEMA_OWNER}")
     op.execute(
-        f"""
-        GRANT SELECT (
-            id, kind, issuer_or_environment, status, configuration_ref
+        r"""
+        CREATE FUNCTION request_platform.managed_oidc_projection_matches(
+            p_issuer text,
+            p_jwks_uri text,
+            p_audience text,
+            p_revision bigint
         )
-        ON request_engine.identity_authorities
-        TO {_READ_DEFINER};
+        RETURNS boolean
+        LANGUAGE sql
+        STABLE
+        SECURITY DEFINER
+        SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+        AS $function$
+            SELECT EXISTS (
+                SELECT 1
+                  FROM request_engine.identity_authorities AS authority
+                 WHERE authority.kind = 'oidc'
+                   AND authority.issuer_or_environment = p_issuer
+                   AND authority.status = 'active'
+                   AND authority.configuration_ref = jsonb_build_object(
+                       'jwks_uri', p_jwks_uri,
+                       'audience', p_audience,
+                       'managed_configuration_revision', p_revision
+                   )::text
+            )
+        $function$;
         """
     )
+    op.execute(f"ALTER FUNCTION {_PROJECTION_SIGNATURE} OWNER TO {_SCHEMA_OWNER}")
+    op.execute(f"REVOKE CREATE ON SCHEMA request_platform FROM {_SCHEMA_OWNER}")
+    op.execute(f"REVOKE ALL ON FUNCTION {_PROJECTION_SIGNATURE} FROM PUBLIC")
+    op.execute(f"GRANT EXECUTE ON FUNCTION {_PROJECTION_SIGNATURE} TO {_READ_DEFINER}")
+
     op.execute(f"DROP FUNCTION {_SIGNATURE}")
     op.execute(
         r"""
@@ -82,20 +116,6 @@ def upgrade() -> None:
                   AND config.state = 'active'
                 LIMIT 1
             ),
-            projected_oidc AS (
-                SELECT authority.id
-                FROM active_oidc AS config
-                JOIN request_engine.identity_authorities AS authority
-                  ON authority.kind = 'oidc'
-                 AND authority.issuer_or_environment = config.issuer
-                 AND authority.status = 'active'
-                 AND authority.configuration_ref = jsonb_build_object(
-                     'jwks_uri', config.jwks_uri,
-                     'audience', config.audience,
-                     'managed_configuration_revision', config.revision
-                 )::text
-                LIMIT 1
-            ),
             latest_test AS (
                 SELECT
                     fact.detail ->> 'outcome' AS outcome,
@@ -115,14 +135,18 @@ def upgrade() -> None:
                 latest.created_at,
                 active.secret_binding_id IS NOT NULL,
                 CASE
-                    WHEN oidc.revision IS NULL THEN 'optional'
-                    WHEN projected.id IS NULL THEN 'degraded'
-                    ELSE 'managed'
+                    WHEN oidc.revision IS NULL THEN 'unconfigured'
+                    WHEN request_platform.managed_oidc_projection_matches(
+                        oidc.issuer,
+                        oidc.jwks_uri,
+                        oidc.audience,
+                        oidc.revision
+                    ) THEN 'managed'
+                    ELSE 'degraded'
                 END
             FROM (SELECT 1) AS singleton
             LEFT JOIN active_smtp AS active ON true
             LEFT JOIN active_oidc AS oidc ON true
-            LEFT JOIN projected_oidc AS projected ON true
             LEFT JOIN latest_test AS latest ON true;
         END
         $function$;
