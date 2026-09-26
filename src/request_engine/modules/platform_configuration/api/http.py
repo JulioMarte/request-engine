@@ -26,6 +26,9 @@ from request_engine.modules.platform_configuration.adapters.db.readiness import 
 from request_engine.modules.platform_configuration.adapters.db.secrets import (
     PostgresPlatformSecretMutations,
 )
+from request_engine.modules.platform_configuration.adapters.oidc import (
+    HttpxOidcConfigurationValidator,
+)
 from request_engine.modules.platform_configuration.adapters.smtp import (
     SmtplibConfigurationValidator,
     SmtplibProviderTester,
@@ -448,6 +451,7 @@ def install_platform_configuration_http(
         secret_store=secret_store,
         appointment_signing_secret_store=appointment_signing_secret_store,
         smtp_validator=smtp_validator or SmtplibConfigurationValidator(),
+        oidc_validator=HttpxOidcConfigurationValidator(),
     )
     provider_test = PlatformProviderTestService(
         reader=provider_candidate_reader,
