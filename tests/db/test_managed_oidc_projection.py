@@ -166,6 +166,7 @@ def test_managed_oidc_projection_tracks_replace_and_disable(
             "platform.configuration.validate",
             "platform.configuration.activate",
             "platform.configuration.disable",
+            "platform.readiness.read",
         },
     )
     control = _control(platform_control_conn_factory, actor_id, authority_revision)
@@ -207,6 +208,12 @@ def test_managed_oidc_projection_tracks_replace_and_disable(
     assert replacement_ref["audience"] == "request-engine-d"
     assert int(replacement[3]) > int(first[3])
 
+    readiness = control.execute(
+        "SELECT * FROM request_platform.read_platform_readiness()"
+    ).fetchone()
+    assert readiness is not None
+    assert readiness[6] == "managed"
+
     states = admin_conn.execute(
         """
         SELECT revision, state
@@ -226,6 +233,11 @@ def test_managed_oidc_projection_tracks_replace_and_disable(
         """
     ).fetchone()
     assert disabled == (authority_id, "disabled")
+    readiness_after_disable = control.execute(
+        "SELECT * FROM request_platform.read_platform_readiness()"
+    ).fetchone()
+    assert readiness_after_disable is not None
+    assert readiness_after_disable[6] == "unconfigured"
 
 
 def test_concurrent_managed_oidc_activation_projects_only_the_winner(
