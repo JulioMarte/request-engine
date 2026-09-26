@@ -95,9 +95,7 @@ def certify(source: Path, output: Path | None) -> dict[str, Any]:
     }
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(
-            json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+        output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
 
 
