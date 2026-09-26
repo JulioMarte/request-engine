@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from request_engine.modules.platform_configuration.application.configuration import (
     PlatformConfigurationProviderInvalid,
 )
+from request_engine.platform.security.oidc_auth import validate_https_endpoint
 
 OIDC_CONFIGURATION_KIND = "identity.oidc"
 OIDC_PROVIDER_KIND = "oidc"
@@ -30,13 +31,16 @@ def _https_url(value: object, *, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise PlatformConfigurationProviderInvalid(f"OIDC {field} must be a non-empty string")
     normalized = value.strip().rstrip("/") if field == "issuer" else value.strip()
-    parsed = urlparse(normalized)
-    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+    if len(normalized) > 2048:
+        raise PlatformConfigurationProviderInvalid(f"OIDC {field} exceeds 2048 characters")
+    try:
+        validate_https_endpoint(normalized)
+    except (TypeError, ValueError) as exc:
         raise PlatformConfigurationProviderInvalid(
-            f"OIDC {field} must be an absolute HTTPS URL without userinfo"
-        )
-    if parsed.fragment:
-        raise PlatformConfigurationProviderInvalid(f"OIDC {field} must not contain a fragment")
+            f"OIDC {field} must be a canonical absolute HTTPS URL without credentials"
+        ) from exc
+    if field == "issuer" and urlsplit(normalized).query:
+        raise PlatformConfigurationProviderInvalid("OIDC issuer must not contain a query")
     return normalized
 
 
