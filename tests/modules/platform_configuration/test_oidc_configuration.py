@@ -91,6 +91,8 @@ def test_oidc_payload_is_typed_and_normalizes_issuer() -> None:
     [
         {"issuer": "http://id.example.com"},
         {"jwks_uri": "http://id.example.com/jwks"},
+        {"issuer": "https://user:pass@id.example.com"},
+        {"issuer": "https://id.example.com/#fragment"},
         {"audience": ""},
         {"client_secret": "must-never-enter-postgres"},
     ],
