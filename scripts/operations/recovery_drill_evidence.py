@@ -5,6 +5,7 @@ This gate deliberately distinguishes repository tooling from an exercised drill.
 It accepts machine-readable facts produced by a real restore run and fails closed
 when any P7-K proof is absent. It never invents RPO/RTO values.
 """
+
 from __future__ import annotations
 
 import argparse
