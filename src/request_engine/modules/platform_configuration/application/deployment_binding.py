@@ -62,10 +62,7 @@ class DeploymentBinding:
 def parse_deployment_binding(revision: ConfigurationRevision) -> DeploymentBinding:
     if revision.configuration_kind != DEPLOYMENT_BINDING_KIND:
         raise PlatformConfigurationInvalid()
-    if (
-        revision.provider_kind != DEPLOYMENT_BINDING_PROVIDER
-        or revision.secret_binding_id is None
-    ):
+    if revision.provider_kind != DEPLOYMENT_BINDING_PROVIDER or revision.secret_binding_id is None:
         raise PlatformConfigurationInvalid()
     payload = revision.configuration
     expected = {"base_url", "database_uuid", "scheduled_backup_uuid", "s3_storage_uuid"}
