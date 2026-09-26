@@ -925,3 +925,4 @@ def test_platform_readiness_projects_active_smtp_and_provider_test_facts(
     assert row[3] == "delivered"
     assert row[4] is not None
     assert row[5] is False
+    assert row[6] == "unconfigured"
