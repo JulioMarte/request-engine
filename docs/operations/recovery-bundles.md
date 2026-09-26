@@ -1,8 +1,19 @@
 # Request Engine recovery bundle operations
 
-This runbook covers the machine-executable PostgreSQL + OpenBao backup bundle
-used by the P7 disaster-recovery program. It does **not** define an RPO/RTO;
-operators must choose and document those values for their deployment.
+This runbook covers P7 recovery operations. In the reference Docker/Coolify
+deployment, Coolify owns scheduled engine-aware PostgreSQL backups and their
+local/S3 retention; Request Engine owns the recovery policy, OpenBao snapshot
+coordination, clone fencing and recovery evidence. The combined PostgreSQL +
+OpenBao bundle below remains a fallback/non-Coolify tool and a useful drill
+primitive; it is not the primary PostgreSQL scheduler for the Coolify profile.
+
+The effective policy is available from `GET /v1/platform/recovery-policy`.
+Before a managed revision is activated it returns the
+`coolify_balanced_v1` preset. Operators can change it through the normal P7
+configuration revision lifecycle using configuration kind
+`operations.recovery_policy` and provider kind
+`coolify-postgres-openbao`. RPO/RTO values in that policy are objectives, not
+proof that a deployment has achieved them.
 
 ## Safety contract
 
@@ -164,3 +175,48 @@ The renderer deliberately does not call `systemctl` itself. Installation and
 activation remain explicit operational actions. The chosen `OnCalendar` value
 and retention count must be recorded with the deployment's accepted recovery
 policy; generating a timer does not by itself establish an acceptable RPO.
+
+
+## Reference preset: coolify_balanced_v1
+
+The default desired state is intentionally conservative for a small production
+deployment while remaining editable:
+
+- PostgreSQL/Coolify backup frequency: `hourly`;
+- PostgreSQL local retention: 7 days;
+- PostgreSQL S3 retention: 30 days;
+- Coolify backup timeout: 3600 seconds;
+- S3 copy required;
+- OpenBao snapshot frequency: `hourly`;
+- OpenBao local retention: 7 days;
+- OpenBao off-host retention: 30 days;
+- OpenBao off-host copy required;
+- maximum PostgreSQL/OpenBao recovery-point skew: 15 minutes;
+- restore drill interval: 30 days;
+- target RPO: 60 minutes;
+- target RTO: 120 minutes;
+- clone fence required.
+
+Administrators may stage a different policy with:
+
+```http
+POST /v1/platform/configurations/operations.recovery_policy/revisions
+Idempotency-Key: <key>
+Content-Type: application/json
+
+{
+  "provider_kind": "coolify-postgres-openbao",
+  "configuration": { "...": "typed recovery policy payload" },
+  "secret_binding_id": null
+}
+```
+
+Then validate and activate the revision through the existing P7
+`:validate` and `:activate` operations. The policy deliberately contains no
+Coolify API token, S3 credential, OpenBao token or age identity. Provider
+credentials belong in governed secret bindings.
+
+Changing the desired policy does not by itself prove that Coolify has reconciled
+its scheduled-backup resource. Automatic Coolify reconciliation is a separate
+provider-integration concern and must report applied/external state rather than
+pretend desired state is already effective.
