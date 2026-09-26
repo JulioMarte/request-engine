@@ -26,10 +26,13 @@ jobs:
           version: "0.12.5"
       - name: Pull pinned upstream Coolify image
         run: docker pull "$COOLIFY_IMAGE"
-      - name: Prove expected backup API routes exist in upstream image
+      - name: Extract upstream Coolify API route source
         run: |
-          docker run --rm --entrypoint php "$COOLIFY_IMAGE" artisan route:list --json > /tmp/coolify-routes.json
-          python scripts/ci/check_coolify_backup_routes.py /tmp/coolify-routes.json
+          docker create --name coolify-contract "$COOLIFY_IMAGE"
+          docker cp coolify-contract:/var/www/html/routes/api.php /tmp/coolify-api.php
+          docker rm coolify-contract
+      - name: Prove expected backup API routes exist in upstream image
+        run: python scripts/ci/check_coolify_backup_routes.py /tmp/coolify-api.php
       - name: Run deployment adapter contract tests
         run: |
           uv run pytest -q \
