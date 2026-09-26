@@ -187,7 +187,7 @@ deployment while remaining editable:
 - PostgreSQL S3 retention: 30 days;
 - Coolify backup timeout: 3600 seconds;
 - S3 copy required;
-- OpenBao snapshot frequency: `hourly`;
+- OpenBao snapshot frequency: `5 * * * *` (five minutes after the default hourly PostgreSQL backup);
 - OpenBao local retention: 7 days;
 - OpenBao off-host retention: 30 days;
 - OpenBao off-host copy required;
