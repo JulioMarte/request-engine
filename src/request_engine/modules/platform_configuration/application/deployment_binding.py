@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Protocol
 from uuid import UUID
 
 from request_engine.modules.platform_configuration.application.configuration import (
@@ -10,11 +11,11 @@ from request_engine.modules.platform_configuration.application.configuration imp
     PlatformConfigurationNotFound,
 )
 from request_engine.modules.platform_configuration.application.deployment_reconciliation import (
+    DeploymentBackupTarget,
     DeploymentReconciliationPlan,
     DeploymentReconciliationResult,
     DeploymentRecoveryAdapter,
     DeploymentRecoveryReconciler,
-    DeploymentBackupTarget,
 )
 from request_engine.modules.platform_configuration.application.provider_secrets import (
     ProviderSecretResolver,
@@ -23,6 +24,9 @@ from request_engine.modules.platform_configuration.application.recovery_policy i
     RecoveryPolicy,
     parse_recovery_policy,
     recovery_policy_preset,
+)
+from request_engine.modules.platform_configuration.application.secrets import (
+    PlatformSecretUnavailable,
 )
 from request_engine.platform.secrets.platform_store import (
     PlatformSecretNotFound,
@@ -61,7 +65,8 @@ def parse_deployment_binding(revision: ConfigurationRevision) -> DeploymentBindi
     if revision.provider_kind != DEPLOYMENT_BINDING_PROVIDER or revision.secret_binding_id is None:
         raise PlatformConfigurationInvalid()
     payload = revision.configuration
-    if set(payload) != {"base_url", "database_uuid", "scheduled_backup_uuid", "s3_storage_uuid"}:
+    expected = {"base_url", "database_uuid", "scheduled_backup_uuid", "s3_storage_uuid"}
+    if set(payload) != expected:
         raise PlatformConfigurationInvalid()
 
     def required(name: str) -> str:
@@ -92,10 +97,13 @@ def parse_deployment_binding(revision: ConfigurationRevision) -> DeploymentBindi
     )
 
 
-class DeploymentBindingReader:
+class DeploymentBindingReader(Protocol):
     async def list_revisions(
         self, actor: PlatformActorContext, configuration_kind: str | None = None
     ) -> list[ConfigurationRevision]: ...
+
+
+AdapterFactory = Callable[[DeploymentBinding, str], DeploymentRecoveryAdapter]
 
 
 class DeploymentRecoveryService:
@@ -105,16 +113,22 @@ class DeploymentRecoveryService:
         reader: DeploymentBindingReader,
         secret_resolver: ProviderSecretResolver,
         secret_store: PlatformSecretStore | None,
-        adapter_factory: callable,
+        adapter_factory: AdapterFactory,
     ) -> None:
         self._reader = reader
         self._secret_resolver = secret_resolver
         self._secret_store = secret_store
         self._adapter_factory = adapter_factory
 
-    async def plan(self, actor: PlatformActorContext) -> tuple[DeploymentBinding, DeploymentReconciliationPlan]:
-        binding, policy, adapter = await self._runtime(actor, capability_key="platform.deployment.read")
-        return binding, await DeploymentRecoveryReconciler(adapter).plan(policy=policy, target=binding.target)
+    async def plan(
+        self, actor: PlatformActorContext
+    ) -> tuple[DeploymentBinding, DeploymentReconciliationPlan]:
+        binding, policy, adapter = await self._runtime(
+            actor, capability_key="platform.deployment.read"
+        )
+        return binding, await DeploymentRecoveryReconciler(adapter).plan(
+            policy=policy, target=binding.target
+        )
 
     async def reconcile(
         self, actor: PlatformActorContext
@@ -140,14 +154,20 @@ class DeploymentRecoveryService:
         if reference.purpose != DEPLOYMENT_TOKEN_PURPOSE or reference.status != "active":
             raise PlatformConfigurationInvalid()
         if self._secret_store is None:
-            raise PlatformSecretStoreUnavailable()
+            raise PlatformSecretUnavailable()
         try:
             token = await self._secret_store.resolve(secret_id=reference.secret_id)
         except PlatformSecretNotFound:
             raise PlatformConfigurationInvalid() from None
+        except PlatformSecretStoreUnavailable:
+            raise PlatformSecretUnavailable() from None
 
         policy_rows = await self._reader.list_revisions(actor, "operations.recovery_policy")
         active_policy = next((row for row in policy_rows if row.state == "active"), None)
-        policy = recovery_policy_preset() if active_policy is None else parse_recovery_policy(active_policy.configuration)
+        policy = (
+            recovery_policy_preset()
+            if active_policy is None
+            else parse_recovery_policy(active_policy.configuration)
+        )
         adapter = self._adapter_factory(binding, token)
         return binding, policy, adapter
