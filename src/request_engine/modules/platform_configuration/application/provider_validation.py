@@ -10,6 +10,9 @@ from request_engine.modules.platform_configuration.application.configuration imp
     PlatformProviderValidationFailed,
     ValidateConfiguration,
 )
+from request_engine.modules.platform_configuration.application.recovery_policy import (
+    parse_recovery_policy,
+)
 from request_engine.modules.platform_configuration.application.provider_secrets import (
     ProviderSecretReference,
     ProviderSecretResolver,
@@ -102,6 +105,17 @@ class PlatformProviderValidationService:
             binding_revision, backend_version = await self._validate_appointment_signing(
                 actor, candidate
             )
+        elif (
+            candidate.configuration_kind == "operations.recovery_policy"
+            and candidate.provider_kind == "coolify-postgres-openbao"
+        ):
+            if candidate.secret_binding_id is not None:
+                raise PlatformConfigurationProviderInvalid()
+            try:
+                parse_recovery_policy(candidate.configuration)
+            except ValueError as exc:
+                raise PlatformConfigurationProviderInvalid() from exc
+            binding_revision, backend_version = None, None
         else:
             raise PlatformConfigurationInvalid()
 
