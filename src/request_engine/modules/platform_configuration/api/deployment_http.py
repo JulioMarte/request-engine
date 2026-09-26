@@ -166,9 +166,7 @@ def install_deployment_recovery_http(
             provider_kind=active.provider_kind,
             base_url=str(active.configuration["base_url"]),
             database_uuid=str(active.configuration["database_uuid"]),
-            scheduled_backup_uuid=_optional(
-                active.configuration["scheduled_backup_uuid"]
-            ),
+            scheduled_backup_uuid=_optional(active.configuration["scheduled_backup_uuid"]),
             s3_storage_uuid=_optional(active.configuration["s3_storage_uuid"]),
             secret_binding_id=body.secret_binding_id,
             revision=active.revision,
