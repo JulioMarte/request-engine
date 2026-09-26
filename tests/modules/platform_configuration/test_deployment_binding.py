@@ -139,9 +139,7 @@ class FakeStore:
 class FakeAdapter:
     provider_kind = "coolify"
 
-    async def inspect_backup(
-        self, target: DeploymentBackupTarget
-    ) -> DeploymentBackupState | None:
+    async def inspect_backup(self, target: DeploymentBackupTarget) -> DeploymentBackupState | None:
         assert target == DeploymentBackupTarget("db-1", "backup-1", "s3-1")
         return DeploymentBackupState("backup-1", "daily", 3, 30, 3600, True)
 
