@@ -17,17 +17,13 @@ from request_engine.modules.platform_configuration.application.deployment_reconc
     DeploymentRecoveryAdapter,
     DeploymentRecoveryReconciler,
 )
-from request_engine.modules.platform_configuration.application.provider_secrets import (
-    ProviderSecretResolver,
-)
+from request_engine.modules.platform_configuration.application.provider_secrets import ProviderSecretResolver
 from request_engine.modules.platform_configuration.application.recovery_policy import (
     RecoveryPolicy,
     parse_recovery_policy,
     recovery_policy_preset,
 )
-from request_engine.modules.platform_configuration.application.secrets import (
-    PlatformSecretUnavailable,
-)
+from request_engine.modules.platform_configuration.application.secrets import PlatformSecretUnavailable
 from request_engine.platform.secrets.platform_store import (
     PlatformSecretNotFound,
     PlatformSecretStore,
@@ -124,7 +120,7 @@ class DeploymentRecoveryService:
         self, actor: PlatformActorContext
     ) -> tuple[DeploymentBinding, DeploymentReconciliationPlan]:
         binding, policy, adapter = await self._runtime(
-            actor, capability_key="platform.deployment.read"
+            actor, capability_key="platform.configuration.read"
         )
         return binding, await DeploymentRecoveryReconciler(adapter).plan(
             policy=policy, target=binding.target
@@ -134,7 +130,7 @@ class DeploymentRecoveryService:
         self, actor: PlatformActorContext
     ) -> tuple[DeploymentBinding, DeploymentReconciliationResult]:
         binding, policy, adapter = await self._runtime(
-            actor, capability_key="platform.deployment.reconcile"
+            actor, capability_key="platform.configuration.activate"
         )
         return binding, await DeploymentRecoveryReconciler(adapter).reconcile(
             policy=policy, target=binding.target
