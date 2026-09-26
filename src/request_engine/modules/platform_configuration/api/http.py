@@ -284,6 +284,49 @@ class SecretBindingMetadataView(BaseModel):
     revoked_at: datetime | None
 
 
+def validate_stage_configuration_contract(
+    configuration_kind: str,
+    body: StageConfigurationBody,
+) -> None:
+    """Validate the non-I/O contract before persisting a governed revision.
+
+    Provider-specific network/secret checks still belong to the explicit
+    validate step.  This gate ensures stage and validate share the same typed
+    payload parsers instead of allowing arbitrary JSON into a known provider.
+    """
+    try:
+        if configuration_kind == "email.delivery" and body.provider_kind == "smtp":
+            parse_smtp_configuration(body.configuration)
+        elif configuration_kind == "communications.webhook" and body.provider_kind == "webhook":
+            parse_webhook_configuration(body.configuration)
+        elif (
+            configuration_kind == "security.appointment_option_signing"
+            and body.provider_kind == "hmac-sha256-keyring"
+            and body.secret_binding_id is not None
+            and not body.configuration
+        ):
+            return
+        elif (
+            configuration_kind == "operations.recovery_policy"
+            and body.provider_kind == "coolify-postgres-openbao"
+            and body.secret_binding_id is None
+        ):
+            parse_recovery_policy(body.configuration)
+        elif (
+            configuration_kind == OIDC_CONFIGURATION_KIND
+            and body.provider_kind == OIDC_PROVIDER_KIND
+            and body.secret_binding_id is None
+        ):
+            parse_oidc_configuration(
+                body.configuration,
+                provider_kind=body.provider_kind,
+            )
+        else:
+            raise PlatformConfigurationInvalid()
+    except (TypeError, ValueError) as exc:
+        raise PlatformConfigurationProviderInvalid() from exc
+
+
 async def platform_configuration_error_handler(_: Request, exc: Exception) -> JSONResponse:
     errors: dict[type[Exception], tuple[int, str, ErrorResolution]] = {
         PlatformConfigurationForbidden: (
@@ -608,37 +651,7 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
-        try:
-            if configuration_kind == "email.delivery" and body.provider_kind == "smtp":
-                parse_smtp_configuration(body.configuration)
-            elif configuration_kind == "communications.webhook" and body.provider_kind == "webhook":
-                parse_webhook_configuration(body.configuration)
-            elif (
-                configuration_kind == "security.appointment_option_signing"
-                and body.provider_kind == "hmac-sha256-keyring"
-                and body.secret_binding_id is not None
-                and not body.configuration
-            ):
-                pass
-            elif (
-                configuration_kind == "operations.recovery_policy"
-                and body.provider_kind == "coolify-postgres-openbao"
-                and body.secret_binding_id is None
-            ):
-                parse_recovery_policy(body.configuration)
-            elif (
-                configuration_kind == OIDC_CONFIGURATION_KIND
-                and body.provider_kind == OIDC_PROVIDER_KIND
-                and body.secret_binding_id is None
-            ):
-                parse_oidc_configuration(
-                    body.configuration,
-                    provider_kind=body.provider_kind,
-                )
-            else:
-                raise PlatformConfigurationInvalid()
-        except (TypeError, ValueError) as exc:
-            raise PlatformConfigurationProviderInvalid() from exc
+        validate_stage_configuration_contract(configuration_kind, body)
         result = await commands.stage(
             actor,
             StageConfiguration(
