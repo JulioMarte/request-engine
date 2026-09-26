@@ -330,6 +330,8 @@ uv run pytest \
   tests/modules/platform/test_outbound_fence.py \
   tests/architecture/test_e2e_platform_contract.py \
   tests/modules/platform_configuration/test_readiness_deployment_facts.py \
+  tests/modules/platform_configuration/test_recovery_policy.py \
+  tests/modules/platform_configuration/test_recovery_policy_validation.py \
   tests/unit/scripts/test_recovery_bundle.py \
   tests/unit/scripts/test_render_recovery_backup_systemd.py \
   tests/modules/booking/test_appointment_options.py \
