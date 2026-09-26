@@ -22,15 +22,26 @@ def _evidence() -> dict[str, object]:
         "backup_completed_at": "2026-09-26T20:00:00+00:00",
         "failure_declared_at": "2026-09-26T20:30:00+00:00",
         "service_recovered_at": "2026-09-26T20:45:00+00:00",
-        "proofs": {name: True for name in (
-            "postgres_restored_from_bundle", "openbao_restored_from_bundle",
-            "bundle_integrity_verified", "off_host_copy_retrieved", "clean_environment",
-            "outbound_fenced_during_restore", "clone_side_effects_blocked",
-            "request_engine_reads_verified", "governed_secret_resolution_verified",
-            "platform_owner_offline_recovery_with_openbao_down",
-            "platform_owner_offline_recovery_with_smtp_down", "old_password_rejected",
-            "old_sessions_rejected", "recovery_code_reuse_rejected", "setup_remained_closed",
-        )},
+        "proofs": {
+            name: True
+            for name in (
+                "postgres_restored_from_bundle",
+                "openbao_restored_from_bundle",
+                "bundle_integrity_verified",
+                "off_host_copy_retrieved",
+                "clean_environment",
+                "outbound_fenced_during_restore",
+                "clone_side_effects_blocked",
+                "request_engine_reads_verified",
+                "governed_secret_resolution_verified",
+                "platform_owner_offline_recovery_with_openbao_down",
+                "platform_owner_offline_recovery_with_smtp_down",
+                "old_password_rejected",
+                "old_sessions_rejected",
+                "recovery_code_reuse_rejected",
+                "setup_remained_closed",
+            )
+        },
     }
 
 
