@@ -32,6 +32,17 @@ def test_preset_payload_round_trips_through_typed_parser() -> None:
     assert parsed == recovery_policy_preset()
 
 
+def test_recovery_policy_accepts_custom_five_field_cron() -> None:
+    payload = recovery_policy_preset_payload()
+    postgres = dict(cast(dict[str, object], payload["postgres"]))
+    postgres["frequency"] = "0 */6 * * *"
+    payload["postgres"] = postgres
+
+    parsed = parse_recovery_policy(payload)
+
+    assert parsed.postgres.frequency == "0 */6 * * *"
+
+
 def test_recovery_policy_accepts_operator_overrides() -> None:
     payload = recovery_policy_preset_payload()
     postgres = dict(cast(dict[str, object], payload["postgres"]))
