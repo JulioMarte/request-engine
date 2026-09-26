@@ -10,12 +10,12 @@ from request_engine.modules.platform_configuration.application.configuration imp
     PlatformProviderValidationFailed,
     ValidateConfiguration,
 )
-from request_engine.modules.platform_configuration.application.recovery_policy import (
-    parse_recovery_policy,
-)
 from request_engine.modules.platform_configuration.application.provider_secrets import (
     ProviderSecretReference,
     ProviderSecretResolver,
+)
+from request_engine.modules.platform_configuration.application.recovery_policy import (
+    parse_recovery_policy,
 )
 from request_engine.modules.platform_configuration.application.smtp import (
     ProviderValidationStatus,
