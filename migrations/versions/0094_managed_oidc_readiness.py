@@ -87,10 +87,11 @@ def upgrade() -> None:
                   ON authority.kind = 'oidc'
                  AND authority.issuer_or_environment = config.issuer
                  AND authority.status = 'active'
-                 AND authority.configuration_ref::jsonb ->> 'jwks_uri' = config.jwks_uri
-                 AND authority.configuration_ref::jsonb ->> 'audience' = config.audience
-                 AND (authority.configuration_ref::jsonb ->> 'managed_configuration_revision')::bigint
-                     = config.revision
+                 AND authority.configuration_ref = jsonb_build_object(
+                     'jwks_uri', config.jwks_uri,
+                     'audience', config.audience,
+                     'managed_configuration_revision', config.revision
+                 )::text
                 LIMIT 1
             ),
             latest_test AS (
