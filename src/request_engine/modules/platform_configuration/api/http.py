@@ -46,6 +46,11 @@ from request_engine.modules.platform_configuration.application.configuration imp
     SecretBindingMetadata,
     StageConfiguration,
 )
+from request_engine.modules.platform_configuration.application.oidc import (
+    OIDC_CONFIGURATION_KIND,
+    OIDC_PROVIDER_KIND,
+    parse_oidc_configuration,
+)
 from request_engine.modules.platform_configuration.application.provider_test import (
     PlatformProviderTestResult,
     PlatformProviderTestService,
@@ -621,6 +626,15 @@ def install_platform_configuration_http(
                 and body.secret_binding_id is None
             ):
                 parse_recovery_policy(body.configuration)
+            elif (
+                configuration_kind == OIDC_CONFIGURATION_KIND
+                and body.provider_kind == OIDC_PROVIDER_KIND
+                and body.secret_binding_id is None
+            ):
+                parse_oidc_configuration(
+                    body.configuration,
+                    provider_kind=body.provider_kind,
+                )
             else:
                 raise PlatformConfigurationInvalid()
         except (TypeError, ValueError) as exc:
