@@ -18,7 +18,7 @@ def test_coolify_balanced_preset_is_safe_and_editable() -> None:
     assert policy.postgres.local_retention_days == 7
     assert policy.postgres.s3_retention_days == 30
     assert policy.postgres.require_s3 is True
-    assert policy.openbao.frequency == "hourly"
+    assert policy.openbao.frequency == "5 * * * *"
     assert policy.openbao.require_offsite is True
     assert policy.recovery_set.max_component_skew_minutes == 15
     assert policy.recovery_set.restore_drill_interval_days == 30
