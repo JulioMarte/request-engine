@@ -73,10 +73,7 @@ def test_binding_parser_rejects_plain_http_and_missing_secret_binding() -> None:
         configuration_kind=row.configuration_kind,
         provider_kind=row.provider_kind,
         revision=row.revision,
-        configuration={
-            **row.configuration,
-            "base_url": "http://coolify.example/api/v1",
-        },
+        configuration={**row.configuration, "base_url": "http://coolify.example/api/v1"},
         secret_binding_id=row.secret_binding_id,
         state=row.state,
         created_by_principal_id=row.created_by_principal_id,
@@ -175,11 +172,8 @@ async def test_service_resolves_token_only_server_side_and_reports_drift() -> No
     )
     binding, plan = await service.plan(object())  # type: ignore[arg-type]
     assert binding.database_uuid == "db-1"
-    assert plan.status == "drifted"
-    assert {change.field for change in plan.changes} == {
-        "frequency",
-        "local_retention_days",
-    }
+    assert plan.state.value == "drifted"
+    assert set(plan.changes) == {"frequency", "local_retention_days"}
     assert captured[0][1] == "token-from-openbao"
     assert resolver.calls == [(BINDING_ID, "platform.configuration.read")]
     assert "token-from-openbao" not in repr(binding)
@@ -196,7 +190,7 @@ async def test_reconcile_uses_mutation_capability_and_verifies_convergence() -> 
         adapter_factory=lambda binding, token: FakeAdapter(),
     )
     _, result = await service.reconcile(object())  # type: ignore[arg-type]
-    assert result.before.status == "drifted"
-    assert result.after.status == "in_sync"
-    assert result.action == "updated"
+    assert result.state.value == "in_sync"
+    assert result.changed is True
+    assert set(result.changes) == {"frequency", "local_retention_days"}
     assert resolver.calls == [(BINDING_ID, "platform.configuration.activate")]
