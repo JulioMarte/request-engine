@@ -710,11 +710,19 @@ Required production-oriented deliverables:
 
 #### PostgreSQL
 
-- automated backups with explicit schedule and retention;
-- encrypted off-host copy;
-- restore command/runbook;
-- restore verification against a new database/host;
-- evidence of migration/readiness after restore.
+For the reference Docker/Coolify deployment, Coolify is the operational owner of
+the PostgreSQL backup schedule, engine-aware dump, local/S3 retention and
+database restore. Request Engine owns the typed desired recovery policy and the
+evidence/recovery-set coordination around that external backup owner. The
+`coolify_balanced_v1` preset is API-readable and may be overridden through the
+normal P7 revision lifecycle.
+
+- Coolify backup schedule/retention must be reconciled to the ACTIVE recovery policy;
+- S3/off-host copy remains required by the default preset;
+- restore command/runbook uses Coolify's PostgreSQL restore path for this profile;
+- restore verification must target a new database/host;
+- evidence of migration/readiness after restore remains required;
+- Request Engine's combined pg_dump/OpenBao bundle remains fallback/non-Coolify tooling, not a competing production scheduler.
 
 #### OpenBao
 
