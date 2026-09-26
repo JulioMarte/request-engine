@@ -12,6 +12,9 @@ from request_engine.modules.platform_configuration.application.configuration imp
 )
 from request_engine.modules.platform_configuration.application.oidc import (
     OIDC_CONFIGURATION_KIND,
+    OidcProviderConfiguration,
+    OidcValidationResult,
+    OidcValidationStatus,
     parse_oidc_configuration,
 )
 from request_engine.modules.platform_configuration.application.provider_secrets import (
@@ -40,6 +43,19 @@ class _Reader:
     ) -> ConfigurationRevision:
         del actor, configuration_kind, revision, capability_key
         return self.candidate
+
+
+class _OidcValidator:
+    def __init__(self, status: OidcValidationStatus = OidcValidationStatus.VALID) -> None:
+        self.status = status
+        self.configuration: OidcProviderConfiguration | None = None
+
+    async def validate(
+        self,
+        configuration: OidcProviderConfiguration,
+    ) -> OidcValidationResult:
+        self.configuration = configuration
+        return OidcValidationResult(self.status, f"oidc_{self.status.value}")
 
 
 class _Commands:
@@ -118,6 +134,7 @@ async def test_oidc_revision_validates_without_secret_binding() -> None:
         secret_resolver=cast(ProviderSecretResolver, object()),
         secret_store=None,
         smtp_validator=cast(SmtpConfigurationValidator, object()),
+        oidc_validator=_OidcValidator(),
     )
 
     result = await service.validate(
@@ -141,6 +158,7 @@ async def test_oidc_revision_rejects_secret_binding() -> None:
         secret_resolver=cast(ProviderSecretResolver, object()),
         secret_store=None,
         smtp_validator=cast(SmtpConfigurationValidator, object()),
+        oidc_validator=_OidcValidator(),
     )
 
     with pytest.raises(PlatformConfigurationProviderInvalid):
@@ -150,3 +168,34 @@ async def test_oidc_revision_rejects_secret_binding() -> None:
             revision=3,
             idempotency_key="oidc-secret-rejected",
         )
+
+
+@pytest.mark.parametrize(
+    "status,expected_exception",
+    [
+        (OidcValidationStatus.INVALID, PlatformConfigurationProviderInvalid),
+    ],
+)
+@pytest.mark.asyncio
+async def test_oidc_provider_validation_rejects_invalid_external_jwks(
+    status: OidcValidationStatus,
+    expected_exception: type[Exception],
+) -> None:
+    validator = _OidcValidator(status)
+    service = PlatformProviderValidationService(
+        reader=_Reader(_candidate()),
+        commands=_Commands(),
+        secret_resolver=cast(ProviderSecretResolver, object()),
+        secret_store=None,
+        smtp_validator=cast(SmtpConfigurationValidator, object()),
+        oidc_validator=validator,
+    )
+
+    with pytest.raises(expected_exception):
+        await service.validate(
+            cast(PlatformActorContext, object()),
+            configuration_kind=OIDC_CONFIGURATION_KIND,
+            revision=3,
+            idempotency_key="oidc-invalid-jwks",
+        )
+    assert validator.configuration is not None
