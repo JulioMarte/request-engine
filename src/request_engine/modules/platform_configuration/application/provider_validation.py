@@ -13,6 +13,8 @@ from request_engine.modules.platform_configuration.application.configuration imp
 from request_engine.modules.platform_configuration.application.oidc import (
     OIDC_CONFIGURATION_KIND,
     OIDC_PROVIDER_KIND,
+    OidcConfigurationValidator,
+    OidcValidationStatus,
     parse_oidc_configuration,
 )
 from request_engine.modules.platform_configuration.application.provider_secrets import (
@@ -73,6 +75,7 @@ class PlatformProviderValidationService:
         secret_store: PlatformSecretStore | None,
         appointment_signing_secret_store: PlatformSecretStore | None = None,
         smtp_validator: SmtpConfigurationValidator,
+        oidc_validator: OidcConfigurationValidator | None = None,
     ) -> None:
         self._reader = reader
         self._commands = commands
@@ -80,6 +83,7 @@ class PlatformProviderValidationService:
         self._secret_store = secret_store
         self._appointment_signing_secret_store = appointment_signing_secret_store
         self._smtp_validator = smtp_validator
+        self._oidc_validator = oidc_validator
 
     async def validate(
         self,
@@ -129,10 +133,17 @@ class PlatformProviderValidationService:
         ):
             if candidate.secret_binding_id is not None:
                 raise PlatformConfigurationProviderInvalid()
-            parse_oidc_configuration(
+            configuration = parse_oidc_configuration(
                 candidate.configuration,
                 provider_kind=candidate.provider_kind,
             )
+            if self._oidc_validator is None:
+                raise PlatformProviderValidationFailed("oidc_validator_unavailable")
+            result = await self._oidc_validator.validate(configuration)
+            if result.status is OidcValidationStatus.INVALID:
+                raise PlatformConfigurationProviderInvalid(result.detail_code)
+            if result.status is OidcValidationStatus.UNAVAILABLE:
+                raise PlatformProviderValidationFailed(result.detail_code)
             binding_revision, backend_version = None, None
         else:
             raise PlatformConfigurationInvalid()
