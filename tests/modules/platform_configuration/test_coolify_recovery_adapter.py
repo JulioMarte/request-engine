@@ -39,9 +39,7 @@ async def test_inspect_maps_coolify_schedule_without_leaking_token() -> None:
             api_token="super-secret",
             client=client,
         )
-        state = await adapter.inspect_backup(
-            DeploymentBackupTarget("db-1", "backup-1", "s3-1")
-        )
+        state = await adapter.inspect_backup(DeploymentBackupTarget("db-1", "backup-1", "s3-1"))
 
     assert state == DeploymentBackupState("backup-1", "hourly", 7, 30, 3600, True)
     expected_url = httpx.URL("https://coolify.example/api/v1/databases/db-1/backups")
