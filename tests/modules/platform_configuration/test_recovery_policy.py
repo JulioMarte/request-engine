@@ -88,7 +88,7 @@ def test_recovery_policy_rejects_invalid_operational_values(path: str, value: ob
 
 def test_recovery_policy_rejects_embedded_extra_fields() -> None:
     payload = recovery_policy_preset_payload()
-    postgres = dict(payload["postgres"])
+    postgres = dict(cast(dict[str, object], payload["postgres"]))
     postgres["api_token"] = "must-not-live-in-policy"
     payload["postgres"] = postgres
 
