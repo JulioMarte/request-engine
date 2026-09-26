@@ -28,11 +28,10 @@ _PROJECTION_SIGNATURE = (
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
 
-    # Keep the platform read definer on its reviewed column-level surface.  The
-    # OIDC authority table belongs to the identity trust root, so readiness gets
-    # only a boolean projection through a narrow SECURITY DEFINER boundary rather
-    # than broadening request_platform_definer's direct table privileges.
-    op.execute(f"GRANT USAGE, CREATE ON SCHEMA request_platform TO {_SCHEMA_OWNER}")
+    # request_engine_schema_owner already owns request_platform. Keep the
+    # platform read definer on its reviewed column-level surface: readiness gets
+    # only a boolean identity projection through this narrow SECURITY DEFINER
+    # boundary instead of direct reads from identity_authorities.
     op.execute(
         r"""
         CREATE FUNCTION request_platform.managed_oidc_projection_matches(
@@ -63,7 +62,6 @@ def upgrade() -> None:
         """
     )
     op.execute(f"ALTER FUNCTION {_PROJECTION_SIGNATURE} OWNER TO {_SCHEMA_OWNER}")
-    op.execute(f"REVOKE CREATE ON SCHEMA request_platform FROM {_SCHEMA_OWNER}")
     op.execute(f"REVOKE ALL ON FUNCTION {_PROJECTION_SIGNATURE} FROM PUBLIC")
     op.execute(f"GRANT EXECUTE ON FUNCTION {_PROJECTION_SIGNATURE} TO {_READ_DEFINER}")
 
