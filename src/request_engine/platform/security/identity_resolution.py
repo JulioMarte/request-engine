@@ -12,6 +12,7 @@ from request_engine.platform.security.authentication import (
     AuthenticatedSubjectClass,
 )
 from request_engine.platform.security.context import ActorContext, PrincipalKind
+from request_engine.platform.security.freshness import recovery_safe_capabilities
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.principal_authority import (
     PlatformPrincipalAuthorityReader,
@@ -155,10 +156,14 @@ class IdentityPrincipalResolver:
             raise PrincipalProvisioningRequired("bound tenant Principal is not currently usable")
         principal_kind = _principal_kind(authority)
         _assert_subject_class(subject.subject_class, principal_kind)
+        recovery_restricted = _metadata_flag(subject, "recovery_restricted")
         return ActorContext(
             organization_id=organization_id,
             principal_id=binding.principal_id,
-            capabilities=authority.capabilities,
+            capabilities=recovery_safe_capabilities(
+                authority.capabilities,
+                recovery_restricted=recovery_restricted,
+            ),
             principal_kind=principal_kind,
             authentication_method=authentication_method,
             credential_id=credential_id,
@@ -170,6 +175,7 @@ class IdentityPrincipalResolver:
             authentication_assurance=_authentication_assurance(subject),
             user_verified=_metadata_flag(subject, "user_verified"),
             recovery_derived=_metadata_flag(subject, "recovery_derived"),
+            recovery_restricted=recovery_restricted,
         )
 
     async def resolve_platform_actor(
@@ -194,9 +200,13 @@ class IdentityPrincipalResolver:
             raise PrincipalProvisioningRequired("bound platform Principal is not currently usable")
         principal_kind = _principal_kind(authority)
         _assert_subject_class(subject.subject_class, principal_kind)
+        recovery_restricted = _metadata_flag(subject, "recovery_restricted")
         return PlatformActorContext(
             principal_id=binding.principal_id,
-            capabilities=authority.capabilities,
+            capabilities=recovery_safe_capabilities(
+                authority.capabilities,
+                recovery_restricted=recovery_restricted,
+            ),
             authority_revision=authority.authority_revision,
             principal_kind=principal_kind,
             authentication_method=authentication_method,
@@ -206,6 +216,7 @@ class IdentityPrincipalResolver:
             authentication_assurance=_authentication_assurance(subject),
             user_verified=_metadata_flag(subject, "user_verified"),
             recovery_derived=_metadata_flag(subject, "recovery_derived"),
+            recovery_restricted=recovery_restricted,
             authenticated_at=_authenticated_at(subject),
         )
 

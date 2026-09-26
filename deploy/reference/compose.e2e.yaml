@@ -12,6 +12,7 @@ x-public-env: &public-env
   REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY: ci-only-appointment-signing-key-32-bytes-minimum
   REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY: ci-only-fingerprint-key-32-bytes-minimum
   REQUEST_ENGINE_WEBAUTHN_DECOY_KEY: ci-only-webauthn-decoy-key-32-bytes-minimum
+  REQUEST_ENGINE_OUTBOUND_FENCED: ${REQUEST_ENGINE_OUTBOUND_FENCED:-false}
 
 x-platform-env: &platform-env
   REQUEST_ENGINE_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
@@ -19,6 +20,7 @@ x-platform-env: &platform-env
   REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL: postgresql+psycopg://request_e2e_control:ci-control-only@postgres:5432/request_engine
   REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
   REQUEST_ENGINE_WEBAUTHN_DECOY_KEY: ci-only-webauthn-decoy-key-32-bytes-minimum
+  REQUEST_ENGINE_OUTBOUND_FENCED: ${REQUEST_ENGINE_OUTBOUND_FENCED:-false}
 
 services:
   postgres:
@@ -34,19 +36,30 @@ services:
       retries: 30
     networks: [backend]
 
-  vault:
-    image: hashicorp/vault:1.20
+  openbao:
+    image: openbao/openbao:2.6.1
     profiles: [secrets]
     cap_add: [IPC_LOCK]
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: ci-root-token
       VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
-    command: server -dev
+    command: server -dev -dev-root-token-id=ci-root-token -dev-listen-address=0.0.0.0:8200
+    healthcheck:
+      test: [CMD, bao, status, -address=http://127.0.0.1:8200]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     networks: [backend]
 
   mailpit:
     image: axllent/mailpit:v1.27
-    profiles: [delivery]
+    profiles: [delivery, managed-delivery]
+    environment:
+      # The delivery profile must be able to validate/serve a *credentialed*
+      # managed SMTP configuration: accept any auth over the in-cluster plain
+      # transport so governed SMTP validation/auth is exercised without real TLS.
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
     networks: [edge, backend]
 
   migrate:
@@ -85,6 +98,15 @@ services:
       # the black-box runner derives its origin as https://<rp_id>.
       REQUEST_ENGINE_WEBAUTHN_RP_ID: localhost
       REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS: https://localhost
+      REQUEST_ENGINE_OPENBAO_ADDR: ${REQUEST_ENGINE_OPENBAO_ADDR:-}
+      REQUEST_ENGINE_OPENBAO_TOKEN: ${REQUEST_ENGINE_OPENBAO_TOKEN:-}
+      REQUEST_ENGINE_SMTP_HOST: ${REQUEST_ENGINE_SMTP_HOST:-}
+      REQUEST_ENGINE_SMTP_PORT: ${REQUEST_ENGINE_SMTP_PORT:-587}
+      REQUEST_ENGINE_SMTP_SENDER: ${REQUEST_ENGINE_SMTP_SENDER:-}
+      REQUEST_ENGINE_SMTP_USERNAME: ${REQUEST_ENGINE_SMTP_USERNAME:-}
+      REQUEST_ENGINE_SMTP_PASSWORD: ${REQUEST_ENGINE_SMTP_PASSWORD:-}
+      REQUEST_ENGINE_SMTP_STARTTLS: ${REQUEST_ENGINE_SMTP_STARTTLS:-true}
+      REQUEST_ENGINE_SMTP_SSL: ${REQUEST_ENGINE_SMTP_SSL:-false}
     command: [uvicorn, "request_engine.bootstrap.platform_server:create_app", --factory, --host, "0.0.0.0", --port, "8001"]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready',timeout=2)"]
@@ -117,6 +139,7 @@ services:
       REQUEST_ENGINE_APP_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
       REQUEST_ENGINE_WORKER_FACTORY: request_engine.bootstrap.reference_worker_factory:create_worker
       REQUEST_ENGINE_WORKER_PRINCIPAL_ID: ${REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-}
+      REQUEST_ENGINE_OUTBOUND_FENCED: ${REQUEST_ENGINE_OUTBOUND_FENCED:-false}
       # The webhook delivery transport is HTTPS-only by contract. External
       # TLS/ingress is out of scope for this lane, so the worker points at a
       # reserved non-resolving placeholder. It is never contacted by the
@@ -125,6 +148,15 @@ services:
       REQUEST_ENGINE_WEBHOOK_BASE_URL: https://webhook.invalid/handoff
       REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY: request_engine.bootstrap.http_outbox_publisher:create_publisher
       REQUEST_ENGINE_OUTBOX_PUBLISH_URL: http://event-sink:8090/events
+      REQUEST_ENGINE_OPENBAO_ADDR: ${REQUEST_ENGINE_OPENBAO_ADDR:-}
+      REQUEST_ENGINE_OPENBAO_TOKEN: ${REQUEST_ENGINE_OPENBAO_TOKEN:-}
+      REQUEST_ENGINE_SMTP_HOST: ${REQUEST_ENGINE_SMTP_HOST:-}
+      REQUEST_ENGINE_SMTP_PORT: ${REQUEST_ENGINE_SMTP_PORT:-587}
+      REQUEST_ENGINE_SMTP_SENDER: ${REQUEST_ENGINE_SMTP_SENDER:-}
+      REQUEST_ENGINE_SMTP_USERNAME: ${REQUEST_ENGINE_SMTP_USERNAME:-}
+      REQUEST_ENGINE_SMTP_PASSWORD: ${REQUEST_ENGINE_SMTP_PASSWORD:-}
+      REQUEST_ENGINE_SMTP_STARTTLS: ${REQUEST_ENGINE_SMTP_STARTTLS:-true}
+      REQUEST_ENGINE_SMTP_SSL: ${REQUEST_ENGINE_SMTP_SSL:-false}
     command: [request-engine-worker]
     restart: unless-stopped
     networks: [backend]

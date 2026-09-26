@@ -1,0 +1,336 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import cast
+from uuid import UUID, uuid4
+
+import pytest
+
+from request_engine.modules.platform_configuration.application.configuration import (
+    ConfigurationMutationResult,
+    ConfigurationRevision,
+    ValidateConfiguration,
+)
+from request_engine.modules.platform_configuration.application.provider_secrets import (
+    ProviderSecretReference,
+)
+from request_engine.modules.platform_configuration.application.provider_validation import (
+    PlatformProviderValidationService,
+)
+from request_engine.modules.platform_configuration.application.smtp import (
+    ProviderValidationResult,
+    ProviderValidationStatus,
+    SmtpConfiguration,
+    parse_smtp_configuration,
+)
+from request_engine.modules.platform_configuration.application.webhook import (
+    parse_webhook_configuration,
+)
+from request_engine.platform.secrets.platform_store import PlatformSecretMetadata
+from request_engine.platform.security.platform_context import PlatformActorContext
+
+
+def _revision(*, username: str | None, binding_id: UUID | None) -> ConfigurationRevision:
+    configuration: dict[str, object] = {
+        "host": "smtp.example.test",
+        "port": 587,
+        "sender": "noreply@example.test",
+        "security": "starttls",
+    }
+    if username is not None:
+        configuration["username"] = username
+    return ConfigurationRevision(
+        configuration_revision_id=uuid4(),
+        configuration_kind="email.delivery",
+        provider_kind="smtp",
+        revision=3,
+        configuration=configuration,
+        secret_binding_id=binding_id,
+        state="draft",
+        created_by_principal_id=uuid4(),
+        created_at=datetime.now(UTC),
+        validated_at=None,
+        activated_at=None,
+        disabled_at=None,
+    )
+
+
+def _webhook_revision(*, binding_id: UUID | None) -> ConfigurationRevision:
+    configuration: dict[str, object] = {
+        "base_url": "https://transport.example.test/handoff",
+        "auth_header_name": "Authorization",
+        "timeout_seconds": 7,
+    }
+    return ConfigurationRevision(
+        configuration_revision_id=uuid4(),
+        configuration_kind="communications.webhook",
+        provider_kind="webhook",
+        revision=5,
+        configuration=configuration,
+        secret_binding_id=binding_id,
+        state="draft",
+        created_by_principal_id=uuid4(),
+        created_at=datetime.now(UTC),
+        validated_at=None,
+        activated_at=None,
+        disabled_at=None,
+    )
+
+
+class _CandidateReader:
+    def __init__(self, revision: ConfigurationRevision) -> None:
+        self.revision = revision
+        self.capability: str | None = None
+
+    async def get(
+        self,
+        actor: PlatformActorContext,
+        *,
+        configuration_kind: str,
+        revision: int,
+        capability_key: str,
+    ) -> ConfigurationRevision:
+        del actor, configuration_kind, revision
+        self.capability = capability_key
+        return self.revision
+
+
+class _Commands:
+    def __init__(self) -> None:
+        self.command: ValidateConfiguration | None = None
+
+    async def validate(
+        self,
+        actor: PlatformActorContext,
+        command: ValidateConfiguration,
+    ) -> ConfigurationMutationResult:
+        del actor
+        self.command = command
+        return ConfigurationMutationResult(uuid4(), command.revision, "validated")
+
+
+class _SecretResolver:
+    def __init__(self, reference: ProviderSecretReference) -> None:
+        self.reference = reference
+        self.capability: str | None = None
+
+    async def resolve(
+        self,
+        actor: PlatformActorContext,
+        *,
+        binding_id: UUID,
+        capability_key: str,
+    ) -> ProviderSecretReference:
+        del actor, binding_id
+        self.capability = capability_key
+        return self.reference
+
+
+class _SecretStore:
+    def __init__(self) -> None:
+        self.resolved: UUID | None = None
+
+    async def resolve(self, *, secret_id: UUID) -> str:
+        self.resolved = secret_id
+        return "governed-password"
+
+    async def write(
+        self,
+        *,
+        secret_id: UUID,
+        value: str,
+        expected_version: int | None,
+        operation_id: UUID | None = None,
+    ) -> PlatformSecretMetadata:
+        raise AssertionError("write not expected")
+
+    async def metadata(self, *, secret_id: UUID) -> PlatformSecretMetadata:
+        raise AssertionError("metadata not expected")
+
+    async def revoke(self, *, secret_id: UUID) -> None:
+        raise AssertionError("revoke not expected")
+
+
+class _Validator:
+    def __init__(self) -> None:
+        self.password: str | None = None
+        self.configuration: SmtpConfiguration | None = None
+
+    async def validate(
+        self,
+        configuration: SmtpConfiguration,
+        *,
+        password: str | None,
+    ) -> ProviderValidationResult:
+        self.configuration = configuration
+        self.password = password
+        return ProviderValidationResult(ProviderValidationStatus.VALID, "smtp_valid")
+
+
+def test_smtp_configuration_is_typed_and_rejects_unknown_fields() -> None:
+    parsed = parse_smtp_configuration(
+        {
+            "host": "smtp.example.test",
+            "port": 465,
+            "sender": "noreply@example.test",
+            "security": "tls",
+            "timeout_seconds": 8,
+        }
+    )
+    assert parsed.host == "smtp.example.test"
+    assert parsed.port == 465
+    assert parsed.security.value == "tls"
+
+    with pytest.raises(ValueError):
+        parse_smtp_configuration(
+            {
+                "host": "smtp.example.test",
+                "port": 465,
+                "sender": "noreply@example.test",
+                "security": "tls",
+                "password": "must-not-be-here",
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_provider_validation_carries_exact_secret_version_to_commit() -> None:
+    binding_id = uuid4()
+    candidate = _CandidateReader(_revision(username="smtp-user", binding_id=binding_id))
+    commands = _Commands()
+    reference = ProviderSecretReference(
+        binding_id=binding_id,
+        secret_id=uuid4(),
+        purpose="email.smtp.password",
+        backend="openbao",
+        backend_version=9,
+        status="active",
+        revision=4,
+    )
+    resolver = _SecretResolver(reference)
+    store = _SecretStore()
+    validator = _Validator()
+    service = PlatformProviderValidationService(
+        reader=candidate,
+        commands=commands,
+        secret_resolver=resolver,
+        secret_store=store,
+        smtp_validator=validator,
+    )
+
+    result = await service.validate(
+        cast(PlatformActorContext, object()),
+        configuration_kind="email.delivery",
+        revision=3,
+        idempotency_key="same-request",
+    )
+
+    assert result.state == "validated"
+    assert candidate.capability == "platform.configuration.validate"
+    assert resolver.capability == "platform.configuration.validate"
+    assert store.resolved == reference.secret_id
+    assert validator.password == "governed-password"
+    assert commands.command is not None
+    assert commands.command.expected_binding_revision == 4
+    assert commands.command.expected_backend_version == 9
+
+
+@pytest.mark.asyncio
+async def test_provider_validation_without_auth_has_no_secret_precondition() -> None:
+    candidate = _CandidateReader(_revision(username=None, binding_id=None))
+    commands = _Commands()
+    validator = _Validator()
+    service = PlatformProviderValidationService(
+        reader=candidate,
+        commands=commands,
+        secret_resolver=_SecretResolver(
+            ProviderSecretReference(
+                binding_id=uuid4(),
+                secret_id=uuid4(),
+                purpose="email.smtp.password",
+                backend="openbao",
+                backend_version=9,
+                status="active",
+                revision=4,
+            )
+        ),
+        secret_store=None,
+        smtp_validator=validator,
+    )
+
+    await service.validate(
+        cast(PlatformActorContext, object()),
+        configuration_kind="email.delivery",
+        revision=3,
+        idempotency_key="no-auth",
+    )
+
+    assert validator.password is None
+    assert commands.command is not None
+    assert commands.command.expected_binding_revision is None
+    assert commands.command.expected_backend_version is None
+
+
+def test_webhook_configuration_is_typed_and_rejects_unsafe_urls() -> None:
+    parsed = parse_webhook_configuration(
+        {
+            "base_url": "https://transport.example.test/handoff/",
+            "auth_header_name": "Authorization",
+            "timeout_seconds": 6,
+        }
+    )
+    assert parsed.base_url == "https://transport.example.test/handoff"
+    assert parsed.auth_header_name == "Authorization"
+
+    with pytest.raises(ValueError):
+        parse_webhook_configuration(
+            {
+                "base_url": "http://transport.example.test/handoff",
+                "auth_header_name": "Authorization",
+            }
+        )
+    with pytest.raises(ValueError):
+        parse_webhook_configuration(
+            {
+                "base_url": "https://user:password@transport.example.test/handoff",
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_webhook_validation_fences_exact_auth_secret_version() -> None:
+    binding_id = uuid4()
+    candidate = _CandidateReader(_webhook_revision(binding_id=binding_id))
+    commands = _Commands()
+    reference = ProviderSecretReference(
+        binding_id=binding_id,
+        secret_id=uuid4(),
+        purpose="communications.webhook.auth_header",
+        backend="openbao",
+        backend_version=6,
+        status="active",
+        revision=3,
+    )
+    resolver = _SecretResolver(reference)
+    store = _SecretStore()
+    service = PlatformProviderValidationService(
+        reader=candidate,
+        commands=commands,
+        secret_resolver=resolver,
+        secret_store=store,
+        smtp_validator=_Validator(),
+    )
+
+    result = await service.validate(
+        cast(PlatformActorContext, object()),
+        configuration_kind="communications.webhook",
+        revision=5,
+        idempotency_key="webhook-validation",
+    )
+
+    assert result.state == "validated"
+    assert store.resolved == reference.secret_id
+    assert resolver.capability == "platform.configuration.validate"
+    assert commands.command is not None
+    assert commands.command.expected_binding_revision == 3
+    assert commands.command.expected_backend_version == 6

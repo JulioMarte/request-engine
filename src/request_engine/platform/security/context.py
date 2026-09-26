@@ -50,6 +50,7 @@ class ActorContext:
     authentication_assurance: AuthenticationAssurance | None = None
     user_verified: bool = False
     recovery_derived: bool = False
+    recovery_restricted: bool = False
 
     def __post_init__(self) -> None:
         if not self.authentication_method.strip():

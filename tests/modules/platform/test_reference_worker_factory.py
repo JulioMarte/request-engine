@@ -1,7 +1,7 @@
 import sys
 from collections.abc import Callable, Mapping
 from types import ModuleType
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -11,6 +11,9 @@ from request_engine.bootstrap import worker as worker_bootstrap
 from request_engine.entrypoints.worker.outbox_runtime import (
     RESERVATION_LIFECYCLE_EVENT_TYPES,
     ReservationLifecycleOutboxHandler,
+)
+from request_engine.modules.communications.adapters.transport import (
+    managed_webhook_delivery_provider as managed_webhook,
 )
 from request_engine.platform.db.session import SessionFactory
 
@@ -118,3 +121,67 @@ def test_reference_factory_composes_reservation_lifecycle_handlers(
     assert set(adapter_factories) == set(adapter_names)
     assert set(adapter_factories.values()) == {domain_factories[0]}
     assert domain_factories[0] is not worker_factories[0]
+
+
+@pytest.mark.unit
+def test_reference_factory_composes_both_recovery_delivery_streams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_reference_environment(monkeypatch)
+    # This test verifies the underlying production provider composition, not
+    # clone fencing. Open the deployment fence explicitly so the provider is
+    # observable without its fail-closed wrapper.
+    monkeypatch.setenv("REQUEST_ENGINE_OUTBOUND_FENCED", "false")
+    delivery = object()
+    identity_runtime = object()
+    native_runtime = object()
+    captured: dict[str, object] = {}
+
+    def build_delivery(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        return delivery
+
+    monkeypatch.setattr(
+        reference_worker_factory,
+        "build_recovery_secret_delivery",
+        build_delivery,
+    )
+
+    def build_identity_runtime(
+        factory: SessionFactory,
+        configured_delivery: object,
+    ) -> object:
+        del factory, configured_delivery
+        return identity_runtime
+
+    def build_native_runtime(
+        factory: SessionFactory,
+        configured_delivery: object,
+    ) -> object:
+        del factory, configured_delivery
+        return native_runtime
+
+    monkeypatch.setattr(
+        reference_worker_factory,
+        "build_recovery_delivery_worker",
+        build_identity_runtime,
+    )
+    monkeypatch.setattr(
+        reference_worker_factory,
+        "build_native_recovery_delivery_worker",
+        build_native_runtime,
+    )
+
+    def capture_worker_process(**kwargs: Any) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(reference_worker_factory, "build_worker_process", capture_worker_process)
+
+    reference_worker_factory.create_worker()
+
+    assert captured["identity_recovery_delivery"] is identity_runtime
+    assert captured["native_recovery_delivery"] is native_runtime
+    providers = cast(Mapping[str, object], captured["communication_providers"])
+    assert isinstance(providers["webhook"], managed_webhook.ManagedWebhookDeliveryProvider)
+    assert captured["platform_configuration_invalidation"] is not None

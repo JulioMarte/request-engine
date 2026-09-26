@@ -69,7 +69,7 @@ jobs:
             echo
             echo '> Each selected suite runs in a fresh Compose project/world. Artifacts are namespaced under `.ci/docker-e2e/<suite>/`.'
             echo '> Pull requests, development merges, and nightly runs resolve suites through the repository registry rather than feature-specific workflow branches.'
-            echo '> Scope remains system/E2E evidence only; production TLS, HA secret handling, backup/restore fencing, break-glass, RPO/RTO and SLO certification are outside this lane.'
+            echo '> Scope remains system/E2E evidence only; clone outbound fencing is exercised here. Production TLS, HA secret handling, backup/restore drills, break-glass operations, RPO/RTO and SLO certification remain outside this lane.'
           } | tee .ci/docker-e2e/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4

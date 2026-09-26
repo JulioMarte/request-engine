@@ -31,6 +31,7 @@ class PlatformActorContext:
     authentication_assurance: AuthenticationAssurance | None = None
     user_verified: bool = False
     recovery_derived: bool = False
+    recovery_restricted: bool = False
     authenticated_at: datetime | None = None
 
     def __post_init__(self) -> None:

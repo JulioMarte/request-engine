@@ -526,3 +526,152 @@ evidence = ["contract", "security"]
 guarantee = "INV-NATIVE-SESSION-INTROSPECTION-001"
 path = "tests/e2e/test_native_webauthn_login_http.py"
 evidence = ["contract", "security"]
+[[proofs]]
+guarantee = "INV-OFFLINE-ADMIN-RECOVERY-001"
+path = "tests/db/test_recovery_code_persistence.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-OFFLINE-ADMIN-RECOVERY-001"
+path = "tests/e2e/test_instance_setup_http.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-RECOVERY-POSTURE-001"
+path = "tests/db/test_recovery_code_persistence.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-RECOVERY-POSTURE-001"
+path = "tests/e2e/test_native_password_recovery.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-RECOVERY-POSTURE-001"
+path = "tests/unit/platform/security/test_privileged_authentication.py"
+evidence = ["contract", "security"]
+
+[[proofs]]
+guarantee = "INV-VERIFIED-RECOVERY-ADDRESS-001"
+path = "tests/db/test_native_recovery_addresses.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-VERIFIED-RECOVERY-ADDRESS-001"
+path = "tests/e2e/test_native_verified_recovery_address.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-VERIFIED-RECOVERY-ADDRESS-001"
+path = "tests/e2e/test_native_password_recovery_adversarial.py"
+evidence = ["adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-SECRET-STORE-001"
+path = "tests/unit/platform/secrets/test_openbao_secret_store.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-REVISION-001"
+path = "tests/db/test_platform_configuration_foundation.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-GOVERNANCE-001"
+path = "tests/db/test_platform_configuration_governance.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-GOVERNANCE-001"
+path = "tests/modules/platform_configuration/test_http_contract.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-ACTIVATION-001"
+path = "tests/db/test_platform_configuration_governance.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-SECRET-LIFECYCLE-001"
+path = "tests/unit/platform/secrets/test_platform_secret_administration.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-HOT-RELOAD-001"
+path = "tests/modules/platform_configuration/test_runtime_resolver.py"
+evidence = ["contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-HOT-RELOAD-001"
+path = "tests/modules/platform_configuration/test_runtime_invalidation.py"
+evidence = ["contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-CONFIG-HOT-RELOAD-001"
+path = "tests/db/test_platform_configuration_hot_reload.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-SMTP-CONFIGURATION-001"
+path = "tests/modules/platform_configuration/test_smtp_provider.py"
+evidence = ["contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-SMTP-TRANSPORT-SECURITY-001"
+path = "tests/modules/platform_configuration/test_smtp_tls_protocol.py"
+evidence = ["invariant", "contract", "adversarial"]
+
+
+[[proofs]]
+guarantee = "INV-CLONE-FENCE-001"
+path = "tests/modules/platform/test_outbound_fence.py"
+evidence = ["invariant", "contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-CLONE-FENCE-001"
+path = "tests/architecture/test_e2e_platform_contract.py"
+evidence = ["contract", "adversarial"]
+
+
+[[proofs]]
+guarantee = "INV-PLATFORM-READINESS-001"
+path = "tests/modules/platform_configuration/test_readiness_deployment_facts.py"
+evidence = ["invariant", "contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-READINESS-001"
+path = "tests/system_e2e/runner.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+
+[[proofs]]
+guarantee = "INV-RECOVERY-BUNDLE-001"
+path = "tests/unit/scripts/test_recovery_bundle.py"
+evidence = ["invariant", "contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-RECOVERY-BUNDLE-001"
+path = "tests/unit/scripts/test_render_recovery_backup_systemd.py"
+evidence = ["contract", "adversarial", "security"]
+
+
+[[proofs]]
+guarantee = "INV-APPOINTMENT-OPTION-KEY-OVERLAP-001"
+path = "tests/modules/booking/test_appointment_options.py"
+evidence = ["invariant", "adversarial", "security"]
+
+
+[[proofs]]
+guarantee = "INV-RECOVERY-POLICY-001"
+path = "tests/modules/platform_configuration/test_platform_recovery_policy.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-RECOVERY-POLICY-001"
+path = "tests/modules/platform_configuration/test_recovery_policy_validation.py"
+evidence = ["contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-RECOVERY-POLICY-001"
+path = "tests/modules/platform_configuration/test_http_contract.py"
+evidence = ["contract"]

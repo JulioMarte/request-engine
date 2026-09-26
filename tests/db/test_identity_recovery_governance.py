@@ -878,3 +878,131 @@ async def test_concurrent_issuance_keeps_the_retained_secret(
         "WHERE case_id = %s AND action = 'issue'",
         (case_id,),
     ).fetchone() == (1,)
+
+
+def test_delivery_claim_reclaims_expired_lease_and_rejects_late_renewal(
+    admin_conn: PgConnection,
+) -> None:
+    _, identity_id, _, requester, approver = _world(admin_conn)
+    created = _create_case(admin_conn, actor=requester, identity_id=identity_id)
+    case_id = UUID(str(created[0]))
+    _approve_case(admin_conn, actor=approver, case_id=case_id, revision=1)
+    token = issue_opaque_token()
+    _prepare_issue(
+        admin_conn,
+        actor=requester,
+        case_id=case_id,
+        revision=2,
+        token=token,
+    )
+
+    first = _call(admin_conn, _CLAIM, (10, 60), role="request_engine_worker")
+    assert first is not None
+    ticket_id = UUID(str(first[0]))
+    first_claim_token = UUID(str(first[8]))
+    assert first[7] == 1
+
+    admin_conn.execute(
+        """
+        UPDATE request_engine.identity_recovery_delivery_tickets
+           SET lease_until = clock_timestamp() - interval '1 second'
+         WHERE id = %s
+        """,
+        (ticket_id,),
+    )
+
+    late_renewal = _call(
+        admin_conn,
+        _RENEW,
+        (ticket_id, first_claim_token, 60),
+        role="request_engine_worker",
+    )
+    assert late_renewal == (False,)
+
+    reclaimed = _call(admin_conn, _CLAIM, (10, 60), role="request_engine_worker")
+    assert reclaimed is not None
+    assert UUID(str(reclaimed[0])) == ticket_id
+    assert reclaimed[7] == 2
+    assert UUID(str(reclaimed[8])) != first_claim_token
+    assert admin_conn.execute(
+        """
+        SELECT status, attempt_count, last_error_class
+          FROM request_engine.identity_recovery_delivery_tickets
+         WHERE id = %s
+        """,
+        (ticket_id,),
+    ).fetchone() == ("sending", 2, "lease_expired")
+
+    stale_completion = _call(
+        admin_conn,
+        _COMPLETE,
+        (ticket_id, first_claim_token, "delivered", None),
+        role="request_engine_worker",
+    )
+    assert stale_completion == (False,)
+
+    current_completion = _call(
+        admin_conn,
+        _COMPLETE,
+        (ticket_id, reclaimed[8], "delivered", None),
+        role="request_engine_worker",
+    )
+    assert current_completion == (True,)
+    assert _case_status(admin_conn, case_id)[1] == "delivered"
+
+
+def test_delivery_claim_terminalizes_abandoned_exhausted_ticket(
+    admin_conn: PgConnection,
+) -> None:
+    _, identity_id, _, requester, approver = _world(admin_conn)
+    created = _create_case(admin_conn, actor=requester, identity_id=identity_id)
+    case_id = UUID(str(created[0]))
+    _approve_case(admin_conn, actor=approver, case_id=case_id, revision=1)
+    token = issue_opaque_token()
+    _prepare_issue(
+        admin_conn,
+        actor=requester,
+        case_id=case_id,
+        revision=2,
+        token=token,
+    )
+
+    claimed = _call(admin_conn, _CLAIM, (10, 60), role="request_engine_worker")
+    assert claimed is not None
+    ticket_id = UUID(str(claimed[0]))
+
+    admin_conn.execute(
+        """
+        UPDATE request_engine.identity_recovery_delivery_tickets
+           SET attempt_count = max_attempts,
+               lease_until = clock_timestamp() - interval '1 second'
+         WHERE id = %s
+        """,
+        (ticket_id,),
+    )
+
+    assert _call(admin_conn, _CLAIM, (10, 60), role="request_engine_worker") is None
+    assert admin_conn.execute(
+        """
+        SELECT status, claim_token, lease_until, last_error_class
+          FROM request_engine.identity_recovery_delivery_tickets
+         WHERE id = %s
+        """,
+        (ticket_id,),
+    ).fetchone() == ("failed", None, None, "attempts_exhausted")
+
+    status, delivery_status, _revision, _intent, _reason = _case_status(
+        admin_conn,
+        case_id,
+    )
+    assert (status, delivery_status) == ("issued", "failed")
+    assert admin_conn.execute(
+        """
+        SELECT count(*)
+          FROM request_engine.platform_identity_recovery_facts
+         WHERE case_id = %s
+           AND action = 'delivery_failed'
+           AND reason_code = 'attempts_exhausted'
+        """,
+        (case_id,),
+    ).fetchone() == (1,)

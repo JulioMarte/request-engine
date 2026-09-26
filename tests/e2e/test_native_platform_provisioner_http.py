@@ -73,7 +73,8 @@ async def test_bootstrapped_controller_provisions_native_human_without_sql_bindi
             "Idempotency-Key": "create-provisioner-1",
         }
         enrollment = await client.post(
-            "/auth/native/identities",
+            "/v1/platform/native-identities",
+            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
             json={
                 "login_handle": "provisioner@example.test",
                 "password": "new provisioner proof password",
@@ -123,7 +124,8 @@ async def test_bootstrapped_controller_provisions_native_human_without_sql_bindi
         assert denied.status_code == 403
         assert denied.json()["error"]["code"] == "platform_provisioning_forbidden"
         controller = await client.post(
-            "/auth/native/identities",
+            "/v1/platform/native-identities",
+            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
             json={
                 "login_handle": "controller@example.test",
                 "password": "controller proof password",

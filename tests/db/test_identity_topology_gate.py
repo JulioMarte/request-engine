@@ -58,9 +58,11 @@ _GATED_DML_WRITERS: dict[tuple[str, str], str] = {
     ("request_platform", "establish_root"): _GATE_EXCLUSIVE,
     ("request_platform", "finalize_instance_claim"): _GATE_EXCLUSIVE,
     ("request_platform", "provision_native_organization_root"): _GATE_SHARE,
+    ("request_platform", "provision_native_platform_owner"): _GATE_SHARE,
     ("request_platform", "provision_native_tenant_provisioner"): _GATE_SHARE,
     ("request_platform", "provision_native_recovery_operator"): _GATE_SHARE,
     ("request_platform", "provision_tenant_provisioner"): _GATE_SHARE,
+    ("request_platform", "transition_native_platform_owner"): _GATE_SHARE,
     ("request_platform", "transition_native_platform_provisioner"): _GATE_SHARE,
 }
 
@@ -87,9 +89,11 @@ _GATED_WRITERS = {
 # Trigger functions fire from the gated organization-root transaction and are not
 # independently callable by runtime roles; they must not carry a late gate.
 _TRIGGER_WRITERS = {
+    ("request_engine", "adopt_platform_owner_v3"),
     ("request_engine", "seed_initial_controller_policy"),
     ("request_engine", "seed_root_staff_membership"),
     ("request_engine", "seed_root_staff_read_authority"),
+    ("request_platform", "grant_platform_owner_v2_capabilities_on_claim"),
 }
 
 _DIRECT_DML = re.compile(
@@ -121,9 +125,11 @@ _WRITER_CALLS: tuple[tuple[str, int], ...] = (
     ("request_platform.establish_root", 9),
     ("request_platform.finalize_instance_claim", 6),
     ("request_platform.provision_native_organization_root", 8),
+    ("request_platform.provision_native_platform_owner", 7),
     ("request_platform.provision_native_tenant_provisioner", 5),
     ("request_platform.provision_native_recovery_operator", 5),
     ("request_platform.provision_tenant_provisioner", 3),
+    ("request_platform.transition_native_platform_owner", 7),
     ("request_platform.transition_native_platform_provisioner", 7),
 )
 

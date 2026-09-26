@@ -8,7 +8,17 @@ from request_engine.bootstrap.communication_providers import (
     build_communication_delivery_providers,
     build_communication_provider_event_handlers,
 )
-from request_engine.bootstrap.recovery_delivery import build_recovery_secret_delivery
+from request_engine.bootstrap.native_recovery_delivery_worker import (
+    build_native_recovery_delivery_worker,
+)
+from request_engine.bootstrap.outbound_fence import OutboundSideEffectFence
+from request_engine.bootstrap.platform_secrets import build_platform_secret_store
+from request_engine.bootstrap.recovery_delivery import (
+    RecoveryDeliverySettings,
+    build_native_recovery_messenger,
+    build_recovery_secret_delivery,
+    has_recovery_secret_store_configuration,
+)
 from request_engine.bootstrap.recovery_delivery_worker import build_recovery_delivery_worker
 from request_engine.bootstrap.worker import build_worker_process
 from request_engine.entrypoints.worker.app import WorkerProcess
@@ -34,6 +44,18 @@ from request_engine.modules.communications.adapters.db.reservation_lifecycle_int
 )
 from request_engine.modules.communications.adapters.db.slot_offer_intent import (
     PostgresSlotOfferNotificationIntent,
+)
+from request_engine.modules.platform_configuration.adapters.db.invalidation import (
+    PlatformConfigurationInvalidationRuntime,
+)
+from request_engine.modules.platform_configuration.adapters.db.runtime import (
+    PostgresActivePlatformConfigurationSource,
+)
+from request_engine.modules.platform_configuration.adapters.managed_smtp_delivery import (
+    ManagedSmtpRecoveryDeliveryChannel,
+)
+from request_engine.modules.platform_configuration.application.runtime import (
+    ActivePlatformConfigurationResolver,
 )
 from request_engine.modules.queue.adapters.db.released_slot_recovery import (
     PostgresReleasedSlotRecovery,
@@ -88,20 +110,58 @@ def _outbox_publisher() -> OutboxPublisher:
 def create_worker() -> WorkerProcess:
     """Assemble the production worker; misconfiguration fails before any I/O."""
 
-    providers = build_communication_delivery_providers(
-        webhook_base_url=_required_env(WEBHOOK_BASE_URL_ENV),
-        webhook_auth_header=_webhook_auth_header(),
-    )
-    worker_sessions = create_session_factory(
-        create_postgres_engine(_required_env(WORKER_DATABASE_URL_ENV))
-    )
+    worker_database_url = _required_env(WORKER_DATABASE_URL_ENV)
+    worker_sessions = create_session_factory(create_postgres_engine(worker_database_url))
     domain_sessions = create_session_factory(
         create_postgres_engine(_required_env(APP_DATABASE_URL_ENV))
     )
     worker_principal_id = UUID(_required_env(WORKER_PRINCIPAL_ID_ENV))
-    delivery = build_recovery_secret_delivery()
+    outbound_fence = OutboundSideEffectFence.from_environment()
+
+    platform_configuration_resolver = ActivePlatformConfigurationResolver(
+        source=PostgresActivePlatformConfigurationSource(worker_sessions),
+        secret_store=build_platform_secret_store(),
+    )
+    platform_configuration_invalidation = PlatformConfigurationInvalidationRuntime(
+        database_url=worker_database_url,
+        invalidate=platform_configuration_resolver.invalidate,
+    )
+    webhook_base_url = os.environ.get(WEBHOOK_BASE_URL_ENV) or None
+    webhook_auth_header = _webhook_auth_header()
+    if webhook_auth_header is not None and webhook_base_url is None:
+        raise RuntimeError(
+            f"{WEBHOOK_BASE_URL_ENV} is required when {WEBHOOK_AUTH_HEADER_ENV} is set"
+        )
+    providers = outbound_fence.communications(
+        build_communication_delivery_providers(
+            webhook_base_url=webhook_base_url,
+            webhook_auth_header=webhook_auth_header,
+            managed_webhook_resolver=platform_configuration_resolver,
+        )
+    )
+
+    recovery_settings = RecoveryDeliverySettings()
+    if has_recovery_secret_store_configuration(recovery_settings):
+        bootstrap_smtp = build_native_recovery_messenger(recovery_settings)
+        managed_smtp = ManagedSmtpRecoveryDeliveryChannel(
+            resolver=platform_configuration_resolver,
+            fallback=bootstrap_smtp,
+            reset_url=recovery_settings.recovery_reset_url,
+        )
+        delivery = build_recovery_secret_delivery(
+            recovery_settings,
+            channel_override=managed_smtp,
+        )
+    else:
+        delivery = build_recovery_secret_delivery(recovery_settings)
+    delivery = outbound_fence.secret_delivery(delivery)
     identity_recovery_delivery = (
         build_recovery_delivery_worker(worker_sessions, delivery) if delivery is not None else None
+    )
+    native_recovery_delivery = (
+        build_native_recovery_delivery_worker(worker_sessions, delivery)
+        if delivery is not None
+        else None
     )
     return build_worker_process(
         worker_session_factory=worker_sessions,
@@ -118,7 +178,7 @@ def create_worker() -> WorkerProcess:
             )
         ),
         communication_providers=providers,
-        outbox_publisher=_outbox_publisher(),
+        outbox_publisher=outbound_fence.outbox(_outbox_publisher()),
         outbox_internal_handlers={},
         provider_event_handlers=build_communication_provider_event_handlers(domain_sessions),
         reservation_lifecycle_factory=lambda factory: ReservationLifecycleOutboxHandler(
@@ -133,4 +193,6 @@ def create_worker() -> WorkerProcess:
             ),
         ),
         identity_recovery_delivery=identity_recovery_delivery,
+        native_recovery_delivery=native_recovery_delivery,
+        platform_configuration_invalidation=platform_configuration_invalidation,
     )

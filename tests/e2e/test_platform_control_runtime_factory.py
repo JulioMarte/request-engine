@@ -176,14 +176,14 @@ async def test_private_control_runtime_serves_real_tcp(
                 operation = schema["paths"]["/v1/platform/organizations"]["post"]
                 assert operation["operationId"] == "platform_native_organization_create"
                 assert operation["security"] == [{"NativeSessionBearer": []}]
-                enrolled = await client.post(
+                closed_enrollment = await client.post(
                     "/auth/native/identities",
                     json={
                         "login_handle": "tcp-native@example.test",
                         "password": "tcp proof password",
                     },
                 )
-                assert enrolled.status_code == 201
+                assert closed_enrollment.status_code == 404
                 denied = await client.post("/v1/platform/organizations", json={})
                 assert denied.status_code == 401
         finally:

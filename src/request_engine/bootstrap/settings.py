@@ -20,10 +20,12 @@ class HttpSettings(BaseSettings):
 
     database_url: SecretStr
     native_identity_authority_id: UUID
-    appointment_option_signing_key: SecretStr
+    appointment_option_signing_key: SecretStr | None = None
     identity_exchange_fingerprint_key: SecretStr
     webauthn_decoy_key: SecretStr
-    oidc_enabled: bool = False
+    webauthn_rp_id: str = "localhost"
+    webauthn_rp_name: str = "Request Engine"
+    webauthn_allowed_origins: str = "https://localhost"
     database_probe_timeout_seconds: float = Field(default=5, gt=0, le=30)
 
     @field_validator("database_url")
@@ -36,14 +38,21 @@ class HttpSettings(BaseSettings):
             raise ValueError("HTTP requires a dedicated least-privilege runtime login")
         return value
 
+    @field_validator("webauthn_rp_id", "webauthn_rp_name", "webauthn_allowed_origins")
+    @classmethod
+    def validate_webauthn_setting(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("WebAuthn relying-party settings cannot be empty")
+        return value
+
     @field_validator(
         "appointment_option_signing_key",
         "identity_exchange_fingerprint_key",
         "webauthn_decoy_key",
     )
     @classmethod
-    def validate_signing_key(cls, value: SecretStr) -> SecretStr:
-        if len(value.get_secret_value().encode()) < 32:
+    def validate_signing_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value().encode()) < 32:
             raise ValueError("signing keys must contain at least 32 bytes")
         return value
 

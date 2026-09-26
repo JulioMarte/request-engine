@@ -89,3 +89,59 @@ merge = false
 nightly = true
 manual = true
 enabled = true
+
+[suites.recovery-delivery]
+description = "Real OpenBao + Mailpit recovery proof delivery and one-time password recovery"
+selector = "recovery-delivery"
+profiles = ["worker", "secrets", "delivery"]
+services = ["api", "control-plane", "worker"]
+deferred_services = ["worker"]
+runtime_env_from_state = ["REQUEST_ENGINE_WORKER_PRINCIPAL_ID=f01-foundation.json:worker_principal_id"]
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "medium"
+artifact_namespace = "recovery-delivery"
+pr = true
+merge = true
+nightly = true
+manual = true
+enabled = true
+
+[suites.platform-configuration]
+description = "Governed managed SMTP lifecycle over HTTP plus live worker adoption of a rotated/activated revision without restart"
+selector = "platform-configuration"
+profiles = ["worker", "secrets", "managed-delivery"]
+services = ["api", "control-plane", "worker"]
+deferred_services = ["worker"]
+runtime_env_from_state = ["REQUEST_ENGINE_WORKER_PRINCIPAL_ID=f01-foundation.json:worker_principal_id"]
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "large"
+artifact_namespace = "platform-configuration"
+pr = true
+merge = true
+nightly = true
+manual = true
+enabled = true
+
+
+[suites.clone-fence]
+description = "Production-shaped clone fence blocks SMTP recovery and outbox network side effects"
+selector = "clone-fence"
+profiles = ["worker", "secrets", "delivery"]
+services = ["api", "control-plane", "worker"]
+deferred_services = ["worker"]
+environment = ["REQUEST_ENGINE_OUTBOUND_FENCED=true"]
+runtime_env_from_state = ["REQUEST_ENGINE_WORKER_PRINCIPAL_ID=f01-foundation.json:worker_principal_id"]
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "medium"
+artifact_namespace = "clone-fence"
+pr = true
+merge = true
+nightly = true
+manual = true
+enabled = true

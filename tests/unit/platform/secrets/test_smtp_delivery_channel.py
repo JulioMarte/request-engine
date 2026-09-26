@@ -118,6 +118,56 @@ async def test_send_delivers_with_deterministic_message_id_and_neutral_headers()
 
 
 @pytest.mark.asyncio
+async def test_blank_optional_auth_values_do_not_attempt_smtp_authentication() -> None:
+    transport = _SmtpTransportDouble()
+    channel = SmtpRecoveryDeliveryChannel(
+        host="mailpit",
+        port=1025,
+        sender="recovery@example.test",
+        username="",
+        password="",
+        starttls=False,
+        transport=transport,
+    )
+
+    outcome = await channel.send(
+        secret=_SECRET,
+        destination_reference=_DESTINATION,
+        idempotency_key=_KEY,
+    )
+
+    assert outcome is DeliveryOutcome.DELIVERED
+    assert transport.instances[0].calls == ["connect", "ehlo", "send_message", "close"]
+
+
+@pytest.mark.asyncio
+async def test_starttls_not_supported_is_definitive_configuration_failure() -> None:
+    class _NoStartTls(_RecordingSmtp):
+        def starttls(self, *args: Any, **kwargs: Any) -> tuple[int, bytes]:
+            raise smtplib.SMTPNotSupportedError("STARTTLS extension not supported")
+
+    class _NoStartTlsTransport:
+        def __call__(self, *args: Any, **kwargs: Any) -> smtplib.SMTP:
+            return _NoStartTls(*args, **kwargs)
+
+    channel = SmtpRecoveryDeliveryChannel(
+        host="smtp.example.test",
+        port=587,
+        sender="noreply@example.test",
+        starttls=True,
+        transport=_NoStartTlsTransport(),
+    )
+
+    outcome = await channel.send(
+        secret=_SECRET,
+        destination_reference=_DESTINATION,
+        idempotency_key=_KEY,
+    )
+
+    assert outcome is DeliveryOutcome.FAILED
+
+
+@pytest.mark.asyncio
 async def test_reset_url_body_uses_fragment_with_quoted_token() -> None:
     transport = _SmtpTransportDouble()
     secret = "token with spaces/and+symbols"

@@ -27,8 +27,15 @@ P4  atomic HTTP Instance claim                 delivered (0065: HTTP setup surfa
                                                 Docker clean-install E2E now claims
                                                 the instance over HTTP and no longer
                                                 calls platform_bootstrap_cli)
-P5  additional Platform Owner/admin lifecycle  pending
-P6  Instance recovery                          pending
+P5  additional Platform Owner/admin lifecycle  delivered (0071-0074: governed
+                                                owner invitation/activation,
+                                                lifecycle, continuity and
+                                                phishing-resistant authority)
+P6  Instance recovery                          delivered (0075-0077 + F-01:
+                                                universal recovery posture,
+                                                verified recovery address,
+                                                governed recovery reuse and
+                                                offline owner break-glass drill)
 P7  configuration/secrets admin APIs           deferred (follow-on)
 ```
 
@@ -130,6 +137,27 @@ login/step-up surface are delivered before P5:
 - `REQUEST_ENGINE_WEBAUTHN_DECOY_KEY` is a new required deployment secret
   (≥32 bytes) for the enumeration-resistant decoy. The public data-plane app is
   not yet composed with the WebAuthn login policy; the control plane is.
+
+### P4.2 Offline owner access recovery (0068)
+
+The recovery codes returned once during Instance Claim are now also an
+OpenBao/SMTP-independent break-glass credential for the owning native identity.
+
+`POST /auth/native/password:recover-with-code` exists only on the private
+control plane. It accepts one unused recovery code plus a replacement password;
+the code identifies the identity, so callers cannot select another user.
+
+`request_auth.consume_recovery_code_and_rotate_password` consumes the code and
+replaces the active password in one transaction, bumps the session epoch,
+revokes all active native sessions and pending delivery-based recovery intents,
+and records recovery provenance. The previous password is never recoverable,
+the code cannot be replayed and the Instance remains CLAIMED: first-run setup is
+never reopened.
+
+This path deliberately does not depend on SMTP, OpenBao/Vault, a current session
+or a live WebAuthn authenticator. It is therefore the independent human-access
+recovery leg required by ADR 0015. Secret-store disaster recovery is a separate
+operator procedure and cannot grant/reopen Instance Claim authority.
 
 ### P2 decisions
 
@@ -1573,26 +1601,40 @@ Deliver:
 
 This is the point where ADR 0014 becomes executable product behavior.
 
-### P5 — Platform owner/admin lifecycle
+### P5 — Platform owner/admin lifecycle — delivered
 
-Deliver:
+Delivered by revisions 0071-0074 and the Platform Owner HTTP/E2E journeys:
 
-- invitation/provisioning;
-- explicit platform grant/revoke semantics;
-- self-elevation prevention;
-- last-controller continuity;
-- recent phishing-resistant step-up for authority changes;
-- second-controller positive E2E path.
+- one-time invitation and governed activation of a prepared Native HUMAN;
+- explicit provision/read/lifecycle capabilities with no owner/superuser bypass;
+- phishing-resistant, recent HUMAN proof before owner authority changes;
+- last-effective-owner continuity protection;
+- suspend/reactivate/revoke semantics with revisions, idempotency and append-only facts;
+- a second owner can be activated and the final effective owner cannot be removed.
 
-### P6 — Instance recovery
+### P6 — Instance recovery — delivered
 
-Deliver:
+The accepted recovery goal is met without introducing a permanent magic root or
+a second privileged SQL path:
 
-- deployment recovery trust adapter;
-- normal-vs-instance recovery separation;
-- break-glass drill;
-- no setup reopening;
-- audit/security notification behavior.
+- every successful Native HUMAN password-recovery method enters
+  `recovery_restricted` posture and preserves standing authority data;
+- request-local effective authority removes every `AUTHORITY_CHANGE` capability
+  until recovery is completed by fresh accepted strong-factor proof;
+- setup-issued offline recovery codes restore the existing owner's password even
+  when SMTP and OpenBao/Vault are absent; setup remains permanently closed;
+- verified recovery addresses are self-service, require strong proof to add/revoke,
+  use one-time digest-only verification/recovery material, and apply durable
+  per-identity/address throttling;
+- the existing governed two-HUMAN recovery case remains the administrative
+  assisted-recovery path and now enters the same restricted posture;
+- the F-01 Docker journey drills owner break-glass end-to-end: offline code reset →
+  restricted session → original passkey proof → recovery completion → setup still
+  closed → sensitive Platform Owner authority works again.
+
+No new deployment master password or force capability was added. A future
+emergency ceremony that creates a replacement controller rather than restoring an
+existing owner would still require a separate accepted contract.
 
 ### P7 — Configuration/secrets admin APIs
 

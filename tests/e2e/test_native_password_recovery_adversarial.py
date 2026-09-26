@@ -490,11 +490,28 @@ async def test_recovery_route_is_native_only_and_not_tool_projected(
 ) -> None:
     app = _app(e2e_session_factory, uuid4())
     schema = app.openapi()
-    operation = schema["paths"]["/auth/native/password:recover"]["post"]
-    assert operation["operationId"] == "nativePasswordRecover"
-    assert "x-request-engine-tool-name" not in operation
-    assert "x-request-engine-tool-audiences" not in operation
-    native_paths = [path for path in schema["paths"] if path.startswith("/auth/native/")]
-    assert sorted(path for path in native_paths if "recover" in path) == [
-        "/auth/native/password:recover"
-    ]
+    recovery_paths = {
+        "/auth/native/password:recover",
+        "/auth/native/password:recover-with-code",
+        "/auth/native/password:request-recovery",
+        "/auth/native/recovery-addresses:verify",
+        "/auth/native/sessions/current/recovery-addresses",
+        "/auth/native/sessions/current/recovery-addresses/{recovery_address_id}",
+        "/auth/native/sessions/current/recovery-codes",
+        "/auth/native/sessions/current/recovery-codes:regenerate",
+        "/auth/native/sessions/current/recovery-readiness",
+        "/auth/native/sessions/current/recovery:complete",
+    }
+    native_paths = {
+        path
+        for path in schema["paths"]
+        if path.startswith("/auth/native/") and ("recover" in path or "recovery" in path)
+    }
+    assert native_paths == recovery_paths
+
+    for path in sorted(recovery_paths):
+        for operation in schema["paths"][path].values():
+            if not isinstance(operation, dict) or "operationId" not in operation:
+                continue
+            assert "x-request-engine-tool-name" not in operation
+            assert "x-request-engine-tool-audiences" not in operation

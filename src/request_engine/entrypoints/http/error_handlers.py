@@ -14,6 +14,7 @@ from request_engine.entrypoints.http.errors import (
     phishing_resistant_auth_required_handler,
     reauthentication_required_handler,
     recent_authentication_required_handler,
+    recovery_completion_required_handler,
     render_error_response,
     request_validation_error_handler,
 )
@@ -46,6 +47,7 @@ from request_engine.platform.security.freshness import (
     PhishingResistantAuthenticationRequired,
     ReauthenticationRequired,
     RecentAuthenticationRequired,
+    RecoveryCompletionRequired,
 )
 from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
 from request_engine.platform.security.identity_resolution import (
@@ -155,6 +157,7 @@ def add_global_error_handlers(app: FastAPI) -> None:
         PhishingResistantAuthenticationRequired, phishing_resistant_auth_required_handler
     )
     app.add_exception_handler(RecentAuthenticationRequired, recent_authentication_required_handler)
+    app.add_exception_handler(RecoveryCompletionRequired, recovery_completion_required_handler)
     app.add_exception_handler(OperationalAuthorityRequired, operational_authority_required_handler)
     app.add_exception_handler(
         OperatorResolutionUnavailable, operator_resolution_unavailable_handler

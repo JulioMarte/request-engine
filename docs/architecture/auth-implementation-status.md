@@ -123,8 +123,11 @@ HTTP journey (`tests/e2e/test_instance_setup_http.py`). P4 hardening (`0066`)
 makes finalize idempotency a request fingerprint (operation + SetupSession +
 provenance) rather than a bare key, so key reuse with different content is a
 conflict, and binds setup WebAuthn completion to the presented SetupSession in
-both Python and PostgreSQL. The P5 additional-owner lifecycle and P6 instance
-recovery remain pending.
+both Python and PostgreSQL. P5 additional-owner lifecycle and P6 recovery are
+now delivered on this branch: governed multi-owner lifecycle (0071-0074),
+universal recovery posture + verified recovery addresses (0075-0077), the
+existing two-HUMAN governed recovery path, and the offline owner break-glass
+drill all converge on the same Native HUMAN recovery semantics.
 
 F-01 exact-head evidence (commit `f8c5a6c5`, Docker E2E run
 [35306586940](https://github.com/JulioMarte/request-engine/actions/runs/35306586940)
@@ -156,12 +159,13 @@ authority ids from the claim receipt; `request-engine-platform-bootstrap
 issue/establish` is no longer invoked. `smoke`, `f01-foundation` and
 `worker-restart` all pass, and F-01 emits the `f01-00-instance-claim` checkpoint.
 
-F-01 remains blocked on real product/deployment gaps (not test shortcuts): the
-positive recovery path needs a second recovery-capable platform human and a
-runner-readable delivery channel; controller replacement needs a supported
-delegable/policy contract; OIDC needs an authority-registration contract, reachable
-grants and a provider in the reference Compose. Details are in
-`docker-e2e-ci-plan.md` section 14 ("Hallazgos de producto y governance").
+F-01 now includes the positive offline owner recovery path and a full break-glass
+drill without SMTP/OpenBao: recovery-code reset -> recovery-restricted session ->
+original passkey proof -> recovery completion -> setup remains closed -> sensitive
+Platform Owner authority is usable again. Controller replacement by creating a
+brand-new emergency owner remains intentionally out of scope without a separate
+accepted contract. OIDC still needs an authority-registration contract, reachable
+grants and a provider in the reference Compose.
 
 Completed with green exact-head CI:
 
@@ -180,16 +184,17 @@ by the runs above.
 Still missing:
 
 - **F-01 fixture-free native journey (plan section 11):** delivered. The clean
-  native-only journey now claims the fresh Instance through the control-plane HTTP
-  setup surface, including real WebAuthn verification, before driving the product
-  over real TCP (commit `270b6163`, Docker E2E run `35421929121`). The positive
-  recovery path, controller replacement and the OIDC journey remain blocked on
-  missing product/deployment contracts rather than on test scaffolding.
-- **G/D6 operational acceptance (plan section 12):** named environment, operators
-  and thresholds; separate production entrypoints and pools; TLS/private ingress;
-  budgets; configured secret store/provider with rotation; populated migration
-  rehearsal; backup/restore with a restore-fencing tool; real delivery journey and
-  break-glass drill. Blocked on owner D6 decisions; no deployment profile exists.
+  native-only journey claims the fresh Instance through the control-plane HTTP
+  setup surface, verifies real WebAuthn, exercises the product over TCP, and now
+  drills offline Platform Owner recovery without SMTP/OpenBao. Emergency creation
+  of a replacement controller and the OIDC journey remain separate follow-on
+  contracts, not hidden test gaps.
+- **G/D6 operational acceptance (plan section 12):** still open for a named real
+  environment, operators and thresholds; separate production entrypoints and
+  pools; TLS/private ingress; budgets; configured secret store/provider with
+  rotation; populated migration rehearsal; and backup/restore with clone fencing.
+  The application-level break-glass drill is now delivered, but that is not a
+  substitute for a real deployment backup/restore exercise.
 - **Platform system administration (new):** there is no capability, API or UI to
   administer platform configuration (SMTP, Vault/secret references, settings). They
   are environment-variable driven in `bootstrap/recovery_delivery.py`; a partial
@@ -2140,3 +2145,54 @@ one tenant-scoped query responsibility with a typed application port and HTTP
 DTO mapping. No extraction or authority-rule waiver was made to reduce metrics.
 Architecture, lint/types and behavior proofs remain required independently;
 `human_verdict` is null because no human supplied a review disposition.
+
+
+## P5/P6 Platform Owner lifecycle and recovery completion (2026-09-20)
+
+The trust-root lifecycle/recovery slice is implemented through revisions 0071-0077.
+
+- P5: one-time owner invitations, prepared Native HUMAN activation, multiple
+  Platform Owners, suspend/reactivate/revoke, last-effective-owner protection,
+  idempotency, append-only lifecycle facts and recent phishing-resistant HUMAN
+  proof for owner authority changes.
+- P6: every password-recovery path enters persisted `recovery_restricted`
+  posture. Standing grants/bindings/memberships are preserved, while request-local
+  effective authority removes every capability classified
+  `AUTHORITY_CHANGE` until a fresh accepted strong factor completes recovery.
+- Verified recovery email is self-service: add/revoke requires recent
+  phishing-resistant authentication, verification/recovery tokens are one-time
+  digest-only material, public request responses are intentionally identical, and
+  PostgreSQL throttles repeat dispatch for the same identity/address for one
+  minute.
+- The pre-existing governed two-HUMAN recovery case remains the assisted recovery
+  mechanism and now converges on the same restricted posture.
+- F-01 proves an owner can recover with one offline setup-issued code while SMTP
+  and OpenBao are absent, then prove the original passkey, complete recovery,
+  keep first-run setup closed, and regain sensitive Platform Owner authority.
+
+Exact-head evidence before these documentation-only updates:
+
+- source HEAD `823dfdbac2caf8173e26de272f00652f5cae003c`;
+- CI run `35522591608`: Python quality/architecture, PostgreSQL 18 V2 history,
+  observability, PostgreSQL 18 current-product proof and aggregate V3/verticals
+  all succeeded;
+- current-product main suite: **446 passed, 2 deselected**;
+- Docker E2E run `35522591793` (#322): success.
+
+This is not a claim that production D6 is complete. Real-environment
+backup/restore, clone fencing, TLS/private ingress, production secret-store
+operations and external delivery remain deployment acceptance work.
+
+## Offline owner access recovery
+
+Migration `0068_offline_password_reset` makes the digest-only recovery
+codes issued during Instance Claim a true offline break-glass credential.
+The private control plane exposes
+`POST /auth/native/password:recover-with-code`: one unused code can replace the
+owning native identity's password even when SMTP, OpenBao/Vault, the previous
+password, an existing session and the passkey are unavailable. Consumption,
+password replacement and session invalidation are atomic. Setup remains closed
+and the old password is never replayable.
+
+This is account-access recovery, not Instance recovery and not secret-store
+restore. OpenBao/backup recovery is governed separately by ADR 0015.

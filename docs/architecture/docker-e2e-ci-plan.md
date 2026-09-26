@@ -492,6 +492,13 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 - Python quality/architecture exact-head verde después de introducir los nuevos guardrails.
 - retry Docker transitorio acotado (máximo 3 intentos por defecto) para build/arranque de infraestructura, limitado a firmas de red/registry conocidas; los fallos deterministas no se reintentan y la evidencia no imprime argumentos del comando;
 - el workflow Docker E2E ya no usa `continue-on-error`: una suite fallida produce un check fallido; el lane sigue siendo advisory mientras el ruleset no lo configure como required.
+- suite black-box `platform-configuration` (`profiles=[worker,secrets,managed-delivery]`): reclama el Instance, hace login fuerte del Platform Owner, crea un secreto, hace stage/validate/provider-test/activate de SMTP administrado por HTTP, deja que el worker vivo entregue un recovery gobernado por Mailpit, rota el secreto y activa una nueva revisión, y prueba que el mismo proceso worker adopta la nueva revisión sin reinicio; cierra con `GET /v1/platform/readiness` reportando `managed` y la revisión activa exacta.
+- el perfil `managed-delivery` levanta Mailpit como infraestructura pero elimina
+  explícitamente todos los `REQUEST_ENGINE_SMTP_*` antes de arrancar Request
+  Engine; así el journey P7 sólo puede entregar mediante la revisión ACTIVE y el
+  secreto de OpenBao. El perfil histórico `delivery` conserva SMTP bootstrap
+  para suites que prueban ese fallback. Mailpit sigue siendo plumbing de evidencia,
+  no certificación de deliverability.
 
 ### Implementado pero todavía requiere una demostración dedicada más fuerte
 
