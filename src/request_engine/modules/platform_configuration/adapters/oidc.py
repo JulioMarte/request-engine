@@ -23,23 +23,24 @@ class HttpxOidcConfigurationValidator(OidcConfigurationValidator):
     """
 
     def __init__(self, fetcher: JwksFetcher | None = None) -> None:
-        self._owns_fetcher = fetcher is None
-        self._fetcher = fetcher if fetcher is not None else HttpxJwksFetcher()
+        self._fetcher = fetcher
 
     async def validate(
         self,
         configuration: OidcProviderConfiguration,
     ) -> OidcValidationResult:
+        owns_fetcher = self._fetcher is None
+        fetcher = self._fetcher if self._fetcher is not None else HttpxJwksFetcher()
         try:
-            document = await self._fetcher.fetch(configuration.jwks_uri)
+            document = await fetcher.fetch(configuration.jwks_uri)
         except OidcAuthenticationRequired:
             return OidcValidationResult(
                 OidcValidationStatus.UNAVAILABLE,
                 "oidc_jwks_unavailable",
             )
         finally:
-            if self._owns_fetcher and isinstance(self._fetcher, HttpxJwksFetcher):
-                await self._fetcher.aclose()
+            if owns_fetcher and isinstance(fetcher, HttpxJwksFetcher):
+                await fetcher.aclose()
 
         try:
             validate_jwks_document(document)
