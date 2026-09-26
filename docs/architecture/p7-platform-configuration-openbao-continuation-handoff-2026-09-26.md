@@ -16,12 +16,11 @@ The last implementation commit before this handoff was:
 
 `84fb75d9bf6c378eaa4bd3885ff23e28f987e14f` — `fix(ci): make P7 proof workflow self-contained`
 
-That commit repaired `.github/workflows/p7-platform-configuration-contract.yml` in two concrete ways:
+The original handoff recorded the 0093 path backwards. Repository inspection on 2026-09-26 established that the actual migration filename is `migrations/versions/0093_managed_oidc_authority_projection.py`; the P7 workflow now watches that real path. The proof workflow also creates `.ci/` before writing JUnit evidence.
 
-1. The workflow path filter incorrectly referenced `migrations/versions/0093_managed_oidc_authority_projection.py`; the repository file is `migrations/versions/0093_managed_oidc_projection.py`.
-2. The P7 pytest step wrote JUnit output to `.ci/p7-platform-configuration.xml` without guaranteeing that `.ci/` existed. The workflow now creates `.ci` explicitly and uses a multiline shell command so the proof job is self-contained.
+Continuation after the handoff found a second harness defect: `tests/db/test_managed_oidc_projection.py` supplied uppercase/non-canonical values where the governed command contract requires lowercase 64-character SHA-256 hex digests. The tests now generate real SHA-256 hex digests instead of weakening the database validation. Ruff formatting for `0094_managed_oidc_readiness.py` was also corrected.
 
-At the time of handoff creation, GitHub showed CI for HEAD `84fb75d...` still running. At least the `Coolify adapter contract` workflow had completed successfully, while `Docker E2E` was still `in_progress`. Therefore **do not claim exact-head green from this handoff**. Re-check all checks on the current branch/PR first.
+Do not infer completion from these harness repairs. Exact-head CI and the operational evidence requirements below remain authoritative.
 
 ## Primary documents to treat as authority
 
@@ -43,7 +42,7 @@ The branch contains substantial P7 work around platform configuration, secret ad
 - `migrations/versions/0080_platform_configuration_governance.py`
 - `migrations/versions/0081_platform_configuration_read_boundary.py`
 - `migrations/versions/0090_platform_readiness_projection.py`
-- `migrations/versions/0093_managed_oidc_projection.py`
+- `migrations/versions/0093_managed_oidc_authority_projection.py`
 - `migrations/versions/0094_managed_oidc_readiness.py`
 - `tests/modules/platform_configuration/**`
 - `tests/unit/platform/secrets/test_platform_secret_administration.py`
@@ -55,18 +54,18 @@ The branch contains substantial P7 work around platform configuration, secret ad
 
 This list is a starting point, not the full P7 scope. Discover linked code/tests from the authoritative docs.
 
-## Required first actions for the next agent
+## Required actions
 
-1. Fetch/checkout `feature/platform-config-openbao-recovery` and record the actual HEAD. If this handoff commit is now HEAD, use its parent/reference above to understand the last code change.
+1. Fetch/checkout `feature/platform-config-openbao-recovery` and record the actual HEAD.
 2. Inspect PR #133 and every exact-head GitHub Actions check. Separate failures into product defects, migration defects, test defects, infrastructure/flakes, and workflow-definition defects. Never weaken a meaningful assertion merely to make CI green.
 3. If a job failed, inspect the failing step and logs before editing anything. Reproduce locally where practical.
-4. Re-read the P7 handoff, recovery plan, and Definition of Done. Build a requirement-to-evidence matrix: requirement -> implementation -> test -> CI/operational proof -> status.
-5. Continue implementation for every genuinely missing requirement. Commit small coherent changes and push them to this same branch.
+4. Re-read the P7 handoff, recovery plan, and Definition of Done. Maintain a requirement-to-evidence matrix: requirement -> implementation -> test -> CI/operational proof -> status.
+5. Continue implementation for every genuinely missing repository requirement. Commit small coherent changes and push them to this same branch.
 6. After each repair, verify the new exact HEAD rather than relying on a previous green run.
 
 ## Completion standard
 
-P7 is not complete merely because unit tests pass. The next agent should only close it when the documented guarantees are both implemented and demonstrated. In particular, verify the requirements around:
+P7 is not complete merely because unit tests pass. Only close it when the documented guarantees are both implemented and demonstrated. In particular, verify:
 
 - platform ownership/capability boundaries;
 - command/read surfaces and PostgreSQL authority;
@@ -87,6 +86,20 @@ P7 is not complete merely because unit tests pass. The next agent should only cl
 
 For backup/restore/OpenBao/recovery items, distinguish carefully between **code exists**, **automated test exists**, and **an operational drill has actually been demonstrated**. A mocked or fake provider may prove wiring but must not be described as proving real-world recovery/delivery if the spec requires stronger evidence.
 
+## Current evidence boundary
+
+Repository implementation now includes governed OpenBao-backed secret handling, managed SMTP and Communications configuration, managed OIDC projection/readiness, appointment-signing key lifecycle, readiness facts, encrypted PostgreSQL + OpenBao recovery-bundle tooling, restore fencing, scheduling/retention tooling, offline Platform Owner recovery, and black-box clone fencing.
+
+The following remain **operational acceptance**, not repository implementation gaps, unless new executable evidence proves otherwise:
+
+- controlled production SMTP/provider acceptance with real deployment DNS/TLS/AUTH/throttling characteristics;
+- a real OpenBao operational exercise against the intended deployment topology;
+- a clean-environment PostgreSQL + OpenBao/Raft restore drill followed by Request Engine reads, governed secret resolution, offline owner recovery, and clone-fence verification;
+- measured and explicitly accepted RPO/RTO;
+- activation of the chosen backup schedule/retention and proof that an off-host encrypted copy is actually retained.
+
+Do not invent these facts in CI. The repository can supply tooling and repeatable procedures; the named deployment/operator must supply the real environment and acceptance values.
+
 ## Adversarial checks
 
 Before declaring done, actively try to disprove the implementation:
@@ -104,10 +117,6 @@ Before declaring done, actively try to disprove the implementation:
 - Is there any recovery scenario documented as solved that has never been exercised by an automated or operational proof?
 
 Any `yes` or `unknown` above should be investigated before closure.
-
-## CI note from the stopping point
-
-The previous agent was specifically investigating CI rather than product behavior when work stopped. The last identified workflow defects were real workflow-definition issues, not justification to relax product tests. The repair commit `84fb75d...` should be treated as a CI harness correction. Its resulting exact-head CI had not fully completed when this handoff was written.
 
 ## Expected final report
 
