@@ -1,18 +1,13 @@
-# `platform_configuration`
+# Platform Configuration
 
-This module owns installation-wide operational configuration lifecycle semantics.
+Owns installation-wide operational configuration lifecycle and administrative projections.
 
-It owns:
+This module owns typed configuration revision semantics, stage/validate/activate/disable commands,
+secret-binding metadata lifecycle, provider validation/test orchestration, and platform readiness
+projections.
 
-- typed configuration revisions;
-- secret-binding metadata lifecycle;
-- provider validation/test orchestration;
-- platform configuration/readiness projections.
+It does **not** own secret-store transport mechanics, worker mechanics, SMTP delivery semantics,
+identity/Platform Owner authority, OIDC cryptographic verification, or business communication
+intent. Those remain in their existing owners.
 
-It does **not** own:
-
-- secret-store transport mechanics (`request_engine.platform.secrets`);
-- worker lease/fencing mechanics;
-- SMTP delivery semantics (`communications`);
-- Platform Owner authority (`tenancy`);
-- OIDC cryptographic verification mechanics (`platform.security`).
+Plaintext secrets must never cross this module's human-facing read contracts.
