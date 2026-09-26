@@ -3,7 +3,7 @@
 
 This gate deliberately distinguishes repository tooling from an exercised drill.
 It accepts machine-readable facts produced by a real restore run and fails closed
-when any P7-K proof is absent.  It never invents RPO/RTO values.
+when any P7-K proof is absent. It never invents RPO/RTO values.
 """
 from __future__ import annotations
 
@@ -95,7 +95,9 @@ def certify(source: Path, output: Path | None) -> dict[str, Any]:
     }
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
     return result
 
 
@@ -105,7 +107,8 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        result = certify(args.evidence.resolve(), None if args.output is None else args.output.resolve())
+        output = None if args.output is None else args.output.resolve()
+        result = certify(args.evidence.resolve(), output)
     except (EvidenceError, OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"recovery drill certification failed: {exc}") from exc
     print(json.dumps(result, sort_keys=True))
