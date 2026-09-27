@@ -1,0 +1,131 @@
+name: PostgreSQL 18 rebaseline 0094 proof
+
+on:
+  push:
+    branches:
+      - feature/rebaseline-0094
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.12.5"
+
+jobs:
+  materialize:
+    name: Materialize effective 0094 candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: request_engine_rebaseline_source
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d request_engine_rebaseline_source"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: request_engine_rebaseline_source
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_rebaseline_source
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Materialize effective 0094 model
+        run: bash scripts/db/build_rebaseline_0094_candidate.sh
+      - name: Upload candidate and source catalogs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rebaseline-0094-candidate
+          path: .ci/rebaseline-0094/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+
+  clean-cluster-proof:
+    name: Prove candidate on clean PostgreSQL 18 cluster
+    needs: materialize
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: request_engine_rebaseline_target
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d request_engine_rebaseline_target"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: request_engine_rebaseline_target
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: actions/download-artifact@v4
+        with:
+          name: rebaseline-0094-candidate
+          path: .ci/rebaseline-0094
+      - name: Install project
+        run: uv sync --all-groups
+      - name: Recreate exact Request Engine role topology
+        run: psql -v ON_ERROR_STOP=1 -d postgres -f .ci/rebaseline-0094/0001_roles.sql
+      - name: Install candidate schema without historical migrations
+        run: psql -v ON_ERROR_STOP=1 -f .ci/rebaseline-0094/0001_schema.sql
+      - name: Export target catalogs
+        run: |
+          uv run python scripts/db/export_role_catalog.py --output .ci/rebaseline-0094/clean-role-catalog.json
+          uv run python scripts/db/export_schema_catalog.py --output .ci/rebaseline-0094/clean-schema-catalog.json
+      - name: Require exact role topology
+        run: >-
+          uv run python scripts/db/compare_role_catalogs.py
+          --expected .ci/rebaseline-0094/source-role-catalog.json
+          --actual .ci/rebaseline-0094/clean-role-catalog.json
+          --output .ci/rebaseline-0094/clean-role-comparison.json
+      - name: Require effective schema equivalence
+        run: >-
+          uv run python scripts/db/compare_schema_catalogs.py
+          --expected .ci/rebaseline-0094/source-schema-catalog.json
+          --actual .ci/rebaseline-0094/clean-schema-catalog.json
+          --output .ci/rebaseline-0094/clean-schema-comparison.json
+      - name: Upload clean-cluster proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rebaseline-0094-clean-cluster-proof
+          path: .ci/rebaseline-0094/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
