@@ -25,6 +25,7 @@ python scripts/operations/openbao_operational_acceptance.py \
   --address https://127.0.0.1:8100 \
   --token-env REQUEST_ENGINE_OPENBAO_ACCEPTANCE_TOKEN \
   --path-prefix request-engine/acceptance \
+  --topology-reference production-openbao-raft-proxy-v1 \
   --output openbao-operational-acceptance.json
 ```
 
@@ -34,6 +35,7 @@ Proxy example:
 python scripts/operations/openbao_operational_acceptance.py \
   --address http://127.0.0.1:8100 \
   --path-prefix request-engine/acceptance \
+  --topology-reference production-openbao-raft-proxy-v1 \
   --output openbao-operational-acceptance.json
 ```
 
@@ -43,8 +45,11 @@ winner and one `PlatformSecretConflict`. It verifies that the winning value,
 version, and opaque operation marker agree, revokes the test secret, and proves
 that the revoked secret can no longer be resolved.
 
-The evidence contains UUIDs/versions only; it never writes the secret value or
-OpenBao token to the artifact.
+The evidence includes the operator-supplied topology reference plus the non-secret
+endpoint/mount/prefix/auth-mode metadata used for the run. This prevents a CI
+OpenBao dev-mode artifact from being confused with acceptance of the intended
+sealed/Raft production topology. It contains UUIDs/versions only for the test
+secret and never writes the secret value or OpenBao token to the artifact.
 
 ## Scope
 
