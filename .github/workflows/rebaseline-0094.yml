@@ -48,7 +48,14 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: uv.lock
+      - name: Verify PostgreSQL 18 dump client
+        run: |
+          version="$(docker exec "${{ job.services.postgres.id }}" pg_dump --version)"
+          echo "$version"
+          [[ "$version" == *" 18."* ]]
       - name: Materialize effective 0094 model
+        env:
+          REBASELINE_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: bash scripts/db/build_rebaseline_0094_candidate.sh
       - name: Upload candidate and source catalogs
         uses: actions/upload-artifact@v4
