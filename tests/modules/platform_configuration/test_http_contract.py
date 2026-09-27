@@ -101,6 +101,11 @@ def test_platform_configuration_http_registers_canonical_capability_surface() ->
             "/v1/platform/readiness",
             frozenset({"GET"}),
         ),
+        "platform_observability_get": (
+            "platform.readiness.read",
+            "/v1/platform/observability",
+            frozenset({"GET"}),
+        ),
         "platform_secret_metadata_get": (
             "platform.configuration.read",
             "/v1/platform/secrets/{binding_id}",
