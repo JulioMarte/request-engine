@@ -95,8 +95,8 @@ from request_engine.modules.platform_configuration.application.webhook import (
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
-from request_engine.platform.observability.p7_metrics import P7OperationalMetrics
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+from request_engine.platform.observability.p7_metrics import P7OperationalMetrics
 from request_engine.platform.secrets.platform_store import PlatformSecretStore
 from request_engine.platform.security.appointment_option_keyring import (
     create_appointment_option_keyring,
