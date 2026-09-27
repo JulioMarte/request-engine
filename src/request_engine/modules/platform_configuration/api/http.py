@@ -520,6 +520,16 @@ def install_platform_configuration_http(
         readiness = await readiness_reader.read(actor)
         if deployment_readiness is not None:
             readiness = apply_deployment_readiness(readiness, deployment_readiness)
+        if operational_metrics is not None:
+            operational_metrics.observe_provider_configuration_source(
+                readiness.recovery_delivery_source
+            )
+            operational_metrics.observe_clone_fence(readiness.clone_fence)
+            if readiness.smtp_active_revision is not None:
+                operational_metrics.record_activation(
+                    "email.delivery",
+                    readiness.smtp_active_revision,
+                )
         return _readiness_view(readiness)
 
     async def get_secret_binding(
@@ -707,14 +717,24 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
-        return _mutation_view(
-            await provider_validation.validate(
+        try:
+            result = await provider_validation.validate(
                 actor,
                 configuration_kind=configuration_kind,
                 revision=revision,
                 idempotency_key=idempotency_key,
             )
-        )
+        except PlatformProviderValidationFailed:
+            if operational_metrics is not None:
+                operational_metrics.record_validation("unavailable")
+            raise
+        except PlatformConfigurationProviderInvalid:
+            if operational_metrics is not None:
+                operational_metrics.record_validation("failure")
+            raise
+        if operational_metrics is not None:
+            operational_metrics.record_validation("success")
+        return _mutation_view(result)
 
     async def test_provider(
         configuration_kind: str,
@@ -750,17 +770,18 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
-        return _mutation_view(
-            await commands.activate(
-                actor,
-                ActivateConfiguration(
-                    configuration_kind=configuration_kind,
-                    revision=revision,
-                    expected_active_revision=body.expected_active_revision,
-                    idempotency_key=idempotency_key,
-                ),
-            )
+        result = await commands.activate(
+            actor,
+            ActivateConfiguration(
+                configuration_kind=configuration_kind,
+                revision=revision,
+                expected_active_revision=body.expected_active_revision,
+                idempotency_key=idempotency_key,
+            ),
         )
+        if operational_metrics is not None:
+            operational_metrics.record_activation(configuration_kind, revision)
+        return _mutation_view(result)
 
     async def disable_configuration(
         configuration_kind: str,
@@ -770,16 +791,17 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ConfigurationMutationView:
         require_platform_configuration_step_up(actor)
-        return _mutation_view(
-            await commands.disable(
-                actor,
-                DisableConfiguration(
-                    configuration_kind=configuration_kind,
-                    revision=revision,
-                    idempotency_key=idempotency_key,
-                ),
-            )
+        result = await commands.disable(
+            actor,
+            DisableConfiguration(
+                configuration_kind=configuration_kind,
+                revision=revision,
+                idempotency_key=idempotency_key,
+            ),
         )
+        if operational_metrics is not None:
+            operational_metrics.record_disable(configuration_kind)
+        return _mutation_view(result)
 
     read_responses = {status: {"model": ErrorEnvelope} for status in (400, 401, 403, 404, 422)}
     mutation_responses = {
