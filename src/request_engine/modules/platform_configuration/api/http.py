@@ -275,6 +275,38 @@ class PlatformReadinessView(BaseModel):
     oidc: str
 
 
+class PlatformObservabilityAlertView(BaseModel):
+    code: str
+    metric: str
+    observed: float
+    threshold: float
+
+
+class PlatformObservabilityView(BaseModel):
+    metric_names: tuple[str, ...]
+    active_revisions: dict[str, int]
+    validation_success_total: int
+    validation_failure_total: int
+    validation_unavailable_total: int
+    activation_total: int
+    disable_total: int
+    provider_test_failures_total: int
+    rotation_failures_total: int
+    config_propagation_lag_seconds: float
+    cache_invalidations_total: int
+    revision_poll_corrections_total: int
+    secret_backend_failures_total: int
+    provider_configuration_source: str
+    worker_configuration_failures_total: int
+    worker_secret_store_failures_total: int
+    last_successful_backup_age_seconds: float
+    restore_drill_age_seconds: float
+    restore_drill_evidence_reference: str | None
+    clone_fence_state: str
+    readiness_transition_total: int
+    alerts: list[PlatformObservabilityAlertView]
+
+
 class SecretBindingMetadataView(BaseModel):
     binding_id: UUID
     purpose: str
@@ -463,6 +495,7 @@ def install_platform_configuration_http(
         recorder=PostgresProviderTestRecorder(write_session_factory),
     )
     router = APIRouter(tags=["Platform configuration"])
+    metrics = operational_metrics or P7OperationalMetrics()
 
     async def authenticated_actor(request: Request) -> PlatformActorContext:
         return await actor_resolver.resolve_platform_actor(request)
@@ -531,6 +564,44 @@ def install_platform_configuration_http(
                     readiness.smtp_active_revision,
                 )
         return _readiness_view(readiness)
+
+    async def get_platform_observability(
+        _bearer: _NativeBearer,
+        _actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+    ) -> PlatformObservabilityView:
+        snapshot = metrics.snapshot()
+        return PlatformObservabilityView(
+            metric_names=metrics.metric_names,
+            active_revisions=dict(snapshot.active_revisions),
+            validation_success_total=snapshot.validation_success_total,
+            validation_failure_total=snapshot.validation_failure_total,
+            validation_unavailable_total=snapshot.validation_unavailable_total,
+            activation_total=snapshot.activation_total,
+            disable_total=snapshot.disable_total,
+            provider_test_failures_total=snapshot.provider_test_failures_total,
+            rotation_failures_total=snapshot.rotation_failures_total,
+            config_propagation_lag_seconds=snapshot.config_propagation_lag_seconds,
+            cache_invalidations_total=snapshot.cache_invalidations_total,
+            revision_poll_corrections_total=snapshot.revision_poll_corrections_total,
+            secret_backend_failures_total=snapshot.secret_backend_failures_total,
+            provider_configuration_source=snapshot.provider_configuration_source,
+            worker_configuration_failures_total=snapshot.worker_configuration_failures_total,
+            worker_secret_store_failures_total=snapshot.worker_secret_store_failures_total,
+            last_successful_backup_age_seconds=snapshot.last_successful_backup_age_seconds,
+            restore_drill_age_seconds=snapshot.restore_drill_age_seconds,
+            restore_drill_evidence_reference=snapshot.restore_drill_evidence_reference,
+            clone_fence_state=snapshot.clone_fence_state,
+            readiness_transition_total=snapshot.readiness_transition_total,
+            alerts=[
+                PlatformObservabilityAlertView(
+                    code=alert.code,
+                    metric=alert.metric,
+                    observed=alert.observed,
+                    threshold=alert.threshold,
+                )
+                for alert in metrics.alerts()
+            ],
+        )
 
     async def get_secret_binding(
         binding_id: UUID,
@@ -860,6 +931,17 @@ def install_platform_configuration_http(
         operation_id="platform_readiness_get",
         owner="platform_configuration",
         response_model=PlatformReadinessView,
+        responses=read_responses,
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/observability",
+        get_platform_observability,
+        capability="platform.readiness.read",
+        methods=["GET"],
+        operation_id="platform_observability_get",
+        owner="platform_configuration",
+        response_model=PlatformObservabilityView,
         responses=read_responses,
     )
     add_capability_route(
