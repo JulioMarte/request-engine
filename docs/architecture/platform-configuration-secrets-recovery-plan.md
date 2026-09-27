@@ -142,10 +142,10 @@ summary:
 - notification intents/templates — managed webhook path implemented; generic
   Communications email rendering still absent by design;
 - product readiness projection — implemented for durable SMTP plus deployment clone-fence, secret-store, recovery-delivery and optional-OIDC facts; backup/restore evidence remains unknown until P7-K;
-- signing-key keyrings/rotation — partial: appointment-option codec supports active key IDs and verification overlap; governed OpenBao-backed runtime loading/rotation remains pending;
-- OIDC provider administration — pending;
+- signing-key keyrings/rotation — implemented for appointment-option HMAC: governed OpenBao-backed create/rotate, ACTIVE PostgreSQL projection, bounded retiring-key overlap and signing-only runtime hot reload are covered by current-product/P7 proof;
+- OIDC provider administration — implemented with governed configuration, authority projection and readiness; no client secret is introduced while supported flows do not require one;
 - automatic backup scheduling — implementation available through the systemd renderer; deployment schedule and retention must be selected and activated by the operator;
-- clone fencing implementation — implemented and black-box proven; encrypted PostgreSQL+OpenBao recovery bundle, explicit local retention, off-host-copy requirement, fenced restore command and restore-completion evidence are implemented; clean-environment restore drill and RPO/RTO acceptance remain pending.
+- clone fencing implementation — implemented and black-box proven; encrypted PostgreSQL+OpenBao recovery bundle, explicit local retention, off-host-copy requirement, fenced clean-target restore command and restore-applied evidence are implemented; OpenBao Raft restore uses `-force` across the fresh-target seal boundary and intentionally remains pending verification until restart/unseal with the original snapshot keys; clean-environment restore drill and RPO/RTO acceptance remain pending.
 
 Mutations require governed Platform Owner authority plus recent phishing-resistant
 authentication as required by the P7-DoD and handoff.
