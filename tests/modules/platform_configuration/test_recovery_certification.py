@@ -58,6 +58,4 @@ def test_future_certification_age_is_rejected() -> None:
     evidence = parse_recovery_certification(_payload(), reference="/evidence/recovery.json")
 
     with pytest.raises(RecoveryCertificationInvalid):
-        evidence.restore_drill_age_seconds(
-            now=evidence.service_recovered_at - timedelta(seconds=1)
-        )
+        evidence.restore_drill_age_seconds(now=evidence.service_recovered_at - timedelta(seconds=1))
