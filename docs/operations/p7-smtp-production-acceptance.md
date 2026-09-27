@@ -17,8 +17,11 @@ Plain SMTP is intentionally rejected by the acceptance runner.
 
 Before declaring production acceptance, exercise the provider's documented
 throttling/rate-limit or error behavior in a controlled way and retain an
-operator-readable evidence reference. The acceptance command requires that
-reference; it does not manufacture throttling by sending a burst of mail.
+operator-readable evidence reference. Separately verify that the test message
+actually arrived in the operator-controlled mailbox and retain a receipt/audit
+reference for that observation. SMTP `250` acceptance proves submission to the
+provider, not final mailbox delivery. The acceptance command requires both
+references; it does not manufacture throttling by sending a burst of mail.
 
 ## Execute
 
@@ -34,15 +37,19 @@ python scripts/operations/smtp_production_acceptance.py \
   --destination operator-controlled@example.com \
   --idempotency-key p7-production-acceptance-2026-09-27 \
   --throttling-evidence-reference CHANGE-1234 \
+  --delivery-evidence-reference MAILBOX-CHECK-1234 \
   --output smtp-production-acceptance.json
 ```
 
 The command uses the same certificate-verifying SMTP validator and provider
 tester as P7. It fails unless DNS resolves, TLS/STARTTLS is used, authenticated
-SMTP succeeds, provider validation is valid, a controlled delivery is confirmed,
-and the throttling/error-behavior evidence reference is present.
+SMTP succeeds, provider validation is valid, the provider accepts the controlled
+SMTP submission, an operator-verified mailbox receipt reference is supplied, and
+the throttling/error-behavior evidence reference is present.
 
-The resulting JSON contains no password and no destination address. Do not attach
+The resulting JSON records the SMTP submission result and the operator-provided
+mailbox evidence reference; it does not infer end-to-end delivery from SMTP
+submission alone. It contains no password and no destination address. Do not attach
 provider credentials, SMTP passwords, OpenBao tokens, or recovery codes to the
 acceptance artifact.
 
