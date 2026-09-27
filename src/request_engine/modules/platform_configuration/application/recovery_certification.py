@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 
 class RecoveryCertificationInvalid(ValueError):
@@ -36,7 +36,7 @@ def parse_recovery_certification(
         raise RecoveryCertificationInvalid("recovery certification reference cannot be blank")
     if not isinstance(payload, dict):
         raise RecoveryCertificationInvalid("recovery certification must be an object")
-    data = _mapping(payload)
+    data = _mapping(cast("dict[object, object]", payload))
     if data.get("schema") != "request-engine/recovery-certification/v1":
         raise RecoveryCertificationInvalid("unsupported recovery certification schema")
     if data.get("outcome") != "accepted":
