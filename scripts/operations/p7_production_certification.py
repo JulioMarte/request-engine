@@ -100,7 +100,12 @@ def certify(
     if not isinstance(submission, dict) or submission.get("outcome") != "delivered":
         raise CertificationError("SMTP submission proof is incomplete")
     addresses = smtp.get("dns_addresses")
-    if not isinstance(addresses, list) or not addresses or not all(isinstance(item, str) and item for item in addresses):
+    valid_addresses = (
+        isinstance(addresses, list)
+        and bool(addresses)
+        and all(isinstance(item, str) and item for item in addresses)
+    )
+    if not valid_addresses:
         raise CertificationError("SMTP DNS evidence is incomplete")
     for field in ("delivery_evidence_reference", "throttling_evidence_reference"):
         value = smtp.get(field)
@@ -111,18 +116,37 @@ def certify(
     observed_rto = recovery.get("observed_rto_seconds")
     max_rpo = recovery.get("accepted_max_rpo_seconds")
     max_rto = recovery.get("accepted_max_rto_seconds")
-    if not all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in (observed_rpo, observed_rto, max_rpo, max_rto)):
-        raise CertificationError("recovery evidence must include measured and operator-accepted RPO/RTO")
+    rpo_rto_values = (observed_rpo, observed_rto, max_rpo, max_rto)
+    if not all(
+        isinstance(value, (int, float)) and not isinstance(value, bool)
+        for value in rpo_rto_values
+    ):
+        raise CertificationError(
+            "recovery evidence must include measured and operator-accepted RPO/RTO"
+        )
     if observed_rpo > max_rpo or observed_rto > max_rto:
         raise CertificationError("observed RPO/RTO exceeds the accepted production limits")
 
     reference_now = (now or datetime.now(UTC)).astimezone(UTC)
     openbao_completed = _time(openbao.get("completed_at"), field="openbao.completed_at")
     smtp_completed = _time(smtp.get("completed_at"), field="smtp.completed_at")
-    recovery_completed = _time(recovery.get("service_recovered_at"), field="recovery.service_recovered_at")
-    _fresh(openbao_completed, now=reference_now, max_age_hours=max_evidence_age_hours, label="OpenBao")
+    recovery_completed = _time(
+        recovery.get("service_recovered_at"),
+        field="recovery.service_recovered_at",
+    )
+    _fresh(
+        openbao_completed,
+        now=reference_now,
+        max_age_hours=max_evidence_age_hours,
+        label="OpenBao",
+    )
     _fresh(smtp_completed, now=reference_now, max_age_hours=max_evidence_age_hours, label="SMTP")
-    _fresh(recovery_completed, now=reference_now, max_age_hours=max_evidence_age_hours, label="recovery")
+    _fresh(
+        recovery_completed,
+        now=reference_now,
+        max_age_hours=max_evidence_age_hours,
+        label="recovery",
+    )
 
     result = {
         "schema": "request-engine/p7-production-certification/v1",
