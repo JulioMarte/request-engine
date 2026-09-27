@@ -71,12 +71,15 @@ async def test_acceptance_emits_secret_free_real_provider_evidence(
         destination="acceptance@example.test",
         idempotency_key="smtp-prod-acceptance-1",
         throttling_evidence_reference="provider-ticket-123",
+        delivery_evidence_reference="mailbox-check-456",
     )
 
     assert result["outcome"] == "accepted"
     assert result["authenticated"] is True
     assert result["credentials_persisted"] is False
     assert result["dns_addresses"] == ["203.0.113.10"]
+    assert result["delivery_evidence_reference"] == "mailbox-check-456"
+    assert result["smtp_submission"]["outcome"] == "delivered"
     assert "super-secret-password" not in json.dumps(result)
 
 
@@ -89,6 +92,7 @@ async def test_acceptance_rejects_plain_smtp() -> None:
             destination="acceptance@example.test",
             idempotency_key="smtp-prod-acceptance-2",
             throttling_evidence_reference="provider-ticket-123",
+        delivery_evidence_reference="mailbox-check-456",
         )
 
 
@@ -105,4 +109,22 @@ async def test_acceptance_requires_throttling_evidence(
             destination="acceptance@example.test",
             idempotency_key="smtp-prod-acceptance-3",
             throttling_evidence_reference="",
+            delivery_evidence_reference="mailbox-check-456",
+        )
+
+
+@pytest.mark.asyncio
+async def test_acceptance_requires_operator_verified_mailbox_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "_resolve_dns", _dns)
+
+    with pytest.raises(module.SmtpAcceptanceError, match="mailbox receipt"):
+        await module.run_acceptance(
+            configuration=_configuration(),
+            password="secret",
+            destination="acceptance@example.test",
+            idempotency_key="smtp-prod-acceptance-4",
+            throttling_evidence_reference="provider-ticket-123",
+            delivery_evidence_reference="",
         )
