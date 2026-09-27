@@ -526,7 +526,7 @@ def install_platform_configuration_http(
             )
             operational_metrics.observe_clone_fence(readiness.clone_fence)
             if readiness.smtp_active_revision is not None:
-                operational_metrics.record_activation(
+                operational_metrics.observe_active_revision(
                     "email.delivery",
                     readiness.smtp_active_revision,
                 )
