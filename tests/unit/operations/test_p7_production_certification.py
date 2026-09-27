@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-_SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "operations" / "p7_production_certification.py"
+_SCRIPT = (
+    Path(__file__).resolve().parents[3]
+    / "scripts"
+    / "operations"
+    / "p7_production_certification.py"
+)
 _SPEC = importlib.util.spec_from_file_location("p7_production_certification", _SCRIPT)
 assert _SPEC is not None and _SPEC.loader is not None
 module = importlib.util.module_from_spec(_SPEC)
@@ -47,7 +52,10 @@ def _evidence(tmp_path: Path) -> tuple[Path, Path, Path]:
             "security": "starttls",
             "dns_addresses": ["203.0.113.10"],
             "validation": {"status": "valid", "detail_code": "smtp_valid"},
-            "smtp_submission": {"outcome": "delivered", "detail_code": "smtp_test_delivered"},
+            "smtp_submission": {
+                "outcome": "delivered",
+                "detail_code": "smtp_test_delivered",
+            },
             "delivery_evidence_reference": "mailbox-audit-42",
             "throttling_evidence_reference": "provider-ticket-43",
         },
