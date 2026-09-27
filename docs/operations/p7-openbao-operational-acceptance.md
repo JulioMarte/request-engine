@@ -11,8 +11,10 @@ create, update, read metadata/value, and revoke only under the configured
 acceptance prefix. Do not use a permanent root token.
 
 If the endpoint requires a direct short-lived token, place it in an environment
-variable and pass only the variable name through `--token-env`. When an
-OpenBao Proxy injects credentials, omit `--token-env`.
+variable and pass only the variable name through `--token-env`. Direct TLS to the
+reference server uses port `8200`; its private CA must already be trusted by the
+host running the acceptance. When the local OpenBao Proxy injects credentials,
+use its HTTP listener on port `8100` and omit `--token-env`.
 
 ## Execute
 
@@ -22,7 +24,7 @@ Direct token example:
 export REQUEST_ENGINE_OPENBAO_ACCEPTANCE_TOKEN='<short-lived-token>'
 
 python scripts/operations/openbao_operational_acceptance.py \
-  --address https://127.0.0.1:8100 \
+  --address https://127.0.0.1:8200 \
   --token-env REQUEST_ENGINE_OPENBAO_ACCEPTANCE_TOKEN \
   --path-prefix request-engine/acceptance \
   --topology-reference production-openbao-raft-proxy-v1 \
