@@ -41,20 +41,20 @@ pg_dump \
 
 sha256sum "$OUT/0001_roles.sql" "$OUT/0001_schema.sql" > "$OUT/SHA256SUMS"
 
-SOURCE_DB="$PGDATABASE"
 TARGET_DB="request_engine_rebaseline_0094_proof"
 dropdb --if-exists "$TARGET_DB"
 createdb "$TARGET_DB"
 
 # Roles are cluster-global and already exist because the source chain created
-# them. Prove the generated role payload in a second clean PostgreSQL cluster in
-# CI; this local candidate step therefore validates schema reproduction only.
+# them. A separate clean-cluster CI job proves the generated role payload itself.
+# This first pass proves that the materialized schema reproduces the effective
+# 0094 catalog without replaying the historical migration chain.
 PGDATABASE="$TARGET_DB" psql -v ON_ERROR_STOP=1 -f "$OUT/0001_schema.sql"
 PGDATABASE="$TARGET_DB" uv run python scripts/db/export_schema_catalog.py \
   --output "$OUT/target-schema-catalog.json"
 uv run python scripts/db/compare_schema_catalogs.py \
-  "$OUT/source-schema-catalog.json" \
-  "$OUT/target-schema-catalog.json" \
+  --expected "$OUT/source-schema-catalog.json" \
+  --actual "$OUT/target-schema-catalog.json" \
   --output "$OUT/schema-comparison.json"
 
 cat > "$OUT/provenance.json" <<EOF
