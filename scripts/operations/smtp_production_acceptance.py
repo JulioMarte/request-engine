@@ -92,7 +92,7 @@ async def run_acceptance(
     )
     if delivery.outcome is not ProviderTestOutcome.DELIVERED:
         raise SmtpAcceptanceError(
-            f"controlled SMTP delivery was not confirmed: {delivery.detail_code}"
+            f"controlled SMTP submission was not accepted: {delivery.detail_code}"
         )
 
     return {
