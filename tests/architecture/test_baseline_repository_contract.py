@@ -18,6 +18,7 @@ def test_accepted_baseline_surface_is_canonical_and_transitional_surfaces_are_go
     assert (baseline / "manifest.json").is_file()
     assert (baseline / "loader.py").is_file()
     assert (baseline / "0001_roles.sql").is_file()
+    assert (baseline / "seed-data-catalog.json").is_file()
     assert list(baseline.glob("0001_schema.*.sql"))
 
     assert not (MIGRATIONS / "rebaseline_candidate").exists()
