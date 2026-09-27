@@ -43,7 +43,7 @@ class _Tester:
         )
 
 
-def _configuration(*, security: Any | None = None) -> object:
+def _configuration(*, security: Any | None = None) -> Any:
     return module.SmtpConfiguration(
         host="smtp.example.test",
         port=587,
