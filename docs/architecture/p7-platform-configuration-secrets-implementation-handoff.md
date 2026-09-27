@@ -45,6 +45,26 @@ Status: **implementation handoff; P7 is not delivered or production-certified**
 > a clean-environment PostgreSQL+OpenBao restore with operator-approved RPO/RTO
 > remain `NOT PROVEN` until their real evidence artifacts exist.
 >
+> **Current repository checkpoint 2026-09-27.**
+>
+> Repository-side P7 implementation and automated proof are now closed for P7-A
+> through P7-J and for the implementable/tooling portion of P7-K. The dedicated
+> P7 gate migrates a clean PostgreSQL 18 database, runs the complete P7 proof set,
+> generates the private control-plane OpenAPI schema, and exercises OpenBao 2.6.1
+> KV-v2 CAS/concurrent rotation/revocation against a real backend. OIDC
+> administration/readiness, appointment signing-key lifecycle, secret-free P7
+> observability, managed SMTP hot reload/env-free delivery, recovery-certification
+> ingestion and clone fencing are implemented and automated.
+>
+> P7 is still **not production-certified** because the following evidence is
+> deployment-specific and cannot honestly be manufactured by repository CI:
+> controlled production SMTP acceptance (including operator-verified mailbox
+> receipt and provider throttling/error behavior), acceptance against the intended
+> sealed/Raft OpenBao deployment topology, retrieval of an encrypted backup from
+> the real off-host destination, and a clean-environment PostgreSQL + OpenBao/Raft
+> restore drill with offline Platform Owner recovery, clone-fence verification and
+> operator-approved measured RPO/RTO.
+>
 ## 0. Executive decision
 
 P1-P6 are now the trust root. Do not reopen them merely because P7 needs
@@ -146,10 +166,11 @@ Implemented and exercised in the current checkpoint:
 
 Still open and required before the corresponding slice is complete:
 
-- P7-D: adversarial real-OpenBao split-brain/concurrency evidence. The normative
-  `INV-PLATFORM-SECRET-LIFECYCLE-001` guarantee and its unit-level
-  reconciliation proofs now exist; the real-OpenBao adversarial run is still
-  outstanding.
+- P7-D: repository-side proof is complete. The normative
+  `INV-PLATFORM-SECRET-LIFECYCLE-001` guarantee, unit reconciliation proofs and
+  real OpenBao 2.6.1 CAS/concurrent-rotation/revocation acceptance all run in the
+  dedicated P7 CI gate. The sealed/Raft disaster-recovery topology remains part
+  of the deployment-specific P7-K drill, not an unproven P7-D adapter claim.
 - P7-E: protocol conformance against a real RFC 5321 SMTP server (implicit TLS,
   STARTTLS, AUTH, delivery) now exists and passes in CI, and the client was
   fixed to verify the server certificate for implicit TLS. A controlled
@@ -167,8 +188,9 @@ Still open and required before the corresponding slice is complete:
   unknown until P7-K records real operational evidence. Owner-continuity and
   strong-auth posture remain candidates for a later diagnostic expansion, not
   blockers for the current P7 configuration readiness contract.
-- P7-H: governed OIDC provider administration (no client secret while no current
-  flow needs one).
+- P7-H: implemented. Governed OIDC provider administration, runtime authority
+  projection and readiness are covered without introducing a client secret while
+  no supported flow requires one.
 - P7-I: appointment-option HMAC now has explicit active key IDs, bounded
   retiring-key verification overlap, governed keyring create/rotate commands,
   an ACTIVE PostgreSQL runtime reference, and a dedicated signing-only OpenBao
@@ -194,7 +216,10 @@ Still open and required before the corresponding slice is complete:
   environment/host with post-restore Request Engine reads, governed secret
   resolution, offline owner recovery and clone-fence verification. Observed
   RPO/RTO must then be recorded and accepted; no value is invented by the repo.
-- P7 observability: activation/validation/reconciliation/invalidation telemetry.
+- P7 observability: implemented. Secret-free activation/validation/provider-test/
+  rotation/invalidation/poll-correction/secret-backend/worker/recovery/clone-fence
+  telemetry is exposed through the private operational surface and covered by
+  unit plus runtime-contract CI evidence.
 
 Do not infer P7 completion from a green exact-head; several required gates do not
 exist yet.
