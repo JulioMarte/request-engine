@@ -77,7 +77,13 @@ class ActivePlatformConfigurationSource(Protocol):
 class RuntimeConfigurationTelemetry(Protocol):
     def observe_config_propagation_lag(self, seconds: float) -> None: ...
 
+    def record_cache_invalidation(self) -> None: ...
+
+    def record_revision_poll_correction(self) -> None: ...
+
     def record_secret_backend_failure(self) -> None: ...
+
+    def observe_provider_configuration_source(self, source: str) -> None: ...
 
 
 @dataclass(slots=True)
@@ -126,6 +132,8 @@ class ActivePlatformConfigurationResolver:
 
     def invalidate(self, configuration_kind: str) -> None:
         self._invalidated_at[configuration_kind] = time.monotonic()
+        if self._telemetry is not None:
+            self._telemetry.record_cache_invalidation()
         if configuration_kind == "email.delivery":
             self._smtp_cache = None
         elif configuration_kind == "communications.webhook":
@@ -161,6 +169,8 @@ class ActivePlatformConfigurationResolver:
         ):
             cached.checked_at = now
             return cached.value
+        if cached is not None and self._telemetry is not None:
+            self._telemetry.record_revision_poll_correction()
 
         try:
             smtp = parse_smtp_configuration(active.configuration)
@@ -192,6 +202,8 @@ class ActivePlatformConfigurationResolver:
             value=resolved,
             checked_at=now,
         )
+        if self._telemetry is not None:
+            self._telemetry.observe_provider_configuration_source("managed")
         self._record_propagation("email.delivery", now)
         return resolved
 
@@ -238,6 +250,8 @@ class ActivePlatformConfigurationResolver:
         ):
             cached.checked_at = now
             return cached.value
+        if cached is not None and self._telemetry is not None:
+            self._telemetry.record_revision_poll_correction()
 
         entry = _WebhookCacheEntry(
             fingerprint=active.cache_fingerprint,
@@ -246,6 +260,8 @@ class ActivePlatformConfigurationResolver:
         )
         self._webhook_active_cache = entry
         self._webhook_revision_cache[active.revision] = entry
+        if self._telemetry is not None:
+            self._telemetry.observe_provider_configuration_source("managed")
         self._record_propagation("communications.webhook", now)
         return resolved
 
