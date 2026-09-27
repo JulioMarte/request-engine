@@ -116,11 +116,14 @@ class P7OperationalMetrics:
         else:
             raise ValueError("validation outcome must be success, failure, or unavailable")
 
-    def record_activation(self, configuration_kind: str, revision: int) -> None:
+    def observe_active_revision(self, configuration_kind: str, revision: int) -> None:
         if revision <= 0:
             raise ValueError("active revision must be positive")
-        self._activation_total += 1
         self._active_revisions[configuration_kind] = revision
+
+    def record_activation(self, configuration_kind: str, revision: int) -> None:
+        self.observe_active_revision(configuration_kind, revision)
+        self._activation_total += 1
 
     def record_disable(self, configuration_kind: str) -> None:
         self._disable_total += 1
