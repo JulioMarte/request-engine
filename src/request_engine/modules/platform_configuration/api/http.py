@@ -540,15 +540,20 @@ def install_platform_configuration_http(
             raise PlatformConfigurationInvalid()
         if secret_service is None:
             raise PlatformSecretUnavailable()
-        result = await secret_service.create(
-            actor,
-            CreatePlatformSecret(
-                purpose=body.purpose,
-                backend=body.backend,
-                value=body.value.get_secret_value(),
-                idempotency_key=idempotency_key,
-            ),
-        )
+        try:
+            result = await secret_service.create(
+                actor,
+                CreatePlatformSecret(
+                    purpose=body.purpose,
+                    backend=body.backend,
+                    value=body.value.get_secret_value(),
+                    idempotency_key=idempotency_key,
+                ),
+            )
+        except PlatformSecretUnavailable:
+            if operational_metrics is not None:
+                operational_metrics.record_secret_backend_failure()
+            raise
         return _secret_mutation_view(result)
 
     async def rotate_secret(
@@ -657,15 +662,20 @@ def install_platform_configuration_http(
         )
         if selected_secret_service is None:
             raise PlatformSecretUnavailable()
-        result = await selected_secret_service.revoke(
-            actor,
-            RevokePlatformSecret(
-                binding_id=binding_id,
-                expected_revision=body.expected_revision,
-                expected_backend_version=body.expected_backend_version,
-                idempotency_key=idempotency_key,
-            ),
-        )
+        try:
+            result = await selected_secret_service.revoke(
+                actor,
+                RevokePlatformSecret(
+                    binding_id=binding_id,
+                    expected_revision=body.expected_revision,
+                    expected_backend_version=body.expected_backend_version,
+                    idempotency_key=idempotency_key,
+                ),
+            )
+        except PlatformSecretUnavailable:
+            if operational_metrics is not None:
+                operational_metrics.record_secret_backend_failure()
+            raise
         return _secret_mutation_view(result)
 
     async def stage_configuration(
