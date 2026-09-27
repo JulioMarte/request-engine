@@ -125,6 +125,7 @@ jobs:
           uv run python scripts/operations/openbao_operational_acceptance.py \
             --address http://127.0.0.1:8200 \
             --token-env REQUEST_ENGINE_OPENBAO_ACCEPTANCE_TOKEN \
+            --topology-reference github-actions-openbao-2.6.1-dev-mode \
             --output .ci/openbao-operational-acceptance.json
       - name: Stop real OpenBao engine
         if: always()
