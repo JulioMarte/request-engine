@@ -18,6 +18,7 @@ on:
       - "scripts/operations/openbao_operational_acceptance.py"
       - "scripts/operations/recovery_drill_evidence.py"
       - "scripts/operations/smtp_production_acceptance.py"
+      - "scripts/ci/openbao_raft_restore_smoke.sh"
       - "tests/modules/platform_configuration/**"
       - "tests/db/test_platform_configuration_*.py"
       - "tests/db/test_managed_oidc_projection.py"
@@ -130,6 +131,10 @@ jobs:
       - name: Stop real OpenBao engine
         if: always()
         run: docker rm -f p7-openbao >/dev/null 2>&1 || true
+      - name: Prove clean-target OpenBao Raft restore lifecycle
+        run: |
+          bash scripts/ci/openbao_raft_restore_smoke.sh \
+            .ci/openbao-raft-restore-smoke.json
       - name: Upload P7 proof evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -138,5 +143,6 @@ jobs:
           path: |
             .ci/p7-platform-configuration.xml
             .ci/openbao-operational-acceptance.json
+            .ci/openbao-raft-restore-smoke.json
           if-no-files-found: error
           retention-days: 90
