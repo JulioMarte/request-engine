@@ -25,6 +25,8 @@ class PlatformDeploymentReadinessFacts:
     clone_fence: str = "unknown"
     secret_store: str = "unknown"
     bootstrap_recovery_delivery_configured: bool = False
+    backup_evidence: str = "unknown"
+    restore_drill: str = "unknown"
     oidc: str = "optional"
 
 
@@ -52,6 +54,8 @@ def apply_deployment_readiness(
         readiness,
         clone_fence=facts.clone_fence,
         secret_store=facts.secret_store,
+        backup_evidence=facts.backup_evidence,
+        restore_drill=facts.restore_drill,
         recovery_delivery_source=recovery_delivery_source,
         oidc=oidc,
     )
