@@ -16,6 +16,7 @@ from request_engine.platform.secrets.platform_store import (
     PlatformSecretConflict,
     PlatformSecretNotFound,
     PlatformSecretStore,
+    PlatformSecretStoreUnavailable,
 )
 
 
@@ -27,7 +28,11 @@ async def run_acceptance(
     store: PlatformSecretStore,
     *,
     secret_id: UUID,
+    topology_reference: str,
 ) -> dict[str, object]:
+    topology_reference = topology_reference.strip()
+    if not topology_reference:
+        raise OpenBaoAcceptanceError("OpenBao acceptance requires a topology reference")
     initial_operation = uuid4()
     first = await store.write(
         secret_id=secret_id,
@@ -91,6 +96,7 @@ async def run_acceptance(
         "schema": "request-engine/openbao-operational-acceptance/v1",
         "outcome": "accepted",
         "completed_at": datetime.now(UTC).isoformat(),
+        "topology_reference": topology_reference,
         "secret_id": str(secret_id),
         "initial_version": first.version,
         "winning_version": winner_version,
@@ -129,6 +135,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--path-prefix", default="request-engine/acceptance")
     parser.add_argument("--namespace")
     parser.add_argument("--timeout-seconds", type=float, default=5.0)
+    parser.add_argument("--topology-reference", required=True)
     parser.add_argument("--output", type=Path)
     return parser
 
@@ -136,8 +143,21 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = _parser().parse_args()
     try:
-        evidence = asyncio.run(run_acceptance(_store(args), secret_id=uuid4()))
-    except (OpenBaoAcceptanceError, ValueError) as exc:
+        evidence = asyncio.run(
+            run_acceptance(
+                _store(args),
+                secret_id=uuid4(),
+                topology_reference=args.topology_reference,
+            )
+        )
+        evidence["target"] = {
+            "address": args.address,
+            "mount": args.mount,
+            "path_prefix": args.path_prefix,
+            "namespace": args.namespace,
+            "auth_mode": "direct-token" if args.token_env is not None else "proxy-injected",
+        }
+    except (OpenBaoAcceptanceError, PlatformSecretStoreUnavailable, ValueError) as exc:
         raise SystemExit(f"OpenBao operational acceptance failed: {exc}") from exc
     rendered = json.dumps(evidence, indent=2, sort_keys=True) + "\n"
     if args.output is not None:
