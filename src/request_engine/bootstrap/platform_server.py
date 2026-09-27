@@ -40,6 +40,7 @@ from request_engine.modules.platform_configuration.application.runtime import (
 )
 from request_engine.modules.tenancy.api import NATIVE_INITIAL_CONTROLLER_POLICY
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
+from request_engine.platform.observability.p7_metrics import P7OperationalMetrics
 from request_engine.platform.security.webauthn import WebAuthnPolicy
 
 _READ = (
@@ -213,6 +214,7 @@ def create_app() -> FastAPI:
     settings = PlatformControlSettings.model_validate({})
     recovery_settings = RecoveryDeliverySettings()
     outbound_fence = OutboundSideEffectFence.from_environment()
+    operational_metrics = P7OperationalMetrics()
     bootstrap_native_recovery_messenger = build_native_recovery_messenger(recovery_settings)
     platform_secret_store = build_platform_secret_store()
     appointment_signing_secret_store = build_appointment_signing_secret_store(
@@ -265,6 +267,7 @@ def create_app() -> FastAPI:
         appointment_signing_secret_store=appointment_signing_secret_store,
         smtp_validator=outbound_fence.smtp_validator(SmtplibConfigurationValidator()),
         smtp_tester=outbound_fence.smtp_tester(SmtplibProviderTester()),
+        operational_metrics=operational_metrics,
         deployment_readiness=PlatformDeploymentReadinessFacts(
             clone_fence="fenced" if outbound_fence.fenced else "open",
             secret_store="configured" if platform_secret_store is not None else "unconfigured",
