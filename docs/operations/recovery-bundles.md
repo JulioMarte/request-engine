@@ -220,3 +220,23 @@ Changing the desired policy does not by itself prove that Coolify has reconciled
 its scheduled-backup resource. Automatic Coolify reconciliation is a separate
 provider-integration concern and must report applied/external state rather than
 pretend desired state is already effective.
+
+
+## Clean OpenBao restore semantics
+
+The production acceptance path restores into a clean target. That target begins
+with different seal material, so the bundle restore uses
+`bao operator raft snapshot restore -force`. OpenBao's force mode bypasses the
+seal-key consistency check only for applying the snapshot; it does not prove that
+the recovered system is usable.
+
+Initialize/unseal the disposable target only far enough to authorize the forced
+restore. After the snapshot is applied, restart OpenBao and unseal with the
+**original** key shares associated with the snapshot. The temporary target keys
+must not replace the original custody material.
+
+For that reason, `--evidence-output` from `recovery_bundle.py restore` records
+`restore_applied_pending_verification`, not final recovery success. Final
+certification comes only from the full P7 disaster-recovery drill after governed
+secret resolution, Request Engine reads, offline owner recovery and clone fencing
+have all been verified.
