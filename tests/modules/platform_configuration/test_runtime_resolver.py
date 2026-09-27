@@ -9,7 +9,10 @@ from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfiguration,
     ActivePlatformConfigurationResolver,
 )
-from request_engine.platform.secrets.platform_store import PlatformSecretMetadata
+from request_engine.platform.secrets.platform_store import (
+    PlatformSecretMetadata,
+    PlatformSecretStoreUnavailable,
+)
 
 
 def _active(
@@ -263,3 +266,60 @@ async def test_runtime_resolver_webhook_invalidation_adopts_new_active_revision(
     assert second is not None
     assert second.configuration_revision == 3
     assert second.auth_header_value == "Bearer second"
+
+
+class _Telemetry:
+    def __init__(self) -> None:
+        self.propagation_lag: list[float] = []
+        self.secret_backend_failures = 0
+
+    def observe_config_propagation_lag(self, seconds: float) -> None:
+        self.propagation_lag.append(seconds)
+
+    def record_secret_backend_failure(self) -> None:
+        self.secret_backend_failures += 1
+
+
+class _UnavailableStore(_Store):
+    async def resolve(self, *, secret_id: UUID) -> str:
+        del secret_id
+        raise PlatformSecretStoreUnavailable()
+
+
+@pytest.mark.asyncio
+async def test_runtime_resolver_reports_invalidation_convergence() -> None:
+    secret_id = uuid4()
+    source = _Source(_active(revision=1, secret_id=secret_id))
+    store = _Store()
+    store.values[secret_id] = "password"
+    telemetry = _Telemetry()
+    resolver = ActivePlatformConfigurationResolver(
+        source=source,
+        secret_store=store,
+        poll_interval_seconds=60,
+        telemetry=telemetry,
+    )
+
+    assert await resolver.resolve_smtp() is not None
+    source.value = _active(revision=2, secret_id=secret_id)
+    resolver.invalidate("email.delivery")
+    assert await resolver.resolve_smtp() is not None
+
+    assert len(telemetry.propagation_lag) == 1
+    assert telemetry.propagation_lag[0] >= 0
+
+
+@pytest.mark.asyncio
+async def test_runtime_resolver_reports_secret_backend_failure() -> None:
+    secret_id = uuid4()
+    telemetry = _Telemetry()
+    resolver = ActivePlatformConfigurationResolver(
+        source=_Source(_active(revision=1, secret_id=secret_id)),
+        secret_store=_UnavailableStore(),
+        telemetry=telemetry,
+    )
+
+    with pytest.raises(Exception, match="requires a configured platform secret store"):
+        await resolver.resolve_smtp()
+
+    assert telemetry.secret_backend_failures == 1
