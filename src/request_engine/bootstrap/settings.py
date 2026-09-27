@@ -27,7 +27,6 @@ class HttpSettings(BaseSettings):
     webauthn_rp_id: str = "localhost"
     webauthn_rp_name: str = "Request Engine"
     webauthn_allowed_origins: str = "https://localhost"
-    recovery_certification_file: Path | None = None
     database_probe_timeout_seconds: float = Field(default=5, gt=0, le=30)
 
     @field_validator("database_url")
@@ -74,6 +73,7 @@ class PlatformControlSettings(BaseSettings):
     webauthn_rp_id: str = "localhost"
     webauthn_rp_name: str = "Request Engine"
     webauthn_allowed_origins: str = "https://localhost"
+    recovery_certification_file: Path | None = None
 
     @field_validator("webauthn_rp_id", "webauthn_rp_name", "webauthn_allowed_origins")
     @classmethod
