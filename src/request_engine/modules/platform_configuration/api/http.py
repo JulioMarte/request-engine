@@ -501,6 +501,8 @@ def install_platform_configuration_http(
     async def authenticated_actor(request: Request) -> PlatformActorContext:
         return await actor_resolver.resolve_platform_actor(request)
 
+    platform_actor_dependency: Any = Depends(authenticated_actor)
+
     async def list_configurations(
         _bearer: _NativeBearer,
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
@@ -568,7 +570,7 @@ def install_platform_configuration_http(
 
     async def get_platform_observability(
         _bearer: _NativeBearer,
-        actor: PlatformActorContext = Depends(authenticated_actor),
+        actor: PlatformActorContext = platform_actor_dependency,
     ) -> PlatformObservabilityView:
         if actor.principal_kind is not PrincipalKind.HUMAN or not actor.allows(
             "platform.readiness.read"
