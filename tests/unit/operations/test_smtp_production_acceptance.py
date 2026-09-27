@@ -53,11 +53,15 @@ def _configuration(*, security: Any | None = None) -> Any:
     )
 
 
+def _dns(_host: str, _port: int) -> tuple[str, ...]:
+    return ("203.0.113.10",)
+
+
 @pytest.mark.asyncio
 async def test_acceptance_emits_secret_free_real_provider_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(module, "_resolve_dns", lambda _host, _port: ("203.0.113.10",))
+    monkeypatch.setattr(module, "_resolve_dns", _dns)
     monkeypatch.setattr(module, "SmtplibConfigurationValidator", _Validator)
     monkeypatch.setattr(module, "SmtplibProviderTester", _Tester)
 
@@ -92,7 +96,7 @@ async def test_acceptance_rejects_plain_smtp() -> None:
 async def test_acceptance_requires_throttling_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(module, "_resolve_dns", lambda _host, _port: ("203.0.113.10",))
+    monkeypatch.setattr(module, "_resolve_dns", _dns)
 
     with pytest.raises(module.SmtpAcceptanceError, match="throttling"):
         await module.run_acceptance(
