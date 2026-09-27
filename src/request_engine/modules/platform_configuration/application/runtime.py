@@ -74,6 +74,12 @@ class ActivePlatformConfigurationSource(Protocol):
     ) -> ActivePlatformConfiguration | None: ...
 
 
+class RuntimeConfigurationTelemetry(Protocol):
+    def observe_config_propagation_lag(self, seconds: float) -> None: ...
+
+    def record_secret_backend_failure(self) -> None: ...
+
+
 @dataclass(slots=True)
 class _SmtpCacheEntry:
     fingerprint: tuple[int, int | None, int | None]
@@ -105,17 +111,21 @@ class ActivePlatformConfigurationResolver:
         source: ActivePlatformConfigurationSource,
         secret_store: PlatformSecretStore | None,
         poll_interval_seconds: float = 5.0,
+        telemetry: RuntimeConfigurationTelemetry | None = None,
     ) -> None:
         if poll_interval_seconds <= 0 or poll_interval_seconds > 300:
             raise ValueError("poll interval must be > 0 and <= 300 seconds")
         self._source = source
         self._secret_store = secret_store
         self._poll_interval_seconds = poll_interval_seconds
+        self._telemetry = telemetry
+        self._invalidated_at: dict[str, float] = {}
         self._smtp_cache: _SmtpCacheEntry | None = None
         self._webhook_active_cache: _WebhookCacheEntry | None = None
         self._webhook_revision_cache: dict[int, _WebhookCacheEntry] = {}
 
     def invalidate(self, configuration_kind: str) -> None:
+        self._invalidated_at[configuration_kind] = time.monotonic()
         if configuration_kind == "email.delivery":
             self._smtp_cache = None
         elif configuration_kind == "communications.webhook":
@@ -139,6 +149,7 @@ class ActivePlatformConfigurationResolver:
         active = await self._source.read_active("email.delivery")
         if active is None:
             self._smtp_cache = None
+            self._record_propagation("email.delivery", now)
             return None
         if active.provider_kind != "smtp":
             raise ActivePlatformConfigurationError("ACTIVE email.delivery provider is not SMTP")
@@ -181,6 +192,7 @@ class ActivePlatformConfigurationResolver:
             value=resolved,
             checked_at=now,
         )
+        self._record_propagation("email.delivery", now)
         return resolved
 
     async def resolve_webhook(
@@ -215,6 +227,7 @@ class ActivePlatformConfigurationResolver:
         active = await self._source.read_active("communications.webhook")
         if active is None:
             self._webhook_active_cache = None
+            self._record_propagation("communications.webhook", now)
             return None
         resolved = await self._materialize_webhook(active)
 
@@ -233,6 +246,7 @@ class ActivePlatformConfigurationResolver:
         )
         self._webhook_active_cache = entry
         self._webhook_revision_cache[active.revision] = entry
+        self._record_propagation("communications.webhook", now)
         return resolved
 
     async def _resolve_exact_webhook(
@@ -332,4 +346,12 @@ class ActivePlatformConfigurationResolver:
         try:
             return await self._secret_store.resolve(secret_id=observed.secret_id)
         except (PlatformSecretNotFound, PlatformSecretStoreUnavailable) as exc:
+            if self._telemetry is not None:
+                self._telemetry.record_secret_backend_failure()
             raise ActivePlatformConfigurationError(store_message) from exc
+
+    def _record_propagation(self, configuration_kind: str, observed_at: float) -> None:
+        invalidated_at = self._invalidated_at.pop(configuration_kind, None)
+        if invalidated_at is None or self._telemetry is None:
+            return
+        self._telemetry.observe_config_propagation_lag(max(0.0, observed_at - invalidated_at))
