@@ -245,6 +245,7 @@ def create_app() -> FastAPI:
         resolver=managed_smtp_resolver,
         fallback=bootstrap_native_recovery_messenger,
         reset_url=recovery_settings.recovery_reset_url,
+        operational_metrics=operational_metrics,
     )
     native_recovery_messenger = outbound_fence.recovery(managed_native_recovery_messenger)
     assert native_recovery_messenger is not None
