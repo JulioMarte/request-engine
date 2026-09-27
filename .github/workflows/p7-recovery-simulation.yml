@@ -1,0 +1,88 @@
+name: P7 recovery simulation
+
+on:
+  pull_request:
+    branches: [development]
+    paths:
+      - "scripts/ci/postgres_clean_restore_smoke.sh"
+      - "scripts/ci/openbao_raft_restore_smoke.sh"
+      - "scripts/ci/run_e2e_*.sh"
+      - "tests/system_e2e/**"
+      - "deploy/reference/**"
+      - "src/request_engine/modules/platform_configuration/**"
+      - "src/request_engine/modules/identity_access/**"
+      - ".github/workflows/p7-recovery-simulation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p7-recovery-simulation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.5"
+  REQUEST_ENGINE_IMAGE_TAG: recovery-${{ github.sha }}
+  E2E_RUNNER_IMAGE_TAG: recovery-${{ github.sha }}
+
+jobs:
+  recovery-simulation:
+    name: P7 production-shaped recovery simulation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install project
+        run: uv sync --all-groups --frozen
+      - name: Prepare evidence workspace
+        run: mkdir -p .ci/p7-recovery-simulation
+      - name: Prove recovery delivery over real HTTP, OpenBao and Mailpit
+        run: |
+          E2E_ARTIFACT_ROOT=.ci/p7-recovery-simulation/docker-e2e \
+            bash scripts/ci/run_e2e_suite.sh recovery-delivery
+      - name: Prove managed configuration and SMTP hot reload over HTTP
+        run: |
+          E2E_ARTIFACT_ROOT=.ci/p7-recovery-simulation/docker-e2e \
+            bash scripts/ci/run_e2e_suite.sh platform-configuration
+      - name: Prove clone outbound fencing over HTTP
+        run: |
+          E2E_ARTIFACT_ROOT=.ci/p7-recovery-simulation/docker-e2e \
+            bash scripts/ci/run_e2e_suite.sh clone-fence
+      - name: Prove PostgreSQL restore into a destroyed-source clean target
+        run: |
+          bash scripts/ci/postgres_clean_restore_smoke.sh \
+            .ci/p7-recovery-simulation/postgres-clean-restore.json
+      - name: Prove OpenBao Raft restore into a clean target
+        run: |
+          bash scripts/ci/openbao_raft_restore_smoke.sh \
+            .ci/p7-recovery-simulation/openbao-raft-restore.json
+      - name: Write simulation scope
+        if: always()
+        run: |
+          cat > .ci/p7-recovery-simulation/EVIDENCE_SCOPE.txt <<'EOF'
+          P7 production-shaped recovery simulation.
+          This lane proves real container/TCP/HTTP journeys, clean-target PostgreSQL restore,
+          clean-target OpenBao Raft restore, managed SMTP delivery through Mailpit, offline
+          recovery behavior exercised by the registered recovery suite, and clone fencing.
+          It is NOT production certification: it does not prove the real SMTP provider,
+          real off-host object store, production TLS/ingress, production OpenBao HA topology,
+          operator custody of unseal/recovery material, or accepted production RPO/RTO.
+          EOF
+      - name: Upload sanitized recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p7-recovery-simulation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .ci/p7-recovery-simulation/
+          if-no-files-found: error
+          retention-days: 90
