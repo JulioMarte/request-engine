@@ -36,7 +36,13 @@ def _yes(value: Any, field: str) -> None:
         raise EvidenceError(f"required proof is not true: {field}")
 
 
-def certify(source: Path, output: Path | None) -> dict[str, Any]:
+def certify(
+    source: Path,
+    output: Path | None,
+    *,
+    max_rpo_seconds: float | None = None,
+    max_rto_seconds: float | None = None,
+) -> dict[str, Any]:
     raw = json.loads(source.read_text(encoding="utf-8"))
     if not isinstance(raw, dict) or raw.get("schema") != "request-engine/recovery-drill/v1":
         raise EvidenceError("unsupported recovery drill evidence schema")
@@ -82,6 +88,20 @@ def certify(source: Path, output: Path | None) -> dict[str, Any]:
 
     rpo = (failure - backup).total_seconds()
     rto = (recovered - failure).total_seconds()
+    for name, value in (
+        ("max_rpo_seconds", max_rpo_seconds),
+        ("max_rto_seconds", max_rto_seconds),
+    ):
+        if value is not None and value < 0:
+            raise EvidenceError(f"{name} must be non-negative")
+    if max_rpo_seconds is not None and rpo > max_rpo_seconds:
+        raise EvidenceError(
+            f"observed RPO {rpo:.3f}s exceeds accepted maximum {max_rpo_seconds:.3f}s"
+        )
+    if max_rto_seconds is not None and rto > max_rto_seconds:
+        raise EvidenceError(
+            f"observed RTO {rto:.3f}s exceeds accepted maximum {max_rto_seconds:.3f}s"
+        )
     result = {
         "schema": "request-engine/recovery-certification/v1",
         "outcome": "accepted",
@@ -89,6 +109,8 @@ def certify(source: Path, output: Path | None) -> dict[str, Any]:
         "bundle_sha256": bundle_sha.lower(),
         "observed_rpo_seconds": rpo,
         "observed_rto_seconds": rto,
+        "accepted_max_rpo_seconds": max_rpo_seconds,
+        "accepted_max_rto_seconds": max_rto_seconds,
         "backup_completed_at": backup.isoformat(),
         "failure_declared_at": failure.isoformat(),
         "service_recovered_at": recovered.isoformat(),
@@ -104,10 +126,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--max-rpo-seconds", type=float)
+    parser.add_argument("--max-rto-seconds", type=float)
     args = parser.parse_args()
     try:
         output = None if args.output is None else args.output.resolve()
-        result = certify(args.evidence.resolve(), output)
+        result = certify(
+            args.evidence.resolve(),
+            output,
+            max_rpo_seconds=args.max_rpo_seconds,
+            max_rto_seconds=args.max_rto_seconds,
+        )
     except (EvidenceError, OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"recovery drill certification failed: {exc}") from exc
     print(json.dumps(result, sort_keys=True))
