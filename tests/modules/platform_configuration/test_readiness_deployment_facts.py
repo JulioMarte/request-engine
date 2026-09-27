@@ -81,3 +81,16 @@ def test_deployment_facts_cannot_hide_degraded_managed_oidc() -> None:
     )
 
     assert merged.oidc == "degraded"
+
+
+def test_certified_recovery_evidence_projects_into_readiness() -> None:
+    merged = apply_deployment_readiness(
+        _readiness(),
+        PlatformDeploymentReadinessFacts(
+            backup_evidence="verified",
+            restore_drill="verified",
+        ),
+    )
+
+    assert merged.backup_evidence == "verified"
+    assert merged.restore_drill == "verified"
