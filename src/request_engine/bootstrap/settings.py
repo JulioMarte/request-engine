@@ -4,6 +4,7 @@ Business/domain code must not import runtime settings directly. Entrypoints and 
 composition root translate configuration into explicit dependencies.
 """
 
+from pathlib import Path
 from uuid import UUID
 
 from pydantic import Field, SecretStr, field_validator
@@ -26,6 +27,7 @@ class HttpSettings(BaseSettings):
     webauthn_rp_id: str = "localhost"
     webauthn_rp_name: str = "Request Engine"
     webauthn_allowed_origins: str = "https://localhost"
+    recovery_certification_file: Path | None = None
     database_probe_timeout_seconds: float = Field(default=5, gt=0, le=30)
 
     @field_validator("database_url")
