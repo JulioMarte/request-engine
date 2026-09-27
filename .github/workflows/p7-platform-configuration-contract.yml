@@ -16,11 +16,13 @@ on:
       - "src/request_engine/platform/observability/p7_metrics.py"
       - "scripts/operations/recovery_bundle.py"
       - "scripts/operations/recovery_drill_evidence.py"
+      - "scripts/operations/smtp_production_acceptance.py"
       - "tests/modules/platform_configuration/**"
       - "tests/db/test_platform_configuration_*.py"
       - "tests/db/test_managed_oidc_projection.py"
       - "tests/platform/observability/test_p7_metrics.py"
       - "tests/unit/operations/test_recovery_drill_evidence.py"
+      - "tests/unit/operations/test_smtp_production_acceptance.py"
       - "tests/unit/scripts/test_recovery_bundle.py"
       - ".github/workflows/p7-platform-configuration-contract.yml"
   workflow_dispatch:
@@ -88,6 +90,7 @@ jobs:
             tests/unit/platform/secrets/test_platform_secret_administration.py \
             tests/platform/observability/test_p7_metrics.py \
             tests/unit/operations/test_recovery_drill_evidence.py \
+            tests/unit/operations/test_smtp_production_acceptance.py \
             tests/unit/scripts/test_recovery_bundle.py \
             tests/db/test_platform_configuration_foundation.py \
             tests/db/test_platform_configuration_governance.py \
