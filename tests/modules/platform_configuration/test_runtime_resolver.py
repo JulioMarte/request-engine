@@ -272,13 +272,25 @@ async def test_runtime_resolver_webhook_invalidation_adopts_new_active_revision(
 class _Telemetry:
     def __init__(self) -> None:
         self.propagation_lag: list[float] = []
+        self.cache_invalidations = 0
+        self.poll_corrections = 0
         self.secret_backend_failures = 0
+        self.provider_source = "unknown"
 
     def observe_config_propagation_lag(self, seconds: float) -> None:
         self.propagation_lag.append(seconds)
 
+    def record_cache_invalidation(self) -> None:
+        self.cache_invalidations += 1
+
+    def record_revision_poll_correction(self) -> None:
+        self.poll_corrections += 1
+
     def record_secret_backend_failure(self) -> None:
         self.secret_backend_failures += 1
+
+    def observe_provider_configuration_source(self, source: str) -> None:
+        self.provider_source = source
 
 
 class _UnavailableStore(_Store):
@@ -308,6 +320,8 @@ async def test_runtime_resolver_reports_invalidation_convergence() -> None:
 
     assert len(telemetry.propagation_lag) == 1
     assert telemetry.propagation_lag[0] >= 0
+    assert telemetry.cache_invalidations == 1
+    assert telemetry.provider_source == "managed"
 
 
 @pytest.mark.asyncio
