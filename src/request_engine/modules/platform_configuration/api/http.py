@@ -575,11 +575,12 @@ def install_platform_configuration_http(
                     idempotency_key=idempotency_key,
                 ),
             )
-        except (
-            PlatformSecretConflict,
-            PlatformSecretReconciliationRequired,
-            PlatformSecretUnavailable,
-        ):
+        except PlatformSecretUnavailable:
+            if operational_metrics is not None:
+                operational_metrics.record_rotation_failure()
+                operational_metrics.record_secret_backend_failure()
+            raise
+        except (PlatformSecretConflict, PlatformSecretReconciliationRequired):
             if operational_metrics is not None:
                 operational_metrics.record_rotation_failure()
             raise
@@ -714,13 +715,18 @@ def install_platform_configuration_http(
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
     ) -> ProviderTestView:
         require_platform_configuration_step_up(actor)
-        result = await provider_test.test(
-            actor,
-            configuration_kind=configuration_kind,
-            revision=revision,
-            destination=body.destination,
-            idempotency_key=idempotency_key,
-        )
+        try:
+            result = await provider_test.test(
+                actor,
+                configuration_kind=configuration_kind,
+                revision=revision,
+                destination=body.destination,
+                idempotency_key=idempotency_key,
+            )
+        except PlatformProviderValidationFailed:
+            if operational_metrics is not None:
+                operational_metrics.record_provider_test_failure()
+            raise
         if operational_metrics is not None and result.outcome.value != "delivered":
             operational_metrics.record_provider_test_failure()
         return _provider_test_view(result)
