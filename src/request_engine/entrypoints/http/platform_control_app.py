@@ -41,6 +41,7 @@ from request_engine.platform.db.native_recovery_address_store import (
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
+from request_engine.platform.observability.p7_metrics import P7OperationalMetrics
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
 from request_engine.platform.secrets.platform_store import PlatformSecretStore
 from request_engine.platform.security.instance_setup import InstanceSetupService
@@ -73,6 +74,7 @@ def create_platform_control_app(
     smtp_validator: SmtpConfigurationValidator | None = None,
     smtp_tester: SmtpProviderTester | None = None,
     deployment_readiness: PlatformDeploymentReadinessFacts | None = None,
+    operational_metrics: P7OperationalMetrics | None = None,
     webauthn_policy: WebAuthnPolicy | None = None,
     webauthn_decoy_key: bytes | None = None,
 ) -> FastAPI:
@@ -166,6 +168,7 @@ def create_platform_control_app(
         smtp_validator=smtp_validator,
         smtp_tester=smtp_tester,
         deployment_readiness=deployment_readiness,
+        operational_metrics=operational_metrics,
     )
     install_deployment_recovery_http(
         app,
