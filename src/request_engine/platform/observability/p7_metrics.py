@@ -1,3 +1,5 @@
+import time
+
 _METRIC_NAMES = (
     "active_revision",
     "validation_success_total",
@@ -159,7 +161,9 @@ class P7OperationalMetrics:
         self._worker_configuration_failures_total = 0
         self._worker_secret_store_failures_total = 0
         self._last_successful_backup_age_seconds = 0.0
+        self._last_successful_backup_age_observed_at: float | None = None
         self._restore_drill_age_seconds = 0.0
+        self._restore_drill_age_observed_at: float | None = None
         self._restore_drill_evidence_reference: str | None = None
         self._clone_fence_state = "unknown"
         self._readiness_transition_total = 0
@@ -224,10 +228,12 @@ class P7OperationalMetrics:
     def observe_last_successful_backup_age(self, seconds: float) -> None:
         self._require_non_negative(seconds)
         self._last_successful_backup_age_seconds = seconds
+        self._last_successful_backup_age_observed_at = time.monotonic()
 
     def observe_restore_drill_age(self, seconds: float) -> None:
         self._require_non_negative(seconds)
         self._restore_drill_age_seconds = seconds
+        self._restore_drill_age_observed_at = time.monotonic()
 
     def observe_restore_drill_evidence_reference(self, reference: str | None) -> None:
         if reference is not None and not reference.strip():
@@ -259,8 +265,14 @@ class P7OperationalMetrics:
             provider_configuration_source=self._provider_configuration_source,
             worker_configuration_failures_total=self._worker_configuration_failures_total,
             worker_secret_store_failures_total=self._worker_secret_store_failures_total,
-            last_successful_backup_age_seconds=self._last_successful_backup_age_seconds,
-            restore_drill_age_seconds=self._restore_drill_age_seconds,
+            last_successful_backup_age_seconds=self._current_age(
+                self._last_successful_backup_age_seconds,
+                self._last_successful_backup_age_observed_at,
+            ),
+            restore_drill_age_seconds=self._current_age(
+                self._restore_drill_age_seconds,
+                self._restore_drill_age_observed_at,
+            ),
             restore_drill_evidence_reference=self._restore_drill_evidence_reference,
             clone_fence_state=self._clone_fence_state,
             readiness_transition_total=self._readiness_transition_total,
@@ -311,6 +323,12 @@ class P7OperationalMetrics:
                     threshold=threshold,
                 )
             )
+
+    @staticmethod
+    def _current_age(value: float, observed_at: float | None) -> float:
+        if observed_at is None:
+            return value
+        return value + max(0.0, time.monotonic() - observed_at)
 
     @staticmethod
     def _require_non_negative(seconds: float) -> None:
