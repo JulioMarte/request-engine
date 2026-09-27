@@ -20,7 +20,7 @@ Keep at least one unused Platform Owner offline recovery code outside PostgreSQL
 8. While still fenced, create work that would normally cause SMTP/webhook/outbox traffic. Prove no side effect reaches the sink/provider.
 9. Stop or make OpenBao unreachable and make SMTP unreachable. Consume one unused offline Platform Owner recovery code to set a new password. Prove the old password fails, old sessions fail, the new password works, the same recovery code cannot be reused, and setup remains closed.
 10. Record `service_recovered_at` only after the application reads and governed secret-resolution checks have passed.
-11. Create the evidence document below and run `python scripts/operations/recovery_drill_evidence.py evidence.json --output certification.json`.
+11. Create the evidence document below and run `python scripts/operations/recovery_drill_evidence.py evidence.json --output certification.json --max-rpo-seconds <operator-approved-RPO> --max-rto-seconds <operator-approved-RTO>`. Omit the limits only when measuring a drill before targets have been approved; such a measurement is not production RPO/RTO acceptance.
 
 ## Required evidence schema
 
@@ -51,7 +51,7 @@ Keep at least one unused Platform Owner offline recovery code outside PostgreSQL
 }
 ```
 
-The certification tool calculates observed RPO as `failure_declared_at - backup_completed_at` and observed RTO as `service_recovered_at - failure_declared_at`. It rejects missing proof instead of treating it as false-but-acceptable. The repository does not define acceptable production RPO/RTO targets: operators must choose and approve those targets for the deployment.
+The certification tool calculates observed RPO as `failure_declared_at - backup_completed_at` and observed RTO as `service_recovered_at - failure_declared_at`. It rejects missing proof instead of treating it as false-but-acceptable. When `--max-rpo-seconds` and/or `--max-rto-seconds` are supplied, it also rejects a drill that exceeds those operator-approved objectives and records the accepted limits in the certification. The repository does not define acceptable production RPO/RTO targets: operators must choose and approve those targets for the deployment.
 
 ## What this drill does not certify
 
