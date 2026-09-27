@@ -70,3 +70,35 @@ def test_certification_rejects_impossible_timeline(tmp_path: Path) -> None:
     evidence["backup_completed_at"] = "2026-09-26T21:00:00+00:00"
     with pytest.raises(module.EvidenceError, match="after failure"):
         module.certify(_write(tmp_path, evidence), None)
+
+
+def test_certification_enforces_operator_selected_rpo_rto(tmp_path: Path) -> None:
+    source = _write(tmp_path, _evidence())
+
+    result = module.certify(
+        source,
+        None,
+        max_rpo_seconds=1800.0,
+        max_rto_seconds=900.0,
+    )
+
+    assert result["accepted_max_rpo_seconds"] == 1800.0
+    assert result["accepted_max_rto_seconds"] == 900.0
+
+
+@pytest.mark.parametrize(
+    ("field", "limit", "message"),
+    (
+        ("max_rpo_seconds", 1799.0, "observed RPO"),
+        ("max_rto_seconds", 899.0, "observed RTO"),
+    ),
+)
+def test_certification_rejects_exceeded_recovery_objective(
+    tmp_path: Path,
+    field: str,
+    limit: float,
+    message: str,
+) -> None:
+    kwargs = {field: limit}
+    with pytest.raises(module.EvidenceError, match=message):
+        module.certify(_write(tmp_path, _evidence()), None, **kwargs)
