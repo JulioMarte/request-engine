@@ -11,6 +11,8 @@ SOURCE_DB="${PGDATABASE:?PGDATABASE must identify the current-product database}"
 ALEMBIC_DIR="$ARTIFACT_DIR/baseline-alembic"
 SCHEMA_CATALOG="$ARTIFACT_DIR/baseline-schema-catalog.json"
 ROLE_CATALOG="$ARTIFACT_DIR/baseline-role-catalog.json"
+SEED_CATALOG="$ARTIFACT_DIR/baseline-seed-data-catalog.json"
+SEED_COMPARISON="$ARTIFACT_DIR/baseline-seed-data-comparison.json"
 ANALYSIS="$ARTIFACT_DIR/baseline-schema-cohesion-analysis.json"
 INTEGRITY="$ARTIFACT_DIR/baseline-integrity.json"
 CONTAINER="request-engine-baseline-${RANDOM}-${RANDOM}"
@@ -99,6 +101,12 @@ PGHOST=127.0.0.1 PGPORT="$PORT" PGDATABASE="$SOURCE_DB" PGUSER=postgres \
 PGHOST=127.0.0.1 PGPORT="$PORT" PGDATABASE="$SOURCE_DB" PGUSER=postgres \
   uv run python scripts/db/export_role_catalog.py --output "$ROLE_CATALOG"
 PGHOST=127.0.0.1 PGPORT="$PORT" PGDATABASE="$SOURCE_DB" PGUSER=postgres \
+  uv run python scripts/db/export_seed_data_catalog.py --output "$SEED_CATALOG"
+uv run python scripts/db/compare_seed_data_catalogs.py \
+  --expected "$BASELINE_ROOT/seed-data-catalog.json" \
+  --actual "$SEED_CATALOG" \
+  --output "$SEED_COMPARISON"
+PGHOST=127.0.0.1 PGPORT="$PORT" PGDATABASE="$SOURCE_DB" PGUSER=postgres \
   uv run python scripts/db/analyze_schema_cohesion.py \
     --catalog "$SCHEMA_CATALOG" \
     --output "$ANALYSIS"
@@ -106,5 +114,6 @@ PGHOST=127.0.0.1 PGPORT="$PORT" PGDATABASE="$SOURCE_DB" PGUSER=postgres \
 uv run python scripts/db/verify_accepted_baseline.py \
   --schema-catalog "$SCHEMA_CATALOG" \
   --role-catalog "$ROLE_CATALOG" \
+  --seed-data-catalog "$SEED_CATALOG" \
   --analysis "$ANALYSIS" \
   --output "$INTEGRITY"
