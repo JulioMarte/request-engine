@@ -13,9 +13,9 @@ Keep at least one unused Platform Owner offline recovery code outside PostgreSQL
 1. Record `backup_completed_at` from the backup being tested.
 2. Retrieve the encrypted bundle from the off-host destination and verify it with `scripts/operations/recovery_bundle.py verify`.
 3. Record `failure_declared_at`. Destroy or detach the drill source state. Do not reuse its PostgreSQL volume or OpenBao Raft volume.
-4. Start empty PostgreSQL and empty production-mode OpenBao Raft storage on the isolated target.
-5. Set `REQUEST_ENGINE_OUTBOUND_FENCED=true` and run `recovery_bundle.py restore ... --confirm-destructive --evidence-output ...`.
-6. Recreate OpenBao Proxy/AppRole machine credentials from retained operator material; do not restore a permanent root token into Request Engine.
+4. Start empty PostgreSQL and empty production-mode OpenBao Raft storage on the isolated target. Initialize that **disposable target** OpenBao and unseal it with temporary target-only keys so an authenticated operator can apply the snapshot. Do not overwrite or replace the separately custodied **original** OpenBao unseal shares from the source snapshot.
+5. Set `REQUEST_ENGINE_OUTBOUND_FENCED=true` and run `recovery_bundle.py restore ... --confirm-destructive --evidence-output ...`. The tool uses OpenBao's forced Raft restore because a clean target has different Shamir/auto-unseal material. Its restore evidence intentionally says `restore_applied_pending_verification`; it is not the final recovery certification.
+6. Restart OpenBao after the forced snapshot restore and unseal it with the **original source/snapshot unseal shares**, not the disposable target initialization keys. Verify OpenBao reports the expected restored cluster state. Then recreate Proxy/AppRole machine credentials from retained operator material; do not restore a permanent root token into Request Engine.
 7. Start Request Engine against the restored stores. Verify representative PostgreSQL reads and resolve a known governed secret through the runtime `PlatformSecretStore` boundary.
 8. While still fenced, create work that would normally cause SMTP/webhook/outbox traffic. Prove no side effect reaches the sink/provider.
 9. Stop or make OpenBao unreachable and make SMTP unreachable. Consume one unused offline Platform Owner recovery code to set a new password. Prove the old password fails, old sessions fail, the new password works, the same recovery code cannot be reused, and setup remains closed.
@@ -52,6 +52,8 @@ Keep at least one unused Platform Owner offline recovery code outside PostgreSQL
   }
 }
 ```
+
+`recovery_bundle.py` does not certify recovery by itself. A successful forced Raft restore can still require restart/unseal and post-restore application checks. Only the completed drill evidence below may be promoted to `request-engine/recovery-certification/v1`.
 
 The certification tool calculates observed RPO as `failure_declared_at - backup_completed_at` and observed RTO as `service_recovered_at - failure_declared_at`. It rejects missing proof instead of treating it as false-but-acceptable. When `--max-rpo-seconds` and/or `--max-rto-seconds` are supplied, it also rejects a drill that exceeds those operator-approved objectives and records the accepted limits in the certification. The repository does not define acceptable production RPO/RTO targets: operators must choose and approve those targets for the deployment.
 
