@@ -1,6 +1,3 @@
-from dataclasses import dataclass
-
-
 _METRIC_NAMES = (
     "active_revision",
     "validation_success_total",
@@ -25,51 +22,116 @@ _METRIC_NAMES = (
 )
 
 
-@dataclass(frozen=True, slots=True)
 class P7MetricSnapshot:
-    active_revisions: tuple[tuple[str, int], ...]
-    validation_success_total: int
-    validation_failure_total: int
-    validation_unavailable_total: int
-    activation_total: int
-    disable_total: int
-    provider_test_failures_total: int
-    rotation_failures_total: int
-    config_propagation_lag_seconds: float
-    cache_invalidations_total: int
-    revision_poll_corrections_total: int
-    secret_backend_failures_total: int
-    provider_configuration_source: str
-    worker_configuration_failures_total: int
-    worker_secret_store_failures_total: int
-    last_successful_backup_age_seconds: float
-    restore_drill_age_seconds: float
-    restore_drill_evidence_reference: str | None
-    clone_fence_state: str
-    readiness_transition_total: int
+    __slots__ = (
+        "active_revisions",
+        "validation_success_total",
+        "validation_failure_total",
+        "validation_unavailable_total",
+        "activation_total",
+        "disable_total",
+        "provider_test_failures_total",
+        "rotation_failures_total",
+        "config_propagation_lag_seconds",
+        "cache_invalidations_total",
+        "revision_poll_corrections_total",
+        "secret_backend_failures_total",
+        "provider_configuration_source",
+        "worker_configuration_failures_total",
+        "worker_secret_store_failures_total",
+        "last_successful_backup_age_seconds",
+        "restore_drill_age_seconds",
+        "restore_drill_evidence_reference",
+        "clone_fence_state",
+        "readiness_transition_total",
+    )
+
+    def __init__(
+        self,
+        *,
+        active_revisions: tuple[tuple[str, int], ...],
+        validation_success_total: int,
+        validation_failure_total: int,
+        validation_unavailable_total: int,
+        activation_total: int,
+        disable_total: int,
+        provider_test_failures_total: int,
+        rotation_failures_total: int,
+        config_propagation_lag_seconds: float,
+        cache_invalidations_total: int,
+        revision_poll_corrections_total: int,
+        secret_backend_failures_total: int,
+        provider_configuration_source: str,
+        worker_configuration_failures_total: int,
+        worker_secret_store_failures_total: int,
+        last_successful_backup_age_seconds: float,
+        restore_drill_age_seconds: float,
+        restore_drill_evidence_reference: str | None,
+        clone_fence_state: str,
+        readiness_transition_total: int,
+    ) -> None:
+        self.active_revisions = active_revisions
+        self.validation_success_total = validation_success_total
+        self.validation_failure_total = validation_failure_total
+        self.validation_unavailable_total = validation_unavailable_total
+        self.activation_total = activation_total
+        self.disable_total = disable_total
+        self.provider_test_failures_total = provider_test_failures_total
+        self.rotation_failures_total = rotation_failures_total
+        self.config_propagation_lag_seconds = config_propagation_lag_seconds
+        self.cache_invalidations_total = cache_invalidations_total
+        self.revision_poll_corrections_total = revision_poll_corrections_total
+        self.secret_backend_failures_total = secret_backend_failures_total
+        self.provider_configuration_source = provider_configuration_source
+        self.worker_configuration_failures_total = worker_configuration_failures_total
+        self.worker_secret_store_failures_total = worker_secret_store_failures_total
+        self.last_successful_backup_age_seconds = last_successful_backup_age_seconds
+        self.restore_drill_age_seconds = restore_drill_age_seconds
+        self.restore_drill_evidence_reference = restore_drill_evidence_reference
+        self.clone_fence_state = clone_fence_state
+        self.readiness_transition_total = readiness_transition_total
 
 
-@dataclass(frozen=True, slots=True)
 class P7AlertThresholds:
-    max_config_propagation_lag_seconds: float = 60.0
-    max_backup_age_seconds: float = 90_000.0
-    max_restore_drill_age_seconds: float = 2_678_400.0
+    __slots__ = (
+        "max_config_propagation_lag_seconds",
+        "max_backup_age_seconds",
+        "max_restore_drill_age_seconds",
+    )
 
-    def __post_init__(self) -> None:
-        if self.max_config_propagation_lag_seconds < 0:
+    def __init__(
+        self,
+        *,
+        max_config_propagation_lag_seconds: float = 60.0,
+        max_backup_age_seconds: float = 90_000.0,
+        max_restore_drill_age_seconds: float = 2_678_400.0,
+    ) -> None:
+        if max_config_propagation_lag_seconds < 0:
             raise ValueError("max_config_propagation_lag_seconds must be non-negative")
-        if self.max_backup_age_seconds < 0:
+        if max_backup_age_seconds < 0:
             raise ValueError("max_backup_age_seconds must be non-negative")
-        if self.max_restore_drill_age_seconds < 0:
+        if max_restore_drill_age_seconds < 0:
             raise ValueError("max_restore_drill_age_seconds must be non-negative")
+        self.max_config_propagation_lag_seconds = max_config_propagation_lag_seconds
+        self.max_backup_age_seconds = max_backup_age_seconds
+        self.max_restore_drill_age_seconds = max_restore_drill_age_seconds
 
 
-@dataclass(frozen=True, slots=True)
 class P7Alert:
-    code: str
-    metric: str
-    observed: float
-    threshold: float
+    __slots__ = ("code", "metric", "observed", "threshold")
+
+    def __init__(
+        self,
+        *,
+        code: str,
+        metric: str,
+        observed: float,
+        threshold: float,
+    ) -> None:
+        self.code = code
+        self.metric = metric
+        self.observed = observed
+        self.threshold = threshold
 
 
 class P7OperationalMetrics:
