@@ -35,12 +35,10 @@ def _required_env(name: str) -> str:
     return value
 
 
-def _require_throttling_reference(value: str) -> str:
+def _require_evidence_reference(value: str, *, label: str) -> str:
     reference = value.strip()
     if not reference:
-        raise SmtpAcceptanceError(
-            "production acceptance requires a throttling/error-behavior evidence reference"
-        )
+        raise SmtpAcceptanceError(f"production acceptance requires {label} evidence reference")
     return reference
 
 
@@ -62,12 +60,20 @@ async def run_acceptance(
     destination: str,
     idempotency_key: str,
     throttling_evidence_reference: str,
+    delivery_evidence_reference: str,
 ) -> dict[str, Any]:
     if configuration.security is SmtpSecurityMode.PLAIN:
         raise SmtpAcceptanceError("production SMTP acceptance requires TLS or STARTTLS")
     if configuration.username is None:
         raise SmtpAcceptanceError("production SMTP acceptance requires authenticated SMTP")
-    throttle_ref = _require_throttling_reference(throttling_evidence_reference)
+    throttle_ref = _require_evidence_reference(
+        throttling_evidence_reference,
+        label="a throttling/error-behavior",
+    )
+    delivery_ref = _require_evidence_reference(
+        delivery_evidence_reference,
+        label="an operator-verified mailbox receipt",
+    )
     addresses = _resolve_dns(configuration.host, configuration.port)
 
     validator = SmtplibConfigurationValidator()
@@ -102,10 +108,11 @@ async def run_acceptance(
             "status": validation.status.value,
             "detail_code": validation.detail_code,
         },
-        "controlled_delivery": {
+        "smtp_submission": {
             "outcome": delivery.outcome.value,
             "detail_code": delivery.detail_code,
         },
+        "delivery_evidence_reference": delivery_ref,
         "throttling_evidence_reference": throttle_ref,
         "credentials_persisted": False,
     }
@@ -132,6 +139,7 @@ async def _async_main(args: argparse.Namespace) -> dict[str, Any]:
         destination=args.destination,
         idempotency_key=args.idempotency_key,
         throttling_evidence_reference=args.throttling_evidence_reference,
+        delivery_evidence_reference=args.delivery_evidence_reference,
     )
 
 
@@ -148,6 +156,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--helo-name")
     parser.add_argument("--timeout-seconds", type=float, default=10.0)
     parser.add_argument("--throttling-evidence-reference", required=True)
+    parser.add_argument("--delivery-evidence-reference", required=True)
     parser.add_argument("--output", type=Path)
     return parser
 
