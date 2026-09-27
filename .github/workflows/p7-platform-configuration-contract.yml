@@ -101,11 +101,40 @@ jobs:
             tests/db/test_managed_oidc_projection.py \
             -q --tb=short --durations=20 \
             --junitxml=.ci/p7-platform-configuration.xml
+      - name: Start real OpenBao engine for CAS acceptance
+        run: |
+          docker run -d --name p7-openbao \
+            --cap-add IPC_LOCK \
+            -p 127.0.0.1:8200:8200 \
+            -e VAULT_DEV_ROOT_TOKEN_ID=ci-root-token \
+            openbao/openbao:2.6.1 \
+            server -dev -dev-root-token-id=ci-root-token -dev-listen-address=0.0.0.0:8200
+          for attempt in $(seq 1 30); do
+            if docker exec p7-openbao bao status -address=http://127.0.0.1:8200 >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs p7-openbao
+          exit 1
+      - name: Run real OpenBao CAS/concurrency/revocation acceptance
+        env:
+          REQUEST_ENGINE_OPENBAO_ACCEPTANCE_TOKEN: ci-root-token
+        run: |
+          uv run python scripts/operations/openbao_operational_acceptance.py \
+            --address http://127.0.0.1:8200 \
+            --token-env REQUEST_ENGINE_OPENBAO_ACCEPTANCE_TOKEN \
+            --output .ci/openbao-operational-acceptance.json
+      - name: Stop real OpenBao engine
+        if: always()
+        run: docker rm -f p7-openbao >/dev/null 2>&1 || true
       - name: Upload P7 proof evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: p7-platform-configuration-proof
-          path: .ci/p7-platform-configuration.xml
+          path: |
+            .ci/p7-platform-configuration.xml
+            .ci/openbao-operational-acceptance.json
           if-no-files-found: error
           retention-days: 90
