@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -100,6 +101,35 @@ def verify(
     }
 
 
+
+def _verify_seed_data(manifest: dict[str, Any], path: Path) -> dict[str, Any]:
+    expected = manifest.get("seed_data")
+    if not isinstance(expected, dict):
+        raise RuntimeError("accepted baseline manifest is missing seed_data")
+    payload = path.read_bytes()
+    actual_sha256 = hashlib.sha256(payload).hexdigest()
+    if len(payload) != expected.get("bytes"):
+        raise RuntimeError(
+            "accepted baseline seed-data byte length drifted: "
+            f"expected={expected.get('bytes')!r} actual={len(payload)!r}"
+        )
+    if actual_sha256 != expected.get("sha256"):
+        raise RuntimeError(
+            "accepted baseline seed-data checksum drifted: "
+            f"expected={expected.get('sha256')!r} actual={actual_sha256!r}"
+        )
+    catalog = json.loads(payload)
+    if catalog.get("counts") != expected.get("counts"):
+        raise RuntimeError(
+            "accepted baseline seed-data counts drifted: "
+            f"expected={expected.get('counts')!r} actual={catalog.get('counts')!r}"
+        )
+    return {
+        "equivalent": True,
+        "sha256": actual_sha256,
+        "counts": catalog.get("counts"),
+    }
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -110,16 +140,19 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--schema-catalog", type=Path, required=True)
     parser.add_argument("--role-catalog", type=Path, required=True)
+    parser.add_argument("--seed-data-catalog", type=Path, required=True)
     parser.add_argument("--analysis", type=Path, required=True)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
+    manifest = _load(args.manifest)
     result = verify(
-        manifest=_load(args.manifest),
+        manifest=manifest,
         schema_catalog=_load(args.schema_catalog),
         role_catalog=_load(args.role_catalog),
         analysis=_load(args.analysis),
     )
+    result["seed_data"] = _verify_seed_data(manifest, args.seed_data_catalog)
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(result, indent=2, sort_keys=True) + "\n"
