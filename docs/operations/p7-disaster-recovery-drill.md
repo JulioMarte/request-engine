@@ -21,6 +21,8 @@ Keep at least one unused Platform Owner offline recovery code outside PostgreSQL
 9. Stop or make OpenBao unreachable and make SMTP unreachable. Consume one unused offline Platform Owner recovery code to set a new password. Prove the old password fails, old sessions fail, the new password works, the same recovery code cannot be reused, and setup remains closed.
 10. Record `service_recovered_at` only after the application reads and governed secret-resolution checks have passed.
 11. Create the evidence document below and run `python scripts/operations/recovery_drill_evidence.py evidence.json --output certification.json --max-rpo-seconds <operator-approved-RPO> --max-rto-seconds <operator-approved-RTO>`. Omit the limits only when measuring a drill before targets have been approved; such a measurement is not production RPO/RTO acceptance.
+12. Copy the accepted certification to a root/operator-managed read-only path on the control-plane host and set `REQUEST_ENGINE_RECOVERY_CERTIFICATION_FILE` to that file. Restart the private control-plane process. An invalid configured certification is a startup error; absence of the setting leaves backup/restore readiness as `unknown`.
+13. Query `GET /v1/platform/readiness` and `GET /v1/platform/observability` with a HUMAN actor holding `platform.readiness.read`. The readiness projection must report `backup_evidence=verified` and `restore_drill=verified`; observability must expose the evidence reference and live (increasing) backup/restore ages. These diagnostics are not authorization state and never contain the recovery code, OpenBao token, SMTP password, secret value, or age identity.
 
 ## Required evidence schema
 
@@ -58,3 +60,10 @@ The certification tool calculates observed RPO as `failure_declared_at - backup_
 It does not certify a production SMTP provider. SMTP production acceptance requires real provider credentials and must separately prove DNS/connectivity, certificate validation, AUTH, delivery, provider throttling/error behavior, and the application's UNKNOWN semantics for ambiguous post-transmission outcomes.
 
 It also does not certify off-host durability merely because a local copy command succeeded. `off_host_copy_retrieved=true` means the tested artifact was actually fetched back from storage outside the failed source host.
+
+
+## Certification ingestion boundary
+
+The control-plane does not search directories or infer recovery success from the presence of backup files. Only an explicitly configured, successfully parsed `request-engine/recovery-certification/v1` document can change the deployment-level recovery diagnostics from `unknown` to `verified`.
+
+The certification is evidence, not authority: PostgreSQL and OpenBao remain authoritative for product state and secret material. Operators may replace the certification after a later accepted drill; the control-plane reads it at process start so the deployment must restart to adopt a new certification. Backup and restore-drill ages continue advancing while the process is running.
