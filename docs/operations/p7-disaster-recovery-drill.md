@@ -23,6 +23,19 @@ Keep at least one unused Platform Owner offline recovery code outside PostgreSQL
 11. Create the evidence document below and run `python scripts/operations/recovery_drill_evidence.py evidence.json --output certification.json --max-rpo-seconds <operator-approved-RPO> --max-rto-seconds <operator-approved-RTO>`. Omit the limits only when measuring a drill before targets have been approved; such a measurement is not production RPO/RTO acceptance.
 12. Copy the accepted certification to a root/operator-managed read-only path on the control-plane host and set `REQUEST_ENGINE_RECOVERY_CERTIFICATION_FILE` to that file. Restart the private control-plane process. An invalid configured certification is a startup error; absence of the setting leaves backup/restore readiness as `unknown`.
 13. Query `GET /v1/platform/readiness` and `GET /v1/platform/observability` with a HUMAN actor holding `platform.readiness.read`. The readiness projection must report `backup_evidence=verified` and `restore_drill=verified`; observability must expose the evidence reference and live (increasing) backup/restore ages. These diagnostics are not authorization state and never contain the recovery code, OpenBao token, SMTP password, secret value, or age identity.
+14. After the separate production OpenBao and SMTP acceptance runs have produced their JSON artifacts, run the final fail-closed gate:
+
+```bash
+python scripts/operations/p7_production_certification.py \
+  --openbao-evidence openbao-production-acceptance.json \
+  --smtp-evidence smtp-production-acceptance.json \
+  --recovery-evidence certification.json \
+  --expected-openbao-topology <operator-approved-production-topology-reference> \
+  --max-evidence-age-hours 168 \
+  --output p7-production-certification.json
+```
+
+This final gate does not perform or simulate production operations. It proves that all three independent operational acceptances exist, are accepted and fresh, that the OpenBao artifact belongs to the intended topology, that SMTP includes mailbox/throttling references, and that recovery contains both measured and explicitly operator-approved RPO/RTO limits. It hashes every input artifact into the final certification so the evidence set is immutable/auditable. CI tests the gate's fail-closed semantics but cannot generate a production certification.
 
 ## Required evidence schema
 
@@ -62,7 +75,6 @@ The certification tool calculates observed RPO as `failure_declared_at - backup_
 It does not certify a production SMTP provider. SMTP production acceptance requires real provider credentials and must separately prove DNS/connectivity, certificate validation, AUTH, delivery, provider throttling/error behavior, and the application's UNKNOWN semantics for ambiguous post-transmission outcomes.
 
 It also does not certify off-host durability merely because a local copy command succeeded. `off_host_copy_retrieved=true` means the tested artifact was actually fetched back from storage outside the failed source host.
-
 
 ## Certification ingestion boundary
 
