@@ -1,8 +1,10 @@
 """Private native control-plane ASGI process with distinct least-privilege pools."""
 
 import asyncio
+import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -35,6 +37,9 @@ from request_engine.modules.platform_configuration.adapters.smtp import (
     SmtplibProviderTester,
 )
 from request_engine.modules.platform_configuration.api.http import PlatformDeploymentReadinessFacts
+from request_engine.modules.platform_configuration.application.recovery_certification import (
+    parse_recovery_certification,
+)
 from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfigurationResolver,
 )
@@ -215,6 +220,24 @@ def create_app() -> FastAPI:
     recovery_settings = RecoveryDeliverySettings()
     outbound_fence = OutboundSideEffectFence.from_environment()
     operational_metrics = P7OperationalMetrics()
+    recovery_certification = None
+    if settings.recovery_certification_file is not None:
+        certification_path = settings.recovery_certification_file.resolve()
+        payload = json.loads(certification_path.read_text(encoding="utf-8"))
+        recovery_certification = parse_recovery_certification(
+            payload,
+            reference=str(certification_path),
+        )
+        now = datetime.now(UTC)
+        operational_metrics.observe_last_successful_backup_age(
+            recovery_certification.backup_age_seconds(now=now)
+        )
+        operational_metrics.observe_restore_drill_age(
+            recovery_certification.restore_drill_age_seconds(now=now)
+        )
+        operational_metrics.observe_restore_drill_evidence_reference(
+            recovery_certification.reference
+        )
     bootstrap_native_recovery_messenger = build_native_recovery_messenger(recovery_settings)
     platform_secret_store = build_platform_secret_store()
     appointment_signing_secret_store = build_appointment_signing_secret_store(
@@ -274,6 +297,8 @@ def create_app() -> FastAPI:
             clone_fence="fenced" if outbound_fence.fenced else "open",
             secret_store="configured" if platform_secret_store is not None else "unconfigured",
             bootstrap_recovery_delivery_configured=bootstrap_native_recovery_messenger is not None,
+            backup_evidence="verified" if recovery_certification is not None else "unknown",
+            restore_drill="verified" if recovery_certification is not None else "unknown",
             oidc="optional",
         ),
         webauthn_policy=WebAuthnPolicy(
