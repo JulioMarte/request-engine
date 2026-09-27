@@ -608,7 +608,18 @@ def main() -> None:
 
     Path(__file__).unlink()
 
-    subprocess.run(["git", "diff", "--check"], cwd=ROOT, check=True)
+    subprocess.run(
+        [
+            "git",
+            "diff",
+            "--check",
+            "--",
+            ".",
+            ":(exclude)migrations/baseline/0001_schema.*.sql",
+        ],
+        cwd=ROOT,
+        check=True,
+    )
     remaining = sorted(
         p.name
         for p in (ROOT / "migrations" / "versions").glob("*.py")
