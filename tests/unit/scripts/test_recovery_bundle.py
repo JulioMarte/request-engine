@@ -105,7 +105,7 @@ def test_bundle_verification_rejects_tampered_payload(
         )
 
 
-def test_restore_uses_standard_openbao_restore_without_force(
+def test_clean_restore_forces_openbao_snapshot_across_seal_boundary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -158,8 +158,7 @@ def test_restore_uses_standard_openbao_restore_without_force(
         )
     )
     assert calls[0][0] == "pg_restore"
-    assert calls[1][:5] == ["bao", "operator", "raft", "snapshot", "restore"]
-    assert "-force" not in calls[1]
+    assert calls[1][:6] == ["bao", "operator", "raft", "snapshot", "restore", "-force"]
 
 
 def test_manifest_contains_only_expected_recovery_files(tmp_path: Path) -> None:
@@ -236,14 +235,15 @@ def test_restore_evidence_is_written_only_after_both_restore_steps(
     assert [call[0] for call in calls] == ["pg_restore", "bao"]
     payload = json.loads(evidence.read_text(encoding="utf-8"))
     assert payload["schema"] == "request-engine/restore-evidence/v1"
-    assert payload["outcome"] == "restore_completed"
+    assert payload["outcome"] == "restore_applied_pending_verification"
     assert payload["outbound_fenced"] is True
     assert payload["bundle_manifest_created_at"] == "2026-09-24T00:00:00+00:00"
     assert payload["completed_steps"] == [
         "bundle_integrity_verified",
-        "postgres_restore_completed",
-        "openbao_raft_restore_completed",
+        "postgres_restore_applied",
+        "openbao_raft_force_restore_applied",
     ]
+    assert payload["post_restore_verification_required"] is True
     assert "password" not in evidence.read_text(encoding="utf-8").lower()
 
 
