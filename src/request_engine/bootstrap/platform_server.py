@@ -287,20 +287,27 @@ def create_app() -> FastAPI:
     )
     original_lifespan = app.router.lifespan_context
 
+    last_ready_state: bool | None = None
+
     async def ready_state() -> bool:
+        nonlocal last_ready_state
         async with asyncio.timeout(settings.database_probe_timeout_seconds):
             for engine, group in zip(
                 engines, ("request_engine_app", None, "request_platform_control"), strict=True
             ):
                 await _verify_login(engine, group)
             async with engines[0].connect() as connection:
-                return (
+                available = (
                     await connection.scalar(
                         text("SELECT request_auth.is_native_authority_ready(:authority_id)"),
                         {"authority_id": settings.native_identity_authority_id},
                     )
                     is True
                 )
+        if last_ready_state is not None and available is not last_ready_state:
+            operational_metrics.record_readiness_transition()
+        last_ready_state = available
+        return available
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
