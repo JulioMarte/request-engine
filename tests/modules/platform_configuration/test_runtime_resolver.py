@@ -7,6 +7,7 @@ import pytest
 
 from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfiguration,
+    ActivePlatformConfigurationError,
     ActivePlatformConfigurationResolver,
 )
 from request_engine.platform.secrets.platform_store import (
@@ -319,7 +320,10 @@ async def test_runtime_resolver_reports_secret_backend_failure() -> None:
         telemetry=telemetry,
     )
 
-    with pytest.raises(Exception, match="requires a configured platform secret store"):
+    with pytest.raises(
+        ActivePlatformConfigurationError,
+        match="requires a configured platform secret store",
+    ):
         await resolver.resolve_smtp()
 
     assert telemetry.secret_backend_failures == 1
