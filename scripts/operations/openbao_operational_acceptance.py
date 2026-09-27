@@ -59,9 +59,7 @@ async def run_acceptance(
     successes = [result for result in results if isinstance(result, tuple)]
     conflicts = [result for result in results if isinstance(result, PlatformSecretConflict)]
     unexpected = [
-        result
-        for result in results
-        if not isinstance(result, (tuple, PlatformSecretConflict))
+        result for result in results if not isinstance(result, (tuple, PlatformSecretConflict))
     ]
     if len(successes) != 1 or len(conflicts) != 1 or unexpected:
         raise OpenBaoAcceptanceError(
