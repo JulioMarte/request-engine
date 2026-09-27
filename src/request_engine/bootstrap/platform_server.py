@@ -239,6 +239,7 @@ def create_app() -> FastAPI:
     managed_smtp_resolver = ActivePlatformConfigurationResolver(
         source=PostgresActivePlatformConfigurationSource(platform_write_session_factory),
         secret_store=platform_secret_store,
+        telemetry=operational_metrics,
     )
     managed_native_recovery_messenger = ManagedSmtpRecoveryDeliveryChannel(
         resolver=managed_smtp_resolver,
