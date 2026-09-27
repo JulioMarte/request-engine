@@ -67,6 +67,7 @@ from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
     SlotOfferExpiryScheduledHandler,
 )
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
+from request_engine.platform.observability.p7_metrics import P7OperationalMetrics
 
 WEBHOOK_BASE_URL_ENV = "REQUEST_ENGINE_WEBHOOK_BASE_URL"
 WEBHOOK_AUTH_HEADER_ENV = "REQUEST_ENGINE_WEBHOOK_AUTH_HEADER"
@@ -117,10 +118,12 @@ def create_worker() -> WorkerProcess:
     )
     worker_principal_id = UUID(_required_env(WORKER_PRINCIPAL_ID_ENV))
     outbound_fence = OutboundSideEffectFence.from_environment()
+    operational_metrics = P7OperationalMetrics()
 
     platform_configuration_resolver = ActivePlatformConfigurationResolver(
         source=PostgresActivePlatformConfigurationSource(worker_sessions),
         secret_store=build_platform_secret_store(),
+        telemetry=operational_metrics,
     )
     platform_configuration_invalidation = PlatformConfigurationInvalidationRuntime(
         database_url=worker_database_url,
@@ -147,6 +150,7 @@ def create_worker() -> WorkerProcess:
             resolver=platform_configuration_resolver,
             fallback=bootstrap_smtp,
             reset_url=recovery_settings.recovery_reset_url,
+            operational_metrics=operational_metrics,
         )
         delivery = build_recovery_secret_delivery(
             recovery_settings,
