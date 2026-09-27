@@ -54,15 +54,33 @@ wait_for_openbao() {
   return 1
 }
 
+prepare_volume() {
+  local volume="$1"
+  docker run --rm \
+    --user 0:0 \
+    -v "$volume:/openbao/data" \
+    "$IMAGE" \
+    sh -ec 'mkdir -p /openbao/data && chown -R openbao:openbao /openbao/data && chmod 700 /openbao/data'
+}
+
 start_openbao() {
   local container="$1"
   local volume="$2"
-  docker run -d     --name "$container"     --cap-add IPC_LOCK     -p "127.0.0.1:$HOST_PORT:8200"     -v "$volume:/openbao/data"     -v "$CONFIG:/openbao/config/openbao.hcl:ro"     "$IMAGE"     server -config=/openbao/config/openbao.hcl >/dev/null
+  docker run -d \
+    --name "$container" \
+    --cap-add IPC_LOCK \
+    -p "127.0.0.1:$HOST_PORT:8200" \
+    -v "$volume:/openbao/data" \
+    -v "$CONFIG:/openbao/config/openbao.hcl:ro" \
+    "$IMAGE" \
+    server -config=/openbao/config/openbao.hcl >/dev/null
   wait_for_openbao "$container"
 }
 
 docker volume create "$SOURCE_VOLUME" >/dev/null
 docker volume create "$TARGET_VOLUME" >/dev/null
+prepare_volume "$SOURCE_VOLUME"
+prepare_volume "$TARGET_VOLUME"
 
 start_openbao "$SOURCE_CONTAINER" "$SOURCE_VOLUME"
 SOURCE_INIT="$(docker exec "$SOURCE_CONTAINER" sh -c '
