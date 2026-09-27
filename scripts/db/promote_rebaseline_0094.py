@@ -8,15 +8,18 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-PROOF_HEAD = "a37ee1b7a5e698890a0f558461c271114e6bd3ec"
-PROOF_RUN_ID = 36352879969
-PROOF_RUN_NUMBER = 3
+PROOF_HEAD = "3e938a888e576919b5b75f449fe86014b5cbd7f9"
+PROOF_RUN_ID = 36354361866
+PROOF_RUN_NUMBER = 17
 EXPECTED_SOURCE_HEAD = "0094_managed_oidc_readiness"
 CHUNK_LIMIT = 120_000
 ALLOWED_SINCE_PROOF = {
     ".github/workflows/rebaseline-0094.yml",
     "scripts/db/promote_rebaseline_0094.py",
     "scripts/db/prove_multidatabase_migration_compatibility.py",
+    "scripts/db/prove_baseline_integrity.sh",
+    "scripts/db/verify_accepted_baseline.py",
+    "tests/architecture/test_baseline_repository_contract.py",
 }
 
 
@@ -62,7 +65,7 @@ def _require_proof_ancestry() -> None:
         )
 
 
-def _validate_artifact(artifact: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+def _validate_artifact(artifact: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     required = (
         "0001_roles.sql",
         "0001_schema.sql",
@@ -73,7 +76,13 @@ def _validate_artifact(artifact: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         "clean-role-comparison.json",
         "source-schema-catalog.json",
         "source-role-catalog.json",
+        "source-seed-data-catalog.json",
+        "source-schema-ddl.sql",
         "source-schema-cohesion.json",
+        "seed-data-comparison.json",
+        "clean-seed-data-comparison.json",
+        "schema-ddl-comparison.json",
+        "clean-schema-ddl-comparison.json",
     )
     missing = [name for name in required if not (artifact / name).is_file()]
     if missing:
@@ -91,6 +100,10 @@ def _validate_artifact(artifact: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         "schema-comparison.json",
         "clean-schema-comparison.json",
         "clean-role-comparison.json",
+        "seed-data-comparison.json",
+        "clean-seed-data-comparison.json",
+        "schema-ddl-comparison.json",
+        "clean-schema-ddl-comparison.json",
     ):
         comparison = _load(artifact / name)
         if comparison.get("equivalent") is not True or comparison.get("first_difference") is not None:
@@ -112,9 +125,7 @@ def _validate_artifact(artifact: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     if meta:
         raise RuntimeError(f"candidate contains psql meta-command(s): {meta[:3]!r}")
 
-    return _load(artifact / "source-schema-catalog.json"), _load(
-        artifact / "source-role-catalog.json"
-    )
+    return (\n        _load(artifact / "source-schema-catalog.json"),\n        _load(artifact / "source-role-catalog.json"),\n        _load(artifact / "source-seed-data-catalog.json"),\n    )
 
 
 def _split_schema(payload: bytes) -> list[bytes]:
@@ -138,12 +149,14 @@ def _write_baseline(
     artifact: Path,
     schema_catalog: dict[str, Any],
     role_catalog: dict[str, Any],
+    seed_catalog: dict[str, Any],
 ) -> None:
     baseline = ROOT / "migrations" / "baseline"
     baseline.mkdir(parents=True, exist_ok=True)
 
     schema_payload = (artifact / "0001_schema.sql").read_bytes()
     role_payload = (artifact / "0001_roles.sql").read_bytes()
+    seed_payload = (artifact / "source-seed-data-catalog.json").read_bytes()
     chunks = _split_schema(schema_payload)
 
     for old in baseline.glob("0001_schema.*.sql"):
@@ -160,6 +173,7 @@ def _write_baseline(
             }
         )
     (baseline / "0001_roles.sql").write_bytes(role_payload)
+    (baseline / "seed-data-catalog.json").write_bytes(seed_payload)
 
     expected_roles: dict[str, dict[str, Any]] = {}
     for item in role_catalog["roles"]:
@@ -183,19 +197,26 @@ def _write_baseline(
             "source_alembic_head": EXPECTED_SOURCE_HEAD,
         },
         "schema_payload": {
-            "source_artifact_name": "rebaseline-0094-candidate/0001_schema.sql",
+            "source_artifact_name": "rebaseline-0094-candidate-v2/0001_schema.sql",
             "bytes": len(schema_payload),
             "sha256": _sha256(schema_payload),
             "materialized_parts": parts,
         },
         "role_bootstrap": {
-            "source_artifact_name": "rebaseline-0094-candidate/0001_roles.sql",
+            "source_artifact_name": "rebaseline-0094-candidate-v2/0001_roles.sql",
             "path": "0001_roles.sql",
             "bytes": len(role_payload),
             "sha256": _sha256(role_payload),
             "expected_roles": expected_roles,
             "role_memberships": role_catalog["role_memberships"],
             "role_settings": role_catalog["role_settings"],
+        },
+        "seed_data": {
+            "source_artifact_name": "rebaseline-0094-candidate-v2/source-seed-data-catalog.json",
+            "path": "seed-data-catalog.json",
+            "bytes": len(seed_payload),
+            "sha256": _sha256(seed_payload),
+            "counts": seed_catalog["counts"],
         },
         "effective_model": {
             "relations": counts["relations"],
@@ -215,7 +236,11 @@ def _write_baseline(
             "historical_chain_to_0094": True,
             "candidate_schema_equivalent": True,
             "candidate_roles_equivalent": True,
+            "candidate_seed_data_equivalent": True,
+            "candidate_exact_ddl_equivalent": True,
             "clean_postgresql18_install_equivalent": True,
+            "clean_seed_data_equivalent": True,
+            "clean_exact_ddl_equivalent": True,
             "ci_run_id": PROOF_RUN_ID,
             "ci_run_number": PROOF_RUN_NUMBER,
             "proof_head_sha": PROOF_HEAD,
@@ -241,7 +266,7 @@ from psycopg import ClientCursor
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST_PATH = ROOT / "manifest.json"
-APPLICATION_SCHEMAS = ("request_admin", "request_cmd", "request_engine", "request_read")
+APPLICATION_SCHEMAS = ("request_admin", "request_auth", "request_cmd", "request_engine", "request_platform", "request_read")
 _MANAGED_ROLE_PATTERNS = ("request_engine_%", "request_platform_%", "request_bootstrap_%")
 _ROLE_NAME = re.compile(r'^CREATE ROLE "([^"]+)" WITH .+;$')
 _ROLE_QUERY = """
@@ -429,13 +454,11 @@ def _write_docs() -> None:
 
 This directory is the canonical, immutable payload for Request Engine Alembic revision 0001_initial.
 
-The current baseline was materialized from the audited PostgreSQL 18.6 effective model at historical Alembic head {EXPECTED_SOURCE_HEAD} and commit {PROOF_HEAD}. GitHub Actions run {PROOF_RUN_ID} proved all three promotion gates before the historical chain was removed:
+The current baseline was materialized from the audited PostgreSQL 18.6 effective model at historical Alembic head {EXPECTED_SOURCE_HEAD} and commit {PROOF_HEAD}. GitHub Actions run {PROOF_RUN_ID} proved the promotion gates before the historical chain was removed:
 
-1. 0001 through 0094 installed successfully on PostgreSQL 18;
-2. the materialized candidate reproduced the effective schema and role catalogs exactly;
-3. the candidate installed by itself on a completely clean PostgreSQL 18 cluster and reproduced those catalogs again.
+1. 0001 through 0094 installed successfully on PostgreSQL 18;\n2. the candidate reproduced all six managed schemas and the ten-role topology;\n3. the candidate reproduced the exact PostgreSQL DDL byte-for-byte;\n4. the candidate reproduced all migration-owned seed/reference rows and sequence state;\n5. the candidate installed by itself on a completely clean PostgreSQL 18 cluster and passed the same equivalence checks.
 
-manifest.json pins the complete schema checksum, every materialized part, the ten-role bootstrap topology, accepted effective-model counts and the proof provenance. loader.py verifies those checksums and exact managed-role contract before 0001_initial executes the SQL.
+manifest.json pins the complete payload checksum, every materialized part, the ten-role bootstrap topology, the seed/reference-state checksum, accepted effective-model counts and the proof provenance. loader.py verifies those checksums and exact managed-role contract before 0001_initial executes the SQL.
 
 After this rebaseline, migrations/versions/0001_initial.py is the only historical revision. Future schema evolution appends new 0002+ revisions. Never regenerate this payload merely to make a later migration easier; another destructive rebaseline requires a new explicit audit and clean-cluster equivalence proof.
 """
@@ -483,7 +506,7 @@ After this rebaseline, migrations/versions/0001_initial.py is the only historica
     new_history = (
         "The old V3 payloads, candidate SQL, feature-step helper modules and the certified "
         "pre-rebaseline 0002..0094 chain are intentionally absent from current HEAD. Their "
-        "provenance remains in Git history and in GitHub Actions run 36352879969; keeping "
+        "provenance remains in Git history and in GitHub Actions run 36354361866; keeping "
         "dead executable migration machinery beside the accepted baseline would create a "
         "false second authority."
     )
@@ -597,8 +620,8 @@ def main() -> None:
         artifact = ROOT / artifact
 
     _require_proof_ancestry()
-    schema_catalog, role_catalog = _validate_artifact(artifact)
-    _write_baseline(artifact, schema_catalog, role_catalog)
+    schema_catalog, role_catalog, seed_catalog = _validate_artifact(artifact)
+    _write_baseline(artifact, schema_catalog, role_catalog, seed_catalog)
     _write_loader()
     _write_docs()
     _collapse_migration_chain()
