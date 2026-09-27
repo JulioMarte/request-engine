@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
 import threading
-from dataclasses import dataclass
 
 
 _METRIC_NAMES = (
@@ -15,7 +15,7 @@ _METRIC_NAMES = (
 )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class P7MetricSnapshot:
     provider_test_failures_total: int
     rotation_failures_total: int
@@ -26,7 +26,7 @@ class P7MetricSnapshot:
     readiness_transition_total: int
 
 
-@dataclass(frozen=True, slots=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class P7AlertThresholds:
     max_config_propagation_lag_seconds: float = 60.0
     max_backup_age_seconds: float = 90_000.0
@@ -41,7 +41,7 @@ class P7AlertThresholds:
             raise ValueError("max_restore_drill_age_seconds must be non-negative")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class P7Alert:
     code: str
     metric: str
