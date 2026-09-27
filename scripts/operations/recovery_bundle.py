@@ -273,7 +273,7 @@ def _write_restore_evidence(
     target.parent.mkdir(parents=True, exist_ok=True)
     evidence = {
         "schema": "request-engine/restore-evidence/v1",
-        "outcome": "restore_completed",
+        "outcome": "restore_applied_pending_verification",
         "started_at": started_at.isoformat(),
         "completed_at": completed_at.isoformat(),
         "duration_seconds": max(0.0, (completed_at - started_at).total_seconds()),
@@ -282,9 +282,10 @@ def _write_restore_evidence(
         "outbound_fenced": True,
         "completed_steps": [
             "bundle_integrity_verified",
-            "postgres_restore_completed",
-            "openbao_raft_restore_completed",
+            "postgres_restore_applied",
+            "openbao_raft_force_restore_applied",
         ],
+        "post_restore_verification_required": True,
     }
     target.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return target
@@ -328,6 +329,7 @@ def restore_backup(args: argparse.Namespace) -> Path | None:
                 "raft",
                 "snapshot",
                 "restore",
+                "-force",
                 str(extracted / _OPENBAO_SNAPSHOT),
             ]
         )
