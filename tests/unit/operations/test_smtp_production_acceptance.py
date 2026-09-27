@@ -92,7 +92,7 @@ async def test_acceptance_rejects_plain_smtp() -> None:
             destination="acceptance@example.test",
             idempotency_key="smtp-prod-acceptance-2",
             throttling_evidence_reference="provider-ticket-123",
-        delivery_evidence_reference="mailbox-check-456",
+            delivery_evidence_reference="mailbox-check-456",
         )
 
 
