@@ -54,20 +54,94 @@ export_role_catalog() {
     uv run python scripts/db/export_role_catalog.py --output "$output"
 }
 
-bootstrap_audited_roles() {
-  local port="$1"
+restore_role_catalog() {
+  local port="$1" catalog="$2"
   PGHOST=127.0.0.1 \
   PGPORT="$port" \
   PGDATABASE="$DATABASE" \
   PGUSER=postgres \
   PGPASSWORD="$PASSWORD" \
+  ROLE_CATALOG="$catalog" \
     uv run python - <<'PY'
+import json
+import os
+
 import psycopg
-from migrations.baseline.loader import ensure_exact_roles
+from psycopg import sql
+
+catalog = json.loads(open(os.environ["ROLE_CATALOG"], encoding="utf-8").read())
+
+# The sidecar catalog intentionally records credential presence but never the
+# credential itself. Request Engine service/definer roles are NOLOGIN roles; a
+# password-bearing managed role would require a separately protected credential
+# backup and must not be silently reconstructed with a different secret.
+password_roles = [role["role_name"] for role in catalog["roles"] if role["has_password"]]
+if password_roles:
+    raise SystemExit(
+        "role catalog contains password-bearing managed roles that cannot be restored "
+        "from non-secret evidence: " + ", ".join(password_roles)
+    )
 
 with psycopg.connect("") as connection:
-    ensure_exact_roles(connection)
+    with connection.cursor() as cursor:
+        for role in catalog["roles"]:
+            attributes = [
+                "SUPERUSER" if role["superuser"] else "NOSUPERUSER",
+                "INHERIT" if role["inherit"] else "NOINHERIT",
+                "CREATEROLE" if role["create_role"] else "NOCREATEROLE",
+                "CREATEDB" if role["create_db"] else "NOCREATEDB",
+                "LOGIN" if role["can_login"] else "NOLOGIN",
+                "REPLICATION" if role["replication"] else "NOREPLICATION",
+                "BYPASSRLS" if role["bypass_rls"] else "NOBYPASSRLS",
+                f"CONNECTION LIMIT {int(role['connection_limit'])}",
+            ]
+            if role["valid_until"] is not None:
+                attributes.append("VALID UNTIL " + sql.Literal(role["valid_until"]).as_string(connection))
+            cursor.execute(
+                sql.SQL("CREATE ROLE {} WITH ").format(sql.Identifier(role["role_name"]))
+                + sql.SQL(" ".join(attributes))
+            )
+
+        for membership in catalog["role_memberships"]:
+            cursor.execute(
+                sql.SQL("GRANT {} TO {} WITH ADMIN {}, INHERIT {}, SET {}").format(
+                    sql.Identifier(membership["parent_role"]),
+                    sql.Identifier(membership["member_role"]),
+                    sql.SQL("TRUE" if membership["admin_option"] else "FALSE"),
+                    sql.SQL("TRUE" if membership["inherit_option"] else "FALSE"),
+                    sql.SQL("TRUE" if membership["set_option"] else "FALSE"),
+                )
+            )
+
+        for role_setting in catalog["role_settings"]:
+            role = sql.Identifier(role_setting["role_name"])
+            database_name = role_setting["database_name"]
+            for setting in role_setting["settings"] or []:
+                name, separator, value = setting.partition("=")
+                if not separator:
+                    raise SystemExit(f"invalid role setting in catalog: {setting!r}")
+                if database_name:
+                    statement = sql.SQL("ALTER ROLE {} IN DATABASE {} SET {} TO {}").format(
+                        role,
+                        sql.Identifier(database_name),
+                        sql.Identifier(name),
+                        sql.Literal(value),
+                    )
+                else:
+                    statement = sql.SQL("ALTER ROLE {} SET {} TO {}").format(
+                        role,
+                        sql.Identifier(name),
+                        sql.Literal(value),
+                    )
+                cursor.execute(statement)
 PY
+}
+
+persist_role_diagnostics() {
+  mkdir -p "$(dirname "$OUTPUT")"
+  cp "$SOURCE_ROLES" "$(dirname "$OUTPUT")/source-role-catalog.json"
+  cp "$TARGET_ROLES" "$(dirname "$OUTPUT")/target-role-catalog.json"
+  cp "$ROLE_COMPARISON" "$(dirname "$OUTPUT")/role-catalog-comparison.json"
 }
 
 start_pg "$SOURCE" "$SOURCE_PORT"
@@ -78,9 +152,9 @@ source_head="$(docker exec "$SOURCE" psql -U postgres -d "$DATABASE" -Atc 'SELEC
 test "$source_head" = "$expected_head"
 
 # Roles are cluster-global PostgreSQL objects and are deliberately not part of
-# pg_dump. Capture their audited topology separately so a clean-cluster restore
-# proves that the prerequisite roles are reconstructed before database objects
-# (notably RLS policies) refer to them.
+# pg_dump. Capture the complete managed topology as a non-secret sidecar. The
+# clean target reconstructs this topology before database objects (notably RLS
+# policies and SECURITY DEFINER ownership references) are restored.
 export_role_catalog "$SOURCE_PORT" "$SOURCE_ROLES"
 
 # Add a restore oracle that cannot be recreated by migrations alone.
@@ -96,16 +170,15 @@ test -s "$DUMP"
 docker rm -f "$SOURCE" >/dev/null
 start_pg "$TARGET" "$TARGET_PORT"
 
-# A database dump cannot restore cluster-global roles. Recreate the exact,
-# checksum-verified Request Engine baseline role topology before pg_restore.
-# This is the same audited bootstrap used by migration 0001, without creating
-# application schemas that would conflict with the database restore.
-bootstrap_audited_roles "$TARGET_PORT"
+restore_role_catalog "$TARGET_PORT" "$SOURCE_ROLES"
 export_role_catalog "$TARGET_PORT" "$TARGET_ROLES"
-uv run python scripts/db/compare_role_catalogs.py \
+if ! uv run python scripts/db/compare_role_catalogs.py \
   --expected "$SOURCE_ROLES" \
   --actual "$TARGET_ROLES" \
-  --output "$ROLE_COMPARISON"
+  --output "$ROLE_COMPARISON"; then
+  persist_role_diagnostics
+  exit 1
+fi
 
 docker cp "$DUMP" "$TARGET:/tmp/request-engine.dump"
 docker exec "$TARGET" pg_restore -U postgres -d "$DATABASE" \
@@ -119,12 +192,15 @@ test "$marker" = "p7-postgres-restored"
 
 # Verify the database restore did not mutate the cluster-global role topology.
 export_role_catalog "$TARGET_PORT" "$TARGET_ROLES"
-uv run python scripts/db/compare_role_catalogs.py \
+if ! uv run python scripts/db/compare_role_catalogs.py \
   --expected "$SOURCE_ROLES" \
   --actual "$TARGET_ROLES" \
-  --output "$ROLE_COMPARISON"
+  --output "$ROLE_COMPARISON"; then
+  persist_role_diagnostics
+  exit 1
+fi
 
-mkdir -p "$(dirname "$OUTPUT")"
+persist_role_diagnostics
 cat >"$OUTPUT" <<EOF
 {
   "schema": "request-engine/postgres-clean-restore-smoke/v1",
@@ -132,7 +208,7 @@ cat >"$OUTPUT" <<EOF
   "image": "$IMAGE",
   "source_destroyed_before_target_restore": true,
   "clean_target_container": true,
-  "cluster_role_topology_bootstrapped": true,
+  "cluster_role_topology_sidecar_restored": true,
   "cluster_role_topology_equivalent": true,
   "custom_format_dump_restored": true,
   "alembic_head_preserved": true,
