@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from threading import Lock
 from typing import Final
+from threading import Lock
 
 
 _METRIC_NAMES: Final = (
