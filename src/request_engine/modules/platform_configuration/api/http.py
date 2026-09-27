@@ -95,6 +95,7 @@ from request_engine.modules.platform_configuration.application.webhook import (
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
+from request_engine.platform.observability.p7_metrics import P7OperationalMetrics
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 from request_engine.platform.secrets.platform_store import PlatformSecretStore
 from request_engine.platform.security.appointment_option_keyring import (
@@ -421,6 +422,7 @@ def install_platform_configuration_http(
     smtp_validator: SmtpConfigurationValidator | None = None,
     smtp_tester: SmtpProviderTester | None = None,
     deployment_readiness: PlatformDeploymentReadinessFacts | None = None,
+    operational_metrics: P7OperationalMetrics | None = None,
 ) -> None:
     reader = PostgresPlatformConfigurationReader(read_session_factory)
     readiness_reader = PostgresPlatformReadinessReader(read_session_factory)
@@ -562,16 +564,25 @@ def install_platform_configuration_http(
             raise PlatformConfigurationInvalid()
         if secret_service is None:
             raise PlatformSecretUnavailable()
-        result = await secret_service.rotate(
-            actor,
-            RotatePlatformSecret(
-                binding_id=binding_id,
-                expected_revision=body.expected_revision,
-                expected_backend_version=body.expected_backend_version,
-                value=body.value.get_secret_value(),
-                idempotency_key=idempotency_key,
-            ),
-        )
+        try:
+            result = await secret_service.rotate(
+                actor,
+                RotatePlatformSecret(
+                    binding_id=binding_id,
+                    expected_revision=body.expected_revision,
+                    expected_backend_version=body.expected_backend_version,
+                    value=body.value.get_secret_value(),
+                    idempotency_key=idempotency_key,
+                ),
+            )
+        except (
+            PlatformSecretConflict,
+            PlatformSecretReconciliationRequired,
+            PlatformSecretUnavailable,
+        ):
+            if operational_metrics is not None:
+                operational_metrics.record_rotation_failure()
+            raise
         return _secret_mutation_view(result)
 
     async def create_appointment_signing_keyring(
@@ -604,20 +615,29 @@ def install_platform_configuration_http(
         require_platform_configuration_step_up(actor)
         if appointment_signing_secret_service is None:
             raise PlatformSecretUnavailable()
-        result = await appointment_signing_secret_service.rotate_transformed(
-            actor,
-            RotatePlatformSecretIntent(
-                binding_id=binding_id,
-                expected_revision=body.expected_revision,
-                expected_backend_version=body.expected_backend_version,
-                idempotency_key=idempotency_key,
-            ),
-            expected_purpose="security.appointment_option_signing",
-            transform=lambda current: rotate_appointment_option_keyring(
-                current,
-                new_key_id=body.new_key_id,
-            ),
-        )
+        try:
+            result = await appointment_signing_secret_service.rotate_transformed(
+                actor,
+                RotatePlatformSecretIntent(
+                    binding_id=binding_id,
+                    expected_revision=body.expected_revision,
+                    expected_backend_version=body.expected_backend_version,
+                    idempotency_key=idempotency_key,
+                ),
+                expected_purpose="security.appointment_option_signing",
+                transform=lambda current: rotate_appointment_option_keyring(
+                    current,
+                    new_key_id=body.new_key_id,
+                ),
+            )
+        except (
+            PlatformSecretConflict,
+            PlatformSecretReconciliationRequired,
+            PlatformSecretUnavailable,
+        ):
+            if operational_metrics is not None:
+                operational_metrics.record_rotation_failure()
+            raise
         return _secret_mutation_view(result)
 
     async def revoke_secret(
@@ -701,6 +721,8 @@ def install_platform_configuration_http(
             destination=body.destination,
             idempotency_key=idempotency_key,
         )
+        if operational_metrics is not None and result.outcome.value != "delivered":
+            operational_metrics.record_provider_test_failure()
         return _provider_test_view(result)
 
     async def activate_configuration(
