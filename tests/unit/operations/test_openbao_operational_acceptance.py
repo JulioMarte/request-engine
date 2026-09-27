@@ -78,9 +78,14 @@ class _CasStore:
 async def test_openbao_acceptance_requires_one_cas_winner_and_revocation() -> None:
     secret_id = UUID("11111111-1111-1111-1111-111111111111")
 
-    result = await module.run_acceptance(_CasStore(), secret_id=secret_id)
+    result = await module.run_acceptance(
+        _CasStore(),
+        secret_id=secret_id,
+        topology_reference="unit-test-openbao",
+    )
 
     assert result["outcome"] == "accepted"
+    assert result["topology_reference"] == "unit-test-openbao"
     assert result["initial_version"] == 1
     assert result["winning_version"] == 2
     assert result["exactly_one_cas_winner"] is True
@@ -89,3 +94,13 @@ async def test_openbao_acceptance_requires_one_cas_winner_and_revocation() -> No
     assert result["winner_value_resolution_verified"] is True
     assert result["revocation_verified"] is True
     assert result["secret_value_persisted_in_evidence"] is False
+
+
+@pytest.mark.asyncio
+async def test_openbao_acceptance_requires_topology_reference() -> None:
+    with pytest.raises(module.OpenBaoAcceptanceError, match="topology reference"):
+        await module.run_acceptance(
+            _CasStore(),
+            secret_id=UUID("22222222-2222-2222-2222-222222222222"),
+            topology_reference=" ",
+        )
