@@ -80,13 +80,32 @@ def certify(
     target = openbao.get("target")
     if not isinstance(target, dict) or not target.get("address"):
         raise CertificationError("OpenBao evidence does not identify its target")
-    if openbao.get("revocation_verified") is not True or openbao.get("exactly_one_cas_winner") is not True:
+    openbao_required = (
+        openbao.get("revocation_verified") is True,
+        openbao.get("exactly_one_cas_winner") is True,
+        openbao.get("winner_value_resolution_verified") is True,
+        openbao.get("secret_value_persisted_in_evidence") is False,
+    )
+    if not all(openbao_required):
         raise CertificationError("OpenBao acceptance proof is incomplete")
 
     if smtp.get("authenticated") is not True or smtp.get("credentials_persisted") is not False:
         raise CertificationError("SMTP acceptance proof is incomplete")
-    if not smtp.get("delivery_evidence_reference") or not smtp.get("throttling_evidence_reference"):
-        raise CertificationError("SMTP mailbox/throttling evidence references are required")
+    if smtp.get("security") not in {"tls", "starttls"}:
+        raise CertificationError("SMTP acceptance must prove TLS or STARTTLS")
+    validation = smtp.get("validation")
+    submission = smtp.get("smtp_submission")
+    if not isinstance(validation, dict) or validation.get("status") != "valid":
+        raise CertificationError("SMTP provider validation proof is incomplete")
+    if not isinstance(submission, dict) or submission.get("outcome") != "delivered":
+        raise CertificationError("SMTP submission proof is incomplete")
+    addresses = smtp.get("dns_addresses")
+    if not isinstance(addresses, list) or not addresses or not all(isinstance(item, str) and item for item in addresses):
+        raise CertificationError("SMTP DNS evidence is incomplete")
+    for field in ("delivery_evidence_reference", "throttling_evidence_reference"):
+        value = smtp.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise CertificationError("SMTP mailbox/throttling evidence references are required")
 
     observed_rpo = recovery.get("observed_rpo_seconds")
     observed_rto = recovery.get("observed_rto_seconds")
