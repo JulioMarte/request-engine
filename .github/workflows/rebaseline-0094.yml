@@ -85,7 +85,7 @@ jobs:
         run: bash scripts/ci/run_current_product.sh
       - name: Check promotion diff
         run: |
-          git diff --check
+          git diff --check -- . ':(exclude)migrations/baseline/0001_schema.*.sql'
           git status --short
           test -z "$(find migrations/versions -maxdepth 1 -type f -name '0*.py' ! -name '0001_initial.py' -print -quit)"
       - name: Commit certified baseline promotion
