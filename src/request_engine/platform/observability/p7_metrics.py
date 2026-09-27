@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
 from threading import Lock
 
 
-_METRIC_NAMES: Final = (
+_METRIC_NAMES = (
     "provider_test_failures_total",
     "rotation_failures_total",
     "config_propagation_lag_seconds",
