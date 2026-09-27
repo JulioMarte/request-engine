@@ -103,6 +103,7 @@ from request_engine.platform.security.appointment_option_keyring import (
     rotate_appointment_option_keyring,
     validate_appointment_option_key_id,
 )
+from request_engine.platform.security.context import PrincipalKind
 from request_engine.platform.security.freshness import require_phishing_resistant_authentication
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.platform_http import PlatformActorResolver
@@ -567,8 +568,12 @@ def install_platform_configuration_http(
 
     async def get_platform_observability(
         _bearer: _NativeBearer,
-        _actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        actor: PlatformActorContext = Depends(authenticated_actor),
     ) -> PlatformObservabilityView:
+        if actor.principal_kind is not PrincipalKind.HUMAN or not actor.allows(
+            "platform.readiness.read"
+        ):
+            raise PlatformConfigurationForbidden("platform.readiness.read")
         snapshot = metrics.snapshot()
         return PlatformObservabilityView(
             metric_names=metrics.metric_names,
