@@ -1,4 +1,4 @@
-name: PostgreSQL 18 rebaseline 0094 proof
+name: Promote certified PostgreSQL 18 rebaseline
 
 on:
   push:
@@ -7,39 +7,44 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  actions: read
+  contents: write
 
 env:
   UV_VERSION: "0.12.5"
 
 jobs:
-  materialize:
-    name: Materialize effective 0094 candidate
+  promote:
+    name: Promote and prove canonical 0001
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 50
     services:
       postgres:
         image: postgres:18
         env:
-          POSTGRES_DB: request_engine_rebaseline_source
+          POSTGRES_DB: request_engine_current
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d request_engine_rebaseline_source"
+          --health-cmd "pg_isready -U postgres -d request_engine_current"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
       PGHOST: 127.0.0.1
       PGPORT: "5432"
-      PGDATABASE: request_engine_rebaseline_source
+      PGDATABASE: request_engine_current
       PGUSER: postgres
       PGPASSWORD: postgres
-      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_rebaseline_source
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_current
+      REBASELINE_PROOF_DIR: .ci/rebaseline-proof
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -48,124 +53,56 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - name: Verify PostgreSQL 18 dump client
-        run: |
-          version="$(docker exec "${{ job.services.postgres.id }}" pg_dump --version)"
-          echo "$version"
-          [[ "$version" == *" 18."* ]]
-      - name: Materialize effective 0094 model
-        env:
-          REBASELINE_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
-        run: bash scripts/db/build_rebaseline_0094_candidate.sh
-      - name: Upload candidate and source catalogs
-        uses: actions/upload-artifact@v4
-        with:
-          name: rebaseline-0094-candidate-v2
-          path: .ci/rebaseline-0094/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 30
-
-  clean-cluster-proof:
-    name: Prove candidate on clean PostgreSQL 18 cluster
-    needs: materialize
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_DB: request_engine_rebaseline_target
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d request_engine_rebaseline_target"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    env:
-      PGHOST: 127.0.0.1
-      PGPORT: "5432"
-      PGDATABASE: request_engine_rebaseline_target
-      PGUSER: postgres
-      PGPASSWORD: postgres
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-      - uses: actions/download-artifact@v4
-        with:
-          name: rebaseline-0094-candidate-v2
-          path: .ci/rebaseline-0094
-      - name: Install project
+      - name: Download certified schema-and-seed proof
+        run: >-
+          gh run download 36354361866
+          --repo "${GITHUB_REPOSITORY}"
+          --name rebaseline-0094-clean-cluster-proof-v2
+          --dir "${REBASELINE_PROOF_DIR}"
+      - name: Prepare destructive promotion from certified artifact
+        run: python scripts/db/promote_rebaseline_0094.py
+      - name: Install promoted repository
         run: uv sync --all-groups
-      - name: Verify PostgreSQL 18 dump client
+      - name: Require collapsed Alembic history
         run: |
-          version="$(docker exec "${{ job.services.postgres.id }}" pg_dump --version)"
-          echo "$version"
-          [[ "$version" == *" 18."* ]]
-      - name: Recreate exact Request Engine role topology
-        run: psql -v ON_ERROR_STOP=1 -d postgres -f .ci/rebaseline-0094/0001_roles.sql
-      - name: Install candidate without historical migrations
-        run: psql -v ON_ERROR_STOP=1 -f .ci/rebaseline-0094/0001_schema.sql
-      - name: Export target schema and seed catalogs
+          mapfile -t revisions < <(find migrations/versions -maxdepth 1 -type f -name '*.py' ! -name '__init__.py' -printf '%f\n' | sort)
+          printf 'active revisions: %s\n' "${revisions[*]}"
+          [[ "${#revisions[@]}" -eq 1 ]]
+          [[ "${revisions[0]}" == "0001_initial.py" ]]
+          mapfile -t heads < <(uv run alembic heads | awk 'NF {print $1}')
+          [[ "${#heads[@]}" -eq 1 ]]
+          [[ "${heads[0]}" == "0001_initial" ]]
+      - name: Run baseline architecture contracts
+        run: >-
+          uv run pytest
+          tests/architecture/test_alembic_revision_contract.py
+          tests/architecture/test_alembic_revision_identifiers.py
+          tests/architecture/test_baseline_repository_contract.py
+          tests/unit/test_baseline_loader.py
+          tests/unit/test_verify_accepted_baseline.py
+          -q --tb=short
+      - name: Run canonical current-product proof
+        run: bash scripts/ci/run_current_product.sh
+      - name: Check promotion diff
         run: |
-          uv run python scripts/db/export_role_catalog.py --output .ci/rebaseline-0094/clean-role-catalog.json
-          uv run python scripts/db/export_schema_catalog.py --output .ci/rebaseline-0094/clean-schema-catalog.json
-          uv run python scripts/db/export_seed_data_catalog.py --output .ci/rebaseline-0094/clean-seed-data-catalog.json
-      - name: Export exact target DDL with PostgreSQL 18
+          git diff --check -- . ':(exclude)migrations/baseline/0001_schema.*.sql'
+          git status --short
+          test -z "$(find migrations/versions -maxdepth 1 -type f -name '0*.py' ! -name '0001_initial.py' -print -quit)"
+      - name: Commit certified baseline promotion
         run: |
-          docker exec \
-            -e PGUSER=postgres \
-            -e PGPASSWORD=postgres \
-            "${{ job.services.postgres.id }}" \
-            pg_dump \
-              --schema-only \
-              --no-comments \
-              --exclude-table=alembic_version \
-              request_engine_rebaseline_target > .ci/rebaseline-0094/clean-schema-ddl.raw.sql
-          uv run python scripts/db/sanitize_plain_pg_dump.py \
-            .ci/rebaseline-0094/clean-schema-ddl.raw.sql \
-            .ci/rebaseline-0094/clean-schema-ddl.sql
-          rm .ci/rebaseline-0094/clean-schema-ddl.raw.sql
-      - name: Require exact role topology
-        run: >-
-          uv run python scripts/db/compare_role_catalogs.py
-          --expected .ci/rebaseline-0094/source-role-catalog.json
-          --actual .ci/rebaseline-0094/clean-role-catalog.json
-          --output .ci/rebaseline-0094/clean-role-comparison.json
-      - name: Require effective schema equivalence
-        run: >-
-          uv run python scripts/db/compare_schema_catalogs.py
-          --expected .ci/rebaseline-0094/source-schema-catalog.json
-          --actual .ci/rebaseline-0094/clean-schema-catalog.json
-          --output .ci/rebaseline-0094/clean-schema-comparison.json
-      - name: Require exact migration-owned seed state
-        run: >-
-          uv run python scripts/db/compare_seed_data_catalogs.py
-          --expected .ci/rebaseline-0094/source-seed-data-catalog.json
-          --actual .ci/rebaseline-0094/clean-seed-data-catalog.json
-          --output .ci/rebaseline-0094/clean-seed-data-comparison.json
-      - name: Require exact PostgreSQL DDL
-        run: >-
-          uv run python scripts/db/compare_exact_files.py
-          --expected .ci/rebaseline-0094/source-schema-ddl.sql
-          --actual .ci/rebaseline-0094/clean-schema-ddl.sql
-          --output .ci/rebaseline-0094/clean-schema-ddl-comparison.json
-      - name: Upload clean-cluster proof
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "db: promote certified 0094 model into canonical baseline"
+          git push origin HEAD:feature/rebaseline-0094
+      - name: Upload promotion evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rebaseline-0094-clean-cluster-proof-v2
-          path: .ci/rebaseline-0094/
+          name: rebaseline-0094-promotion-evidence-v2
+          path: |
+            .ci/rebaseline-proof/
+            .ci/current-product/
           include-hidden-files: true
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
