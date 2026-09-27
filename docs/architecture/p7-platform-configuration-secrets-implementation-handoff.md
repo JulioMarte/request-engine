@@ -65,6 +65,13 @@ Status: **implementation handoff; P7 is not delivered or production-certified**
 > restore drill with offline Platform Owner recovery, clone-fence verification and
 > operator-approved measured RPO/RTO.
 >
+> The clean-target recovery tooling now uses OpenBao Raft `snapshot restore -force`
+> because a fresh target necessarily begins with different seal material. Bundle
+> restore evidence is deliberately only `restore_applied_pending_verification`;
+> final certification requires restart, unseal with the original snapshot keys
+> and the full post-restore drill. This prevents the tooling from treating a
+> successfully applied snapshot as a successfully recovered service.
+>
 ## 0. Executive decision
 
 P1-P6 are now the trust root. Do not reopen them merely because P7 needs
