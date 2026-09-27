@@ -1,5 +1,4 @@
-import dataclasses
-import threading
+from dataclasses import dataclass
 
 
 _METRIC_NAMES = (
@@ -13,7 +12,7 @@ _METRIC_NAMES = (
 )
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True)
 class P7MetricSnapshot:
     provider_test_failures_total: int
     rotation_failures_total: int
@@ -24,7 +23,7 @@ class P7MetricSnapshot:
     readiness_transition_total: int
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True)
 class P7AlertThresholds:
     max_config_propagation_lag_seconds: float = 60.0
     max_backup_age_seconds: float = 90_000.0
@@ -39,7 +38,7 @@ class P7AlertThresholds:
             raise ValueError("max_restore_drill_age_seconds must be non-negative")
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True)
 class P7Alert:
     code: str
     metric: str
@@ -48,16 +47,14 @@ class P7Alert:
 
 
 class P7OperationalMetrics:
-    """Process-local P7 metrics with a stable, secret-free snapshot contract.
+    """Secret-free, process-local operational signals for P7.
 
-    The collector intentionally stores only counts, durations, and ages. Provider
-    credentials, secret identifiers, destinations, and configuration payloads are
-    never accepted by this API, which makes the snapshot safe to bridge into the
-    deployment's metrics exporter.
+    These values are advisory telemetry, not authoritative state. Mutation
+    correctness remains in PostgreSQL/OpenBao, so metrics never participate in
+    authorization, recovery, or reconciliation decisions.
     """
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
         self._provider_test_failures_total = 0
         self._rotation_failures_total = 0
         self._config_propagation_lag_seconds = 0.0
@@ -71,47 +68,39 @@ class P7OperationalMetrics:
         return _METRIC_NAMES
 
     def record_provider_test_failure(self) -> None:
-        with self._lock:
-            self._provider_test_failures_total += 1
+        self._provider_test_failures_total += 1
 
     def record_rotation_failure(self) -> None:
-        with self._lock:
-            self._rotation_failures_total += 1
+        self._rotation_failures_total += 1
 
     def observe_config_propagation_lag(self, seconds: float) -> None:
         self._require_non_negative(seconds)
-        with self._lock:
-            self._config_propagation_lag_seconds = seconds
+        self._config_propagation_lag_seconds = seconds
 
     def record_secret_backend_failure(self) -> None:
-        with self._lock:
-            self._secret_backend_failures_total += 1
+        self._secret_backend_failures_total += 1
 
     def observe_last_successful_backup_age(self, seconds: float) -> None:
         self._require_non_negative(seconds)
-        with self._lock:
-            self._last_successful_backup_age_seconds = seconds
+        self._last_successful_backup_age_seconds = seconds
 
     def observe_restore_drill_age(self, seconds: float) -> None:
         self._require_non_negative(seconds)
-        with self._lock:
-            self._restore_drill_age_seconds = seconds
+        self._restore_drill_age_seconds = seconds
 
     def record_readiness_transition(self) -> None:
-        with self._lock:
-            self._readiness_transition_total += 1
+        self._readiness_transition_total += 1
 
     def snapshot(self) -> P7MetricSnapshot:
-        with self._lock:
-            return P7MetricSnapshot(
-                provider_test_failures_total=self._provider_test_failures_total,
-                rotation_failures_total=self._rotation_failures_total,
-                config_propagation_lag_seconds=self._config_propagation_lag_seconds,
-                secret_backend_failures_total=self._secret_backend_failures_total,
-                last_successful_backup_age_seconds=self._last_successful_backup_age_seconds,
-                restore_drill_age_seconds=self._restore_drill_age_seconds,
-                readiness_transition_total=self._readiness_transition_total,
-            )
+        return P7MetricSnapshot(
+            provider_test_failures_total=self._provider_test_failures_total,
+            rotation_failures_total=self._rotation_failures_total,
+            config_propagation_lag_seconds=self._config_propagation_lag_seconds,
+            secret_backend_failures_total=self._secret_backend_failures_total,
+            last_successful_backup_age_seconds=self._last_successful_backup_age_seconds,
+            restore_drill_age_seconds=self._restore_drill_age_seconds,
+            readiness_transition_total=self._readiness_transition_total,
+        )
 
     def alerts(self, thresholds: P7AlertThresholds | None = None) -> tuple[P7Alert, ...]:
         limits = thresholds or P7AlertThresholds()
