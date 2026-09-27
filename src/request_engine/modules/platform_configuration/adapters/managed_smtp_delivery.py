@@ -4,6 +4,7 @@ from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfigurationError,
     ActivePlatformConfigurationResolver,
 )
+from request_engine.platform.observability.p7_metrics import P7OperationalMetrics
 from request_engine.platform.secrets.delivery import (
     DeliveryOutcome,
     RecoveryDeliveryRetryable,
@@ -23,10 +24,12 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
         resolver: ActivePlatformConfigurationResolver,
         fallback: SmtpRecoveryDeliveryChannel | None = None,
         reset_url: str | None = None,
+        operational_metrics: P7OperationalMetrics | None = None,
     ) -> None:
         self._resolver = resolver
         self._fallback = fallback
         self._reset_url = reset_url
+        self._operational_metrics = operational_metrics
 
     async def send(
         self,
@@ -89,13 +92,20 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
         try:
             managed = await self._resolver.resolve_smtp()
         except (ActivePlatformConfigurationError, RuntimeError) as exc:
+            if self._operational_metrics is not None:
+                self._operational_metrics.record_worker_configuration_failure()
             raise RecoveryDeliveryRetryable(
                 "managed SMTP configuration is temporarily unavailable"
             ) from exc
 
         if managed is None:
             if self._fallback is None:
+                if self._operational_metrics is not None:
+                    self._operational_metrics.observe_provider_configuration_source("unconfigured")
+                    self._operational_metrics.record_worker_configuration_failure()
                 raise RecoveryDeliveryRetryable("SMTP is neither managed nor bootstrap-configured")
+            if self._operational_metrics is not None:
+                self._operational_metrics.observe_provider_configuration_source("bootstrap")
             return None
 
         smtp = managed.configuration
