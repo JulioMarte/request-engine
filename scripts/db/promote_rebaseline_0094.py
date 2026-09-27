@@ -15,7 +15,8 @@ EXPECTED_SOURCE_HEAD = "0094_managed_oidc_readiness"
 CHUNK_LIMIT = 120_000
 ALLOWED_SINCE_PROOF = {
     ".github/workflows/rebaseline-0094.yml",
-    "scripts/db/promote_rebaseline_0094.py",\n    "scripts/db/prove_multidatabase_migration_compatibility.py",
+    "scripts/db/promote_rebaseline_0094.py",
+    "scripts/db/prove_multidatabase_migration_compatibility.py",
 }
 
 
