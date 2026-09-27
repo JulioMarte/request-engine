@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
-from threading import Lock
 
 
 _METRIC_NAMES = (
@@ -59,7 +59,7 @@ class P7OperationalMetrics:
     """
 
     def __init__(self) -> None:
-        self._lock = Lock()
+        self._lock = threading.Lock()
         self._provider_test_failures_total = 0
         self._rotation_failures_total = 0
         self._config_propagation_lag_seconds = 0.0
