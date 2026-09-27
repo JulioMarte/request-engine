@@ -2,24 +2,50 @@ from dataclasses import dataclass
 
 
 _METRIC_NAMES = (
+    "active_revision",
+    "validation_success_total",
+    "validation_failure_total",
+    "validation_unavailable_total",
+    "activation_total",
+    "disable_total",
     "provider_test_failures_total",
     "rotation_failures_total",
     "config_propagation_lag_seconds",
+    "cache_invalidations_total",
+    "revision_poll_corrections_total",
     "secret_backend_failures_total",
+    "provider_configuration_source",
+    "worker_configuration_failures_total",
+    "worker_secret_store_failures_total",
     "last_successful_backup_age_seconds",
     "restore_drill_age_seconds",
+    "restore_drill_evidence_reference",
+    "clone_fence_state",
     "readiness_transition_total",
 )
 
 
 @dataclass(frozen=True, slots=True)
 class P7MetricSnapshot:
+    active_revisions: tuple[tuple[str, int], ...]
+    validation_success_total: int
+    validation_failure_total: int
+    validation_unavailable_total: int
+    activation_total: int
+    disable_total: int
     provider_test_failures_total: int
     rotation_failures_total: int
     config_propagation_lag_seconds: float
+    cache_invalidations_total: int
+    revision_poll_corrections_total: int
     secret_backend_failures_total: int
+    provider_configuration_source: str
+    worker_configuration_failures_total: int
+    worker_secret_store_failures_total: int
     last_successful_backup_age_seconds: float
     restore_drill_age_seconds: float
+    restore_drill_evidence_reference: str | None
+    clone_fence_state: str
     readiness_transition_total: int
 
 
@@ -55,17 +81,50 @@ class P7OperationalMetrics:
     """
 
     def __init__(self) -> None:
+        self._active_revisions: dict[str, int] = {}
+        self._validation_success_total = 0
+        self._validation_failure_total = 0
+        self._validation_unavailable_total = 0
+        self._activation_total = 0
+        self._disable_total = 0
         self._provider_test_failures_total = 0
         self._rotation_failures_total = 0
         self._config_propagation_lag_seconds = 0.0
+        self._cache_invalidations_total = 0
+        self._revision_poll_corrections_total = 0
         self._secret_backend_failures_total = 0
+        self._provider_configuration_source = "unknown"
+        self._worker_configuration_failures_total = 0
+        self._worker_secret_store_failures_total = 0
         self._last_successful_backup_age_seconds = 0.0
         self._restore_drill_age_seconds = 0.0
+        self._restore_drill_evidence_reference: str | None = None
+        self._clone_fence_state = "unknown"
         self._readiness_transition_total = 0
 
     @property
     def metric_names(self) -> tuple[str, ...]:
         return _METRIC_NAMES
+
+    def record_validation(self, outcome: str) -> None:
+        if outcome == "success":
+            self._validation_success_total += 1
+        elif outcome == "failure":
+            self._validation_failure_total += 1
+        elif outcome == "unavailable":
+            self._validation_unavailable_total += 1
+        else:
+            raise ValueError("validation outcome must be success, failure, or unavailable")
+
+    def record_activation(self, configuration_kind: str, revision: int) -> None:
+        if revision <= 0:
+            raise ValueError("active revision must be positive")
+        self._activation_total += 1
+        self._active_revisions[configuration_kind] = revision
+
+    def record_disable(self, configuration_kind: str) -> None:
+        self._disable_total += 1
+        self._active_revisions.pop(configuration_kind, None)
 
     def record_provider_test_failure(self) -> None:
         self._provider_test_failures_total += 1
@@ -77,8 +136,25 @@ class P7OperationalMetrics:
         self._require_non_negative(seconds)
         self._config_propagation_lag_seconds = seconds
 
+    def record_cache_invalidation(self) -> None:
+        self._cache_invalidations_total += 1
+
+    def record_revision_poll_correction(self) -> None:
+        self._revision_poll_corrections_total += 1
+
     def record_secret_backend_failure(self) -> None:
         self._secret_backend_failures_total += 1
+
+    def observe_provider_configuration_source(self, source: str) -> None:
+        if source not in {"bootstrap", "managed", "unconfigured", "unknown"}:
+            raise ValueError("unsupported provider configuration source")
+        self._provider_configuration_source = source
+
+    def record_worker_configuration_failure(self) -> None:
+        self._worker_configuration_failures_total += 1
+
+    def record_worker_secret_store_failure(self) -> None:
+        self._worker_secret_store_failures_total += 1
 
     def observe_last_successful_backup_age(self, seconds: float) -> None:
         self._require_non_negative(seconds)
@@ -88,17 +164,40 @@ class P7OperationalMetrics:
         self._require_non_negative(seconds)
         self._restore_drill_age_seconds = seconds
 
+    def observe_restore_drill_evidence_reference(self, reference: str | None) -> None:
+        if reference is not None and not reference.strip():
+            raise ValueError("restore drill evidence reference cannot be blank")
+        self._restore_drill_evidence_reference = reference
+
+    def observe_clone_fence(self, state: str) -> None:
+        if state not in {"fenced", "open", "unknown"}:
+            raise ValueError("clone fence state must be fenced, open, or unknown")
+        self._clone_fence_state = state
+
     def record_readiness_transition(self) -> None:
         self._readiness_transition_total += 1
 
     def snapshot(self) -> P7MetricSnapshot:
         return P7MetricSnapshot(
+            active_revisions=tuple(sorted(self._active_revisions.items())),
+            validation_success_total=self._validation_success_total,
+            validation_failure_total=self._validation_failure_total,
+            validation_unavailable_total=self._validation_unavailable_total,
+            activation_total=self._activation_total,
+            disable_total=self._disable_total,
             provider_test_failures_total=self._provider_test_failures_total,
             rotation_failures_total=self._rotation_failures_total,
             config_propagation_lag_seconds=self._config_propagation_lag_seconds,
+            cache_invalidations_total=self._cache_invalidations_total,
+            revision_poll_corrections_total=self._revision_poll_corrections_total,
             secret_backend_failures_total=self._secret_backend_failures_total,
+            provider_configuration_source=self._provider_configuration_source,
+            worker_configuration_failures_total=self._worker_configuration_failures_total,
+            worker_secret_store_failures_total=self._worker_secret_store_failures_total,
             last_successful_backup_age_seconds=self._last_successful_backup_age_seconds,
             restore_drill_age_seconds=self._restore_drill_age_seconds,
+            restore_drill_evidence_reference=self._restore_drill_evidence_reference,
+            clone_fence_state=self._clone_fence_state,
             readiness_transition_total=self._readiness_transition_total,
         )
 
