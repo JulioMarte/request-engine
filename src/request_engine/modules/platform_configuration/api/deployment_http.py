@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, FastAPI, Header, Request, Security
@@ -105,11 +105,13 @@ def install_deployment_recovery_http(
     async def authenticated_actor(request: Request) -> PlatformActorContext:
         return await actor_resolver.resolve_platform_actor(request)
 
+    platform_actor_dependency: Any = Depends(authenticated_actor)
+
     async def configure(
         body: DeploymentBindingBody,
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
-        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        actor: PlatformActorContext = platform_actor_dependency,
     ) -> DeploymentBindingView:
         require_platform_configuration_step_up(actor)
         metadata = await reader.get_secret_binding(actor, body.secret_binding_id)
@@ -163,7 +165,7 @@ def install_deployment_recovery_http(
 
     async def plan(
         _bearer: _NativeBearer,
-        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        actor: PlatformActorContext = platform_actor_dependency,
     ) -> DeploymentPlanView:
         binding, result = await service.plan(actor)
         return DeploymentPlanView(
@@ -174,7 +176,7 @@ def install_deployment_recovery_http(
 
     async def reconcile(
         _bearer: _NativeBearer,
-        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        actor: PlatformActorContext = platform_actor_dependency,
     ) -> DeploymentReconcileView:
         require_platform_configuration_step_up(actor)
         binding, result = await service.reconcile(actor)
