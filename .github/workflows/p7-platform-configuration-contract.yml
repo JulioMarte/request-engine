@@ -99,6 +99,7 @@ jobs:
             tests/db/test_platform_configuration_governance.py \
             tests/db/test_platform_configuration_hot_reload.py \
             tests/db/test_managed_oidc_projection.py \
+            'tests/e2e/test_platform_control_runtime_factory.py::test_private_runtime_rechecks_privileges_and_authority[membership]' \
             -q --tb=short --durations=20 \
             --junitxml=.ci/p7-platform-configuration.xml
       - name: Start real OpenBao engine for CAS acceptance
