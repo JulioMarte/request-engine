@@ -125,7 +125,11 @@ def _validate_artifact(artifact: Path) -> tuple[dict[str, Any], dict[str, Any], 
     if meta:
         raise RuntimeError(f"candidate contains psql meta-command(s): {meta[:3]!r}")
 
-    return (\n        _load(artifact / "source-schema-catalog.json"),\n        _load(artifact / "source-role-catalog.json"),\n        _load(artifact / "source-seed-data-catalog.json"),\n    )
+    return (
+        _load(artifact / "source-schema-catalog.json"),
+        _load(artifact / "source-role-catalog.json"),
+        _load(artifact / "source-seed-data-catalog.json"),
+    )
 
 
 def _split_schema(payload: bytes) -> list[bytes]:
