@@ -32,6 +32,8 @@ def _evidence(tmp_path: Path) -> tuple[Path, Path, Path]:
             "target": {"address": "https://openbao.internal:8200"},
             "revocation_verified": True,
             "exactly_one_cas_winner": True,
+            "winner_value_resolution_verified": True,
+            "secret_value_persisted_in_evidence": False,
         },
     )
     smtp = _write(
@@ -42,6 +44,10 @@ def _evidence(tmp_path: Path) -> tuple[Path, Path, Path]:
             "completed_at": "2026-09-27T02:10:00+00:00",
             "authenticated": True,
             "credentials_persisted": False,
+            "security": "starttls",
+            "dns_addresses": ["203.0.113.10"],
+            "validation": {"status": "valid", "detail_code": "smtp_valid"},
+            "smtp_submission": {"outcome": "delivered", "detail_code": "smtp_test_delivered"},
             "delivery_evidence_reference": "mailbox-audit-42",
             "throttling_evidence_reference": "provider-ticket-43",
         },
@@ -117,5 +123,39 @@ def test_certification_rejects_stale_evidence(tmp_path: Path) -> None:
             recovery_path=recovery,
             expected_openbao_topology="prod-raft-v1",
             max_evidence_age_hours=0.5,
+            now=NOW,
+        )
+
+
+def test_certification_rejects_smtp_without_submission_proof(tmp_path: Path) -> None:
+    openbao, smtp, recovery = _evidence(tmp_path)
+    value = json.loads(smtp.read_text(encoding="utf-8"))
+    value["smtp_submission"] = {"outcome": "unknown"}
+    _write(smtp, value)
+    with pytest.raises(module.CertificationError, match="submission proof"):
+        module.certify(
+            openbao_path=openbao,
+            smtp_path=smtp,
+            recovery_path=recovery,
+            expected_openbao_topology="prod-raft-v1",
+            max_evidence_age_hours=24,
+            now=NOW,
+        )
+
+
+def test_certification_rejects_openbao_evidence_that_could_contain_secret_value(
+    tmp_path: Path,
+) -> None:
+    openbao, smtp, recovery = _evidence(tmp_path)
+    value = json.loads(openbao.read_text(encoding="utf-8"))
+    value["secret_value_persisted_in_evidence"] = True
+    _write(openbao, value)
+    with pytest.raises(module.CertificationError, match="OpenBao acceptance proof"):
+        module.certify(
+            openbao_path=openbao,
+            smtp_path=smtp,
+            recovery_path=recovery,
+            expected_openbao_topology="prod-raft-v1",
+            max_evidence_age_hours=24,
             now=NOW,
         )
