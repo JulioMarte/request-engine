@@ -30,6 +30,21 @@ Status: **implementation handoff; P7 is not delivered or production-certified**
 > the unchanged acceptance obligations: an implemented slice is not a closed
 > slice until its required evidence class exists.
 
+> **Continuation checkpoint 2026-09-26 — repository implementation after operational-proof hardening.**
+>
+> The repository now also contains: governed OIDC administration/readiness;
+> appointment-option signing-key lifecycle; a real OpenBao 2.6.1 CI acceptance
+> that exercises KV-v2 CAS, concurrent rotation and revocation; secret-free P7
+> operational diagnostics at `GET /v1/platform/observability`; production-provider
+> SMTP acceptance tooling; and recovery-certification ingestion into control-plane
+> readiness/telemetry via `REQUEST_ENGINE_RECOVERY_CERTIFICATION_FILE`.
+>
+> This closes repository-side proof gaps but does **not** convert external
+> acceptance into CI facts. Production SMTP acceptance, the intended sealed/Raft
+> OpenBao topology exercise, retrieval of an actual encrypted off-host copy, and
+> a clean-environment PostgreSQL+OpenBao restore with operator-approved RPO/RTO
+> remain `NOT PROVEN` until their real evidence artifacts exist.
+>
 ## 0. Executive decision
 
 P1-P6 are now the trust root. Do not reopen them merely because P7 needs
