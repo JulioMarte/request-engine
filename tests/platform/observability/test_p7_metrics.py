@@ -51,8 +51,8 @@ def test_p7_metrics_expose_the_required_secret_free_operational_signals() -> Non
     assert snapshot.provider_configuration_source == "managed"
     assert snapshot.worker_configuration_failures_total == 1
     assert snapshot.worker_secret_store_failures_total == 1
-    assert snapshot.last_successful_backup_age_seconds == 3600.0
-    assert snapshot.restore_drill_age_seconds == 86_400.0
+    assert snapshot.last_successful_backup_age_seconds == pytest.approx(3600.0, abs=0.1)
+    assert snapshot.restore_drill_age_seconds == pytest.approx(86_400.0, abs=0.1)
     assert snapshot.restore_drill_evidence_reference == "drill-2026-09-26.json"
     assert snapshot.clone_fence_state == "fenced"
     assert snapshot.readiness_transition_total == 2
@@ -116,3 +116,20 @@ def test_p7_metrics_reject_negative_durations(method_name: str) -> None:
 
     with pytest.raises(ValueError, match="non-negative"):
         getattr(metrics, method_name)(-0.1)
+
+
+@pytest.mark.unit
+def test_backup_and_restore_ages_keep_advancing(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = iter((100.0, 200.0, 160.0, 260.0))
+    monkeypatch.setattr(
+        "request_engine.platform.observability.p7_metrics.time.monotonic",
+        lambda: next(clock),
+    )
+    metrics = P7OperationalMetrics()
+    metrics.observe_last_successful_backup_age(30.0)
+    metrics.observe_restore_drill_age(40.0)
+
+    snapshot = metrics.snapshot()
+
+    assert snapshot.last_successful_backup_age_seconds == 90.0
+    assert snapshot.restore_drill_age_seconds == 100.0
