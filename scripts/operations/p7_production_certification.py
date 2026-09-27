@@ -118,8 +118,7 @@ def certify(
     max_rto = recovery.get("accepted_max_rto_seconds")
     rpo_rto_values = (observed_rpo, observed_rto, max_rpo, max_rto)
     if not all(
-        isinstance(value, (int, float)) and not isinstance(value, bool)
-        for value in rpo_rto_values
+        isinstance(value, (int, float)) and not isinstance(value, bool) for value in rpo_rto_values
     ):
         raise CertificationError(
             "recovery evidence must include measured and operator-accepted RPO/RTO"
