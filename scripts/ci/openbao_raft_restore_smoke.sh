@@ -119,6 +119,8 @@ docker exec "$TARGET_CONTAINER" sh -c '
   bao operator unseal "$1" >/dev/null
 ' sh "$TARGET_KEY"
 docker cp "$SNAPSHOT" "$TARGET_CONTAINER:/tmp/source.snap"
+docker exec --user 0:0 "$TARGET_CONTAINER" chown openbao:openbao /tmp/source.snap
+docker exec --user 0:0 "$TARGET_CONTAINER" chmod 600 /tmp/source.snap
 docker exec -e BAO_TOKEN="$TARGET_ROOT_TOKEN" "$TARGET_CONTAINER" sh -c '
   export BAO_ADDR=http://127.0.0.1:8200
   bao operator raft snapshot restore -force /tmp/source.snap
