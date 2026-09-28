@@ -59,6 +59,11 @@ boundary without weakening either decision.
     admin surface is not exposed until P5 establishes governed additional
     Platform Owner/admin lifecycle and the existing recent
     `PHISHING_RESISTANT` guard can protect high-risk mutations.
+11. **Discoverable login is convenience, not a recovery root.** The native login
+    surface additionally accepts an omitted login handle and resolves the owning
+    identity from the presented credential id (discoverable usernameless
+    WebAuthn). It changes neither the native authentication guarantee nor the
+    offline recovery hierarchy above.
 
 ## Consequences
 
