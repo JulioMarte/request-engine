@@ -629,7 +629,6 @@ def main() -> None:
     _write_loader()
     _write_docs()
     _collapse_migration_chain()
-    _write_post_promotion_workflow()
 
     generator = ROOT / "scripts" / "db" / "build_rebaseline_0094_candidate.sh"
     generator.unlink(missing_ok=True)
