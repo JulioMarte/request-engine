@@ -10,7 +10,14 @@ from psycopg import ClientCursor
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST_PATH = ROOT / "manifest.json"
-APPLICATION_SCHEMAS = ("request_admin", "request_auth", "request_cmd", "request_engine", "request_platform", "request_read")
+APPLICATION_SCHEMAS = (
+    "request_admin",
+    "request_auth",
+    "request_cmd",
+    "request_engine",
+    "request_platform",
+    "request_read",
+)
 _MANAGED_ROLE_PATTERNS = ("request_engine_%", "request_platform_%", "request_bootstrap_%")
 _ROLE_NAME = re.compile(r'^CREATE ROLE "([^"]+)" WITH .+;$')
 _ROLE_QUERY = """
