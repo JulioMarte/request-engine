@@ -56,8 +56,13 @@ class NativeWebAuthnLoginService:
         self._decoy_key = decoy_key
 
     async def begin_login(
-        self, *, identity_authority_id: UUID, login_handle: str
+        self, *, identity_authority_id: UUID, login_handle: str | None
     ) -> WebAuthnCeremonyStarted:
+        if login_handle is None or not login_handle.strip():
+            # Usernameless/discoverable: no handle to enumerate, so no decoy is
+            # needed. The ceremony is the same authentication primitive; only the
+            # allow-list is empty and the identity is resolved at completion.
+            return await self._webauthn.begin_authentication_discoverable()
         identity_id = await self._resolve(identity_authority_id, login_handle)
         if identity_id is None:
             return await self._webauthn.begin_authentication_decoy(
@@ -69,9 +74,11 @@ class NativeWebAuthnLoginService:
         self,
         *,
         identity_authority_id: UUID,
-        login_handle: str,
+        login_handle: str | None,
         credential: Mapping[str, Any],
     ) -> NativeWebAuthnSessionIssued:
+        if login_handle is None or not login_handle.strip():
+            return await self._webauthn.complete_discoverable_authentication(credential=credential)
         identity_id = await self._resolve(identity_authority_id, login_handle)
         if identity_id is None:
             # Opaque: identical to a known identity whose assertion does not

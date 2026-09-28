@@ -2196,3 +2196,18 @@ and the old password is never replayable.
 
 This is account-access recovery, not Instance recovery and not secret-store
 restore. OpenBao/backup recovery is governed separately by ADR 0015.
+
+## Discoverable usernameless passkey login
+
+Migration `0002_discoverable_webauthn_login` makes `login_handle` optional on the
+native WebAuthn login surface. Omitting it begins a discoverable ceremony (empty
+allow-list, unbound challenge) and completes by resolving the owning native
+identity from the presented credential id; supplying a handle keeps the original
+handle-first flow and its anti-enumeration decoy. Assurance, user verification
+and methods remain derived only from the verified ceremony, the authority ->
+identity -> credential lock order is unchanged, and the new finalizer is
+executable only by the app role (PUBLIC revoked). Current guarantee
+`INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001`, proved by
+`tests/db/test_webauthn_persistence.py` and
+`tests/e2e/test_native_webauthn_login_http.py`. The private admin console uses
+this flow for passkey sign-in (no username or password).

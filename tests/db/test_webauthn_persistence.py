@@ -369,6 +369,59 @@ async def test_passkey_ceremony_issues_phishing_resistant_session(
 
 
 @pytest.mark.asyncio
+async def test_discoverable_login_resolves_identity_from_credential(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    identity_id = await _enroll_identity(
+        admin_conn, command_session_factory, login_handle="discoverable-login@example.test"
+    )
+    store = PostgresWebAuthnStore(command_session_factory)
+    service = _service(store)
+    authenticator = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
+    await _register_passkey(store, service, identity_id, authenticator)
+
+    options = await service.begin_authentication_discoverable()
+    assert not options.public_key.get("allowCredentials")
+    assertion = authenticator.authentication_credential(challenge=options.challenge)
+    issued = await service.complete_discoverable_authentication(credential=assertion)
+
+    assert issued.native_identity_id == identity_id
+    subject = await _session_authenticator(command_session_factory).authenticate(
+        NativeSessionEvidence(issued.raw_token)
+    )
+    assert subject.subject_id == str(identity_id)
+    assert subject.metadata["authentication_assurance"] == (
+        AuthenticationAssurance.PHISHING_RESISTANT.value
+    )
+    assert subject.metadata["authentication_methods"] == "webauthn"
+
+    # Replay: the consumed unbound challenge cannot be finalized again.
+    with pytest.raises(WebAuthnCeremonyError):
+        await service.complete_discoverable_authentication(credential=assertion)
+
+
+@pytest.mark.asyncio
+async def test_discoverable_login_rejects_unknown_credential(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    identity_id = await _enroll_identity(
+        admin_conn, command_session_factory, login_handle="discoverable-unknown@example.test"
+    )
+    store = PostgresWebAuthnStore(command_session_factory)
+    service = _service(store)
+    registered = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
+    await _register_passkey(store, service, identity_id, registered)
+    stranger = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
+
+    options = await service.begin_authentication_discoverable()
+    assertion = stranger.authentication_credential(challenge=options.challenge)
+    with pytest.raises(WebAuthnCeremonyError):
+        await service.complete_discoverable_authentication(credential=assertion)
+
+
+@pytest.mark.asyncio
 async def test_password_session_is_only_single_factor(
     admin_conn: PgConnection,
     command_session_factory: SessionFactory,

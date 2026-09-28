@@ -243,6 +243,47 @@ class PostgresWebAuthnStore:
             )
         return value is True
 
+    async def finalize_discoverable_authentication(
+        self,
+        *,
+        challenge_digest: bytes,
+        credential_row_id: UUID,
+        sign_count: int,
+        backup_eligible: bool,
+        backup_state: bool,
+        user_verified: bool,
+        session_id: UUID,
+        token_digest: bytes,
+        token_fingerprint: str,
+        expires_at: datetime,
+    ) -> UUID | None:
+        async with self._session_factory() as session, session.begin():
+            value = await session.scalar(
+                text(
+                    """
+                    SELECT native_identity_id
+                      FROM request_auth.finalize_discoverable_webauthn_authentication(
+                          :challenge_digest, :credential_row_id, :sign_count,
+                          :backup_eligible, :backup_state, :user_verified,
+                          :session_id, :token_digest, :token_fingerprint, :expires_at
+                      )
+                    """
+                ),
+                {
+                    "challenge_digest": challenge_digest,
+                    "credential_row_id": credential_row_id,
+                    "sign_count": sign_count,
+                    "backup_eligible": backup_eligible,
+                    "backup_state": backup_state,
+                    "user_verified": user_verified,
+                    "session_id": session_id,
+                    "token_digest": token_digest,
+                    "token_fingerprint": token_fingerprint,
+                    "expires_at": expires_at,
+                },
+            )
+        return None if value is None else UUID(str(value))
+
     async def finalize_step_up(
         self,
         *,

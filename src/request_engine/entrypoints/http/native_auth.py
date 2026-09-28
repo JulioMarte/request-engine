@@ -157,11 +157,13 @@ class NativeRecoveryReadinessView(BaseModel):
 class NativeWebAuthnLoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    login_handle: str = Field(min_length=1, max_length=320)
+    login_handle: str | None = Field(default=None, max_length=320)
 
     @field_validator("login_handle")
     @classmethod
-    def validate_handle(cls, value: str) -> str:
+    def validate_handle(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
         return normalize_login_handle(value)
 
 
@@ -172,12 +174,14 @@ class NativeWebAuthnOptionsView(BaseModel):
 class NativeWebAuthnLoginBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    login_handle: str = Field(min_length=1, max_length=320)
+    login_handle: str | None = Field(default=None, max_length=320)
     credential: dict[str, Any]
 
     @field_validator("login_handle")
     @classmethod
-    def validate_handle(cls, value: str) -> str:
+    def validate_handle(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
         return normalize_login_handle(value)
 
 
@@ -1033,7 +1037,10 @@ def _register_webauthn_routes(
             "the supplied login handle. An unknown handle, a handle without an "
             "active passkey and a handle with passkeys all return the same response "
             "shape, so this endpoint is not a reliable account-enumeration oracle. "
-            "The challenge is single-use and expires; it must be completed with "
+            "When login_handle is omitted, a discoverable usernameless ceremony is "
+            "returned instead (empty allow-list, unbound challenge) and the identity "
+            "is resolved from the presented credential at completion. The challenge "
+            "is single-use and expires; it must be completed with "
             "POST /auth/native/webauthn/sessions."
         ),
         responses={
@@ -1051,10 +1058,11 @@ def _register_webauthn_routes(
         description=(
             "Verifies the assertion against the one-time challenge, the stored "
             "credential, the relying-party/origin policy and user verification. "
-            "Assurance, user verification and methods are derived only from the "
-            "verified ceremony and cannot be supplied by the caller. A successful "
-            "user-verified assertion issues a fresh session with "
-            "PHISHING_RESISTANT assurance."
+            "When login_handle is omitted, the owning identity is resolved solely "
+            "from the presented credential id. Assurance, user verification and "
+            "methods are derived only from the verified ceremony and cannot be "
+            "supplied by the caller. A successful user-verified assertion issues a "
+            "fresh session with PHISHING_RESISTANT assurance."
         ),
         responses={
             401: {"model": ErrorEnvelope, "description": "Assertion or credential is invalid"},

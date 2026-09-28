@@ -607,11 +607,15 @@ mapping.
 A credential ID can bind to at most one native identity in the authority. The
 same passkey credential cannot be silently attached to two Principals/identities.
 
-The first implementation may use a username/login-handle-first authentication
-flow if that best fits the current native identity model. Any account lookup must
-preserve the existing anti-enumeration failure semantics. Discoverable
-username-less passkey login can be added later without changing the authority
-model.
+Both login modes are accepted without changing the authority model. A
+username/login-handle-first flow keeps the existing anti-enumeration failure
+semantics: an unknown or credential-less handle receives an indistinguishable,
+non-persisted decoy challenge. A discoverable, usernameless flow (`login_handle`
+omitted) sends an empty allow-list, persists an unbound single-use challenge and
+resolves the owning identity solely from the presented credential id (which is
+globally unique), so no handle is disclosed because none is required. Migration
+`0002_discoverable_webauthn_login` adds the unbound challenge purpose and the
+identity-from-credential finalizer.
 
 ### 5.6 TOTP
 
