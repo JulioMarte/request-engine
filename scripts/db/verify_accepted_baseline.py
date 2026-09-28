@@ -130,6 +130,7 @@ def _verify_seed_data(manifest: dict[str, Any], path: Path) -> dict[str, Any]:
         "counts": catalog.get("counts"),
     }
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
