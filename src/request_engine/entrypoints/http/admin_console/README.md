@@ -102,11 +102,39 @@ supplied the original handle-first flow with the anti-enumeration decoy is
 preserved. The console uses the usernameless flow; the password form remains as a
 fallback.
 
+## Resource workspaces
+
+`/resources` groups the control plane into task-oriented workspaces. This is
+deliberately **not generic CRUD**: Request Engine state changes are semantic
+commands, so each workspace exposes the real read surface (list/get when the
+control plane mounts one) and the real commands, running through the same owner
+operation, capability, idempotency and step-up rules as the API.
+
+- **Native identities, provisioners, identity recovery cases** — list → detail →
+  actions, with the current revision pre-filled into each command's
+  `expected_revision` so operators never copy concurrency preconditions by hand.
+- **Platform configuration** — revisions by kind, with stage → validate →
+  activate → disable and provider test.
+- **Secrets and signing keyrings** — lookup by binding id (no enumeration
+  operation exists), create, rotate and revoke; secret values are never echoed.
+- **Deployment recovery** — inspect the active binding, configure and reconcile.
+- **Platform owners** and **organizations / recovery operators** — no read/list
+  operation is mounted, so these pages state that explicitly and expose only the
+  available commands rather than fabricating an empty table.
+
+Both the workspaces and the generic `/operations` browser execute through a
+single `execution.execute_operation` path, so there is no second execution path.
+A `phishing_resistant_auth_required` response surfaces a passkey step-up that
+retries the exact form that was submitted. Mutating actions with a
+`data-confirm` prompt are confirmed before the request is issued.
+
 ## Coverage
 
 Every operation is loaded from the control-plane OpenAPI document, so the console
-projects the complete admin surface by construction. Operations under `/v1/setup`
-and `/auth/native` additionally have curated first-run and login journeys.
+projects the complete admin surface by construction; `/operations` remains the
+complete, searchable escape hatch when a workspace does not exist for a given
+operation. Operations under `/v1/setup` and `/auth/native` additionally have
+curated first-run and login journeys.
 
 ## Diagnostics and error tracking
 

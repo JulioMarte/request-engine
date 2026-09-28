@@ -1,5 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Dashboard &middot; Request Engine admin{% endblock %}
+{% macro facts(title, status, detail, error) %}
+  <section class="card">
+    <h2>{{ title }} <span class="badge">{{ status if status else '—' }}</span></h2>
+    {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+    {% if detail[0] %}
+    <dl class="detail">
+      {% for key, value in detail[0] %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}
+    </dl>
+    {% endif %}
+    {% for key, value in detail[1] %}
+      <details><summary>{{ key }}</summary><pre class="payload">{{ value }}</pre></details>
+    {% endfor %}
+  </section>
+{% endmacro %}
 {% block content %}
 <section class="card">
   <h1>Dashboard</h1>
@@ -7,13 +21,17 @@
   <ul class="stats">
     <li><span class="stat">{{ operation_count }}</span> operations projected</li>
     <li><span class="stat">{{ platform_operation_count }}</span> platform operations</li>
-    <li><span class="stat">{{ group_count }}</span> groups</li>
+    <li><span class="stat">{{ group_count }}</span> owner groups</li>
   </ul>
-  <p><a class="button" href="/operations">Open operations console</a>
-     <a class="button secondary" href="/setup">First-run setup</a></p>
+  <p>
+    <a class="button" href="/resources">Resource workspaces</a>
+    <a class="button secondary" href="/operations">All operations</a>
+    <a class="button secondary" href="/setup">First-run setup</a>
+  </p>
 </section>
-<section class="card">
-  <h2>Readiness <span class="badge">{{ readiness_status }}</span></h2>
-  <pre class="payload">{{ readiness | tojson(indent=2) }}</pre>
-</section>
+<div class="dashboard-grid">
+  {{ facts('Readiness', readiness_status, readiness_detail, readiness_error) }}
+  {{ facts('Observability', observability_status, observability_detail, observability_error) }}
+  {{ facts('Deployment recovery plan', deployment_status, deployment_detail, deployment_error) }}
+</div>
 {% endblock %}

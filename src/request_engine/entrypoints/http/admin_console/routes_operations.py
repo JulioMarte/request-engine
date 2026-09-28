@@ -3,13 +3,12 @@
 Every operation is projected from the control-plane OpenAPI document, so the
 console can reach the full admin surface without a hand-maintained second
 registry. Mutating operations get an idempotency key automatically, and a
-recent-authentication failure surfaces a passkey step-up action.
+recent-authentication failure surfaces a passkey step-up that retries the exact
+form. Execution is delegated to the shared ``execution.execute_operation`` path.
 """
 
 from __future__ import annotations
 
-import json
-from secrets import token_urlsafe
 from typing import Any
 
 import httpx
@@ -17,41 +16,25 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
-from request_engine.entrypoints.http.admin_console.forms import (
-    FormField,
-    FormSubmissionError,
-    build_fields,
-    parse_submission,
-    render_path,
+from request_engine.entrypoints.http.admin_console.execution import (
+    execute_operation,
+    local_error,
 )
+from request_engine.entrypoints.http.admin_console.inputs import build_inputs, summarize_payload
+from request_engine.entrypoints.http.admin_console.json_types import as_mapping
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
-_STEP_UP_CODES = frozenset({"phishing_resistant_auth_required", "recent_authentication_required"})
-
-
-def _result_view(response: Any) -> dict[str, Any]:
-    return {
-        "status": response.status_code,
-        "ok": response.ok,
-        "payload_json": json.dumps(response.payload, indent=2, sort_keys=True, default=str),
-        "error_code": response.error_code or "",
-        "needs_step_up": response.error_code in _STEP_UP_CODES,
-        "retry_after": response.retry_after_seconds,
-    }
-
-
-def _local_result(status: int, code: str, message: str) -> dict[str, Any]:
-    return {
-        "status": status,
-        "ok": False,
-        "payload_json": json.dumps({"error": {"code": code, "message": message}}),
-        "error_code": code,
-        "needs_step_up": False,
-        "retry_after": None,
-    }
+_FORM_ID = "operation-form"
 
 
 def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
+    async def _probe(session: Any, method: str, path: str) -> tuple[int, dict[str, Any], str]:
+        try:
+            response = await state.control_request(method, path, bearer=session.access_token)
+        except httpx.HTTPError:
+            return 0, {}, "control plane unreachable"
+        return response.status_code, as_mapping(response.payload), ""
+
     async def dashboard(request: Request) -> Response:
         session = state.session(request)
         if session is None:
@@ -67,16 +50,15 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             group_count = len(catalog.groups())
         except Exception:
             catalog_error = "control plane unreachable"
-        readiness: object = None
-        readiness_status = 0
-        try:
-            response = await state.control_request(
-                "GET", "/v1/platform/readiness", bearer=session.access_token
-            )
-            readiness_status = response.status_code
-            readiness = response.payload
-        except httpx.HTTPError:
-            readiness = {"availability": "control plane unreachable"}
+        readiness_status, readiness, readiness_error = await _probe(
+            session, "GET", "/v1/platform/readiness"
+        )
+        observability_status, observability, observability_error = await _probe(
+            session, "GET", "/v1/platform/observability"
+        )
+        deployment_status, deployment, deployment_error = await _probe(
+            session, "GET", "/v1/platform/deployment-recovery:plan"
+        )
         return state.templates.TemplateResponse(
             request,
             "dashboard.html",
@@ -86,8 +68,17 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 platform_operation_count=platform_operation_count,
                 group_count=group_count,
                 catalog_error=catalog_error,
-                readiness=readiness,
                 readiness_status=readiness_status,
+                readiness_detail=summarize_payload(readiness) if readiness else ([], []),
+                readiness_error=readiness_error,
+                observability_status=observability_status,
+                observability_detail=summarize_payload(observability)
+                if observability
+                else ([], []),
+                observability_error=observability_error,
+                deployment_status=deployment_status,
+                deployment_detail=summarize_payload(deployment) if deployment else ([], []),
+                deployment_error=deployment_error,
             ),
         )
 
@@ -139,7 +130,10 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             request,
             "operation.html",
             state.context(
-                request, operation=operation, fields=build_fields(operation), result=None
+                request,
+                operation=operation,
+                inputs=build_inputs(operation),
+                result=None,
             ),
         )
 
@@ -151,45 +145,28 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
         operation = catalog.by_id().get(operation_id)
         if operation is None:
             return JSONResponse({"error": f"unknown operation {operation_id}"}, status_code=404)
-        fields = build_fields(operation)
         form = await request.form()
-        submitted_csrf = str(form.get("csrf_token", "")) or request.headers.get("x-csrf-token")
-        if not state.csrf_matches(submitted_csrf, session.csrf_token):
-            return _render_result(
-                state,
+        values = {key: str(value) for key, value in form.items()}
+        if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
+            return state.templates.TemplateResponse(
                 request,
-                operation,
-                fields,
-                _local_result(403, "csrf_failed", "CSRF token missing or invalid"),
+                "partials/result.html",
+                state.context(
+                    request,
+                    result=local_error(
+                        403, "csrf_failed", "CSRF token missing or invalid"
+                    ).to_view(),
+                    form_id=_FORM_ID,
+                ),
             )
-        try:
-            submission = parse_submission(fields, {key: str(value) for key, value in form.items()})
-        except FormSubmissionError as exc:
-            return _render_result(
-                state, request, operation, fields, _local_result(422, "form_error", str(exc))
-            )
-        path = render_path(operation.path_template, submission.path_params)
-        extra_headers = (
-            {"idempotency-key": token_urlsafe(24)} if operation.requires_idempotency_key else None
+        outcome = await execute_operation(
+            state, operation, bearer=session.access_token, form=values
         )
-        try:
-            response = await state.control_request(
-                operation.method,
-                path,
-                bearer=session.access_token if operation.auth_kind == "bearer" else None,
-                json_body=submission.body,
-                params=submission.query_params or None,
-                extra_headers=extra_headers,
-            )
-        except httpx.HTTPError as exc:
-            return _render_result(
-                state,
-                request,
-                operation,
-                fields,
-                _local_result(502, "control_unreachable", str(exc)),
-            )
-        return _render_result(state, request, operation, fields, _result_view(response))
+        return state.templates.TemplateResponse(
+            request,
+            "partials/result.html",
+            state.context(request, result=outcome.to_view(), form_id=_FORM_ID),
+        )
 
     app.add_api_route("/", dashboard, methods=["GET"], response_class=HTMLResponse)
     app.add_api_route("/operations", operations, methods=["GET"], response_class=HTMLResponse)
@@ -200,22 +177,6 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
         response_class=HTMLResponse,
     )
     app.add_api_route("/operations/{operation_id}", run_operation, methods=["POST"])
-
-
-def _render_result(
-    state: AdminConsoleState,
-    request: Request,
-    operation: AdminOperation,
-    fields: tuple[FormField, ...],
-    result: dict[str, Any],
-) -> Response:
-    partial = request.headers.get("hx-request") == "true"
-    template = "partials/result.html" if partial else "operation.html"
-    return state.templates.TemplateResponse(
-        request,
-        template,
-        state.context(request, operation=operation, fields=fields, result=result),
-    )
 
 
 __all__ = ["install_operation_routes"]

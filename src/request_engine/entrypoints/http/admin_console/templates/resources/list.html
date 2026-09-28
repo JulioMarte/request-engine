@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% import "partials/inputs.html" as ui %}
+{% block title %}{{ spec.title }} &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card">
+  <p><a href="/resources">&larr; Workspaces</a></p>
+  <h1>{{ spec.title }}</h1>
+  <p class="muted">{{ spec.summary }}</p>
+  {% if spec.list_note %}<div class="alert notice">{{ spec.list_note }}</div>{% endif %}
+  {% if list_error %}<div class="alert error">{{ list_error }}</div>{% endif %}
+</section>
+{% if create_inputs %}
+<section class="card">
+  <h2>{{ spec.create_label }}</h2>
+  <form id="create" class="stack" method="post" action="/resources/{{ spec.key }}"
+        hx-post="/resources/{{ spec.key }}" hx-target="#result" hx-swap="innerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    {{ ui.render(create_inputs) }}
+    <button type="submit">{{ spec.create_label }}</button>
+  </form>
+  <div id="result"></div>
+</section>
+{% endif %}
+<section class="card">
+  <table class="ops">
+    <thead><tr><th>Id</th>{% for column in spec.columns %}<th>{{ column }}</th>{% endfor %}<th></th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td><code>{{ row.id }}</code></td>
+        {% for value in row.columns %}<td>{{ value }}</td>{% endfor %}
+        <td><a href="/resources/{{ spec.key }}/{{ row.id }}">Open</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ spec.columns | length + 2 }}" class="muted">No items returned.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if next_cursor %}
+  <p><a class="button secondary" href="/resources/{{ spec.key }}?after={{ next_cursor | urlencode }}">Next &rarr;</a></p>
+  {% endif %}
+</section>
+{% endblock %}

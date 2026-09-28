@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% import "partials/action_form.html" as action_form %}
+{% block title %}Deployment recovery &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card">
+  <p><a href="/resources">&larr; Workspaces</a></p>
+  <h1>Deployment recovery</h1>
+  <p class="muted">Inspect and reconcile the active Coolify deployment binding.</p>
+  {% if item_error %}<div class="alert error">{{ item_error }}</div>{% endif %}
+  {% if detail[0] %}
+  <dl class="detail">
+    {% for key, value in detail[0] %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}
+  </dl>
+  {% endif %}
+  {% for key, value in detail[1] %}
+    <details><summary>{{ key }}</summary><pre class="payload">{{ value }}</pre></details>
+  {% endfor %}
+</section>
+<section class="card">
+  <h2>Configure binding</h2>
+  <div id="result"></div>
+  {{ action_form.render(configure) }}
+  <h2>Reconcile</h2>
+  {{ action_form.render(reconcile) }}
+</section>
+{% endblock %}

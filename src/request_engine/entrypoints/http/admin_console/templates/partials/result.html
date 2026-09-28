@@ -2,9 +2,10 @@
   <p>Status <span class="badge">{{ result.status }}</span>
      {% if result.error_code %}&middot; <code>{{ result.error_code }}</code>{% endif %}
      {% if result.retry_after %}&middot; retry after {{ result.retry_after }}s{% endif %}</p>
+  {% if result.idempotency_key %}<p class="muted small">Idempotency-Key <code>{{ result.idempotency_key }}</code></p>{% endif %}
   {% if result.needs_step_up %}
     <p class="alert error">A fresh passkey confirmation is required for this action.</p>
-    <button type="button" class="secondary step-up-btn">Confirm with passkey and retry</button>
+    <button type="button" class="secondary step-up-btn" data-retry-form="{{ form_id }}">Confirm with passkey and retry</button>
     <p class="step-up-status muted"></p>
   {% endif %}
   <pre class="payload">{{ result.payload_json }}</pre>

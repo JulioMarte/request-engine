@@ -33,6 +33,9 @@ from request_engine.entrypoints.http.admin_console.routes_diagnostics import (
 from request_engine.entrypoints.http.admin_console.routes_operations import (
     install_operation_routes,
 )
+from request_engine.entrypoints.http.admin_console.routes_resources import (
+    install_resource_routes,
+)
 from request_engine.entrypoints.http.admin_console.routes_setup import install_setup_routes
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
@@ -185,6 +188,7 @@ def create_admin_console_app(
     install_auth_routes(app, state)
     install_setup_routes(app, state)
     install_operation_routes(app, state)
+    install_resource_routes(app, state)
     install_diagnostics_routes(app, state)
     return app
 

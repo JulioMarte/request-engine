@@ -1,0 +1,42 @@
+{% macro render(inputs) -%}
+  {% for field in inputs %}
+    {% if field.location == 'path' and field.value %}
+      <input type="hidden" name="{{ field.name }}" value="{{ field.value }}" />
+    {% elif field.enum %}
+      <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+        <select name="{{ field.name }}">
+          {% if not field.required %}<option value=""></option>{% endif %}
+          {% for option in field.enum %}
+            <option value="{{ option }}"{% if option == field.value %} selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+        <small class="muted">{{ field.location }}{% if field.description %} &middot; {{ field.description }}{% endif %}</small>
+      </label>
+    {% elif field.kind == 'boolean' %}
+      <label class="check">
+        <input type="checkbox" name="{{ field.name }}" value="true"{% if field.value in ('true', 'True', '1', 'on', 'yes') %} checked{% endif %} />
+        {{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+      </label>
+    {% elif field.kind in ('object', 'array') %}
+      <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+        <textarea name="{{ field.name }}" rows="6" spellcheck="false" placeholder="{{ field.default }}">{{ field.value }}</textarea>
+        <small class="muted">{{ field.location }} &middot; JSON{% if field.description %} &middot; {{ field.description }}{% endif %}</small>
+      </label>
+    {% elif field.secret %}
+      <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+        <input type="password" name="{{ field.name }}" value="" autocomplete="new-password" />
+        <small class="muted">{{ field.location }} &middot; secret value is never echoed{% if field.description %} &middot; {{ field.description }}{% endif %}</small>
+      </label>
+    {% elif field.kind in ('integer', 'number') %}
+      <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+        <input type="number" step="any" name="{{ field.name }}" value="{{ field.value }}" />
+        <small class="muted">{{ field.location }}{% if field.description %} &middot; {{ field.description }}{% endif %}</small>
+      </label>
+    {% else %}
+      <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+        <input type="text" name="{{ field.name }}" value="{{ field.value }}" />
+        <small class="muted">{{ field.location }}{% if field.description %} &middot; {{ field.description }}{% endif %}</small>
+      </label>
+    {% endif %}
+  {% endfor %}
+{%- endmacro %}

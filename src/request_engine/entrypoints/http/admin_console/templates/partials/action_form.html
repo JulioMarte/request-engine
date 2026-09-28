@@ -1,0 +1,11 @@
+{% macro render(action) -%}
+<form id="{{ action.form_id }}" class="stack action-form" method="post" action="{{ action.action_url }}"
+      hx-post="{{ action.action_url }}" hx-target="#result" hx-swap="innerHTML"
+      {% if action.confirm %}data-confirm="{{ action.confirm }}"{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ action.csrf_token }}" />
+  {% if action.action_description %}<p class="muted">{{ action.action_description }}</p>{% endif %}
+  {% import "partials/inputs.html" as ui %}
+  {{ ui.render(action.inputs) }}
+  <button type="submit"{% if action.danger %} class="danger"{% endif %}>{{ action.submit_label }}</button>
+</form>
+{%- endmacro %}

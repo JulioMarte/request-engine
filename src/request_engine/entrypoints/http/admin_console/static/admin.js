@@ -161,14 +161,37 @@
     event.detail.headers["X-CSRF-Token"] = csrf;
   });
 
+  document.addEventListener("htmx:confirm", function (event) {
+    var element = event.detail.elt;
+    var message = element && element.getAttribute ? element.getAttribute("data-confirm") : null;
+    if (!message) return;
+    event.preventDefault();
+    if (window.confirm(message)) event.detail.issueRequest(true);
+  });
+
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (!(form instanceof HTMLFormElement) || !form.matches("form[data-secret-lookup]")) return;
+    event.preventDefault();
+    var input = form.querySelector('input[name="binding_id"]');
+    var value = input ? input.value.trim() : "";
+    if (value) window.location.href = "/resources/secrets/" + encodeURIComponent(value);
+  });
+
   document.addEventListener("click", function (event) {
     var target = event.target;
     if (!(target instanceof Element)) return;
     if (target.classList.contains("step-up-btn")) {
       var status = document.querySelector(".step-up-status");
+      var formId = target.getAttribute("data-retry-form");
       if (status) status.textContent = "Waiting for passkey…";
       stepUp()
-        .then(function () { window.location.reload(); })
+        .then(function () {
+          if (status) status.textContent = "Confirmed. Retrying…";
+          var form = formId ? document.getElementById(formId) : null;
+          if (form && form.requestSubmit) form.requestSubmit();
+          else window.location.reload();
+        })
         .catch(function (error) { if (status) status.textContent = String(error.message || error); });
     }
     if (target.id === "setup-passkey-btn") {

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Resources &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Resource workspaces</h1>
+  <p class="muted">Task-oriented views over the control-plane operations. Read
+    operations load the current state; every command runs through the same owner
+    operation, capability and step-up rules as the API.</p>
+</section>
+{% for owner, items in groups.items() %}
+<section class="card">
+  <h2>{{ owner }}</h2>
+  <div class="workspace-grid">
+    {% for item in items %}
+    <a class="workspace" href="/resources/{{ item.key }}">
+      <strong>{{ item.title }}</strong>
+      <span class="muted small">{{ item.summary }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partials/inputs.html" as ui %}
 {% block title %}{{ operation.operation_id }} &middot; Request Engine admin{% endblock %}
 {% block content %}
 <section class="card">
@@ -6,44 +7,25 @@
   <h1><span class="method {{ operation.method | lower }}">{{ operation.method }}</span>
       {{ operation.operation_id }}</h1>
   <p><code>{{ operation.path_template }}</code></p>
-  {% if operation.capability %}<p>Capability <code>{{ operation.capability }}</code></p>{% endif %}
-  {% if operation.kind %}<p>Kind <code>{{ operation.kind }}</code></p>{% endif %}
-  {% if operation.idempotency %}<p>Idempotency <code>{{ operation.idempotency }}</code></p>{% endif %}
+  <dl class="detail">
+    {% if operation.owner %}<dt>owner</dt><dd>{{ operation.owner }}</dd>{% endif %}
+    {% if operation.capability %}<dt>capability</dt><dd><code>{{ operation.capability }}</code></dd>{% endif %}
+    {% if operation.kind %}<dt>kind</dt><dd>{{ operation.kind }}</dd>{% endif %}
+    {% if operation.idempotency %}<dt>idempotency</dt><dd>{{ operation.idempotency }}</dd>{% endif %}
+    {% if operation.exposure %}<dt>exposure</dt><dd>{{ operation.exposure }}</dd>{% endif %}
+    {% if operation.tool_name %}<dt>tool</dt><dd>{{ operation.tool_name }}{% if operation.tool_audiences %} ({{ operation.tool_audiences | join(', ') }}){% endif %}</dd>{% endif %}
+    <dt>auth</dt><dd>{{ operation.auth_kind }}</dd>
+  </dl>
   {% if operation.description %}<p class="muted">{{ operation.description }}</p>{% endif %}
 </section>
 <section class="card">
   <h2>Execute</h2>
-  {% if fields %}
-  <form hx-post="/operations/{{ operation.operation_id }}" hx-target="#result" hx-swap="innerHTML"
-        method="post" action="/operations/{{ operation.operation_id }}" class="stack">
+  <form id="operation-form" class="stack" method="post" action="/operations/{{ operation.operation_id }}"
+        hx-post="/operations/{{ operation.operation_id }}" hx-target="#result" hx-swap="innerHTML">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    {% for field in fields %}
-      <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
-        {% if field.enum %}
-          <select name="{{ field.name }}">
-            {% for option in field.enum %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
-          </select>
-        {% elif field.kind == 'boolean' %}
-          <input type="checkbox" name="{{ field.name }}" value="true" />
-        {% elif field.kind in ('object', 'array') %}
-          <textarea name="{{ field.name }}" rows="4" placeholder="{{ field.default }}"></textarea>
-        {% elif field.kind in ('integer', 'number') %}
-          <input type="number" step="any" name="{{ field.name }}" value="{{ field.default }}" />
-        {% else %}
-          <input type="text" name="{{ field.name }}" value="{{ field.default }}" />
-        {% endif %}
-        <small class="muted">{{ field.location }}{% if field.description %} &middot; {{ field.description }}{% endif %}</small>
-      </label>
-    {% endfor %}
+    {{ ui.render(inputs) }}
     <button type="submit">Run operation</button>
   </form>
-  {% else %}
-  <form hx-post="/operations/{{ operation.operation_id }}" hx-target="#result" hx-swap="innerHTML"
-        method="post" action="/operations/{{ operation.operation_id }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <button type="submit">Run operation</button>
-  </form>
-  {% endif %}
   <div id="result">
     {% if result %}{% include "partials/result.html" %}{% endif %}
   </div>
