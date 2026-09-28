@@ -1,4 +1,4 @@
-name: Promote certified PostgreSQL 18 rebaseline
+name: Promote and verify certified PostgreSQL 18 rebaseline
 
 on:
   push:
@@ -14,8 +14,8 @@ env:
   UV_VERSION: "0.12.5"
 
 jobs:
-  promote:
-    name: Promote and prove canonical 0001
+  rebaseline:
+    name: Promote or verify canonical 0001
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     services:
@@ -53,16 +53,34 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: uv.lock
+
+      - name: Detect rebaseline state
+        id: state
+        shell: bash
+        run: |
+          if [[ -f migrations/versions/0094_managed_oidc_readiness.py ]]; then
+            echo "mode=promote" >> "$GITHUB_OUTPUT"
+            echo "historical 0002..0094 chain is present; promotion mode"
+          else
+            echo "mode=verify" >> "$GITHUB_OUTPUT"
+            echo "historical chain is absent; post-promotion verification mode"
+          fi
+
       - name: Download certified schema-and-seed proof
+        if: steps.state.outputs.mode == 'promote'
         run: >-
           gh run download 36354361866
           --repo "${GITHUB_REPOSITORY}"
           --name rebaseline-0094-clean-cluster-proof-v2
           --dir "${REBASELINE_PROOF_DIR}"
+
       - name: Prepare destructive promotion from certified artifact
+        if: steps.state.outputs.mode == 'promote'
         run: python scripts/db/promote_rebaseline_0094.py
-      - name: Install promoted repository
+
+      - name: Install repository
         run: uv sync --all-groups
+
       - name: Require collapsed Alembic history
         run: |
           mapfile -t revisions < <(find migrations/versions -maxdepth 1 -type f -name '*.py' ! -name '__init__.py' -printf '%f\n' | sort)
@@ -72,6 +90,7 @@ jobs:
           mapfile -t heads < <(uv run alembic heads | awk 'NF {print $1}')
           [[ "${#heads[@]}" -eq 1 ]]
           [[ "${heads[0]}" == "0001_initial" ]]
+
       - name: Run baseline architecture contracts
         run: >-
           uv run pytest
@@ -81,25 +100,31 @@ jobs:
           tests/unit/test_baseline_loader.py
           tests/unit/test_verify_accepted_baseline.py
           -q --tb=short
+
       - name: Run canonical current-product proof
         run: bash scripts/ci/run_current_product.sh
+
       - name: Check promotion diff
+        if: steps.state.outputs.mode == 'promote'
         run: |
           git diff --check -- . ':(exclude)migrations/baseline/0001_schema.*.sql'
           git status --short
           test -z "$(find migrations/versions -maxdepth 1 -type f -name '0*.py' ! -name '0001_initial.py' -print -quit)"
+
       - name: Commit certified baseline promotion
+        if: steps.state.outputs.mode == 'promote'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "db: promote certified 0094 model into canonical baseline"
           git push origin HEAD:feature/rebaseline-0094
-      - name: Upload promotion evidence
+
+      - name: Upload rebaseline evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rebaseline-0094-promotion-evidence-v2
+          name: rebaseline-0094-${{ steps.state.outputs.mode }}-evidence
           path: |
             .ci/rebaseline-proof/
             .ci/current-product/
