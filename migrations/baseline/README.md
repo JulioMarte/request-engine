@@ -13,3 +13,9 @@ The current baseline was materialized from the audited PostgreSQL 18.6 effective
 manifest.json pins the complete payload checksum, every materialized part, the ten-role bootstrap topology, the seed/reference-state checksum, accepted effective-model counts and the proof provenance. loader.py verifies those checksums and exact managed-role contract before 0001_initial executes the SQL.
 
 After this rebaseline, migrations/versions/0001_initial.py is the only historical revision. Future schema evolution appends new 0002+ revisions. Never regenerate this payload merely to make a later migration easier; another destructive rebaseline requires a new explicit audit and clean-cluster equivalence proof.
+
+## Installation-local identity
+
+The rebaseline preserves migration-owned reference data, but it deliberately does **not** freeze the identity of the CI database that produced the source artifact. Every fresh installation generates a new Platform Instance UUID, built-in native-authority UUID, built-in workload-authority UUID and creation timestamps using the PostgreSQL defaults (gen_random_uuid() / clock_timestamp()).
+
+seed-data-catalog.json therefore normalizes only those installation-local fields to named placeholders. All remaining seed/reference state stays exact. Baseline-integrity CI installs the same 0001 twice and fails if any of the three installation UUIDs is reused.

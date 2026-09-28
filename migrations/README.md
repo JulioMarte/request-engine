@@ -49,6 +49,8 @@ The accepted baseline model recorded in `migrations/baseline/manifest.json` is:
 
 These counts describe the accepted `0001` checkpoint. They are **not ratchets for current HEAD**. Current product counts may change through legitimate migrations; baseline-integrity proof remains pinned to the historical baseline.
 
+Fresh-install identity is intentionally **not** a literal part of the checkpoint: `platform_instance.id`, the two built-in authority UUIDs and their creation timestamps are generated anew on every installation. Seed-state evidence normalizes only those fields, and CI proves two clean installs do not reuse the same installation UUIDs.
+
 ## Historical/provenance surfaces
 
 `migrations/sql/design_chain/` is retained because the repository's V2 design-history status check still executes it through `scripts/db/apply_design_chain.sh`. It is not the current schema source of truth.

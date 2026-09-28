@@ -77,6 +77,7 @@ jobs:
           tests/architecture/test_alembic_revision_identifiers.py
           tests/architecture/test_baseline_repository_contract.py
           tests/unit/test_baseline_loader.py
+          tests/unit/test_export_seed_data_catalog.py
           tests/unit/test_verify_accepted_baseline.py
           -q --tb=short
 
