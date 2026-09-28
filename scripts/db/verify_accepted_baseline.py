@@ -101,7 +101,6 @@ def verify(
     }
 
 
-
 def _verify_seed_data(manifest: dict[str, Any], path: Path) -> dict[str, Any]:
     expected = manifest.get("seed_data")
     if not isinstance(expected, dict):
