@@ -52,8 +52,7 @@ def test_baseline_integrity_proof_does_not_freeze_current_head_to_0001() -> None
 def test_baseline_does_not_freeze_proof_database_installation_identity() -> None:
     baseline = MIGRATIONS / "baseline"
     schema = "".join(
-        path.read_text(encoding="utf-8")
-        for path in sorted(baseline.glob("0001_schema.*.sql"))
+        path.read_text(encoding="utf-8") for path in sorted(baseline.glob("0001_schema.*.sql"))
     )
     for frozen in (
         "63b59f87-62b8-499c-bb75-fa63e01ae520",
