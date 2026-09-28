@@ -8,6 +8,9 @@ from request_engine.bootstrap.recovery_delivery import (
     build_recovery_secret_delivery,
 )
 from request_engine.platform.secrets.composed_delivery import ComposedRecoverySecretDelivery
+from request_engine.platform.secrets.openbao_recovery_secret_store import (
+    OpenBaoRecoverySecretStore,
+)
 from request_engine.platform.secrets.smtp_delivery_channel import SmtpRecoveryDeliveryChannel
 from request_engine.platform.secrets.vault_secret_store import VaultRecoverySecretStore
 
@@ -19,6 +22,12 @@ _SMTP_PASSWORD = "smtp-password-value"
 _ENV_KEYS = (
     "REQUEST_ENGINE_RECOVERY_DELIVERY_FACTORY",
     "REQUEST_ENGINE_RECOVERY_RESET_URL",
+    "REQUEST_ENGINE_OPENBAO_ADDR",
+    "REQUEST_ENGINE_OPENBAO_TOKEN",
+    "REQUEST_ENGINE_OPENBAO_NAMESPACE",
+    "REQUEST_ENGINE_OPENBAO_MOUNT",
+    "REQUEST_ENGINE_OPENBAO_PATH_PREFIX",
+    "REQUEST_ENGINE_OPENBAO_TIMEOUT_SECONDS",
     "REQUEST_ENGINE_VAULT_ADDR",
     "REQUEST_ENGINE_VAULT_TOKEN",
     "REQUEST_ENGINE_VAULT_NAMESPACE",
@@ -66,6 +75,10 @@ def _configure_vault(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REQUEST_ENGINE_VAULT_TOKEN", _VAULT_TOKEN)
 
 
+def _configure_openbao(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REQUEST_ENGINE_OPENBAO_ADDR", "http://openbao-proxy:8100")
+
+
 def _configure_smtp(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REQUEST_ENGINE_SMTP_HOST", "mail.internal")
     monkeypatch.setenv("REQUEST_ENGINE_SMTP_SENDER", "noreply@example.com")
@@ -85,6 +98,19 @@ def _patch_import_module(monkeypatch: pytest.MonkeyPatch, module: object) -> Non
 
 def test_unconfigured_returns_none() -> None:
     assert build_recovery_secret_delivery(RecoveryDeliverySettings()) is None
+
+
+def test_openbao_proxy_and_smtp_build_composed_delivery_without_static_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_openbao(monkeypatch)
+    _configure_smtp(monkeypatch)
+
+    delivery = build_recovery_secret_delivery(RecoveryDeliverySettings())
+
+    assert isinstance(delivery, ComposedRecoverySecretDelivery)
+    assert isinstance(_internal(delivery, "_store"), OpenBaoRecoverySecretStore)
+    assert isinstance(_internal(delivery, "_channel"), SmtpRecoveryDeliveryChannel)
 
 
 def test_vault_and_smtp_build_composed_delivery(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -108,7 +134,7 @@ def test_single_sided_configuration_is_rejected(
     else:
         _configure_vault(monkeypatch)
 
-    with pytest.raises(RuntimeError, match="both Vault and SMTP"):
+    with pytest.raises(RuntimeError, match="requires a secret store and SMTP configuration"):
         build_recovery_secret_delivery(RecoveryDeliverySettings())
 
 

@@ -17,6 +17,13 @@ from httpx import ASGITransport, AsyncClient
 from software_webauthn_authenticator import SoftwareAuthenticator
 
 from request_engine.bootstrap.platform_server import create_app
+from request_engine.modules.platform_configuration.adapters.smtp import (
+    SmtplibConfigurationValidator,
+)
+from request_engine.modules.platform_configuration.application.smtp import (
+    ProviderValidationResult,
+    ProviderValidationStatus,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.native_auth import parse_opaque_token
 
@@ -209,6 +216,348 @@ async def test_platform_owner_authenticates_with_passkey_and_steps_up(
 
 
 @pytest.mark.asyncio
+async def test_current_identity_can_enroll_passkey_then_issue_offline_recovery_codes(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        owner_authenticator = await _claim_owner(client)
+        _, owner_token = await _webauthn_login(client, owner_authenticator)
+        invited = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={
+                "Authorization": f"Bearer {owner_token}",
+                "Idempotency-Key": "candidate-security-material-invite",
+            },
+            json={"provenance_reference": "e2e:candidate-security-material"},
+        )
+        assert invited.status_code == 201, invited.text
+        invitation_token = invited.json()["invitation_token"]
+        assert isinstance(invitation_token, str)
+
+        enrollment = await client.post(
+            "/v1/platform/owner-invitations:enroll",
+            json={
+                "invitation_token": invitation_token,
+                "login_handle": "second-owner-candidate@example.test",
+                "password": "second owner candidate password",
+            },
+        )
+        assert enrollment.status_code == 201, enrollment.text
+        native_identity_id = enrollment.json()["native_identity_id"]
+        login = await client.post(
+            "/auth/native/sessions",
+            json={
+                "login_handle": "second-owner-candidate@example.test",
+                "password": "second owner candidate password",
+            },
+        )
+        assert login.status_code == 201
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # A password-only session cannot mint offline break-glass material.
+        denied = await client.post(
+            "/auth/native/sessions/current/recovery-codes",
+            headers=headers,
+        )
+        assert denied.status_code == 403
+        assert denied.json()["error"]["code"] == "phishing_resistant_auth_required"
+
+        options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/registration-options",
+                headers=headers,
+            )
+        ).json()["public_key"]
+        authenticator = SoftwareAuthenticator(rp_id=options["rp"]["id"], origin=ORIGIN)
+        credential = authenticator.registration_credential(
+            challenge=websafe_decode(options["challenge"]), user_verified=True
+        )
+        registered = await client.post(
+            "/auth/native/sessions/current/webauthn/registrations",
+            headers=headers,
+            json={"credential": credential},
+        )
+        assert registered.status_code == 201, registered.text
+
+        step_options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/step-up-options",
+                headers=headers,
+            )
+        ).json()["public_key"]
+        assertion = authenticator.authentication_credential(
+            challenge=websafe_decode(step_options["challenge"]), user_verified=True
+        )
+        stepped = await client.post(
+            "/auth/native/sessions/current/webauthn/step-up",
+            headers=headers,
+            json={"credential": assertion},
+        )
+        assert stepped.status_code == 200
+        assert stepped.json()["authentication_assurance"] == "phishing_resistant"
+
+        issued = await client.post(
+            "/auth/native/sessions/current/recovery-codes",
+            headers=headers,
+        )
+        assert issued.status_code == 201, issued.text
+        codes = issued.json()["codes"]
+        assert len(codes) == 10
+        assert all(isinstance(code, str) and len(code) >= 16 for code in codes)
+
+        summary = e2e_admin_conn.execute(
+            "SELECT status, native_identity_id FROM request_engine.recovery_code_sets "
+            "WHERE native_identity_id = %s ORDER BY version DESC LIMIT 1",
+            (UUID(native_identity_id),),
+        ).fetchone()
+        assert summary == ("active", UUID(native_identity_id))
+
+
+@pytest.mark.asyncio
+async def test_second_platform_owner_requires_prepared_identity_and_preserves_last_owner(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        first_authenticator = await _claim_owner(client)
+        _, first_owner_token = await _webauthn_login(client, first_authenticator)
+        owner_auth = {"Authorization": f"Bearer {first_owner_token}"}
+
+        # Claimed platform control no longer permits anonymous generic enrollment.
+        closed_enrollment = await client.post(
+            "/auth/native/identities",
+            json={
+                "login_handle": "bypass-owner@example.test",
+                "password": "bypass owner password",
+            },
+        )
+        assert closed_enrollment.status_code == 404
+
+        revoked_invite = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**owner_auth, "Idempotency-Key": "invite-to-revoke"},
+            json={"provenance_reference": "e2e:revoked-owner"},
+        )
+        assert revoked_invite.status_code == 201
+        revoked_invitation_id = revoked_invite.json()["invitation_id"]
+        revoked_invitation_token = revoked_invite.json()["invitation_token"]
+        revoked = await client.post(
+            f"/v1/platform/owner-invitations/{revoked_invitation_id}:revoke",
+            headers={**owner_auth, "Idempotency-Key": "revoke-owner-invite"},
+            json={"reason_code": "invitation_cancelled"},
+        )
+        assert revoked.status_code == 200, revoked.text
+        assert revoked.json()["status"] == "revoked"
+        replayed_revoke = await client.post(
+            f"/v1/platform/owner-invitations/{revoked_invitation_id}:revoke",
+            headers={**owner_auth, "Idempotency-Key": "revoke-owner-invite"},
+            json={"reason_code": "invitation_cancelled"},
+        )
+        assert replayed_revoke.status_code == 200
+        assert replayed_revoke.json() == revoked.json()
+        revoked_enrollment = await client.post(
+            "/v1/platform/owner-invitations:enroll",
+            json={
+                "invitation_token": revoked_invitation_token,
+                "login_handle": "revoked-owner@example.test",
+                "password": "revoked owner password",
+            },
+        )
+        assert revoked_enrollment.status_code == 422
+
+        invited = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**owner_auth, "Idempotency-Key": "invite-second-owner"},
+            json={"provenance_reference": "e2e:second-owner"},
+        )
+        assert invited.status_code == 201, invited.text
+        invitation_id = invited.json()["invitation_id"]
+        invitation_token = invited.json()["invitation_token"]
+        assert invited.json()["token_available"] is True
+        assert isinstance(invitation_token, str)
+
+        # Exact create replay never replays the bearer secret.
+        replay = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**owner_auth, "Idempotency-Key": "invite-second-owner"},
+            json={"provenance_reference": "e2e:second-owner"},
+        )
+        assert replay.status_code == 201
+        assert replay.json()["invitation_id"] == invitation_id
+        assert replay.json()["invitation_token"] is None
+        assert replay.json()["token_available"] is False
+
+        candidate_login = "second-platform-owner@example.test"
+        candidate_password = "second platform owner password"
+        enrollment = await client.post(
+            "/v1/platform/owner-invitations:enroll",
+            json={
+                "invitation_token": invitation_token,
+                "login_handle": candidate_login,
+                "password": candidate_password,
+            },
+        )
+        assert enrollment.status_code == 201, enrollment.text
+        candidate_identity_id = UUID(enrollment.json()["native_identity_id"])
+
+        # The invitation bearer is single-use.
+        token_replay = await client.post(
+            "/v1/platform/owner-invitations:enroll",
+            json={
+                "invitation_token": invitation_token,
+                "login_handle": "replay@example.test",
+                "password": candidate_password,
+            },
+        )
+        assert token_replay.status_code == 422
+
+        # Password alone is intentionally insufficient for owner activation.
+        unprepared = await client.post(
+            f"/v1/platform/owner-invitations/{invitation_id}:activate",
+            headers={**owner_auth, "Idempotency-Key": "activate-unprepared-owner"},
+        )
+        assert unprepared.status_code == 422
+        assert unprepared.json()["error"]["code"] == "platform_owner_invalid"
+
+        candidate_login_response = await client.post(
+            "/auth/native/sessions",
+            json={"login_handle": candidate_login, "password": candidate_password},
+        )
+        assert candidate_login_response.status_code == 201
+        candidate_token = candidate_login_response.json()["access_token"]
+        candidate_headers = {"Authorization": f"Bearer {candidate_token}"}
+
+        registration_options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/registration-options",
+                headers=candidate_headers,
+            )
+        ).json()["public_key"]
+        candidate_authenticator = SoftwareAuthenticator(
+            rp_id=registration_options["rp"]["id"],
+            origin=ORIGIN,
+        )
+        registration = candidate_authenticator.registration_credential(
+            challenge=websafe_decode(registration_options["challenge"]),
+            user_verified=True,
+        )
+        registered = await client.post(
+            "/auth/native/sessions/current/webauthn/registrations",
+            headers=candidate_headers,
+            json={"credential": registration},
+        )
+        assert registered.status_code == 201, registered.text
+
+        step_options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/step-up-options",
+                headers=candidate_headers,
+            )
+        ).json()["public_key"]
+        step_assertion = candidate_authenticator.authentication_credential(
+            challenge=websafe_decode(step_options["challenge"]),
+            user_verified=True,
+        )
+        assert (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/step-up",
+                headers=candidate_headers,
+                json={"credential": step_assertion},
+            )
+        ).status_code == 200
+        recovery = await client.post(
+            "/auth/native/sessions/current/recovery-codes",
+            headers=candidate_headers,
+        )
+        assert recovery.status_code == 201
+        assert len(recovery.json()["codes"]) == 10
+
+        promoted = await client.post(
+            f"/v1/platform/owner-invitations/{invitation_id}:activate",
+            headers={**owner_auth, "Idempotency-Key": "activate-prepared-owner"},
+        )
+        assert promoted.status_code == 201, promoted.text
+        second_owner_id = UUID(promoted.json()["principal_id"])
+
+        owner_caps = {
+            row[0]
+            for row in e2e_admin_conn.execute(
+                "SELECT capability_key FROM request_engine.principal_authority_grants "
+                "WHERE principal_id = %s AND status = 'active'",
+                (second_owner_id,),
+            ).fetchall()
+        }
+        assert "platform.owner.provision" in owner_caps
+        assert "platform.owner.manage_lifecycle" in owner_caps
+
+        invitation_state = e2e_admin_conn.execute(
+            "SELECT status, native_identity_id FROM request_engine.platform_owner_invitations "
+            "WHERE id = %s",
+            (UUID(invitation_id),),
+        ).fetchone()
+        assert invitation_state == ("consumed", candidate_identity_id)
+
+        second_revision = e2e_admin_conn.execute(
+            "SELECT authority_revision FROM request_engine.principals WHERE id = %s",
+            (second_owner_id,),
+        ).fetchone()
+        assert second_revision is not None
+        suspended = await client.post(
+            f"/v1/platform/owners/{second_owner_id}:suspend",
+            headers={
+                **owner_auth,
+                "Idempotency-Key": "suspend-second-owner",
+            },
+            json={
+                "expected_revision": second_revision[0],
+                "reason_code": "security_investigation",
+            },
+        )
+        assert suspended.status_code == 200, suspended.text
+        assert suspended.json()["binding_status"] == "suspended"
+
+        first_owner_id = e2e_admin_conn.execute(
+            "SELECT initial_owner_principal_id FROM request_engine.platform_instance "
+            "WHERE singleton_key = 1"
+        ).fetchone()
+        assert first_owner_id is not None
+        first_revision = e2e_admin_conn.execute(
+            "SELECT authority_revision FROM request_engine.principals WHERE id = %s",
+            (first_owner_id[0],),
+        ).fetchone()
+        assert first_revision is not None
+        last_owner_denied = await client.post(
+            f"/v1/platform/owners/{first_owner_id[0]}:suspend",
+            headers={
+                **owner_auth,
+                "Idempotency-Key": "cannot-suspend-last-owner",
+            },
+            json={
+                "expected_revision": first_revision[0],
+                "reason_code": "security_investigation",
+            },
+        )
+        assert last_owner_denied.status_code == 422
+        assert last_owner_denied.json()["error"]["code"] == "platform_owner_invalid"
+
+
+@pytest.mark.asyncio
 async def test_webauthn_challenge_is_single_use(
     private_runtime_configuration: UUID,
     e2e_admin_conn: PgConnection,
@@ -338,3 +687,343 @@ async def test_authentication_options_do_not_reveal_unknown_handles(
             json={"login_handle": "does-not-exist@example.test", "credential": forged},
         )
         assert rejected.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_offline_recovery_restricts_sensitive_authority_until_webauthn_completion(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        authenticator = await _claim_owner(client)
+        _, owner_token = await _webauthn_login(client, authenticator)
+        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+        issued = await client.post(
+            "/auth/native/sessions/current/recovery-codes",
+            headers=owner_headers,
+        )
+        assert issued.status_code == 201, issued.text
+        code = issued.json()["codes"][0]
+
+        recovered = await client.post(
+            "/auth/native/password:recover-with-code",
+            json={
+                "recovery_code": code,
+                "new_password": "owner password after offline recovery",
+            },
+        )
+        assert recovered.status_code == 204, recovered.text
+
+        # Recovery revokes every old session.
+        assert (
+            await client.get("/auth/native/sessions/current", headers=owner_headers)
+        ).status_code == 401
+
+        login = await client.post(
+            "/auth/native/sessions",
+            json={
+                "login_handle": LOGIN_HANDLE,
+                "password": "owner password after offline recovery",
+            },
+        )
+        assert login.status_code == 201, login.text
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        current = await client.get("/auth/native/sessions/current", headers=headers)
+        assert current.status_code == 200
+        assert current.json()["recovery_restricted"] is True
+
+        readiness = await client.get(
+            "/auth/native/sessions/current/recovery-readiness",
+            headers=headers,
+        )
+        assert readiness.status_code == 200, readiness.text
+        assert readiness.json()["recovery_state"] == "recovery_restricted"
+        assert readiness.json()["recovery_epoch"] == 1
+
+        # Standing grants still exist, but sensitive use is blocked by recovery posture.
+        denied = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**headers, "Idempotency-Key": "blocked-during-recovery"},
+            json={"provenance_reference": "e2e:recovery-restricted"},
+        )
+        assert denied.status_code == 403, denied.text
+        assert denied.json()["error"]["code"] == "recovery_completion_required"
+
+        options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/registration-options",
+                headers=headers,
+            )
+        ).json()["public_key"]
+        replacement_authenticator = SoftwareAuthenticator(
+            rp_id=options["rp"]["id"],
+            origin=ORIGIN,
+        )
+        credential = replacement_authenticator.registration_credential(
+            challenge=websafe_decode(options["challenge"]),
+            user_verified=True,
+        )
+        registered = await client.post(
+            "/auth/native/sessions/current/webauthn/registrations",
+            headers=headers,
+            json={"credential": credential},
+        )
+        assert registered.status_code == 201, registered.text
+
+        step_options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/step-up-options",
+                headers=headers,
+            )
+        ).json()["public_key"]
+        assertion = replacement_authenticator.authentication_credential(
+            challenge=websafe_decode(step_options["challenge"]),
+            user_verified=True,
+        )
+        stepped = await client.post(
+            "/auth/native/sessions/current/webauthn/step-up",
+            headers=headers,
+            json={"credential": assertion},
+        )
+        assert stepped.status_code == 200, stepped.text
+        assert stepped.json()["authentication_assurance"] == "phishing_resistant"
+
+        still_denied = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**headers, "Idempotency-Key": "still-blocked-before-completion"},
+            json={"provenance_reference": "e2e:recovery-still-restricted"},
+        )
+        assert still_denied.status_code == 403
+        assert still_denied.json()["error"]["code"] == "recovery_completion_required"
+
+        completed = await client.post(
+            "/auth/native/sessions/current/recovery:complete",
+            headers=headers,
+        )
+        assert completed.status_code == 200, completed.text
+        assert completed.json()["recovery_state"] == "normal"
+        assert completed.json()["active_webauthn_credentials"] >= 1
+
+        allowed = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**headers, "Idempotency-Key": "allowed-after-recovery-complete"},
+            json={"provenance_reference": "e2e:recovery-complete"},
+        )
+        assert allowed.status_code == 201, allowed.text
+
+        facts = e2e_admin_conn.execute(
+            "SELECT event_kind FROM request_engine.native_identity_recovery_facts "
+            "ORDER BY created_at"
+        ).fetchall()
+        assert [row[0] for row in facts] == ["recovery_started", "recovery_completed"]
+
+
+@pytest.mark.asyncio
+async def test_platform_configuration_http_is_governed_and_never_replays_secret_material(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _accept_smtp_transport(
+        _validator: SmtplibConfigurationValidator,
+        _configuration: object,
+        *,
+        password: str | None,
+    ) -> ProviderValidationResult:
+        del _configuration, password
+        return ProviderValidationResult(ProviderValidationStatus.VALID, "smtp_valid")
+
+    # SMTP DNS/TCP/TLS connectivity is an external boundary proved by the module
+    # provider tests and the Docker E2E provider profile. This journey proves the
+    # governed HTTP/secret surface, so it must not depend on live SMTP transport.
+    monkeypatch.setattr(SmtplibConfigurationValidator, "validate", _accept_smtp_transport)
+    # This journey explicitly exercises provider validation/activation. Production-shaped
+    # composition is fenced by default, so the test must opt into outbound transport rather
+    # than weakening the safe deployment default for unrelated journeys.
+    monkeypatch.setenv("REQUEST_ENGINE_OUTBOUND_FENCED", "false")
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        authenticator = await _claim_owner(client)
+        _, owner_token = await _webauthn_login(client, authenticator)
+        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+        empty = await client.get("/v1/platform/configurations", headers=owner_headers)
+        assert empty.status_code == 200, empty.text
+        assert empty.json() == {"items": []}
+
+        password_login = await client.post(
+            "/auth/native/sessions",
+            json={"login_handle": LOGIN_HANDLE, "password": PASSWORD},
+        )
+        assert password_login.status_code == 201
+        password_headers = {
+            "Authorization": f"Bearer {password_login.json()['access_token']}",
+            "Idempotency-Key": "config-password-denied",
+        }
+        denied = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions",
+            headers=password_headers,
+            json={
+                "provider_kind": "smtp",
+                "configuration": {
+                    "host": "mail.example.test",
+                    "port": 587,
+                    "security": "starttls",
+                },
+            },
+        )
+        assert denied.status_code == 403
+        assert denied.json()["error"]["code"] == "phishing_resistant_auth_required"
+
+        rejected_secret = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions",
+            headers={**owner_headers, "Idempotency-Key": "config-secret-rejected"},
+            json={
+                "provider_kind": "smtp",
+                "configuration": {
+                    "host": "mail.example.test",
+                    "password": "must-never-enter-postgres",
+                },
+            },
+        )
+        assert rejected_secret.status_code == 422
+        assert "must-never-enter-postgres" not in rejected_secret.text
+
+        stage_headers = {**owner_headers, "Idempotency-Key": "config-stage-1"}
+        body: dict[str, object] = {
+            "provider_kind": "smtp",
+            "configuration": {
+                "host": "mail.example.test",
+                "port": 587,
+                "sender": "noreply@example.test",
+                "security": "starttls",
+            },
+        }
+        staged = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions",
+            headers=stage_headers,
+            json=body,
+        )
+        assert staged.status_code == 201, staged.text
+        assert staged.json()["revision"] == 1
+        assert staged.json()["state"] == "draft"
+        replay = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions",
+            headers=stage_headers,
+            json=body,
+        )
+        assert replay.status_code == 201
+        assert replay.json() == staged.json()
+
+        listed = await client.get(
+            "/v1/platform/configurations/email.delivery",
+            headers=owner_headers,
+        )
+        assert listed.status_code == 200
+        assert len(listed.json()["items"]) == 1
+        assert listed.json()["items"][0]["configuration"] == body["configuration"]
+
+        exact = await client.get(
+            "/v1/platform/configurations/email.delivery/revisions/1",
+            headers=owner_headers,
+        )
+        assert exact.status_code == 200
+        assert exact.json()["state"] == "draft"
+
+        validated = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions/1:validate",
+            headers={**owner_headers, "Idempotency-Key": "config-validate-1"},
+        )
+        assert validated.status_code == 200, validated.text
+        assert validated.json()["state"] == "validated"
+
+        activated = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions/1:activate",
+            headers={**owner_headers, "Idempotency-Key": "config-activate-1"},
+            json={"expected_active_revision": None},
+        )
+        assert activated.status_code == 200, activated.text
+        assert activated.json()["state"] == "active"
+
+        staged_two = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions",
+            headers={**owner_headers, "Idempotency-Key": "config-stage-2"},
+            json={
+                "provider_kind": "smtp",
+                "configuration": {
+                    "host": "mail-two.example.test",
+                    "port": 587,
+                    "sender": "noreply@example.test",
+                    "security": "starttls",
+                },
+            },
+        )
+        assert staged_two.status_code == 201
+        assert staged_two.json()["revision"] == 2
+        assert (
+            await client.post(
+                "/v1/platform/configurations/email.delivery/revisions/2:validate",
+                headers={**owner_headers, "Idempotency-Key": "config-validate-2"},
+            )
+        ).status_code == 200
+
+        stale = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions/2:activate",
+            headers={**owner_headers, "Idempotency-Key": "config-activate-stale"},
+            json={"expected_active_revision": None},
+        )
+        assert stale.status_code == 409
+        assert stale.json()["error"]["code"] == "platform_configuration_changed"
+
+        switched = await client.post(
+            "/v1/platform/configurations/email.delivery/revisions/2:activate",
+            headers={**owner_headers, "Idempotency-Key": "config-activate-2"},
+            json={"expected_active_revision": 1},
+        )
+        assert switched.status_code == 200, switched.text
+        assert switched.json()["state"] == "active"
+
+        binding_id = uuid4()
+        secret_id = uuid4()
+        e2e_admin_conn.execute(
+            """
+            INSERT INTO request_engine.platform_secret_bindings (
+                id, purpose, backend, secret_id, backend_version
+            ) VALUES (%s, 'email.smtp.password', 'openbao', %s, 4)
+            """,
+            (binding_id, secret_id),
+        )
+        metadata = await client.get(
+            f"/v1/platform/secrets/{binding_id}",
+            headers=owner_headers,
+        )
+        assert metadata.status_code == 200, metadata.text
+        assert metadata.json()["binding_id"] == str(binding_id)
+        assert metadata.json()["backend"] == "openbao"
+        assert metadata.json()["backend_version"] == 4
+        assert metadata.json()["configured"] is True
+        assert "secret_id" not in metadata.json()
+        assert str(secret_id) not in metadata.text
+
+        operation = (await client.get("/openapi.json")).json()["paths"][
+            "/v1/platform/configurations/{configuration_kind}/revisions"
+        ]["post"]
+        assert operation["x-request-engine-owner"] == "platform_configuration"
+        assert operation["x-request-engine-capability"] == "platform.configuration.stage"
+        assert operation["x-request-engine-idempotency"] == "required"

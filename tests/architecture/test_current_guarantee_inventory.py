@@ -15,7 +15,7 @@ KNOWN_EVIDENCE = {
     "historical",
     "concurrency",
 }
-KNOWN_RISKS = {"security", "capacity", "provenance", "temporal"}
+KNOWN_RISKS = {"security", "capacity", "provenance", "temporal", "availability"}
 
 
 class Guarantee(TypedDict):

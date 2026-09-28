@@ -6,10 +6,6 @@ from urllib.parse import quote_plus
 from uuid import uuid4
 
 import psycopg
-from initial_controller_upgrade_evidence import (
-    establish_pre_policy_root,
-    verify_pre_policy_root_unchanged,
-)
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
@@ -35,57 +31,48 @@ def _run_alembic(database: str, target: str) -> None:
     )
 
 
-def main() -> None:
-    source_database = os.environ.get("PGDATABASE", "request_engine_v3")
-    proof_database = f"re_multidb_proof_{uuid4().hex}"
-    admin_conninfo = make_conninfo(
+def _conninfo(database: str) -> str:
+    return make_conninfo(
         host=os.environ.get("PGHOST", "127.0.0.1"),
         port=os.environ.get("PGPORT", "5432"),
-        dbname="postgres",
+        dbname=database,
         user=os.environ.get("PGUSER", "request_engine"),
         password=os.environ.get("PGPASSWORD", ""),
         connect_timeout=5,
         application_name="request-engine-multidatabase-proof",
     )
 
+
+def main() -> None:
+    source_database = os.environ.get("PGDATABASE", "request_engine_current")
+    proof_database = f"re_multidb_proof_{uuid4().hex}"
+    admin_conninfo = _conninfo("postgres")
+
+    # The source database has already reached current HEAD when this proof runs.
+    # Its baseline also created the Request Engine roles, which are cluster-global.
+    with psycopg.connect(_conninfo(source_database)) as source:
+        source_row = source.execute("SELECT version_num FROM alembic_version").fetchone()
+    if source_row is None:
+        raise RuntimeError("source database has no Alembic head")
+    expected_head = str(source_row[0])
+
     with psycopg.connect(admin_conninfo, autocommit=True) as admin:
         admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(proof_database)))
 
     try:
-        # 0001 must remain installable after post-baseline cluster-global roles exist.
-        _run_alembic(proof_database, "0001_initial")
-        # Historical checkpoint is deliberate migration provenance, not a pin
-        # on current HEAD: old customer authority must survive future upgrades.
-        _run_alembic(proof_database, "0035_native_platform_provisioner")
-        proof_conninfo = make_conninfo(admin_conninfo, dbname=proof_database)
-        with psycopg.connect(proof_conninfo, autocommit=True) as legacy:
-            pre_policy_root = establish_pre_policy_root(legacy)
-        _run_alembic(proof_database, "0036_initial_controller_policy")
-        with psycopg.connect(proof_conninfo, autocommit=True) as versioned:
-            v1_root = establish_pre_policy_root(versioned, policy="tenant-controller-v1")
-        _run_alembic(proof_database, "0037_agent_inspection_policy")
-        with psycopg.connect(proof_conninfo, autocommit=True) as agent_inspection:
-            v2_root = establish_pre_policy_root(agent_inspection, policy="tenant-controller-v2")
-        # The same database must then reach current HEAD while reusing exact
-        # cluster-global control-plane roles rather than duplicating them unsafely.
+        # A second clean database in the same PostgreSQL cluster must install
+        # current HEAD while safely reusing the exact audited cluster-global
+        # roles that the first database already created.
         _run_alembic(proof_database, "head")
-        with psycopg.connect(proof_conninfo, autocommit=True) as upgraded:
-            verify_pre_policy_root_unchanged(upgraded, pre_policy_root)
-            verify_pre_policy_root_unchanged(upgraded, v1_root)
-            verify_pre_policy_root_unchanged(upgraded, v2_root)
 
-        with psycopg.connect(
-            make_conninfo(
-                host=os.environ.get("PGHOST", "127.0.0.1"),
-                port=os.environ.get("PGPORT", "5432"),
-                dbname=proof_database,
-                user=os.environ.get("PGUSER", "request_engine"),
-                password=os.environ.get("PGPASSWORD", ""),
-            )
-        ) as proof:
+        with psycopg.connect(_conninfo(proof_database)) as proof:
             head = proof.execute("SELECT version_num FROM alembic_version").fetchone()
-            if head is None:
-                raise RuntimeError("second database has no Alembic head")
+            if head is None or str(head[0]) != expected_head:
+                raise RuntimeError(
+                    "second database did not reach the same Alembic head: "
+                    f"source={expected_head!r} second={head!r}"
+                )
+
             owners = proof.execute(
                 """
                 SELECT p.proname, pg_get_userbyid(p.proowner)
@@ -100,12 +87,12 @@ def main() -> None:
                  ORDER BY p.proname
                 """
             ).fetchall()
-            expected = [
+            expected_owners = [
                 ("establish_root", "request_bootstrap_definer"),
                 ("provision_tenant_provisioner", "request_platform_control_definer"),
                 ("read_principal_authority", "request_platform_definer"),
             ]
-            if owners != expected:
+            if owners != expected_owners:
                 raise RuntimeError(f"second database definer ownership mismatch: {owners!r}")
 
             roles = proof.execute(
@@ -113,17 +100,34 @@ def main() -> None:
                 SELECT rolname, rolcanlogin, rolsuper, rolbypassrls
                   FROM pg_roles
                  WHERE rolname IN (
+                     'request_bootstrap_definer',
+                     'request_engine_admin',
+                     'request_engine_app',
+                     'request_engine_discovery',
+                     'request_engine_discovery_definer',
+                     'request_engine_schema_owner',
+                     'request_engine_worker',
                      'request_platform_control',
-                     'request_platform_control_definer'
+                     'request_platform_control_definer',
+                     'request_platform_definer'
                  )
                  ORDER BY rolname
                 """
             ).fetchall()
-            if roles != [
+            expected_roles = [
+                ("request_bootstrap_definer", False, False, True),
+                ("request_engine_admin", False, False, True),
+                ("request_engine_app", False, False, False),
+                ("request_engine_discovery", False, False, False),
+                ("request_engine_discovery_definer", False, False, True),
+                ("request_engine_schema_owner", False, False, False),
+                ("request_engine_worker", False, False, False),
                 ("request_platform_control", False, False, False),
                 ("request_platform_control_definer", False, False, True),
-            ]:
-                raise RuntimeError(f"second database platform role topology mismatch: {roles!r}")
+                ("request_platform_definer", False, False, True),
+            ]
+            if roles != expected_roles:
+                raise RuntimeError(f"second database managed role topology mismatch: {roles!r}")
     finally:
         with psycopg.connect(admin_conninfo, autocommit=True) as admin:
             admin.execute(
@@ -132,7 +136,10 @@ def main() -> None:
                 )
             )
 
-    print(f"[PASS] second Request Engine database migrated alongside {source_database}")
+    print(
+        "[PASS] second Request Engine database reached "
+        f"{expected_head} alongside {source_database} using shared audited roles"
+    )
 
 
 if __name__ == "__main__":

@@ -1,2581 +1,3092 @@
-    CONSTRAINT provider_events_terminal_timestamp_check CHECK ((((status = ANY (ARRAY['processed'::text, 'rejected'::text])) AND (processed_at IS NOT NULL)) OR ((status <> ALL (ARRAY['processed'::text, 'rejected'::text])) AND (processed_at IS NULL))))
-);
-
-
-ALTER TABLE request_engine.provider_events OWNER TO request_engine_schema_owner;
-
---
--- Name: scheduled_actions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.scheduled_actions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    owner_module text NOT NULL,
-    action_type text NOT NULL,
-    action_version integer DEFAULT 1 NOT NULL,
-    subject_kind text,
-    subject_id uuid,
-    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
-    dedupe_key text NOT NULL,
-    execute_at timestamp with time zone NOT NULL,
-    next_attempt_at timestamp with time zone NOT NULL,
-    status text DEFAULT 'pending'::text NOT NULL,
-    claim_token uuid,
-    lease_until timestamp with time zone,
-    attempt_count integer DEFAULT 0 NOT NULL,
-    max_attempts integer DEFAULT 8 NOT NULL,
-    last_error_class text,
-    completed_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    replay_count integer DEFAULT 0 NOT NULL,
-    last_replayed_at timestamp with time zone,
-    correlation_data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    CONSTRAINT scheduled_actions_action_type_check CHECK ((action_type <> ''::text)),
-    CONSTRAINT scheduled_actions_action_version_check CHECK ((action_version > 0)),
-    CONSTRAINT scheduled_actions_attempt_count_check CHECK ((attempt_count >= 0)),
-    CONSTRAINT scheduled_actions_check CHECK (((status = 'leased'::text) = ((claim_token IS NOT NULL) AND (lease_until IS NOT NULL)))),
-    CONSTRAINT scheduled_actions_check1 CHECK (((status <> 'completed'::text) OR (completed_at IS NOT NULL))),
-    CONSTRAINT scheduled_actions_correlation_data_object_ck CHECK ((jsonb_typeof(correlation_data) = 'object'::text)),
-    CONSTRAINT scheduled_actions_dedupe_key_check CHECK ((dedupe_key <> ''::text)),
-    CONSTRAINT scheduled_actions_max_attempts_check CHECK ((max_attempts > 0)),
-    CONSTRAINT scheduled_actions_owner_module_check CHECK ((owner_module <> ''::text)),
-    CONSTRAINT scheduled_actions_payload_check CHECK ((jsonb_typeof(payload) = 'object'::text)),
-    CONSTRAINT scheduled_actions_replay_count_check CHECK ((replay_count >= 0)),
-    CONSTRAINT scheduled_actions_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'leased'::text, 'completed'::text, 'cancelled'::text, 'dead'::text])))
-);
-
-
-ALTER TABLE request_engine.scheduled_actions OWNER TO request_engine_schema_owner;
-
---
--- Name: worker_dead_letters_v1; Type: VIEW; Schema: request_admin; Owner: request_engine_schema_owner
---
-
-CREATE VIEW request_admin.worker_dead_letters_v1 AS
- SELECT scheduled_actions.organization_id,
-    'scheduled_action'::text AS work_kind,
-    scheduled_actions.id AS work_id,
-    scheduled_actions.attempt_count,
-    scheduled_actions.max_attempts,
-    scheduled_actions.replay_count,
-    scheduled_actions.last_error_class,
-    scheduled_actions.updated_at
-   FROM request_engine.scheduled_actions
-  WHERE (scheduled_actions.status = 'dead'::text)
-UNION ALL
- SELECT outbox_messages.organization_id,
-    'outbox_message'::text AS work_kind,
-    outbox_messages.id AS work_id,
-    outbox_messages.attempt_count,
-    outbox_messages.max_attempts,
-    outbox_messages.replay_count,
-    outbox_messages.last_error_class,
-    outbox_messages.updated_at
-   FROM request_engine.outbox_messages
-  WHERE (outbox_messages.status = 'dead'::text)
-UNION ALL
- SELECT provider_events.organization_id,
-    'provider_event'::text AS work_kind,
-    provider_events.id AS work_id,
-    provider_events.attempt_count,
-    provider_events.max_attempts,
-    provider_events.replay_count,
-    provider_events.last_error_class,
-    provider_events.updated_at
-   FROM request_engine.provider_events
-  WHERE (provider_events.status = ANY (ARRAY['dead'::text, 'rejected'::text]));
-
-
-ALTER VIEW request_admin.worker_dead_letters_v1 OWNER TO request_engine_schema_owner;
-
---
--- Name: attendance_responses; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.attendance_responses (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    reservation_id uuid NOT NULL,
-    response text NOT NULL,
-    actor_principal_id uuid,
-    source_key text NOT NULL,
-    responded_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT attendance_responses_response_check CHECK ((response = ANY (ARRAY['accepted'::text, 'declined'::text]))),
-    CONSTRAINT attendance_responses_source_key_check CHECK ((source_key <> ''::text))
-);
-
-
-ALTER TABLE request_engine.attendance_responses OWNER TO request_engine_schema_owner;
-
---
--- Name: audit_records; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.audit_records (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    actor_principal_id uuid,
-    command_name text NOT NULL,
-    aggregate_kind text,
-    aggregate_id uuid,
-    represented_party_id uuid,
-    representation_id uuid,
-    policy_key text,
-    idempotency_record_id uuid,
-    correlation_data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    details jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT audit_records_command_name_check CHECK ((command_name <> ''::text)),
-    CONSTRAINT audit_records_correlation_data_check CHECK ((jsonb_typeof(correlation_data) = 'object'::text)),
-    CONSTRAINT audit_records_details_check CHECK ((jsonb_typeof(details) = 'object'::text))
-);
-
-
-ALTER TABLE request_engine.audit_records OWNER TO request_engine_schema_owner;
-
---
--- Name: booking_context_terms; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.booking_context_terms (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    resource_location_assignment_id uuid NOT NULL,
-    offering_version_id uuid NOT NULL,
-    effective_during tstzrange NOT NULL,
-    amount numeric(20,6),
-    currency text,
-    planned_duration_minutes integer,
-    bookable boolean DEFAULT true NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT booking_context_terms_amount_check CHECK (((amount IS NULL) OR (amount >= (0)::numeric))),
-    CONSTRAINT booking_context_terms_check CHECK (((amount IS NULL) = (currency IS NULL))),
-    CONSTRAINT booking_context_terms_check1 CHECK (((amount IS NOT NULL) OR (planned_duration_minutes IS NOT NULL) OR (NOT bookable))),
-    CONSTRAINT booking_context_terms_currency_check CHECK (((currency IS NULL) OR (currency ~ '^[A-Z]{3}$'::text))),
-    CONSTRAINT booking_context_terms_effective_during_check CHECK ((NOT isempty(effective_during))),
-    CONSTRAINT booking_context_terms_effective_during_check1 CHECK ((lower(effective_during) IS NOT NULL)),
-    CONSTRAINT booking_context_terms_effective_during_check2 CHECK ((lower_inc(effective_during) AND (NOT upper_inc(effective_during)))),
-    CONSTRAINT booking_context_terms_planned_duration_minutes_check CHECK (((planned_duration_minutes IS NULL) OR (planned_duration_minutes > 0))),
-    CONSTRAINT booking_context_terms_revision_check CHECK ((revision > 0))
-);
-
-ALTER TABLE ONLY request_engine.booking_context_terms FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.booking_context_terms OWNER TO request_engine_schema_owner;
-
---
--- Name: capacity_claims; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.capacity_claims (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    requirement_id uuid NOT NULL,
-    hold_id uuid,
-    reservation_id uuid,
-    during tstzrange NOT NULL,
-    quantity integer NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    released_at timestamp with time zone,
-    replaced_by_claim_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    resource_location_assignment_id uuid,
-    CONSTRAINT capacity_claims_check CHECK (((hold_id IS NOT NULL) OR (reservation_id IS NOT NULL))),
-    CONSTRAINT capacity_claims_check1 CHECK (((status = 'active'::text) = (released_at IS NULL))),
-    CONSTRAINT capacity_claims_check2 CHECK (((status <> 'replaced'::text) OR (replaced_by_claim_id IS NOT NULL))),
-    CONSTRAINT capacity_claims_during_check CHECK ((NOT isempty(during))),
-    CONSTRAINT capacity_claims_during_check1 CHECK (((lower(during) IS NOT NULL) AND (upper(during) IS NOT NULL))),
-    CONSTRAINT capacity_claims_during_check2 CHECK ((lower_inc(during) AND (NOT upper_inc(during)))),
-    CONSTRAINT capacity_claims_quantity_check CHECK ((quantity > 0)),
-    CONSTRAINT capacity_claims_status_check CHECK ((status = ANY (ARRAY['active'::text, 'released'::text, 'replaced'::text])))
-);
-
-
-ALTER TABLE request_engine.capacity_claims OWNER TO request_engine_schema_owner;
-
---
--- Name: capacity_holds; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.capacity_holds (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_version_id uuid NOT NULL,
-    subject_party_id uuid NOT NULL,
-    location_id uuid,
-    during tstzrange NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    expires_at timestamp with time zone NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT capacity_holds_check CHECK ((expires_at > created_at)),
-    CONSTRAINT capacity_holds_during_check CHECK ((NOT isempty(during))),
-    CONSTRAINT capacity_holds_during_check1 CHECK (((lower(during) IS NOT NULL) AND (upper(during) IS NOT NULL))),
-    CONSTRAINT capacity_holds_during_check2 CHECK ((lower_inc(during) AND (NOT upper_inc(during)))),
-    CONSTRAINT capacity_holds_revision_check CHECK ((revision > 0)),
-    CONSTRAINT capacity_holds_status_check CHECK ((status = ANY (ARRAY['active'::text, 'consumed'::text, 'released'::text, 'expired'::text])))
-);
-
-
-ALTER TABLE request_engine.capacity_holds OWNER TO request_engine_schema_owner;
-
---
--- Name: communication_deliveries; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.communication_deliveries (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    communication_task_id uuid NOT NULL,
-    attempt_no integer NOT NULL,
-    channel text NOT NULL,
-    provider_key text NOT NULL,
-    provider_idempotency_key text NOT NULL,
-    provider_message_id text,
-    status text NOT NULL,
-    result_data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    started_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    completed_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT communication_deliveries_attempt_no_check CHECK ((attempt_no > 0)),
-    CONSTRAINT communication_deliveries_channel_check CHECK ((channel <> ''::text)),
-    CONSTRAINT communication_deliveries_provider_idempotency_key_check CHECK ((provider_idempotency_key <> ''::text)),
-    CONSTRAINT communication_deliveries_provider_key_check CHECK ((provider_key <> ''::text)),
-    CONSTRAINT communication_deliveries_result_data_check CHECK ((jsonb_typeof(result_data) = 'object'::text)),
-    CONSTRAINT communication_deliveries_status_check CHECK ((status = ANY (ARRAY['attempting'::text, 'accepted'::text, 'delivered'::text, 'failed'::text, 'ambiguous'::text])))
-);
-
-
-ALTER TABLE request_engine.communication_deliveries OWNER TO request_engine_schema_owner;
-
---
--- Name: communication_escalations; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.communication_escalations (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    parent_task_id uuid NOT NULL,
-    child_task_id uuid NOT NULL,
-    trigger text NOT NULL,
-    from_channel text NOT NULL,
-    to_channel text NOT NULL,
-    ordinal integer NOT NULL,
-    failure_class text,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT communication_escalations_ordinal_check CHECK ((ordinal >= 1)),
-    CONSTRAINT communication_escalations_trigger_check CHECK ((trigger = ANY (ARRAY['delivery_deadline_missed'::text, 'definitive_failure'::text, 'recipient_unreachable'::text])))
-);
-
-ALTER TABLE ONLY request_engine.communication_escalations FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.communication_escalations OWNER TO request_engine_schema_owner;
-
---
--- Name: communication_tasks; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.communication_tasks (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    recipient_party_id uuid NOT NULL,
-    contact_point_id uuid,
-    purpose text NOT NULL,
-    source_kind text,
-    source_id uuid,
-    channel_policy jsonb DEFAULT '{}'::jsonb NOT NULL,
-    template_key text NOT NULL,
-    template_version integer NOT NULL,
-    render_context jsonb DEFAULT '{}'::jsonb NOT NULL,
-    dedupe_key text,
-    not_before timestamp with time zone,
-    expires_at timestamp with time zone,
-    status text DEFAULT 'pending'::text NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    parent_task_id uuid,
-    lineage_id uuid,
-    escalation_ordinal integer,
-    CONSTRAINT communication_tasks_channel_policy_check CHECK ((jsonb_typeof(channel_policy) = 'object'::text)),
-    CONSTRAINT communication_tasks_check CHECK (((expires_at IS NULL) OR (not_before IS NULL) OR (expires_at > not_before))),
-    CONSTRAINT communication_tasks_escalation_ordinal_check CHECK (((escalation_ordinal IS NULL) OR (escalation_ordinal >= 1))),
-    CONSTRAINT communication_tasks_lineage_shape_check CHECK ((((parent_task_id IS NULL) AND (lineage_id IS NULL) AND (escalation_ordinal IS NULL)) OR ((parent_task_id IS NOT NULL) AND (lineage_id IS NOT NULL) AND (escalation_ordinal IS NOT NULL)))),
-    CONSTRAINT communication_tasks_purpose_check CHECK ((purpose <> ''::text)),
-    CONSTRAINT communication_tasks_render_context_check CHECK ((jsonb_typeof(render_context) = 'object'::text)),
-    CONSTRAINT communication_tasks_revision_check CHECK ((revision > 0)),
-    CONSTRAINT communication_tasks_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'delivering'::text, 'completed'::text, 'cancelled'::text, 'failed'::text]))),
-    CONSTRAINT communication_tasks_template_key_check CHECK ((template_key <> ''::text)),
-    CONSTRAINT communication_tasks_template_version_check CHECK ((template_version > 0))
-);
-
-
-ALTER TABLE request_engine.communication_tasks OWNER TO request_engine_schema_owner;
-
---
--- Name: discovery_booking_handoffs; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.discovery_booking_handoffs (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    token_hash text NOT NULL,
-    organization_id uuid NOT NULL,
-    publication_id uuid NOT NULL,
-    publication_revision bigint NOT NULL,
-    mapping_id uuid NOT NULL,
-    mapping_revision bigint NOT NULL,
-    offering_version_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    selection jsonb NOT NULL,
-    expires_at timestamp with time zone NOT NULL,
-    consumed_reservation_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT discovery_booking_handoffs_mapping_revision_check CHECK ((mapping_revision > 0)),
-    CONSTRAINT discovery_booking_handoffs_publication_revision_check CHECK ((publication_revision > 0)),
-    CONSTRAINT discovery_booking_handoffs_selection_check CHECK ((jsonb_typeof(selection) = 'object'::text)),
-    CONSTRAINT discovery_booking_handoffs_token_hash_check CHECK ((token_hash ~ '^[0-9a-f]{64}$'::text))
-);
-
-ALTER TABLE ONLY request_engine.discovery_booking_handoffs FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.discovery_booking_handoffs OWNER TO request_engine_schema_owner;
-
---
--- Name: discovery_publications; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.discovery_publications (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    resource_id uuid,
-    effective_during tstzrange NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    provider_visibility text DEFAULT 'hidden'::text NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT discovery_publications_effective_during_check CHECK ((NOT isempty(effective_during))),
-    CONSTRAINT discovery_publications_effective_during_check1 CHECK ((lower(effective_during) IS NOT NULL)),
-    CONSTRAINT discovery_publications_effective_during_check2 CHECK ((lower_inc(effective_during) AND (NOT upper_inc(effective_during)))),
-    CONSTRAINT discovery_publications_provider_visibility_check CHECK ((provider_visibility = ANY (ARRAY['hidden'::text, 'public'::text]))),
-    CONSTRAINT discovery_publications_public_provider_scope_ck CHECK (((provider_visibility <> 'public'::text) OR (resource_id IS NOT NULL))),
-    CONSTRAINT discovery_publications_revision_check CHECK ((revision > 0)),
-    CONSTRAINT discovery_publications_status_check CHECK ((status = ANY (ARRAY['active'::text, 'revoked'::text])))
-);
-
-ALTER TABLE ONLY request_engine.discovery_publications FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.discovery_publications OWNER TO request_engine_schema_owner;
-
---
--- Name: external_correlations; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.external_correlations (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    request_id uuid,
-    correlation_kind text NOT NULL,
-    provider_key text NOT NULL,
-    external_key text NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT external_correlations_correlation_kind_check CHECK ((correlation_kind <> ''::text)),
-    CONSTRAINT external_correlations_external_key_check CHECK ((external_key <> ''::text)),
-    CONSTRAINT external_correlations_provider_key_check CHECK ((provider_key <> ''::text))
-);
-
-
-ALTER TABLE request_engine.external_correlations OWNER TO request_engine_schema_owner;
-
---
--- Name: global_identities; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.global_identities (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    identity_kind text NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    evidence_ref text,
-    created_authority_ref text NOT NULL,
-    creation_reason text NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    retired_at timestamp with time zone,
-    CONSTRAINT global_identities_check CHECK (((status = 'retired'::text) = (retired_at IS NOT NULL))),
-    CONSTRAINT global_identities_created_authority_ref_check CHECK ((created_authority_ref <> ''::text)),
-    CONSTRAINT global_identities_creation_reason_check CHECK ((creation_reason <> ''::text)),
-    CONSTRAINT global_identities_identity_kind_check CHECK ((identity_kind = ANY (ARRAY['person'::text, 'organization'::text]))),
-    CONSTRAINT global_identities_status_check CHECK ((status = ANY (ARRAY['active'::text, 'retired'::text])))
-);
-
-
-ALTER TABLE request_engine.global_identities OWNER TO request_engine_schema_owner;
-
---
--- Name: idempotency_records; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.idempotency_records (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    principal_id uuid NOT NULL,
-    capability text NOT NULL,
-    idempotency_key text NOT NULL,
-    request_fingerprint text NOT NULL,
-    status text DEFAULT 'in_progress'::text NOT NULL,
-    result_data jsonb,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    completed_at timestamp with time zone,
-    CONSTRAINT idempotency_records_capability_check CHECK ((capability <> ''::text)),
-    CONSTRAINT idempotency_records_check CHECK (((status = 'completed'::text) = (completed_at IS NOT NULL))),
-    CONSTRAINT idempotency_records_idempotency_key_check CHECK ((idempotency_key <> ''::text)),
-    CONSTRAINT idempotency_records_request_fingerprint_check CHECK ((request_fingerprint <> ''::text)),
-    CONSTRAINT idempotency_records_status_check CHECK ((status = ANY (ARRAY['in_progress'::text, 'completed'::text])))
-);
-
-
-ALTER TABLE request_engine.idempotency_records OWNER TO request_engine_schema_owner;
-
---
--- Name: identity_exchange_candidates; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.identity_exchange_candidates (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    portable_party_id uuid NOT NULL,
-    kind text NOT NULL,
-    authority text NOT NULL,
-    fingerprint text NOT NULL,
-    created_by_principal_id uuid NOT NULL,
-    expires_at timestamp with time zone DEFAULT (clock_timestamp() + '00:10:00'::interval) NOT NULL,
-    consumed_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT identity_exchange_candidate_authority_ck CHECK ((((kind = 'cedula'::text) AND (authority = 'DO:JCE'::text)) OR ((kind = 'passport'::text) AND (authority ~ '^[A-Z]{2}$'::text)) OR ((kind = 'rnc'::text) AND (authority = 'DO:DGII'::text)))),
-    CONSTRAINT identity_exchange_candidates_fingerprint_check CHECK ((fingerprint ~ '^[0-9a-f]{64}$'::text)),
-    CONSTRAINT identity_exchange_candidates_kind_check CHECK ((kind = ANY (ARRAY['cedula'::text, 'passport'::text, 'rnc'::text])))
-);
-
-ALTER TABLE ONLY request_engine.identity_exchange_candidates FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.identity_exchange_candidates OWNER TO request_engine_schema_owner;
-
---
--- Name: live_capacity_projection_policies; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.live_capacity_projection_policies (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    service_queue_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT live_capacity_projection_policies_revision_check CHECK ((revision > 0))
-);
-
-ALTER TABLE ONLY request_engine.live_capacity_projection_policies FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.live_capacity_projection_policies OWNER TO request_engine_schema_owner;
-
---
--- Name: live_capacity_workload_estimate_policies; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.live_capacity_workload_estimate_policies (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid CONSTRAINT live_capacity_workload_estimate_polici_organization_id_not_null NOT NULL,
-    workload_classification_id uuid CONSTRAINT live_capacity_workload_esti_workload_classification_id_not_null NOT NULL,
-    duration_seconds integer CONSTRAINT live_capacity_workload_estimate_polic_duration_seconds_not_null NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT live_capacity_workload_estimate_policies_duration_seconds_check CHECK ((duration_seconds > 0)),
-    CONSTRAINT live_capacity_workload_estimate_policies_revision_check CHECK ((revision > 0))
-);
-
-ALTER TABLE ONLY request_engine.live_capacity_workload_estimate_policies FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.live_capacity_workload_estimate_policies OWNER TO request_engine_schema_owner;
-
---
--- Name: location_hours_exceptions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.location_hours_exceptions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    during tstzrange NOT NULL,
-    exception_kind text NOT NULL,
-    reason text,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT location_hours_exceptions_during_check CHECK ((NOT isempty(during))),
-    CONSTRAINT location_hours_exceptions_during_check1 CHECK (((lower(during) IS NOT NULL) AND (upper(during) IS NOT NULL))),
-    CONSTRAINT location_hours_exceptions_during_check2 CHECK ((lower_inc(during) AND (NOT upper_inc(during)))),
-    CONSTRAINT location_hours_exceptions_exception_kind_check CHECK ((exception_kind = ANY (ARRAY['available'::text, 'unavailable'::text])))
-);
-
-ALTER TABLE ONLY request_engine.location_hours_exceptions FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.location_hours_exceptions OWNER TO request_engine_schema_owner;
-
---
--- Name: location_operational_hours; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.location_operational_hours (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    weekday smallint NOT NULL,
-    local_start time without time zone NOT NULL,
-    local_end time without time zone NOT NULL,
-    valid_from date,
-    valid_until date,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT location_operational_hours_check CHECK ((local_start < local_end)),
-    CONSTRAINT location_operational_hours_check1 CHECK (((valid_until IS NULL) OR (valid_from IS NULL) OR (valid_until >= valid_from))),
-    CONSTRAINT location_operational_hours_weekday_check CHECK (((weekday >= 0) AND (weekday <= 6)))
-);
-
-ALTER TABLE ONLY request_engine.location_operational_hours FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.location_operational_hours OWNER TO request_engine_schema_owner;
-
---
--- Name: location_public_contact_endpoints; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.location_public_contact_endpoints (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    channel text NOT NULL,
-    normalized_value text NOT NULL,
-    label text,
-    active boolean DEFAULT true NOT NULL,
-    is_public boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT location_public_contact_endpoints_channel_check CHECK ((channel = ANY (ARRAY['phone'::text, 'whatsapp'::text, 'email'::text]))),
-    CONSTRAINT location_public_contact_endpoints_label_check CHECK (((label IS NULL) OR (btrim(label) <> ''::text))),
-    CONSTRAINT location_public_contact_endpoints_normalized_value_check CHECK ((normalized_value <> ''::text))
-);
-
-ALTER TABLE ONLY request_engine.location_public_contact_endpoints FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.location_public_contact_endpoints OWNER TO request_engine_schema_owner;
-
---
--- Name: locations; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.locations (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    location_key text NOT NULL,
-    display_name text NOT NULL,
-    timezone text NOT NULL,
-    public_data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    address_line1 text,
-    address_line2 text,
-    locality text,
-    administrative_area text,
-    postal_code text,
-    country_code text,
-    latitude numeric(9,6),
-    longitude numeric(9,6),
-    geocoding_source text,
-    geocoded_at timestamp with time zone,
-    operational_revision bigint DEFAULT 1 NOT NULL,
-    CONSTRAINT locations_address_line1_ck CHECK (((address_line1 IS NULL) OR (btrim(address_line1) <> ''::text))),
-    CONSTRAINT locations_coordinate_pair_ck CHECK (((latitude IS NULL) = (longitude IS NULL))),
-    CONSTRAINT locations_country_code_ck CHECK (((country_code IS NULL) OR (country_code ~ '^[A-Z]{2}$'::text))),
-    CONSTRAINT locations_display_name_check CHECK ((display_name <> ''::text)),
-    CONSTRAINT locations_latitude_ck CHECK (((latitude IS NULL) OR ((latitude >= ('-90'::integer)::numeric) AND (latitude <= (90)::numeric)))),
-    CONSTRAINT locations_location_key_check CHECK ((location_key <> ''::text)),
-    CONSTRAINT locations_longitude_ck CHECK (((longitude IS NULL) OR ((longitude >= ('-180'::integer)::numeric) AND (longitude <= (180)::numeric)))),
-    CONSTRAINT locations_operational_revision_ck CHECK ((operational_revision > 0)),
-    CONSTRAINT locations_public_data_check CHECK ((jsonb_typeof(public_data) = 'object'::text)),
-    CONSTRAINT locations_timezone_check CHECK ((timezone <> ''::text))
-);
-
-
-ALTER TABLE request_engine.locations OWNER TO request_engine_schema_owner;
-
---
--- Name: offering_resource_requirements; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.offering_resource_requirements (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_version_id uuid NOT NULL,
-    capability_id uuid NOT NULL,
-    ordinal integer NOT NULL,
-    quantity integer DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT offering_resource_requirements_ordinal_check CHECK ((ordinal > 0)),
-    CONSTRAINT offering_resource_requirements_quantity_check CHECK ((quantity > 0))
-);
-
-
-ALTER TABLE request_engine.offering_resource_requirements OWNER TO request_engine_schema_owner;
-
---
--- Name: offering_service_classifications; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.offering_service_classifications (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_id uuid NOT NULL,
-    service_classification_id uuid CONSTRAINT offering_service_classificat_service_classification_id_not_null NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT offering_service_classifications_revision_check CHECK ((revision > 0)),
-    CONSTRAINT offering_service_classifications_status_check CHECK ((status = ANY (ARRAY['active'::text, 'revoked'::text])))
-);
-
-ALTER TABLE ONLY request_engine.offering_service_classifications FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.offering_service_classifications OWNER TO request_engine_schema_owner;
-
---
--- Name: offering_version_booking_policies; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.offering_version_booking_policies (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_version_id uuid NOT NULL,
-    revision integer NOT NULL,
-    booking_policy jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT offering_version_booking_policies_booking_policy_check CHECK ((jsonb_typeof(booking_policy) = 'object'::text)),
-    CONSTRAINT offering_version_booking_policies_revision_check CHECK ((revision >= 1))
-);
-
-ALTER TABLE ONLY request_engine.offering_version_booking_policies FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.offering_version_booking_policies OWNER TO request_engine_schema_owner;
-
---
--- Name: offering_version_booking_terms; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.offering_version_booking_terms (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_version_id uuid NOT NULL,
-    amount numeric(20,6) NOT NULL,
-    currency text NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT offering_version_booking_terms_amount_check CHECK ((amount >= (0)::numeric)),
-    CONSTRAINT offering_version_booking_terms_currency_check CHECK ((currency ~ '^[A-Z]{3}$'::text))
-);
-
-ALTER TABLE ONLY request_engine.offering_version_booking_terms FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.offering_version_booking_terms OWNER TO request_engine_schema_owner;
-
---
--- Name: offering_versions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.offering_versions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_id uuid NOT NULL,
-    version integer NOT NULL,
-    duration_minutes integer,
-    bookable boolean DEFAULT false NOT NULL,
-    requestable boolean DEFAULT true NOT NULL,
-    booking_policy jsonb DEFAULT '{}'::jsonb NOT NULL,
-    public_data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    delivery_policy jsonb DEFAULT '{}'::jsonb NOT NULL,
-    CONSTRAINT offering_versions_booking_policy_check CHECK ((jsonb_typeof(booking_policy) = 'object'::text)),
-    CONSTRAINT offering_versions_check CHECK (((NOT bookable) OR (duration_minutes IS NOT NULL))),
-    CONSTRAINT offering_versions_delivery_policy_object_ck CHECK ((jsonb_typeof(delivery_policy) = 'object'::text)),
-    CONSTRAINT offering_versions_duration_minutes_check CHECK (((duration_minutes IS NULL) OR (duration_minutes > 0))),
-    CONSTRAINT offering_versions_public_data_check CHECK ((jsonb_typeof(public_data) = 'object'::text)),
-    CONSTRAINT offering_versions_version_check CHECK ((version > 0))
-);
-
-
-ALTER TABLE request_engine.offering_versions OWNER TO request_engine_schema_owner;
-
---
--- Name: offerings; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.offerings (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_key text NOT NULL,
-    display_name text NOT NULL,
-    description text,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT offerings_display_name_check CHECK ((display_name <> ''::text)),
-    CONSTRAINT offerings_offering_key_check CHECK ((offering_key <> ''::text))
-);
-
-
-ALTER TABLE request_engine.offerings OWNER TO request_engine_schema_owner;
-
---
--- Name: operational_recovery_actions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.operational_recovery_actions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    incident_id uuid NOT NULL,
-    action_kind text NOT NULL,
-    status text DEFAULT 'prepared'::text NOT NULL,
-    principal_id uuid NOT NULL,
-    idempotency_key text NOT NULL,
-    command_fingerprint text NOT NULL,
-    expected_source_revision bigint NOT NULL,
-    payload jsonb NOT NULL,
-    owner_steps jsonb DEFAULT '{}'::jsonb NOT NULL,
-    failure_code text,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    started_at timestamp with time zone,
-    completed_at timestamp with time zone,
-    CONSTRAINT operational_recovery_actions_action_kind_check CHECK ((action_kind = ANY (ARRAY['stop_intake'::text, 'reopen_intake'::text, 'extend_day'::text, 'reschedule'::text, 'replace_resource'::text, 'communicate_impact'::text]))),
-    CONSTRAINT operational_recovery_actions_command_fingerprint_check CHECK ((btrim(command_fingerprint) <> ''::text)),
-    CONSTRAINT operational_recovery_actions_expected_source_revision_check CHECK ((expected_source_revision > 0)),
-    CONSTRAINT operational_recovery_actions_idempotency_key_check CHECK ((btrim(idempotency_key) <> ''::text)),
-    CONSTRAINT operational_recovery_actions_owner_steps_check CHECK ((jsonb_typeof(owner_steps) = 'object'::text)),
-    CONSTRAINT operational_recovery_actions_payload_check CHECK ((jsonb_typeof(payload) = 'object'::text)),
-    CONSTRAINT operational_recovery_actions_status_check CHECK ((status = ANY (ARRAY['prepared'::text, 'running'::text, 'succeeded'::text, 'rejected'::text, 'partially_applied'::text])))
-);
-
-ALTER TABLE ONLY request_engine.operational_recovery_actions FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.operational_recovery_actions OWNER TO request_engine_schema_owner;
-
---
--- Name: operational_recovery_autonomy_policies; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.operational_recovery_autonomy_policies (
-    organization_id uuid NOT NULL,
-    service_queue_id uuid CONSTRAINT operational_recovery_autonomy_policie_service_queue_id_not_null NOT NULL,
-    enabled boolean NOT NULL,
-    max_delay_minutes integer CONSTRAINT operational_recovery_autonomy_polici_max_delay_minutes_not_null NOT NULL,
-    max_auto_actions_per_incident integer CONSTRAINT operational_recovery_autono_max_auto_actions_per_incid_not_null NOT NULL,
-    granted_by uuid NOT NULL,
-    granted_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT operational_recovery_autonom_max_auto_actions_per_inciden_check CHECK ((max_auto_actions_per_incident > 0)),
-    CONSTRAINT operational_recovery_autonomy_policies_check CHECK ((granted_at <= updated_at)),
-    CONSTRAINT operational_recovery_autonomy_policies_max_delay_minutes_check CHECK ((max_delay_minutes > 0))
-);
-
-ALTER TABLE ONLY request_engine.operational_recovery_autonomy_policies FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.operational_recovery_autonomy_policies OWNER TO request_engine_schema_owner;
-
---
--- Name: operational_recovery_escalations; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.operational_recovery_escalations (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    incident_id uuid NOT NULL,
-    source_revision bigint NOT NULL,
-    escalation_level integer NOT NULL,
-    operator_escalation_required boolean CONSTRAINT operational_recovery_escala_operator_escalation_requir_not_null NOT NULL,
-    escalation_reason text,
-    customer_impact_required boolean CONSTRAINT operational_recovery_escalati_customer_impact_required_not_null NOT NULL,
-    impact_recipient_party_ids jsonb DEFAULT '[]'::jsonb CONSTRAINT operational_recovery_escala_impact_recipient_party_ids_not_null NOT NULL,
-    source_fingerprint text NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT operational_recovery_escalatio_impact_recipient_party_ids_check CHECK ((jsonb_typeof(impact_recipient_party_ids) = 'array'::text)),
-    CONSTRAINT operational_recovery_escalations_check CHECK ((operator_escalation_required = (escalation_reason IS NOT NULL))),
-    CONSTRAINT operational_recovery_escalations_check1 CHECK ((customer_impact_required = (jsonb_array_length(impact_recipient_party_ids) > 0))),
-    CONSTRAINT operational_recovery_escalations_escalation_level_check CHECK ((escalation_level >= 0)),
-    CONSTRAINT operational_recovery_escalations_escalation_reason_check CHECK (((escalation_reason IS NULL) OR (escalation_reason = ANY (ARRAY['newly_material'::text, 'worsening_severity'::text])))),
-    CONSTRAINT operational_recovery_escalations_source_fingerprint_check CHECK ((btrim(source_fingerprint) <> ''::text)),
-    CONSTRAINT operational_recovery_escalations_source_revision_check CHECK ((source_revision > 0))
-);
-
-ALTER TABLE ONLY request_engine.operational_recovery_escalations FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.operational_recovery_escalations OWNER TO request_engine_schema_owner;
-
---
--- Name: operational_recovery_executions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.operational_recovery_executions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    proposal_id uuid NOT NULL,
-    reservation_id uuid NOT NULL,
-    executed_by_principal_id uuid CONSTRAINT operational_recovery_executio_executed_by_principal_id_not_null NOT NULL,
-    idempotency_key text NOT NULL,
-    command_fingerprint text NOT NULL,
-    source_fingerprint text NOT NULL,
-    proposal_fingerprint text NOT NULL,
-    original_reservation_revision bigint CONSTRAINT operational_recovery_execut_original_reservation_revis_not_null NOT NULL,
-    resulting_reservation_revision bigint,
-    target jsonb NOT NULL,
-    status text DEFAULT 'prepared'::text NOT NULL,
-    failure_code text,
-    notification_requested boolean DEFAULT true NOT NULL,
-    communication_task_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    completed_at timestamp with time zone,
-    CONSTRAINT operational_recovery_executi_original_reservation_revisio_check CHECK ((original_reservation_revision > 0)),
-    CONSTRAINT operational_recovery_executions_check CHECK ((((status = 'prepared'::text) AND (resulting_reservation_revision IS NULL) AND (failure_code IS NULL) AND (completed_at IS NULL) AND (communication_task_id IS NULL)) OR ((status = 'succeeded'::text) AND (resulting_reservation_revision IS NOT NULL) AND (resulting_reservation_revision = (original_reservation_revision + 1)) AND (failure_code IS NULL) AND (completed_at IS NOT NULL)) OR ((status = 'rejected'::text) AND (resulting_reservation_revision IS NULL) AND (failure_code IS NOT NULL) AND (btrim(failure_code) <> ''::text) AND (completed_at IS NOT NULL) AND (communication_task_id IS NULL)))),
-    CONSTRAINT operational_recovery_executions_check1 CHECK (((completed_at IS NULL) OR (completed_at >= created_at))),
-    CONSTRAINT operational_recovery_executions_check2 CHECK (((communication_task_id IS NULL) OR (notification_requested AND (status = 'succeeded'::text)))),
-    CONSTRAINT operational_recovery_executions_command_fingerprint_check CHECK ((btrim(command_fingerprint) <> ''::text)),
-    CONSTRAINT operational_recovery_executions_idempotency_key_check CHECK ((btrim(idempotency_key) <> ''::text)),
-    CONSTRAINT operational_recovery_executions_proposal_fingerprint_check CHECK ((btrim(proposal_fingerprint) <> ''::text)),
-    CONSTRAINT operational_recovery_executions_source_fingerprint_check CHECK ((btrim(source_fingerprint) <> ''::text)),
-    CONSTRAINT operational_recovery_executions_status_check CHECK ((status = ANY (ARRAY['prepared'::text, 'succeeded'::text, 'rejected'::text]))),
-    CONSTRAINT operational_recovery_executions_target_check CHECK ((jsonb_typeof(target) = 'object'::text))
-);
-
-ALTER TABLE ONLY request_engine.operational_recovery_executions FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.operational_recovery_executions OWNER TO request_engine_schema_owner;
-
---
--- Name: operational_recovery_incidents; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.operational_recovery_incidents (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    service_queue_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    status text DEFAULT 'open'::text NOT NULL,
-    impact_kind text NOT NULL,
-    escalation_level integer DEFAULT 0 NOT NULL,
-    source_revision bigint NOT NULL,
-    source_fingerprint text NOT NULL,
-    current_proposal_id uuid,
-    opened_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    last_assessed_at timestamp with time zone NOT NULL,
-    resolved_at timestamp with time zone,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT operational_recovery_incidents_check CHECK (((status = 'resolved'::text) = (resolved_at IS NOT NULL))),
-    CONSTRAINT operational_recovery_incidents_escalation_level_check CHECK ((escalation_level >= 0)),
-    CONSTRAINT operational_recovery_incidents_impact_kind_check CHECK ((impact_kind = ANY (ARRAY['delay'::text, 'capacity_shortfall'::text, 'indeterminate'::text]))),
-    CONSTRAINT operational_recovery_incidents_revision_check CHECK ((revision > 0)),
-    CONSTRAINT operational_recovery_incidents_source_fingerprint_check CHECK ((btrim(source_fingerprint) <> ''::text)),
-    CONSTRAINT operational_recovery_incidents_source_revision_check CHECK ((source_revision > 0)),
-    CONSTRAINT operational_recovery_incidents_status_check CHECK ((status = ANY (ARRAY['open'::text, 'mitigating'::text, 'resolved'::text])))
-);
-
-ALTER TABLE ONLY request_engine.operational_recovery_incidents FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.operational_recovery_incidents OWNER TO request_engine_schema_owner;
-
---
--- Name: operational_recovery_proposals; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.operational_recovery_proposals (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    service_queue_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    created_by_principal_id uuid,
-    idempotency_key text NOT NULL,
-    command_fingerprint text NOT NULL,
-    observed_at timestamp with time zone NOT NULL,
-    horizon_end timestamp with time zone NOT NULL,
-    source_fingerprint text NOT NULL,
-    proposal_fingerprint text NOT NULL,
-    executable_capacity_seconds integer CONSTRAINT operational_recovery_propos_executable_capacity_second_not_null NOT NULL,
-    committed_capacity_seconds integer CONSTRAINT operational_recovery_propos_committed_capacity_seconds_not_null NOT NULL,
-    shortfall_seconds integer NOT NULL,
-    snapshot jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    creation_kind text DEFAULT 'operator'::text NOT NULL,
-    source_revision bigint,
-    CONSTRAINT operational_recovery_proposal_actor_ck CHECK ((((creation_kind = 'operator'::text) AND (created_by_principal_id IS NOT NULL) AND (source_revision IS NULL)) OR ((creation_kind = 'automatic'::text) AND (created_by_principal_id IS NULL) AND (source_revision IS NOT NULL)))),
-    CONSTRAINT operational_recovery_proposal_creation_kind_ck CHECK ((creation_kind = ANY (ARRAY['operator'::text, 'automatic'::text]))),
-    CONSTRAINT operational_recovery_proposal_executable_capacity_seconds_check CHECK ((executable_capacity_seconds >= 0)),
-    CONSTRAINT operational_recovery_proposal_source_revision_ck CHECK (((source_revision IS NULL) OR (source_revision > 0))),
-    CONSTRAINT operational_recovery_proposals_check CHECK ((horizon_end > observed_at)),
-    CONSTRAINT operational_recovery_proposals_command_fingerprint_check CHECK ((btrim(command_fingerprint) <> ''::text)),
-    CONSTRAINT operational_recovery_proposals_committed_capacity_seconds_check CHECK ((committed_capacity_seconds >= 0)),
-    CONSTRAINT operational_recovery_proposals_idempotency_key_check CHECK ((btrim(idempotency_key) <> ''::text)),
-    CONSTRAINT operational_recovery_proposals_proposal_fingerprint_check CHECK ((btrim(proposal_fingerprint) <> ''::text)),
-    CONSTRAINT operational_recovery_proposals_shortfall_seconds_check CHECK ((shortfall_seconds > 0)),
-    CONSTRAINT operational_recovery_proposals_snapshot_check CHECK ((jsonb_typeof(snapshot) = 'object'::text)),
-    CONSTRAINT operational_recovery_proposals_source_fingerprint_check CHECK ((btrim(source_fingerprint) <> ''::text))
-);
-
-ALTER TABLE ONLY request_engine.operational_recovery_proposals FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.operational_recovery_proposals OWNER TO request_engine_schema_owner;
-
---
--- Name: operational_workload_classifications; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.operational_workload_classifications (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    workload_key text NOT NULL,
-    display_name text NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT operational_workload_classifications_display_name_check CHECK ((btrim(display_name) <> ''::text)),
-    CONSTRAINT operational_workload_classifications_revision_check CHECK ((revision > 0)),
-    CONSTRAINT operational_workload_classifications_workload_key_check CHECK ((btrim(workload_key) <> ''::text)),
-    CONSTRAINT operational_workload_display_name_trimmed_ck CHECK ((display_name = btrim(display_name))),
-    CONSTRAINT operational_workload_key_trimmed_ck CHECK ((workload_key = btrim(workload_key)))
-);
-
-ALTER TABLE ONLY request_engine.operational_workload_classifications FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.operational_workload_classifications OWNER TO request_engine_schema_owner;
-
---
--- Name: organization_channel_policies; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.organization_channel_policies (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    purpose text NOT NULL,
-    enabled boolean NOT NULL,
-    channel_policy jsonb NOT NULL,
-    revision integer NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT organization_channel_policies_channel_policy_check CHECK ((jsonb_typeof(channel_policy) = 'object'::text)),
-    CONSTRAINT organization_channel_policies_purpose_check CHECK ((purpose = ANY (ARRAY['appointment_confirmation'::text, 'appointment_reminder'::text, 'attendance_confirmation_request'::text, 'slot_offer_available'::text, 'operational_recovery_impact'::text, 'operational_recovery_rescheduled'::text]))),
-    CONSTRAINT organization_channel_policies_revision_check CHECK ((revision >= 1))
-);
-
-ALTER TABLE ONLY request_engine.organization_channel_policies FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.organization_channel_policies OWNER TO request_engine_schema_owner;
-
---
--- Name: organization_party_bindings; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.organization_party_bindings (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    party_id uuid NOT NULL,
-    portable_party_id uuid NOT NULL,
-    proof_kind text NOT NULL,
-    consented_fields text[] NOT NULL,
-    created_by_principal_id uuid NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT organization_party_bindings_consented_fields_check CHECK ((cardinality(consented_fields) > 0)),
-    CONSTRAINT organization_party_bindings_proof_kind_check CHECK ((proof_kind = 'operator_document_witness'::text))
-);
-
-ALTER TABLE ONLY request_engine.organization_party_bindings FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.organization_party_bindings OWNER TO request_engine_schema_owner;
-
---
--- Name: organization_public_contact_endpoints; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.organization_public_contact_endpoints (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    channel text NOT NULL,
-    normalized_value text NOT NULL,
-    label text,
-    active boolean DEFAULT true NOT NULL,
-    is_public boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT organization_public_contact_endpoints_channel_check CHECK ((channel = ANY (ARRAY['phone'::text, 'whatsapp'::text, 'email'::text]))),
-    CONSTRAINT organization_public_contact_endpoints_label_check CHECK (((label IS NULL) OR (btrim(label) <> ''::text))),
-    CONSTRAINT organization_public_contact_endpoints_normalized_value_check CHECK ((normalized_value <> ''::text))
-);
-
-ALTER TABLE ONLY request_engine.organization_public_contact_endpoints FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.organization_public_contact_endpoints OWNER TO request_engine_schema_owner;
-
---
--- Name: organizations; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.organizations (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_key text NOT NULL,
-    display_name text NOT NULL,
-    public_profile jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    legal_name text,
-    default_timezone text,
-    default_locale text,
-    default_currency text,
-    operational_status text DEFAULT 'active'::text NOT NULL,
-    CONSTRAINT organizations_default_currency_ck CHECK (((default_currency IS NULL) OR (default_currency ~ '^[A-Z]{3}$'::text))),
-    CONSTRAINT organizations_default_locale_ck CHECK (((default_locale IS NULL) OR (btrim(default_locale) <> ''::text))),
-    CONSTRAINT organizations_default_timezone_ck CHECK (((default_timezone IS NULL) OR (btrim(default_timezone) <> ''::text))),
-    CONSTRAINT organizations_display_name_check CHECK ((display_name <> ''::text)),
-    CONSTRAINT organizations_legal_name_ck CHECK (((legal_name IS NULL) OR (btrim(legal_name) <> ''::text))),
-    CONSTRAINT organizations_operational_status_ck CHECK ((operational_status = ANY (ARRAY['active'::text, 'inactive'::text]))),
-    CONSTRAINT organizations_organization_key_check CHECK ((organization_key <> ''::text)),
-    CONSTRAINT organizations_public_profile_check CHECK ((jsonb_typeof(public_profile) = 'object'::text))
-);
-
-
-ALTER TABLE request_engine.organizations OWNER TO request_engine_schema_owner;
-
---
--- Name: parties; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.parties (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    party_kind text NOT NULL,
-    display_name text NOT NULL,
-    external_ref text,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    created_by_principal_id uuid,
-    source_kind text,
-    platform text,
-    relay_principal_id uuid,
-    identity_revision bigint DEFAULT 1 NOT NULL,
-    CONSTRAINT parties_display_name_check CHECK ((display_name <> ''::text)),
-    CONSTRAINT parties_identity_revision_positive CHECK ((identity_revision >= 1)),
-    CONSTRAINT parties_party_kind_check CHECK ((party_kind = ANY (ARRAY['person'::text, 'organization'::text]))),
-    CONSTRAINT parties_platform_check CHECK (((platform IS NULL) OR ((length(platform) <= 64) AND (platform <> ''::text)))),
-    CONSTRAINT parties_source_kind_check CHECK ((source_kind = ANY (ARRAY['operator'::text, 'subject'::text])))
-);
-
-
-ALTER TABLE request_engine.parties OWNER TO request_engine_schema_owner;
-
---
--- Name: party_administrative_identifiers; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.party_administrative_identifiers (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    party_id uuid NOT NULL,
-    kind text NOT NULL,
-    issuer text NOT NULL,
-    normalized_issuer text NOT NULL,
-    value text NOT NULL,
-    normalized_value text NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_by_principal_id uuid CONSTRAINT party_administrative_identifie_created_by_principal_id_not_null NOT NULL,
-    source_kind text NOT NULL,
-    platform text,
-    relay_principal_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT party_administrative_identifiers_issuer_check CHECK (((issuer <> ''::text) AND (length(issuer) <= 128))),
-    CONSTRAINT party_administrative_identifiers_kind_check CHECK ((kind = 'insurance_member'::text)),
-    CONSTRAINT party_administrative_identifiers_normalized_issuer_check CHECK (((normalized_issuer <> ''::text) AND (length(normalized_issuer) <= 128))),
-    CONSTRAINT party_administrative_identifiers_normalized_value_check CHECK (((normalized_value <> ''::text) AND (length(normalized_value) <= 256))),
-    CONSTRAINT party_administrative_identifiers_platform_check CHECK (((platform IS NULL) OR ((length(platform) <= 64) AND (platform <> ''::text)))),
-    CONSTRAINT party_administrative_identifiers_source_kind_check CHECK ((source_kind = ANY (ARRAY['operator'::text, 'subject'::text]))),
-    CONSTRAINT party_administrative_identifiers_value_check CHECK (((value <> ''::text) AND (length(value) <= 256)))
-);
-
-ALTER TABLE ONLY request_engine.party_administrative_identifiers FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.party_administrative_identifiers OWNER TO request_engine_schema_owner;
-
---
--- Name: party_contact_points; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.party_contact_points (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    party_id uuid NOT NULL,
-    channel text NOT NULL,
-    normalized_value text NOT NULL,
-    verified boolean DEFAULT false NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    created_by_principal_id uuid,
-    source_kind text,
-    platform text,
-    relay_principal_id uuid,
-    CONSTRAINT party_contact_points_channel_check CHECK ((channel = ANY (ARRAY['phone'::text, 'email'::text, 'whatsapp'::text]))),
-    CONSTRAINT party_contact_points_normalized_value_check CHECK ((normalized_value <> ''::text)),
-    CONSTRAINT party_contact_points_platform_check CHECK (((platform IS NULL) OR ((length(platform) <= 64) AND (platform <> ''::text)))),
-    CONSTRAINT party_contact_points_source_kind_check CHECK ((source_kind = ANY (ARRAY['operator'::text, 'subject'::text])))
-);
-
-
-ALTER TABLE request_engine.party_contact_points OWNER TO request_engine_schema_owner;
-
---
--- Name: party_identity_documents; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.party_identity_documents (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    party_id uuid NOT NULL,
-    kind text NOT NULL,
-    normalized_value text NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_by_principal_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    source_kind text,
-    platform text,
-    relay_principal_id uuid,
-    authority text,
-    CONSTRAINT party_identity_documents_authority_shape_ck CHECK ((((kind = 'cedula'::text) AND (authority = 'DO:JCE'::text)) OR ((kind = 'passport'::text) AND ((authority IS NULL) OR (authority ~ '^[A-Z]{2}$'::text))) OR ((kind = 'rnc'::text) AND (authority = 'DO:DGII'::text)))),
-    CONSTRAINT party_identity_documents_kind_ck CHECK ((kind = ANY (ARRAY['cedula'::text, 'passport'::text, 'rnc'::text]))),
-    CONSTRAINT party_identity_documents_normalized_value_check CHECK ((normalized_value <> ''::text)),
-    CONSTRAINT party_identity_documents_platform_check CHECK (((platform IS NULL) OR ((length(platform) <= 64) AND (platform <> ''::text)))),
-    CONSTRAINT party_identity_documents_source_kind_check CHECK ((source_kind = ANY (ARRAY['operator'::text, 'subject'::text])))
-);
-
-ALTER TABLE ONLY request_engine.party_identity_documents FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.party_identity_documents OWNER TO request_engine_schema_owner;
-
---
--- Name: party_identity_revisions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.party_identity_revisions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    party_id uuid NOT NULL,
-    revision bigint NOT NULL,
-    change_kind text NOT NULL,
-    display_name text NOT NULL,
-    active boolean NOT NULL,
-    state jsonb NOT NULL,
-    actor_principal_id uuid,
-    attributed_operator_principal_id uuid,
-    source_kind text,
-    platform text,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT party_identity_revisions_change_kind_check CHECK ((change_kind = ANY (ARRAY['registered'::text, 'renamed'::text, 'contact_added'::text, 'contact_deactivated'::text, 'document_added'::text, 'verification_flipped'::text, 'party_deactivated'::text, 'rollback'::text]))),
-    CONSTRAINT party_identity_revisions_platform_check CHECK (((platform IS NULL) OR ((length(platform) <= 64) AND (platform <> ''::text)))),
-    CONSTRAINT party_identity_revisions_revision_check CHECK ((revision >= 1)),
-    CONSTRAINT party_identity_revisions_source_kind_check CHECK (((source_kind IS NULL) OR (source_kind = ANY (ARRAY['operator'::text, 'subject'::text])))),
-    CONSTRAINT party_identity_revisions_state_check CHECK ((jsonb_typeof(state) = 'object'::text))
-);
-
-ALTER TABLE ONLY request_engine.party_identity_revisions FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.party_identity_revisions OWNER TO request_engine_schema_owner;
-
---
--- Name: portable_party_identifiers; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.portable_party_identifiers (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    portable_party_id uuid NOT NULL,
-    party_kind text NOT NULL,
-    kind text NOT NULL,
-    authority text NOT NULL,
-    fingerprint text NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT portable_party_identifier_authority_ck CHECK ((((kind = 'cedula'::text) AND (authority = 'DO:JCE'::text)) OR ((kind = 'passport'::text) AND (authority ~ '^[A-Z]{2}$'::text)) OR ((kind = 'rnc'::text) AND (authority = 'DO:DGII'::text)))),
-    CONSTRAINT portable_party_identifier_subject_ck CHECK ((((party_kind = 'person'::text) AND (kind = ANY (ARRAY['cedula'::text, 'passport'::text]))) OR ((party_kind = 'organization'::text) AND (kind = 'rnc'::text)))),
-    CONSTRAINT portable_party_identifiers_fingerprint_check CHECK ((fingerprint ~ '^[0-9a-f]{64}$'::text)),
-    CONSTRAINT portable_party_identifiers_kind_check CHECK ((kind = ANY (ARRAY['cedula'::text, 'passport'::text, 'rnc'::text])))
-);
-
-
-ALTER TABLE request_engine.portable_party_identifiers OWNER TO request_engine_schema_owner;
-
---
--- Name: portable_party_identities; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.portable_party_identities (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    party_kind text NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT portable_party_identities_party_kind_check CHECK ((party_kind = ANY (ARRAY['person'::text, 'organization'::text])))
-);
-
-
-ALTER TABLE request_engine.portable_party_identities OWNER TO request_engine_schema_owner;
-
---
--- Name: portable_party_profiles; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.portable_party_profiles (
-    portable_party_id uuid NOT NULL,
-    profile jsonb NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    publisher_organization_id uuid NOT NULL,
-    CONSTRAINT portable_party_profiles_profile_check CHECK ((jsonb_typeof(profile) = 'object'::text))
-);
-
-
-ALTER TABLE request_engine.portable_party_profiles OWNER TO request_engine_schema_owner;
-
---
--- Name: principal_contacts; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.principal_contacts (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    principal_id uuid NOT NULL,
-    channel text NOT NULL,
-    normalized_value text NOT NULL,
-    verified boolean DEFAULT false NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    verification_code_hash text,
-    verification_expires_at timestamp with time zone,
-    verification_attempts integer DEFAULT 0 NOT NULL,
-    created_by_principal_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT principal_contacts_channel_check CHECK ((channel = ANY (ARRAY['whatsapp'::text, 'phone'::text, 'email'::text]))),
-    CONSTRAINT principal_contacts_normalized_value_check CHECK ((normalized_value <> ''::text)),
-    CONSTRAINT principal_contacts_verification_attempts_check CHECK ((verification_attempts >= 0))
-);
-
-ALTER TABLE ONLY request_engine.principal_contacts FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.principal_contacts OWNER TO request_engine_schema_owner;
-
---
--- Name: principals; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.principals (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    principal_kind text NOT NULL,
-    external_subject text NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT principals_external_subject_check CHECK ((external_subject <> ''::text)),
-    CONSTRAINT principals_principal_kind_check CHECK ((principal_kind = ANY (ARRAY['human'::text, 'service'::text, 'agent'::text, 'integration'::text, 'provider'::text, 'worker'::text])))
-);
-
-
-ALTER TABLE request_engine.principals OWNER TO request_engine_schema_owner;
-
---
--- Name: queue_entries; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.queue_entries (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    service_queue_id uuid NOT NULL,
-    subject_party_id uuid NOT NULL,
-    reservation_id uuid,
-    offering_id uuid,
-    status text DEFAULT 'waiting'::text NOT NULL,
-    admitted_at timestamp with time zone NOT NULL,
-    called_at timestamp with time zone,
-    service_started_at timestamp with time zone,
-    completed_at timestamp with time zone,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    arrived_at timestamp with time zone NOT NULL,
-    expected_workload_classification_id uuid,
-    CONSTRAINT queue_entries_arrival_order_ck CHECK ((arrived_at <= admitted_at)),
-    CONSTRAINT queue_entries_revision_check CHECK ((revision > 0)),
-    CONSTRAINT queue_entries_status_check CHECK ((status = ANY (ARRAY['waiting'::text, 'called'::text, 'serving'::text, 'completed'::text, 'cancelled'::text, 'no_show'::text])))
-);
-
-
-ALTER TABLE request_engine.queue_entries OWNER TO request_engine_schema_owner;
-
---
--- Name: queue_entry_operator_selections; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.queue_entry_operator_selections (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    queue_entry_id uuid NOT NULL,
-    reason text NOT NULL,
-    selected_by_principal_id uuid CONSTRAINT queue_entry_operator_selectio_selected_by_principal_id_not_null NOT NULL,
-    selected_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT queue_entry_operator_selections_reason_check CHECK ((reason = ANY (ARRAY['urgent'::text, 'scheduled_commitment'::text, 'operator_override'::text])))
-);
-
-ALTER TABLE ONLY request_engine.queue_entry_operator_selections FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.queue_entry_operator_selections OWNER TO request_engine_schema_owner;
-
---
--- Name: queue_entry_recall_holds; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.queue_entry_recall_holds (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    queue_entry_id uuid NOT NULL,
-    condition_kind text NOT NULL,
-    until_at timestamp with time zone,
-    event_key text,
-    reason text,
-    created_by_principal_id uuid NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    released_at timestamp with time zone,
-    release_kind text,
-    CONSTRAINT queue_entry_recall_holds_check CHECK (((condition_kind = 'until_time'::text) = (until_at IS NOT NULL))),
-    CONSTRAINT queue_entry_recall_holds_check1 CHECK (((condition_kind = 'until_event'::text) = (event_key IS NOT NULL))),
-    CONSTRAINT queue_entry_recall_holds_check2 CHECK (((released_at IS NULL) = (release_kind IS NULL))),
-    CONSTRAINT queue_entry_recall_holds_condition_kind_check CHECK ((condition_kind = ANY (ARRAY['until_time'::text, 'until_event'::text, 'until_customer_initiates'::text]))),
-    CONSTRAINT queue_entry_recall_holds_event_key_check CHECK (((event_key IS NULL) OR (event_key = 'external_step_completed'::text))),
-    CONSTRAINT queue_entry_recall_holds_reason_check CHECK (((reason IS NULL) OR ((btrim(reason) <> ''::text) AND (length(reason) <= 250)))),
-    CONSTRAINT queue_entry_recall_holds_release_kind_ck CHECK (((release_kind IS NULL) OR (release_kind = ANY (ARRAY['expired'::text, 'operator_select'::text, 'condition_satisfied'::text, 'operator_release'::text]))))
-);
-
-ALTER TABLE ONLY request_engine.queue_entry_recall_holds FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.queue_entry_recall_holds OWNER TO request_engine_schema_owner;
-
---
--- Name: queue_entry_skips; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.queue_entry_skips (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    queue_entry_id uuid NOT NULL,
-    reason text NOT NULL,
-    created_by_principal_id uuid NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    consumed_at timestamp with time zone,
-    consumed_by_entry_id uuid,
-    CONSTRAINT queue_entry_skips_check CHECK (((consumed_at IS NULL) = (consumed_by_entry_id IS NULL))),
-    CONSTRAINT queue_entry_skips_reason_check CHECK ((reason = ANY (ARRAY['temporarily_unavailable'::text, 'no_response'::text, 'operator_override'::text])))
-);
-
-ALTER TABLE ONLY request_engine.queue_entry_skips FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.queue_entry_skips OWNER TO request_engine_schema_owner;
-
---
--- Name: recovery_source_revisions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.recovery_source_revisions (
-    organization_id uuid NOT NULL,
-    service_queue_id uuid NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT recovery_source_revisions_revision_check CHECK ((revision > 0))
-);
-
-ALTER TABLE ONLY request_engine.recovery_source_revisions FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.recovery_source_revisions OWNER TO request_engine_schema_owner;
-
---
--- Name: reminder_acknowledgements; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.reminder_acknowledgements (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    reminder_plan_id uuid NOT NULL,
-    occurrence_at timestamp with time zone NOT NULL,
-    subject_party_id uuid NOT NULL,
-    source_key text NOT NULL,
-    reported_value text,
-    acknowledged_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT reminder_acknowledgements_source_key_check CHECK ((source_key <> ''::text))
-);
-
-
-ALTER TABLE request_engine.reminder_acknowledgements OWNER TO request_engine_schema_owner;
-
---
--- Name: reminder_plans; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.reminder_plans (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    subject_party_id uuid NOT NULL,
-    purpose text NOT NULL,
-    timezone text NOT NULL,
-    schedule_spec jsonb NOT NULL,
-    channel_policy jsonb DEFAULT '{}'::jsonb NOT NULL,
-    template_key text NOT NULL,
-    template_version integer NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT reminder_plans_channel_policy_check CHECK ((jsonb_typeof(channel_policy) = 'object'::text)),
-    CONSTRAINT reminder_plans_purpose_check CHECK ((purpose <> ''::text)),
-    CONSTRAINT reminder_plans_revision_check CHECK ((revision > 0)),
-    CONSTRAINT reminder_plans_schedule_contract_version_ck CHECK (((jsonb_typeof(schedule_spec) = 'object'::text) AND ((schedule_spec ->> 'type'::text) = 'daily_times'::text) AND (schedule_spec ? 'version'::text) AND (jsonb_typeof((schedule_spec -> 'version'::text)) = 'number'::text) AND ((schedule_spec -> 'version'::text) = '1'::jsonb))),
-    CONSTRAINT reminder_plans_schedule_spec_check CHECK ((jsonb_typeof(schedule_spec) = 'object'::text)),
-    CONSTRAINT reminder_plans_schedule_spec_check1 CHECK (((schedule_spec ->> 'type'::text) = 'daily_times'::text)),
-    CONSTRAINT reminder_plans_status_check CHECK ((status = ANY (ARRAY['active'::text, 'cancelled'::text, 'completed'::text]))),
-    CONSTRAINT reminder_plans_template_key_check CHECK ((template_key <> ''::text)),
-    CONSTRAINT reminder_plans_template_version_check CHECK ((template_version > 0)),
-    CONSTRAINT reminder_plans_timezone_check CHECK ((timezone <> ''::text))
-);
-
-
-ALTER TABLE request_engine.reminder_plans OWNER TO request_engine_schema_owner;
-
---
--- Name: representations; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.representations (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    principal_id uuid NOT NULL,
-    represented_party_id uuid NOT NULL,
-    scope_key text NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    valid_from timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    valid_until timestamp with time zone,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    authority_kind text DEFAULT 'delegated'::text NOT NULL,
-    CONSTRAINT representations_authority_kind_check CHECK ((authority_kind = ANY (ARRAY['self'::text, 'guardian'::text, 'authorized_contact'::text, 'delegated'::text]))),
-    CONSTRAINT representations_check CHECK (((valid_until IS NULL) OR (valid_until > valid_from))),
-    CONSTRAINT representations_revision_check CHECK ((revision > 0)),
-    CONSTRAINT representations_scope_key_check CHECK ((scope_key <> ''::text)),
-    CONSTRAINT representations_status_check CHECK ((status = ANY (ARRAY['active'::text, 'revoked'::text, 'expired'::text]))),
-    CONSTRAINT representations_status_v3_check CHECK ((status = ANY (ARRAY['active'::text, 'revoked'::text])))
-);
-
-
-ALTER TABLE request_engine.representations OWNER TO request_engine_schema_owner;
-
---
--- Name: request_definition_versions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.request_definition_versions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    request_definition_id uuid NOT NULL,
-    version integer NOT NULL,
-    input_schema jsonb DEFAULT '{}'::jsonb NOT NULL,
-    result_schema jsonb,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT request_definition_versions_input_schema_check CHECK ((jsonb_typeof(input_schema) = 'object'::text)),
-    CONSTRAINT request_definition_versions_result_schema_check CHECK (((result_schema IS NULL) OR (jsonb_typeof(result_schema) = 'object'::text))),
-    CONSTRAINT request_definition_versions_version_check CHECK ((version > 0))
-);
-
-
-ALTER TABLE request_engine.request_definition_versions OWNER TO request_engine_schema_owner;
-
---
--- Name: request_definitions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.request_definitions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    request_key text NOT NULL,
-    display_name text NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT request_definitions_display_name_check CHECK ((display_name <> ''::text)),
-    CONSTRAINT request_definitions_request_key_check CHECK ((request_key <> ''::text))
-);
-
-
-ALTER TABLE request_engine.request_definitions OWNER TO request_engine_schema_owner;
-
---
--- Name: request_participants; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.request_participants (
-    organization_id uuid NOT NULL,
-    request_id uuid NOT NULL,
-    party_id uuid NOT NULL,
-    role_key text NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT request_participants_role_key_check CHECK ((role_key <> ''::text))
-);
-
-
-ALTER TABLE request_engine.request_participants OWNER TO request_engine_schema_owner;
-
---
--- Name: requests; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.requests (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    request_definition_version_id uuid NOT NULL,
-    requester_party_id uuid,
-    recipient_party_id uuid,
-    status text DEFAULT 'open'::text NOT NULL,
-    payload jsonb NOT NULL,
-    result_payload jsonb,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    completed_at timestamp with time zone,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT requests_check CHECK ((((status = 'open'::text) AND (completed_at IS NULL)) OR (status <> 'open'::text))),
-    CONSTRAINT requests_revision_check CHECK ((revision > 0)),
-    CONSTRAINT requests_status_check CHECK ((status = ANY (ARRAY['open'::text, 'completed'::text, 'cancelled'::text, 'failed'::text])))
-);
-
-
-ALTER TABLE request_engine.requests OWNER TO request_engine_schema_owner;
-
---
--- Name: reservation_access; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.reservation_access (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    reservation_id uuid NOT NULL,
-    reservation_revision bigint NOT NULL,
-    access_key text NOT NULL,
-    kind text NOT NULL,
-    provider_key text,
-    materialization_key text NOT NULL,
-    status text DEFAULT 'pending'::text NOT NULL,
-    access_uri text,
-    external_ref text,
-    public_data jsonb DEFAULT '{}'::jsonb NOT NULL,
-    provisioned_at timestamp with time zone,
-    revoked_at timestamp with time zone,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT reservation_access_access_key_check CHECK ((access_key <> ''::text)),
-    CONSTRAINT reservation_access_check CHECK (((status <> 'ready'::text) OR ((provisioned_at IS NOT NULL) AND ((access_uri IS NOT NULL) OR (external_ref IS NOT NULL) OR (public_data <> '{}'::jsonb))))),
-    CONSTRAINT reservation_access_check1 CHECK (((status <> 'revoked'::text) OR (revoked_at IS NOT NULL))),
-    CONSTRAINT reservation_access_check2 CHECK (((status = 'revoked'::text) OR (revoked_at IS NULL))),
-    CONSTRAINT reservation_access_kind_check CHECK ((kind = ANY (ARRAY['video_link'::text, 'phone'::text, 'physical_location'::text, 'instructions'::text, 'external_session'::text]))),
-    CONSTRAINT reservation_access_materialization_key_check CHECK ((materialization_key <> ''::text)),
-    CONSTRAINT reservation_access_public_data_check CHECK ((jsonb_typeof(public_data) = 'object'::text)),
-    CONSTRAINT reservation_access_reservation_revision_check CHECK ((reservation_revision > 0)),
-    CONSTRAINT reservation_access_revision_check CHECK ((revision > 0)),
-    CONSTRAINT reservation_access_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'ready'::text, 'revoked'::text])))
-);
-
-
-ALTER TABLE request_engine.reservation_access OWNER TO request_engine_schema_owner;
-
---
--- Name: reservation_arrival_estimates; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.reservation_arrival_estimates (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    reservation_id uuid NOT NULL,
-    estimated_arrival_at timestamp with time zone NOT NULL,
-    source_kind text NOT NULL,
-    asserted_by_principal_id uuid,
-    asserted_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    superseded_at timestamp with time zone,
-    CONSTRAINT reservation_arrival_estimates_check CHECK (((superseded_at IS NULL) OR (superseded_at >= asserted_at))),
-    CONSTRAINT reservation_arrival_estimates_source_kind_check CHECK ((source_kind = ANY (ARRAY['customer'::text, 'operator'::text])))
-);
-
-ALTER TABLE ONLY request_engine.reservation_arrival_estimates FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.reservation_arrival_estimates OWNER TO request_engine_schema_owner;
-
---
--- Name: reservation_attendance; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.reservation_attendance (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    reservation_id uuid NOT NULL,
-    status text DEFAULT 'pending'::text NOT NULL,
-    checked_in_at timestamp with time zone,
-    no_show_at timestamp with time zone,
-    source_key text,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT reservation_attendance_check CHECK ((((status = 'pending'::text) AND (checked_in_at IS NULL) AND (no_show_at IS NULL)) OR ((status = 'checked_in'::text) AND (checked_in_at IS NOT NULL) AND (no_show_at IS NULL)) OR ((status = 'no_show'::text) AND (checked_in_at IS NULL) AND (no_show_at IS NOT NULL)))),
-    CONSTRAINT reservation_attendance_revision_check CHECK ((revision > 0)),
-    CONSTRAINT reservation_attendance_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'checked_in'::text, 'no_show'::text])))
-);
-
-
-ALTER TABLE request_engine.reservation_attendance OWNER TO request_engine_schema_owner;
-
---
--- Name: reservation_commercial_commitment_context_terms; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.reservation_commercial_commitment_context_terms (
-    organization_id uuid CONSTRAINT reservation_commercial_commitment_cont_organization_id_not_null NOT NULL,
-    reservation_id uuid CONSTRAINT reservation_commercial_commitment_conte_reservation_id_not_null NOT NULL,
-    booking_context_terms_id uuid CONSTRAINT reservation_commercial_commit_booking_context_terms_id_not_null NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() CONSTRAINT reservation_commercial_commitment_context_t_created_at_not_null NOT NULL
-);
-
-ALTER TABLE ONLY request_engine.reservation_commercial_commitment_context_terms FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.reservation_commercial_commitment_context_terms OWNER TO request_engine_schema_owner;
-
---
--- Name: TABLE reservation_commercial_commitment_context_terms; Type: COMMENT; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-COMMENT ON TABLE request_engine.reservation_commercial_commitment_context_terms IS 'Append-only provenance linking one committed Reservation commercial fact to every exact contextual term row that contributed to its resolution.';
-
-
---
--- Name: reservation_commercial_commitments; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.reservation_commercial_commitments (
-    reservation_id uuid NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_version_booking_terms_id uuid,
-    amount numeric(20,6) NOT NULL,
-    currency text NOT NULL,
-    planned_duration_minutes integer CONSTRAINT reservation_commercial_commit_planned_duration_minutes_not_null NOT NULL,
-    configuration_fingerprint text CONSTRAINT reservation_commercial_commi_configuration_fingerprint_not_null NOT NULL,
-    committed_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT reservation_commercial_commitme_configuration_fingerprint_check CHECK ((configuration_fingerprint <> ''::text)),
-    CONSTRAINT reservation_commercial_commitmen_planned_duration_minutes_check CHECK ((planned_duration_minutes > 0)),
-    CONSTRAINT reservation_commercial_commitments_amount_check CHECK ((amount >= (0)::numeric)),
-    CONSTRAINT reservation_commercial_commitments_currency_check CHECK ((currency ~ '^[A-Z]{3}$'::text))
-);
-
-ALTER TABLE ONLY request_engine.reservation_commercial_commitments FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.reservation_commercial_commitments OWNER TO request_engine_schema_owner;
-
---
--- Name: reservations; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.reservations (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_version_id uuid NOT NULL,
-    subject_party_id uuid NOT NULL,
-    location_id uuid,
-    origin_request_id uuid,
-    during tstzrange NOT NULL,
-    status text DEFAULT 'confirmed'::text NOT NULL,
-    booking_policy_snapshot jsonb DEFAULT '{}'::jsonb NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    cancelled_at timestamp with time zone,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT reservations_booking_policy_snapshot_check CHECK ((jsonb_typeof(booking_policy_snapshot) = 'object'::text)),
-    CONSTRAINT reservations_check CHECK (((status = 'cancelled'::text) = (cancelled_at IS NOT NULL))),
-    CONSTRAINT reservations_during_check CHECK ((NOT isempty(during))),
-    CONSTRAINT reservations_during_check1 CHECK (((lower(during) IS NOT NULL) AND (upper(during) IS NOT NULL))),
-    CONSTRAINT reservations_during_check2 CHECK ((lower_inc(during) AND (NOT upper_inc(during)))),
-    CONSTRAINT reservations_revision_check CHECK ((revision > 0)),
-    CONSTRAINT reservations_status_check CHECK ((status = ANY (ARRAY['confirmed'::text, 'cancelled'::text])))
-);
-
-
-ALTER TABLE request_engine.reservations OWNER TO request_engine_schema_owner;
-
---
--- Name: resource_activities; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.resource_activities (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    location_id uuid,
-    activity_kind text NOT NULL,
-    started_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    ended_at timestamp with time zone,
-    started_by_principal_id uuid NOT NULL,
-    ended_by_principal_id uuid,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT resource_activities_activity_kind_check CHECK ((activity_kind = ANY (ARRAY['break'::text, 'emergency'::text, 'administrative'::text, 'other_operational'::text]))),
-    CONSTRAINT resource_activities_check CHECK (((ended_at IS NULL) OR (ended_at >= started_at))),
-    CONSTRAINT resource_activities_end_actor_ck CHECK (((ended_at IS NULL) = (ended_by_principal_id IS NULL))),
-    CONSTRAINT resource_activities_revision_check CHECK ((revision > 0))
-);
-
-ALTER TABLE ONLY request_engine.resource_activities FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.resource_activities OWNER TO request_engine_schema_owner;
-
---
--- Name: resource_capabilities; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.resource_capabilities (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    capability_key text NOT NULL,
-    display_name text NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT resource_capabilities_capability_key_check CHECK ((capability_key <> ''::text)),
-    CONSTRAINT resource_capabilities_display_name_check CHECK ((display_name <> ''::text))
-);
-
-
-ALTER TABLE request_engine.resource_capabilities OWNER TO request_engine_schema_owner;
-
---
--- Name: resource_capability_assignments; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.resource_capability_assignments (
-    organization_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    capability_id uuid NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL
-);
-
-
-ALTER TABLE request_engine.resource_capability_assignments OWNER TO request_engine_schema_owner;
-
---
--- Name: resource_location_assignments; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.resource_location_assignments (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    effective_during tstzrange NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT resource_location_assignments_effective_during_check CHECK ((NOT isempty(effective_during))),
-    CONSTRAINT resource_location_assignments_effective_during_check1 CHECK ((lower(effective_during) IS NOT NULL)),
-    CONSTRAINT resource_location_assignments_effective_during_check2 CHECK ((lower_inc(effective_during) AND (NOT upper_inc(effective_during)))),
-    CONSTRAINT resource_location_assignments_revision_check CHECK ((revision > 0)),
-    CONSTRAINT resource_location_assignments_status_check CHECK ((status = ANY (ARRAY['active'::text, 'retired'::text])))
-);
-
-ALTER TABLE ONLY request_engine.resource_location_assignments FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.resource_location_assignments OWNER TO request_engine_schema_owner;
-
---
--- Name: resource_location_availability; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.resource_location_availability (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    resource_location_assignment_id uuid CONSTRAINT resource_location_availabil_resource_location_assignme_not_null NOT NULL,
-    weekday smallint NOT NULL,
-    local_start time without time zone NOT NULL,
-    local_end time without time zone NOT NULL,
-    valid_from date,
-    valid_until date,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT resource_location_availability_check CHECK ((local_start < local_end)),
-    CONSTRAINT resource_location_availability_check1 CHECK (((valid_until IS NULL) OR (valid_from IS NULL) OR (valid_until >= valid_from))),
-    CONSTRAINT resource_location_availability_weekday_check CHECK (((weekday >= 0) AND (weekday <= 6)))
-);
-
-ALTER TABLE ONLY request_engine.resource_location_availability FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.resource_location_availability OWNER TO request_engine_schema_owner;
-
---
--- Name: resource_location_schedule_exceptions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.resource_location_schedule_exceptions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    resource_location_assignment_id uuid CONSTRAINT resource_location_schedule__resource_location_assignme_not_null NOT NULL,
-    during tstzrange NOT NULL,
-    exception_kind text NOT NULL,
-    reason text,
-    active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT resource_location_schedule_exceptions_during_check CHECK ((NOT isempty(during))),
-    CONSTRAINT resource_location_schedule_exceptions_during_check1 CHECK (((lower(during) IS NOT NULL) AND (upper(during) IS NOT NULL))),
-    CONSTRAINT resource_location_schedule_exceptions_during_check2 CHECK ((lower_inc(during) AND (NOT upper_inc(during)))),
-    CONSTRAINT resource_location_schedule_exceptions_exception_kind_check CHECK ((exception_kind = ANY (ARRAY['available'::text, 'unavailable'::text])))
-);
-
-ALTER TABLE ONLY request_engine.resource_location_schedule_exceptions FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.resource_location_schedule_exceptions OWNER TO request_engine_schema_owner;
-
---
--- Name: resource_public_profiles; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.resource_public_profiles (
-    organization_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    display_name text NOT NULL,
-    role_label text,
-    profile_image_ref text,
-    active boolean DEFAULT true NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT resource_public_profiles_display_name_check CHECK ((btrim(display_name) <> ''::text)),
-    CONSTRAINT resource_public_profiles_profile_image_ref_check CHECK (((profile_image_ref IS NULL) OR (btrim(profile_image_ref) <> ''::text))),
-    CONSTRAINT resource_public_profiles_revision_check CHECK ((revision > 0)),
-    CONSTRAINT resource_public_profiles_role_label_check CHECK (((role_label IS NULL) OR (btrim(role_label) <> ''::text)))
-);
-
-ALTER TABLE ONLY request_engine.resource_public_profiles FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.resource_public_profiles OWNER TO request_engine_schema_owner;
-
---
--- Name: resources; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.resources (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    resource_key text NOT NULL,
-    display_name text NOT NULL,
-    capacity_model text NOT NULL,
-    capacity_units integer DEFAULT 1 NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    availability_revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT resources_availability_revision_check CHECK ((availability_revision > 0)),
-    CONSTRAINT resources_capacity_model_check CHECK ((capacity_model = ANY (ARRAY['exclusive'::text, 'units'::text]))),
-    CONSTRAINT resources_capacity_units_check CHECK ((capacity_units > 0)),
-    CONSTRAINT resources_check CHECK (((capacity_model <> 'exclusive'::text) OR (capacity_units = 1))),
-    CONSTRAINT resources_display_name_check CHECK ((display_name <> ''::text)),
-    CONSTRAINT resources_resource_key_check CHECK ((resource_key <> ''::text))
-);
-
-
-ALTER TABLE request_engine.resources OWNER TO request_engine_schema_owner;
-
---
--- Name: schedule_exceptions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.schedule_exceptions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    during tstzrange NOT NULL,
-    exception_kind text NOT NULL,
-    reason text,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT schedule_exceptions_during_check CHECK ((NOT isempty(during))),
-    CONSTRAINT schedule_exceptions_during_check1 CHECK (((lower(during) IS NOT NULL) AND (upper(during) IS NOT NULL))),
-    CONSTRAINT schedule_exceptions_during_check2 CHECK ((lower_inc(during) AND (NOT upper_inc(during)))),
-    CONSTRAINT schedule_exceptions_exception_kind_check CHECK ((exception_kind = ANY (ARRAY['available'::text, 'unavailable'::text])))
-);
-
-
-ALTER TABLE request_engine.schedule_exceptions OWNER TO request_engine_schema_owner;
-
---
--- Name: service_classification_authority_events; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.service_classification_authority_events (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    service_classification_id uuid CONSTRAINT service_classification_autho_service_classification_id_not_null NOT NULL,
-    action text NOT NULL,
-    authority_ref text NOT NULL,
-    reason text NOT NULL,
-    database_session_user text DEFAULT SESSION_USER CONSTRAINT service_classification_authority_database_session_user_not_null NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT service_classification_authority_events_action_check CHECK ((action = ANY (ARRAY['created'::text, 'retired'::text]))),
-    CONSTRAINT service_classification_authority_events_authority_ref_check CHECK ((btrim(authority_ref) <> ''::text)),
-    CONSTRAINT service_classification_authority_events_reason_check CHECK ((btrim(reason) <> ''::text))
-);
-
-
-ALTER TABLE request_engine.service_classification_authority_events OWNER TO request_engine_schema_owner;
-
---
--- Name: service_classifications; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.service_classifications (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    classification_key text NOT NULL,
-    canonical_name text NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT service_classifications_canonical_name_check CHECK ((btrim(canonical_name) <> ''::text)),
-    CONSTRAINT service_classifications_classification_key_check CHECK ((classification_key ~ '^[a-z0-9]+(_[a-z0-9]+)*$'::text)),
-    CONSTRAINT service_classifications_revision_check CHECK ((revision > 0)),
-    CONSTRAINT service_classifications_status_check CHECK ((status = ANY (ARRAY['active'::text, 'retired'::text])))
-);
-
-
-ALTER TABLE request_engine.service_classifications OWNER TO request_engine_schema_owner;
-
---
--- Name: service_queue_intake_controls; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.service_queue_intake_controls (
-    organization_id uuid NOT NULL,
-    service_queue_id uuid NOT NULL,
-    accepting boolean DEFAULT true NOT NULL,
-    reason text,
-    effective_until timestamp with time zone,
-    revision bigint DEFAULT 1 NOT NULL,
-    updated_by_principal_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT service_queue_intake_controls_reason_check CHECK (((reason IS NULL) OR (btrim(reason) <> ''::text))),
-    CONSTRAINT service_queue_intake_controls_revision_check CHECK ((revision > 0))
-);
-
-ALTER TABLE ONLY request_engine.service_queue_intake_controls FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.service_queue_intake_controls OWNER TO request_engine_schema_owner;
-
---
--- Name: service_queues; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.service_queues (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    location_id uuid,
-    offering_id uuid,
-    queue_key text NOT NULL,
-    display_name text NOT NULL,
-    policy_key text DEFAULT 'fifo'::text NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT service_queues_display_name_check CHECK ((display_name <> ''::text)),
-    CONSTRAINT service_queues_policy_key_check CHECK ((policy_key = 'fifo'::text)),
-    CONSTRAINT service_queues_queue_key_check CHECK ((queue_key <> ''::text)),
-    CONSTRAINT service_queues_revision_check CHECK ((revision > 0))
-);
-
-
-ALTER TABLE request_engine.service_queues OWNER TO request_engine_schema_owner;
-
---
--- Name: service_session_interruptions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.service_session_interruptions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    service_session_id uuid NOT NULL,
-    kind text NOT NULL,
-    started_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    ended_at timestamp with time zone,
-    started_by_principal_id uuid NOT NULL,
-    ended_by_principal_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT service_session_interruptions_check CHECK (((ended_at IS NULL) OR (ended_at >= started_at))),
-    CONSTRAINT service_session_interruptions_end_actor_ck CHECK (((ended_at IS NULL) = (ended_by_principal_id IS NULL))),
-    CONSTRAINT service_session_interruptions_kind_check CHECK ((kind = ANY (ARRAY['emergency'::text, 'break'::text, 'administrative'::text, 'other_operational'::text])))
-);
-
-ALTER TABLE ONLY request_engine.service_session_interruptions FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.service_session_interruptions OWNER TO request_engine_schema_owner;
-
---
--- Name: service_sessions; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.service_sessions (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    queue_entry_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    actual_workload_classification_id uuid,
-    status text DEFAULT 'active'::text NOT NULL,
-    started_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    completed_at timestamp with time zone,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT service_sessions_check CHECK (((status = 'completed'::text) = (completed_at IS NOT NULL))),
-    CONSTRAINT service_sessions_check1 CHECK (((completed_at IS NULL) OR (completed_at >= started_at))),
-    CONSTRAINT service_sessions_revision_check CHECK ((revision > 0)),
-    CONSTRAINT service_sessions_status_check CHECK ((status = ANY (ARRAY['active'::text, 'paused'::text, 'completed'::text])))
-);
-
-ALTER TABLE ONLY request_engine.service_sessions FORCE ROW LEVEL SECURITY;
-
-
-ALTER TABLE request_engine.service_sessions OWNER TO request_engine_schema_owner;
-
---
--- Name: shared_capacity_authority_events; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.shared_capacity_authority_events (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    event_kind text NOT NULL,
-    global_identity_id uuid,
-    shared_capacity_identity_id uuid,
-    binding_id uuid,
-    resource_organization_id uuid,
-    resource_id uuid,
-    authority_ref text NOT NULL,
-    reason text NOT NULL,
-    details jsonb DEFAULT '{}'::jsonb NOT NULL,
-    occurred_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT shared_capacity_authority_events_authority_ref_check CHECK ((authority_ref <> ''::text)),
-    CONSTRAINT shared_capacity_authority_events_details_check CHECK ((jsonb_typeof(details) = 'object'::text)),
-    CONSTRAINT shared_capacity_authority_events_event_kind_check CHECK ((event_kind = ANY (ARRAY['global_identity.created'::text, 'shared_capacity.created'::text, 'binding.activated'::text, 'binding.revoked'::text]))),
-    CONSTRAINT shared_capacity_authority_events_reason_check CHECK ((reason <> ''::text))
-);
-
-
-ALTER TABLE request_engine.shared_capacity_authority_events OWNER TO request_engine_schema_owner;
-
---
--- Name: shared_capacity_bindings; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.shared_capacity_bindings (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    shared_capacity_identity_id uuid NOT NULL,
-    organization_id uuid NOT NULL,
-    resource_id uuid NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    valid_from timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    valid_until timestamp with time zone,
-    authorized_by text NOT NULL,
-    authorization_reason text NOT NULL,
-    revoked_by text,
-    revocation_reason text,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT shared_capacity_bindings_authorization_reason_check CHECK ((authorization_reason <> ''::text)),
-    CONSTRAINT shared_capacity_bindings_authorized_by_check CHECK ((authorized_by <> ''::text)),
-    CONSTRAINT shared_capacity_bindings_check CHECK (((valid_until IS NULL) OR (valid_until >= valid_from))),
-    CONSTRAINT shared_capacity_bindings_check1 CHECK ((((status = 'active'::text) AND (valid_until IS NULL) AND (revoked_by IS NULL) AND (revocation_reason IS NULL)) OR ((status = 'revoked'::text) AND (valid_until IS NOT NULL) AND (revoked_by IS NOT NULL) AND (revoked_by <> ''::text) AND (revocation_reason IS NOT NULL) AND (revocation_reason <> ''::text)))),
-    CONSTRAINT shared_capacity_bindings_revision_check CHECK ((revision > 0)),
-    CONSTRAINT shared_capacity_bindings_status_check CHECK ((status = ANY (ARRAY['active'::text, 'revoked'::text])))
-);
-
-
-ALTER TABLE request_engine.shared_capacity_bindings OWNER TO request_engine_schema_owner;
-
---
--- Name: shared_capacity_claim_links; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.shared_capacity_claim_links (
-    capacity_claim_id uuid NOT NULL,
-    shared_capacity_identity_id uuid CONSTRAINT shared_capacity_claim_links_shared_capacity_identity_i_not_null NOT NULL,
-    linked_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL
-);
-
-
-ALTER TABLE request_engine.shared_capacity_claim_links OWNER TO request_engine_schema_owner;
-
---
--- Name: shared_capacity_identities; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.shared_capacity_identities (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    global_identity_id uuid NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    created_authority_ref text NOT NULL,
-    creation_reason text NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    retired_at timestamp with time zone,
-    CONSTRAINT shared_capacity_identities_check CHECK (((status = 'retired'::text) = (retired_at IS NOT NULL))),
-    CONSTRAINT shared_capacity_identities_created_authority_ref_check CHECK ((created_authority_ref <> ''::text)),
-    CONSTRAINT shared_capacity_identities_creation_reason_check CHECK ((creation_reason <> ''::text)),
-    CONSTRAINT shared_capacity_identities_revision_check CHECK ((revision > 0)),
-    CONSTRAINT shared_capacity_identities_status_check CHECK ((status = ANY (ARRAY['active'::text, 'retired'::text])))
-);
-
-
-ALTER TABLE request_engine.shared_capacity_identities OWNER TO request_engine_schema_owner;
-
---
--- Name: slot_offers; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.slot_offers (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    slot_opportunity_id uuid NOT NULL,
-    waitlist_entry_id uuid NOT NULL,
-    capacity_hold_id uuid NOT NULL,
-    status text DEFAULT 'offered'::text NOT NULL,
-    expires_at timestamp with time zone NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT slot_offers_check CHECK ((expires_at > created_at)),
-    CONSTRAINT slot_offers_revision_check CHECK ((revision > 0)),
-    CONSTRAINT slot_offers_status_check CHECK ((status = ANY (ARRAY['offered'::text, 'accepted'::text, 'declined'::text, 'expired'::text, 'cancelled'::text])))
-);
-
-
-ALTER TABLE request_engine.slot_offers OWNER TO request_engine_schema_owner;
-
---
--- Name: slot_opportunities; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.slot_opportunities (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_version_id uuid NOT NULL,
-    location_id uuid,
-    source_reservation_id uuid,
-    source_event_id uuid NOT NULL,
-    during tstzrange NOT NULL,
-    status text DEFAULT 'open'::text NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT slot_opportunities_during_check CHECK ((NOT isempty(during))),
-    CONSTRAINT slot_opportunities_during_check1 CHECK (((lower(during) IS NOT NULL) AND (upper(during) IS NOT NULL))),
-    CONSTRAINT slot_opportunities_during_check2 CHECK ((lower_inc(during) AND (NOT upper_inc(during)))),
-    CONSTRAINT slot_opportunities_revision_check CHECK ((revision > 0)),
-    CONSTRAINT slot_opportunities_status_check CHECK ((status = ANY (ARRAY['open'::text, 'filled'::text, 'closed'::text, 'expired'::text])))
-);
-
-
-ALTER TABLE request_engine.slot_opportunities OWNER TO request_engine_schema_owner;
-
---
--- Name: waitlist_entries; Type: TABLE; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-CREATE TABLE request_engine.waitlist_entries (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    organization_id uuid NOT NULL,
-    offering_id uuid NOT NULL,
-    subject_party_id uuid NOT NULL,
-    location_id uuid,
-    preferred_resource_id uuid,
-    earliest_start timestamp with time zone,
-    latest_start timestamp with time zone,
-    status text DEFAULT 'active'::text NOT NULL,
-    revision bigint DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT waitlist_entries_check CHECK (((latest_start IS NULL) OR (earliest_start IS NULL) OR (latest_start >= earliest_start))),
-    CONSTRAINT waitlist_entries_revision_check CHECK ((revision > 0)),
-    CONSTRAINT waitlist_entries_status_check CHECK ((status = ANY (ARRAY['active'::text, 'fulfilled'::text, 'cancelled'::text, 'expired'::text])))
-);
-
-
-ALTER TABLE request_engine.waitlist_entries OWNER TO request_engine_schema_owner;
-
---
--- Name: business_info_v1; Type: VIEW; Schema: request_read; Owner: request_engine_schema_owner
---
-
-CREATE VIEW request_read.business_info_v1 WITH (security_invoker='true') AS
- SELECT id AS organization_id,
-    organization_key,
-    display_name,
-    public_profile
-   FROM request_engine.organizations o;
-
-
-ALTER VIEW request_read.business_info_v1 OWNER TO request_engine_schema_owner;
-
---
--- Name: service_queue_status_v2; Type: VIEW; Schema: request_read; Owner: request_engine_schema_owner
---
-
-CREATE VIEW request_read.service_queue_status_v2 WITH (security_invoker='true') AS
- SELECT q.id AS queue_id,
-    q.organization_id,
-    q.queue_key,
-    q.display_name,
-    e.id AS queue_entry_id,
-    e.subject_party_id,
-    e.reservation_id,
-    e.offering_id,
-    e.status,
-    e.arrived_at,
-    e.admitted_at,
-    e.called_at,
-    e.expected_workload_classification_id,
-    s.id AS service_session_id,
-    s.resource_id AS actual_resource_id,
-    s.location_id AS actual_location_id,
-    s.actual_workload_classification_id,
-    s.status AS service_status,
-    s.started_at AS service_started_at,
-    s.completed_at AS service_completed_at,
-    e.revision AS queue_revision,
-    s.revision AS service_revision
-   FROM ((request_engine.service_queues q
-     LEFT JOIN request_engine.queue_entries e ON (((e.organization_id = q.organization_id) AND (e.service_queue_id = q.id))))
-     LEFT JOIN request_engine.service_sessions s ON (((s.organization_id = e.organization_id) AND (s.queue_entry_id = e.id))));
-
-
-ALTER VIEW request_read.service_queue_status_v2 OWNER TO request_engine_schema_owner;
-
---
--- Name: live_service_staff_v1; Type: VIEW; Schema: request_read; Owner: request_engine_schema_owner
---
-
-CREATE VIEW request_read.live_service_staff_v1 WITH (security_invoker='true') AS
- SELECT v.queue_id,
-    v.organization_id,
-    v.queue_key,
-    v.display_name,
-    v.queue_entry_id,
-    v.subject_party_id,
-    v.reservation_id,
-    v.offering_id,
-    v.status,
-    v.arrived_at,
-    v.admitted_at,
-    v.called_at,
-    v.expected_workload_classification_id,
-    v.service_session_id,
-    v.actual_resource_id,
-    v.actual_location_id,
-    v.actual_workload_classification_id,
-    v.service_status,
-    v.service_started_at,
-    v.service_completed_at,
-    v.queue_revision,
-    v.service_revision,
-    p.display_name AS subject_display_name,
-    ew.workload_key AS expected_workload_key,
-    aw.workload_key AS actual_workload_key,
-        CASE
-            WHEN (r.id IS NULL) THEN NULL::timestamp with time zone
-            ELSE lower(r.during)
-        END AS scheduled_at
-   FROM ((((request_read.service_queue_status_v2 v
-     LEFT JOIN request_engine.parties p ON (((p.organization_id = v.organization_id) AND (p.id = v.subject_party_id))))
-     LEFT JOIN request_engine.operational_workload_classifications ew ON (((ew.organization_id = v.organization_id) AND (ew.id = v.expected_workload_classification_id))))
-     LEFT JOIN request_engine.operational_workload_classifications aw ON (((aw.organization_id = v.organization_id) AND (aw.id = v.actual_workload_classification_id))))
-     LEFT JOIN request_engine.reservations r ON (((r.organization_id = v.organization_id) AND (r.id = v.reservation_id))));
-
-
-ALTER VIEW request_read.live_service_staff_v1 OWNER TO request_engine_schema_owner;
-
---
--- Name: locations_v1; Type: VIEW; Schema: request_read; Owner: request_engine_schema_owner
---
-
-CREATE VIEW request_read.locations_v1 WITH (security_invoker='true') AS
- SELECT id,
-    organization_id,
-    location_key,
-    display_name,
-    timezone,
-    public_data,
-    active
-   FROM request_engine.locations l;
-
-
-ALTER VIEW request_read.locations_v1 OWNER TO request_engine_schema_owner;
-
---
--- Name: reservation_access_v1; Type: VIEW; Schema: request_read; Owner: request_engine_schema_owner
---
-
-CREATE VIEW request_read.reservation_access_v1 WITH (security_invoker='true') AS
- SELECT id,
-    organization_id,
-    reservation_id,
-    reservation_revision,
-    access_key,
-    kind,
-    provider_key,
-    materialization_key,
-    status,
-    access_uri,
-    external_ref,
-    public_data,
-    provisioned_at,
-    revoked_at,
-    revision,
-    created_at,
-    updated_at
-   FROM request_engine.reservation_access;
-
-
-ALTER VIEW request_read.reservation_access_v1 OWNER TO request_engine_schema_owner;
-
---
--- Name: reservation_day_v1; Type: VIEW; Schema: request_read; Owner: request_engine_schema_owner
---
-
-CREATE VIEW request_read.reservation_day_v1 WITH (security_invoker='true') AS
- SELECT r.id AS reservation_id,
-    r.organization_id,
-    r.offering_version_id,
-    r.subject_party_id,
-    p.display_name AS subject_display_name,
-    r.location_id,
-    r.during,
-    r.status,
-    r.revision,
-    COALESCE(ar.response, 'pending'::text) AS attendance_status,
-    ar.responded_at AS attendance_responded_at,
-    COALESCE(ra.status, 'pending'::text) AS attendance_outcome,
-        CASE
-            WHEN (ra.status = 'checked_in'::text) THEN ra.checked_in_at
-            WHEN (ra.status = 'no_show'::text) THEN ra.no_show_at
-            ELSE NULL::timestamp with time zone
-        END AS attendance_outcome_at,
-    ra.checked_in_at,
-    ra.no_show_at,
-    ae.estimated_arrival_at AS reported_arrival_estimate_at,
-        CASE
-            WHEN ((r.status = 'confirmed'::text) AND (COALESCE(ra.status, 'pending'::text) = 'pending'::text)) THEN ae.estimated_arrival_at
-            ELSE NULL::timestamp with time zone
-        END AS effective_arrival_estimate_at,
-    ae.estimated_arrival_at,
-    ae.source_kind AS arrival_estimate_source_kind,
-    COALESCE(qe.active_queue_entry_count, 0) AS active_queue_entry_count,
-        CASE
-            WHEN (qe.active_queue_entry_count = 1) THEN qe.id
-            ELSE NULL::uuid
-        END AS queue_entry_id,
-        CASE
-            WHEN (qe.active_queue_entry_count = 1) THEN qe.status
-            ELSE NULL::text
-        END AS queue_entry_status,
-        CASE
-            WHEN (COALESCE(qe.active_queue_entry_count, 0) <> 1) THEN NULL::boolean
-            ELSE ((qe.status = 'waiting'::text) AND (h.id IS NULL) AND (s.id IS NULL))
-        END AS recall_eligible,
-    h.id AS recall_hold_id,
-    h.condition_kind AS recall_hold_kind,
-    h.until_at AS recall_hold_until_at,
-    h.event_key AS recall_hold_event_key,
-    h.reason AS recall_hold_reason,
-    s.reason AS active_skip_reason
-   FROM (((((((request_engine.reservations r
-     JOIN request_engine.parties p ON (((p.organization_id = r.organization_id) AND (p.id = r.subject_party_id))))
-     LEFT JOIN LATERAL ( SELECT a.response,
-            a.responded_at
-           FROM request_engine.attendance_responses a
-          WHERE ((a.organization_id = r.organization_id) AND (a.reservation_id = r.id))
-          ORDER BY a.responded_at DESC, a.id DESC
-         LIMIT 1) ar ON (true))
-     LEFT JOIN request_engine.reservation_attendance ra ON (((ra.organization_id = r.organization_id) AND (ra.reservation_id = r.id))))
-     LEFT JOIN LATERAL ( SELECT e.estimated_arrival_at,
-            e.source_kind
-           FROM request_engine.reservation_arrival_estimates e
-          WHERE ((e.organization_id = r.organization_id) AND (e.reservation_id = r.id) AND (e.superseded_at IS NULL))
-         LIMIT 1) ae ON (true))
-     LEFT JOIN LATERAL ( SELECT active.id,
-            active.status,
-            active.active_queue_entry_count
-           FROM ( SELECT q.id,
-                    q.status,
-                    q.admitted_at,
-                    (count(*) OVER ())::integer AS active_queue_entry_count
-                   FROM request_engine.queue_entries q
-                  WHERE ((q.organization_id = r.organization_id) AND (q.reservation_id = r.id) AND (q.status = ANY (ARRAY['waiting'::text, 'called'::text, 'serving'::text])))) active
-          ORDER BY active.admitted_at DESC, active.id DESC
-         LIMIT 1) qe ON (true))
-     LEFT JOIN LATERAL ( SELECT hold.id,
-            hold.condition_kind,
-            hold.until_at,
-            hold.event_key,
-            hold.reason
-           FROM request_engine.queue_entry_recall_holds hold
-          WHERE ((qe.active_queue_entry_count = 1) AND (hold.organization_id = r.organization_id) AND (hold.queue_entry_id = qe.id) AND (hold.released_at IS NULL) AND ((hold.condition_kind <> 'until_time'::text) OR (hold.until_at > clock_timestamp())))
-          ORDER BY hold.created_at DESC, hold.id DESC
-         LIMIT 1) h ON (true))
-     LEFT JOIN LATERAL ( SELECT skip.id,
-            skip.reason
-           FROM request_engine.queue_entry_skips skip
-          WHERE ((qe.active_queue_entry_count = 1) AND (skip.organization_id = r.organization_id) AND (skip.queue_entry_id = qe.id) AND (skip.consumed_at IS NULL))
-          ORDER BY skip.created_at DESC, skip.id DESC
-         LIMIT 1) s ON (true));
-
-
-ALTER VIEW request_read.reservation_day_v1 OWNER TO request_engine_schema_owner;
-
---
--- Name: reservation_status_v1; Type: VIEW; Schema: request_read; Owner: request_engine_schema_owner
---
-
-CREATE VIEW request_read.reservation_status_v1 WITH (security_invoker='true') AS
- SELECT r.id AS reservation_id,
-    r.organization_id,
-    r.offering_version_id,
-    r.subject_party_id,
-    r.location_id,
-    r.during,
-    r.status,
-    r.revision,
-    COALESCE(ar.response, 'pending'::text) AS attendance_status,
-    ar.responded_at AS attendance_responded_at,
-    ae.estimated_arrival_at
-   FROM ((request_engine.reservations r
-     LEFT JOIN LATERAL ( SELECT a.response,
-            a.responded_at
-           FROM request_engine.attendance_responses a
-          WHERE ((a.organization_id = r.organization_id) AND (a.reservation_id = r.id))
-          ORDER BY a.responded_at DESC, a.id DESC
-         LIMIT 1) ar ON (true))
-     LEFT JOIN LATERAL ( SELECT e.estimated_arrival_at
-           FROM request_engine.reservation_arrival_estimates e
-          WHERE ((e.organization_id = r.organization_id) AND (e.reservation_id = r.id) AND (e.superseded_at IS NULL))
-         LIMIT 1) ae ON (true));
-
-
-ALTER VIEW request_read.reservation_status_v1 OWNER TO request_engine_schema_owner;
-
---
--- Name: service_session_status_v1; Type: VIEW; Schema: request_read; Owner: request_engine_schema_owner
---
-
-CREATE VIEW request_read.service_session_status_v1 WITH (security_invoker='true') AS
- SELECT s.id AS service_session_id,
-    s.organization_id,
-    s.queue_entry_id,
-    s.resource_id,
-    s.location_id,
-    s.actual_workload_classification_id,
-    s.status,
-    s.started_at,
-    s.completed_at,
-    s.revision,
-    (COALESCE(i.total_interruption_seconds, (0)::numeric))::bigint AS interruption_seconds
-   FROM (request_engine.service_sessions s
-     LEFT JOIN LATERAL ( SELECT sum(EXTRACT(epoch FROM (COALESCE(i_1.ended_at, clock_timestamp()) - i_1.started_at))) AS total_interruption_seconds
-           FROM request_engine.service_session_interruptions i_1
-          WHERE ((i_1.organization_id = s.organization_id) AND (i_1.service_session_id = s.id))) i ON (true));
-
-
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_org uuid;
+    v_actor uuid;
+    v_identity uuid;
+    v_identity_kind text;
+    v_local_kind text;
+    v_binding uuid;
+BEGIN
+    v_org := nullif(current_setting('request_engine.organization_id', true), '')::uuid;
+    v_actor := nullif(current_setting('request_engine.authenticated_principal_id', true), '')::uuid;
+    IF v_org IS NULL OR v_actor IS NULL OR v_actor <> p_principal_id THEN
+        RAISE EXCEPTION 'identity binding actor context mismatch' USING ERRCODE = '42501';
+    END IF;
+    SELECT c.portable_party_id, i.party_kind INTO v_identity, v_identity_kind
+    FROM request_engine.identity_exchange_candidates c
+    JOIN request_engine.portable_party_identities i ON i.id = c.portable_party_id AND i.active
+    WHERE c.id = p_candidate_id AND c.organization_id = v_org
+      AND c.created_by_principal_id = p_principal_id AND c.consumed_at IS NOT NULL;
+    SELECT p.party_kind INTO v_local_kind FROM request_engine.parties p
+    WHERE p.organization_id = v_org AND p.id = p_party_id AND p.active;
+    IF v_identity IS NULL OR v_local_kind IS NULL OR v_local_kind <> v_identity_kind THEN
+        RAISE EXCEPTION 'candidate and local Party are not kind-compatible' USING ERRCODE = '22023';
+    END IF;
+    INSERT INTO request_engine.organization_party_bindings(
+        organization_id, party_id, portable_party_id, proof_kind,
+        consented_fields, created_by_principal_id)
+    VALUES (v_org, p_party_id, v_identity, 'operator_document_witness',
+            p_consent_fields, p_principal_id)
+    RETURNING id INTO v_binding;
+    RETURN v_binding;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bind_consumed_identity_candidate_v1(p_candidate_id uuid, p_party_id uuid, p_consent_fields text[], p_principal_id uuid) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_capacity_claim_recovery_source_revision(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_capacity_claim_recovery_source_revision() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_organization_id uuid;
+    v_resource_id uuid;
+    v_reservation_id uuid;
+    v_queue_id uuid;
+    v_scope integer;
+    v_scopes integer := 1;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_organization_id := OLD.organization_id;
+        v_resource_id := OLD.resource_id;
+        v_reservation_id := OLD.reservation_id;
+    ELSE
+        IF TG_OP = 'UPDATE'
+           AND (NEW.organization_id, NEW.resource_id, NEW.hold_id,
+                NEW.reservation_id, NEW.during, NEW.quantity, NEW.status)
+               IS NOT DISTINCT FROM
+               (OLD.organization_id, OLD.resource_id, OLD.hold_id,
+                OLD.reservation_id, OLD.during, OLD.quantity, OLD.status) THEN
+            RETURN NEW;
+        END IF;
+        IF TG_OP = 'UPDATE'
+           AND (OLD.organization_id, OLD.resource_id, OLD.hold_id, OLD.reservation_id)
+               IS DISTINCT FROM
+               (NEW.organization_id, NEW.resource_id, NEW.hold_id, NEW.reservation_id) THEN
+            v_scopes := 2;
+        END IF;
+        v_organization_id := NEW.organization_id;
+        v_resource_id := NEW.resource_id;
+        v_reservation_id := NEW.reservation_id;
+    END IF;
+
+    FOR v_scope IN 1..v_scopes LOOP
+        IF v_scope = 2 THEN
+            v_organization_id := OLD.organization_id;
+            v_resource_id := OLD.resource_id;
+            v_reservation_id := OLD.reservation_id;
+        END IF;
+        FOR v_queue_id IN
+            SELECT p.service_queue_id
+            FROM request_engine.live_capacity_projection_policies p
+            WHERE p.organization_id = v_organization_id
+              AND p.resource_id = v_resource_id
+              AND (
+                  v_reservation_id IS NULL
+                  OR p.location_id = (
+                      SELECT r.location_id
+                      FROM request_engine.reservations r
+                      WHERE r.organization_id = v_organization_id
+                        AND r.id = v_reservation_id
+                  )
+              )
+        LOOP
+            PERFORM request_engine.bump_recovery_source_revision(
+                v_organization_id, v_queue_id
+            );
+        END LOOP;
+    END LOOP;
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_capacity_claim_recovery_source_revision() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_direct_queue_recovery_source_revision(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_direct_queue_recovery_source_revision() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        PERFORM request_engine.bump_recovery_source_revision(
+            OLD.organization_id,
+            OLD.service_queue_id
+        );
+        RETURN OLD;
+    END IF;
+
+    IF TG_OP = 'UPDATE'
+       AND (OLD.organization_id, OLD.service_queue_id)
+           IS DISTINCT FROM (NEW.organization_id, NEW.service_queue_id) THEN
+        PERFORM request_engine.bump_recovery_source_revision(
+            OLD.organization_id,
+            OLD.service_queue_id
+        );
+    END IF;
+
+    PERFORM request_engine.bump_recovery_source_revision(
+        NEW.organization_id,
+        NEW.service_queue_id
+    );
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_direct_queue_recovery_source_revision() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_estimate_policy_recovery_source_revision(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_estimate_policy_recovery_source_revision() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_organization_id uuid;
+    v_queue_id uuid;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_organization_id := OLD.organization_id;
+    ELSE
+        v_organization_id := NEW.organization_id;
+    END IF;
+    FOR v_queue_id IN
+        SELECT service_queue_id
+        FROM request_engine.live_capacity_projection_policies
+        WHERE organization_id = v_organization_id
+    LOOP
+        PERFORM request_engine.bump_recovery_source_revision(v_organization_id, v_queue_id);
+    END LOOP;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_estimate_policy_recovery_source_revision() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_intake_control_recovery_source_revision(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_intake_control_recovery_source_revision() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        BEGIN
+            IF NEW.accepting IS NOT DISTINCT FROM OLD.accepting
+               AND NEW.reason IS NOT DISTINCT FROM OLD.reason
+               AND NEW.effective_until IS NOT DISTINCT FROM OLD.effective_until THEN
+                RETURN NULL;
+            END IF;
+            PERFORM request_engine.bump_recovery_source_revision(
+                NEW.organization_id,
+                NEW.service_queue_id
+            );
+            RETURN NULL;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.bump_intake_control_recovery_source_revision() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_interruption_recovery_source_revision(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_interruption_recovery_source_revision() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_organization_id uuid;
+    v_session_id uuid;
+    v_queue_id uuid;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_organization_id := OLD.organization_id;
+        v_session_id := OLD.service_session_id;
+    ELSE
+        v_organization_id := NEW.organization_id;
+        v_session_id := NEW.service_session_id;
+    END IF;
+    SELECT q.service_queue_id INTO v_queue_id
+    FROM request_engine.service_sessions s
+    JOIN request_engine.queue_entries q
+      ON q.organization_id = s.organization_id AND q.id = s.queue_entry_id
+    WHERE s.organization_id = v_organization_id AND s.id = v_session_id;
+    PERFORM request_engine.bump_recovery_source_revision(v_organization_id, v_queue_id);
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_interruption_recovery_source_revision() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_location_operational_revision_from_child(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_location_operational_revision_from_child() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_org uuid;
+    v_location uuid;
+BEGIN
+    IF TG_OP = 'UPDATE' AND (
+        OLD.organization_id <> NEW.organization_id OR OLD.location_id <> NEW.location_id
+    ) THEN
+        RAISE EXCEPTION '% rows cannot move between Locations', TG_TABLE_NAME USING ERRCODE = '23514';
+    END IF;
+    IF TG_OP = 'DELETE' THEN
+        v_org := OLD.organization_id;
+        v_location := OLD.location_id;
+    ELSE
+        v_org := NEW.organization_id;
+        v_location := NEW.location_id;
+    END IF;
+    UPDATE request_engine.locations
+       SET operational_revision = operational_revision + 1,
+           updated_at = clock_timestamp()
+     WHERE organization_id = v_org AND id = v_location;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Location % not found while changing operational availability', v_location
+            USING ERRCODE = '23503';
+    END IF;
+    RETURN COALESCE(NEW, OLD);
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_location_operational_revision_from_child() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_location_revision_recovery_sources(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_location_revision_recovery_sources() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_queue_id uuid;
+BEGIN
+    IF NEW.operational_revision IS NOT DISTINCT FROM OLD.operational_revision THEN
+        RETURN NEW;
+    END IF;
+    FOR v_queue_id IN
+        SELECT service_queue_id
+        FROM request_engine.live_capacity_projection_policies
+        WHERE organization_id = NEW.organization_id
+          AND location_id = NEW.id
+    LOOP
+        PERFORM request_engine.bump_recovery_source_revision(
+            NEW.organization_id,
+            v_queue_id
+        );
+    END LOOP;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_location_revision_recovery_sources() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_principal_authority_from_grant(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_principal_authority_from_grant() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        BEGIN
+            UPDATE request_engine.principals
+               SET authority_revision = authority_revision + 1
+             WHERE id = NEW.principal_id;
+            RETURN NEW;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.bump_principal_authority_from_grant() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_principal_authority_from_identity_binding(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_principal_authority_from_identity_binding() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        BEGIN
+            IF TG_OP = 'INSERT' AND NEW.status <> 'active' THEN
+                RETURN NEW;
+            END IF;
+            IF TG_OP = 'UPDATE' AND NEW.status = OLD.status THEN
+                RETURN NEW;
+            END IF;
+            UPDATE request_engine.principals
+               SET authority_revision = authority_revision + 1
+             WHERE id = NEW.principal_id;
+            RETURN NEW;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.bump_principal_authority_from_identity_binding() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_principal_authority_from_representation(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_principal_authority_from_representation() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        BEGIN
+            IF TG_OP = 'DELETE' THEN
+                UPDATE request_engine.principals
+                   SET authority_revision = authority_revision + 1
+                 WHERE organization_id = OLD.organization_id
+                   AND id = OLD.principal_id;
+                RETURN OLD;
+            END IF;
+
+            IF TG_OP = 'UPDATE'
+               AND (
+                   NEW.organization_id IS DISTINCT FROM OLD.organization_id
+                   OR NEW.principal_id IS DISTINCT FROM OLD.principal_id
+               )
+            THEN
+                UPDATE request_engine.principals
+                   SET authority_revision = authority_revision + 1
+                 WHERE organization_id = OLD.organization_id
+                   AND id = OLD.principal_id;
+            END IF;
+
+            UPDATE request_engine.principals
+               SET authority_revision = authority_revision + 1
+             WHERE organization_id = NEW.organization_id
+               AND id = NEW.principal_id;
+            RETURN NEW;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.bump_principal_authority_from_representation() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_recovery_source_revision(uuid, uuid); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_revision bigint;
+    v_context text := COALESCE(
+        current_setting('request_engine.organization_id', true),
+        ''
+    );
+BEGIN
+    IF p_service_queue_id IS NULL THEN
+        RETURN;
+    END IF;
+
+    IF v_context <> '' AND v_context <> p_organization_id::text THEN
+        RAISE EXCEPTION
+            'bump_recovery_source_revision rejects foreign tenant authority'
+            USING ERRCODE = '23514';
+    END IF;
+
+    INSERT INTO request_engine.recovery_source_revisions (
+        organization_id, service_queue_id, revision, updated_at
+    ) VALUES (
+        p_organization_id, p_service_queue_id, 1, clock_timestamp()
+    )
+    ON CONFLICT (organization_id, service_queue_id)
+    DO UPDATE SET
+        revision = request_engine.recovery_source_revisions.revision + 1,
+        updated_at = clock_timestamp()
+    RETURNING revision INTO v_revision;
+
+    PERFORM request_cmd.schedule_recovery_reassessment(
+        p_organization_id,
+        p_service_queue_id,
+        v_revision
+    );
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_reservation_recovery_source_revision(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_reservation_recovery_source_revision() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_organization_id uuid;
+    v_location_id uuid;
+    v_reservation_id uuid;
+    v_queue_id uuid;
+    v_scope integer;
+    v_scopes integer := 1;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_organization_id := OLD.organization_id;
+        v_location_id := OLD.location_id;
+        v_reservation_id := OLD.id;
+    ELSE
+        IF TG_OP = 'UPDATE'
+           AND (NEW.location_id, NEW.during, NEW.status)
+               IS NOT DISTINCT FROM
+               (OLD.location_id, OLD.during, OLD.status) THEN
+            RETURN NEW;
+        END IF;
+        IF TG_OP = 'UPDATE'
+           AND (OLD.organization_id, OLD.location_id)
+               IS DISTINCT FROM
+               (NEW.organization_id, NEW.location_id) THEN
+            v_scopes := 2;
+        END IF;
+        v_organization_id := NEW.organization_id;
+        v_location_id := NEW.location_id;
+        v_reservation_id := NEW.id;
+    END IF;
+
+    FOR v_scope IN 1..v_scopes LOOP
+        IF v_scope = 2 THEN
+            v_organization_id := OLD.organization_id;
+            v_location_id := OLD.location_id;
+        END IF;
+        FOR v_queue_id IN
+            SELECT DISTINCT p.service_queue_id
+            FROM request_engine.live_capacity_projection_policies p
+            JOIN request_engine.capacity_claims c
+              ON c.organization_id = p.organization_id
+             AND c.resource_id = p.resource_id
+            WHERE p.organization_id = v_organization_id
+              AND p.location_id = v_location_id
+              AND c.reservation_id = v_reservation_id
+              AND c.status = 'active'
+        LOOP
+            PERFORM request_engine.bump_recovery_source_revision(
+                v_organization_id, v_queue_id
+            );
+        END LOOP;
+    END LOOP;
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_reservation_recovery_source_revision() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_resource_activity_recovery_source_revision(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_resource_activity_recovery_source_revision() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_organization_id uuid;
+    v_resource_id uuid;
+    v_location_id uuid;
+    v_queue_id uuid;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_organization_id := OLD.organization_id;
+        v_resource_id := OLD.resource_id;
+        v_location_id := OLD.location_id;
+    ELSE
+        v_organization_id := NEW.organization_id;
+        v_resource_id := NEW.resource_id;
+        v_location_id := NEW.location_id;
+    END IF;
+    FOR v_queue_id IN
+        SELECT service_queue_id
+        FROM request_engine.live_capacity_projection_policies
+        WHERE organization_id = v_organization_id
+          AND resource_id = v_resource_id
+          AND (v_location_id IS NULL OR location_id = v_location_id)
+    LOOP
+        PERFORM request_engine.bump_recovery_source_revision(v_organization_id, v_queue_id);
+    END LOOP;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_resource_activity_recovery_source_revision() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_resource_availability_revision(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_resource_availability_revision() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_org uuid;
+    v_resource uuid;
+BEGIN
+    IF TG_OP = 'UPDATE' AND (
+        OLD.organization_id <> NEW.organization_id OR OLD.resource_id <> NEW.resource_id
+    ) THEN
+        RAISE EXCEPTION '% rows cannot move between Resources; delete/recreate explicitly', TG_TABLE_NAME
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        v_org := OLD.organization_id;
+        v_resource := OLD.resource_id;
+    ELSE
+        v_org := NEW.organization_id;
+        v_resource := NEW.resource_id;
+    END IF;
+
+    UPDATE request_engine.resources
+       SET availability_revision = availability_revision + 1,
+           updated_at = clock_timestamp()
+     WHERE organization_id = v_org
+       AND id = v_resource;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Resource % not found while changing availability', v_resource
+            USING ERRCODE = '23503';
+    END IF;
+
+    RETURN COALESCE(NEW, OLD);
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_resource_availability_revision() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_resource_from_assignment(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_resource_from_assignment() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_org uuid;
+    v_resource uuid;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_org := OLD.organization_id;
+        v_resource := OLD.resource_id;
+    ELSE
+        v_org := NEW.organization_id;
+        v_resource := NEW.resource_id;
+    END IF;
+    UPDATE request_engine.resources
+       SET availability_revision = availability_revision + 1,
+           updated_at = clock_timestamp()
+     WHERE organization_id = v_org AND id = v_resource;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Resource % not found while changing contextual assignment', v_resource
+            USING ERRCODE = '23503';
+    END IF;
+    RETURN COALESCE(NEW, OLD);
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_resource_from_assignment() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_resource_from_assignment_child(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_resource_from_assignment_child() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_org uuid;
+    v_assignment uuid;
+    v_resource uuid;
+BEGIN
+    IF TG_OP = 'UPDATE' AND (
+        OLD.organization_id <> NEW.organization_id
+        OR OLD.resource_location_assignment_id <> NEW.resource_location_assignment_id
+    ) THEN
+        RAISE EXCEPTION '% rows cannot move between ResourceLocationAssignments', TG_TABLE_NAME
+            USING ERRCODE = '23514';
+    END IF;
+    IF TG_OP = 'DELETE' THEN
+        v_org := OLD.organization_id;
+        v_assignment := OLD.resource_location_assignment_id;
+    ELSE
+        v_org := NEW.organization_id;
+        v_assignment := NEW.resource_location_assignment_id;
+    END IF;
+    SELECT resource_id INTO v_resource
+      FROM request_engine.resource_location_assignments
+     WHERE organization_id = v_org AND id = v_assignment;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'ResourceLocationAssignment % not found while changing availability', v_assignment
+            USING ERRCODE = '23503';
+    END IF;
+    UPDATE request_engine.resources
+       SET availability_revision = availability_revision + 1,
+           updated_at = clock_timestamp()
+     WHERE organization_id = v_org AND id = v_resource;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Resource % not found while changing contextual availability', v_resource
+            USING ERRCODE = '23503';
+    END IF;
+    RETURN COALESCE(NEW, OLD);
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_resource_from_assignment_child() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_resource_revision_recovery_sources(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_resource_revision_recovery_sources() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_queue_id uuid;
+BEGIN
+    IF NEW.availability_revision IS NOT DISTINCT FROM OLD.availability_revision THEN
+        RETURN NEW;
+    END IF;
+    FOR v_queue_id IN
+        SELECT service_queue_id
+        FROM request_engine.live_capacity_projection_policies
+        WHERE organization_id = NEW.organization_id
+          AND resource_id = NEW.id
+    LOOP
+        PERFORM request_engine.bump_recovery_source_revision(
+            NEW.organization_id,
+            v_queue_id
+        );
+    END LOOP;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_resource_revision_recovery_sources() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: bump_service_session_recovery_source_revision(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.bump_service_session_recovery_source_revision() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_organization_id uuid;
+    v_queue_entry_id uuid;
+    v_queue_id uuid;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_organization_id := OLD.organization_id;
+        v_queue_entry_id := OLD.queue_entry_id;
+    ELSE
+        v_organization_id := NEW.organization_id;
+        v_queue_entry_id := NEW.queue_entry_id;
+    END IF;
+    SELECT service_queue_id INTO v_queue_id
+    FROM request_engine.queue_entries
+    WHERE organization_id = v_organization_id AND id = v_queue_entry_id;
+    PERFORM request_engine.bump_recovery_source_revision(v_organization_id, v_queue_id);
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.bump_service_session_recovery_source_revision() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: check_capacity_owner_completeness(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.check_capacity_owner_completeness() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+BEGIN
+    IF TG_TABLE_NAME = 'capacity_claims' THEN
+        IF TG_OP <> 'INSERT' THEN
+            IF OLD.hold_id IS NOT NULL THEN
+                PERFORM request_engine.assert_hold_claim_completeness(OLD.organization_id, OLD.hold_id);
+            END IF;
+            IF OLD.reservation_id IS NOT NULL THEN
+                PERFORM request_engine.assert_reservation_claim_completeness(OLD.organization_id, OLD.reservation_id);
+            END IF;
+        END IF;
+        IF TG_OP <> 'DELETE' THEN
+            IF NEW.hold_id IS NOT NULL THEN
+                PERFORM request_engine.assert_hold_claim_completeness(NEW.organization_id, NEW.hold_id);
+            END IF;
+            IF NEW.reservation_id IS NOT NULL THEN
+                PERFORM request_engine.assert_reservation_claim_completeness(NEW.organization_id, NEW.reservation_id);
+            END IF;
+        END IF;
+    ELSIF TG_TABLE_NAME = 'capacity_holds' THEN
+        PERFORM request_engine.assert_hold_claim_completeness(NEW.organization_id, NEW.id);
+    ELSIF TG_TABLE_NAME = 'reservations' THEN
+        PERFORM request_engine.assert_reservation_claim_completeness(NEW.organization_id, NEW.id);
+    END IF;
+
+    RETURN NULL;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.check_capacity_owner_completeness() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: check_offered_slot_offer_source_consistency(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.check_offered_slot_offer_source_consistency() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_offer_id uuid;
+BEGIN
+    IF TG_TABLE_NAME = 'slot_offers' THEN
+        PERFORM request_engine.assert_offered_slot_offer_source_consistency(
+            NEW.organization_id,
+            NEW.id
+        );
+    ELSIF TG_TABLE_NAME = 'capacity_holds' THEN
+        FOR v_offer_id IN
+            SELECT so.id
+              FROM request_engine.slot_offers so
+             WHERE so.organization_id = NEW.organization_id
+               AND so.capacity_hold_id = NEW.id
+               AND so.status = 'offered'
+        LOOP
+            PERFORM request_engine.assert_offered_slot_offer_source_consistency(
+                NEW.organization_id,
+                v_offer_id
+            );
+        END LOOP;
+    ELSIF TG_TABLE_NAME = 'waitlist_entries' THEN
+        FOR v_offer_id IN
+            SELECT so.id
+              FROM request_engine.slot_offers so
+             WHERE so.organization_id = NEW.organization_id
+               AND so.waitlist_entry_id = NEW.id
+               AND so.status = 'offered'
+        LOOP
+            PERFORM request_engine.assert_offered_slot_offer_source_consistency(
+                NEW.organization_id,
+                v_offer_id
+            );
+        END LOOP;
+    ELSIF TG_TABLE_NAME = 'slot_opportunities' THEN
+        FOR v_offer_id IN
+            SELECT so.id
+              FROM request_engine.slot_offers so
+             WHERE so.organization_id = NEW.organization_id
+               AND so.slot_opportunity_id = NEW.id
+               AND so.status = 'offered'
+        LOOP
+            PERFORM request_engine.assert_offered_slot_offer_source_consistency(
+                NEW.organization_id,
+                v_offer_id
+            );
+        END LOOP;
+    END IF;
+
+    RETURN NULL;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.check_offered_slot_offer_source_consistency() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: confirm_identity_link_intent(uuid, bigint, uuid, uuid, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.confirm_identity_link_intent(p_intent_id uuid, p_expected_actor_binding_revision bigint, p_native_identity_id uuid, p_binding_id uuid, p_provenance_reference text) RETURNS TABLE(binding_id uuid, principal_id uuid, binding_revision bigint)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_intent request_engine.identity_link_intents%ROWTYPE;
+            v_binding request_engine.identity_bindings%ROWTYPE;
+        BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+            PERFORM request_engine.lock_tenant_staff_root();
+            v_actor_id := request_engine.assert_staff_manager('identity.link_self');
+
+            IF p_intent_id IS NULL
+               OR p_native_identity_id IS NULL
+               OR p_binding_id IS NULL THEN
+                RAISE EXCEPTION 'Identity link confirmation identifiers are required'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_expected_actor_binding_revision IS NULL
+               OR p_expected_actor_binding_revision < 1 THEN
+                RAISE EXCEPTION 'A positive actor binding revision is required'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_provenance_reference IS NULL
+               OR length(btrim(p_provenance_reference)) NOT BETWEEN 1 AND 400 THEN
+                RAISE EXCEPTION 'Identity link confirmation provenance is required'
+                    USING ERRCODE = '22023';
+            END IF;
+
+            SELECT * INTO v_intent
+              FROM request_engine.identity_link_intents
+             WHERE id = p_intent_id
+               AND organization_id = v_org_id
+               AND actor_principal_id = v_actor_id
+             FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Identity link intent not found'
+                    USING ERRCODE = 'P0002';
+            END IF;
+            IF v_intent.status <> 'pending' THEN
+                RAISE EXCEPTION 'Identity link intent is no longer pending'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF v_intent.expires_at <= clock_timestamp() THEN
+                RAISE EXCEPTION 'Identity link intent has expired'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF p_expected_actor_binding_revision <> v_intent.actor_binding_revision THEN
+                RAISE EXCEPTION 'Identity link intent actor binding revision is stale'
+                    USING ERRCODE = '40001';
+            END IF;
+
+            SELECT * INTO v_binding
+              FROM request_engine.identity_bindings AS binding
+             WHERE binding.id = v_intent.actor_binding_id
+               AND binding.organization_id = v_org_id
+               AND binding.principal_id = v_actor_id
+               AND binding.principal_plane = 'tenant'
+               AND binding.status = 'active'
+             FOR UPDATE;
+            IF NOT FOUND OR v_binding.revision <> v_intent.actor_binding_revision THEN
+                RAISE EXCEPTION 'Actor identity binding is stale'
+                    USING ERRCODE = '40001';
+            END IF;
+
+            IF NOT request_auth.lock_credentialed_native_identity(
+                v_intent.target_authority_id, p_native_identity_id
+            ) THEN
+                RAISE EXCEPTION 'Native identity proof is no longer valid'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                  FROM request_engine.identity_bindings AS existing
+                 WHERE existing.identity_authority_id = v_intent.target_authority_id
+                   AND existing.subject_id = p_native_identity_id::text
+                   AND existing.organization_id = v_org_id
+                   AND existing.status <> 'revoked'
+            ) THEN
+                RAISE EXCEPTION 'Native identity is already linked in this tenant'
+                    USING ERRCODE = '23505';
+            END IF;
+
+            INSERT INTO request_engine.identity_bindings (
+                id, organization_id, principal_id, principal_plane,
+                identity_authority_id, subject_id, status
+            ) VALUES (
+                p_binding_id, v_org_id, v_actor_id, 'tenant',
+                v_intent.target_authority_id, p_native_identity_id::text, 'active'
+            );
+
+            UPDATE request_engine.identity_link_intents
+               SET status = 'consumed',
+                   consumed_at = clock_timestamp(),
+                   resulting_binding_id = p_binding_id
+             WHERE id = p_intent_id;
+
+            INSERT INTO request_engine.identity_link_facts (
+                actor_principal_id, organization_id, capability_key, action,
+                intent_id, target_authority_id, subject_id, binding_id,
+                nonce_digest, provenance_reference
+            ) VALUES (
+                v_actor_id, v_org_id, 'identity.link_self', 'linked',
+                p_intent_id, v_intent.target_authority_id,
+                p_native_identity_id::text, p_binding_id, v_intent.nonce_digest,
+                btrim(p_provenance_reference)
+            );
+
+            RETURN QUERY SELECT p_binding_id, v_actor_id, 1::bigint;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.confirm_identity_link_intent(p_intent_id uuid, p_expected_actor_binding_revision bigint, p_native_identity_id uuid, p_binding_id uuid, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: confirm_identity_link_subject(uuid, bigint, text, uuid, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.confirm_identity_link_subject(p_intent_id uuid, p_expected_actor_binding_revision bigint, p_subject_id text, p_binding_id uuid, p_provenance_reference text) RETURNS TABLE(binding_id uuid, principal_id uuid, binding_revision bigint)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_intent request_engine.identity_link_intents%ROWTYPE;
+            v_authority request_engine.identity_authorities%ROWTYPE;
+            v_binding request_engine.identity_bindings%ROWTYPE;
+            v_subject_id text;
+        BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+            PERFORM request_engine.lock_tenant_staff_root();
+            v_actor_id := request_engine.assert_staff_manager('identity.link_self');
+
+            IF p_intent_id IS NULL OR p_binding_id IS NULL THEN
+                RAISE EXCEPTION 'Identity link confirmation identifiers are required'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_expected_actor_binding_revision IS NULL
+               OR p_expected_actor_binding_revision < 1 THEN
+                RAISE EXCEPTION 'A positive actor binding revision is required'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_subject_id IS NULL
+               OR length(btrim(p_subject_id)) NOT BETWEEN 1 AND 320 THEN
+                RAISE EXCEPTION 'Identity link subject is required'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_provenance_reference IS NULL
+               OR length(btrim(p_provenance_reference)) NOT BETWEEN 1 AND 400 THEN
+                RAISE EXCEPTION 'Identity link confirmation provenance is required'
+                    USING ERRCODE = '22023';
+            END IF;
+            v_subject_id := btrim(p_subject_id);
+
+            SELECT * INTO v_intent
+              FROM request_engine.identity_link_intents
+             WHERE id = p_intent_id
+               AND organization_id = v_org_id
+               AND actor_principal_id = v_actor_id
+             FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Identity link intent not found'
+                    USING ERRCODE = 'P0002';
+            END IF;
+            IF v_intent.status <> 'pending' THEN
+                RAISE EXCEPTION 'Identity link intent is no longer pending'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF v_intent.expires_at <= clock_timestamp() THEN
+                RAISE EXCEPTION 'Identity link intent has expired'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF p_expected_actor_binding_revision <> v_intent.actor_binding_revision THEN
+                RAISE EXCEPTION 'Identity link intent actor binding revision is stale'
+                    USING ERRCODE = '40001';
+            END IF;
+
+            SELECT * INTO v_binding
+              FROM request_engine.identity_bindings AS binding
+             WHERE binding.id = v_intent.actor_binding_id
+               AND binding.organization_id = v_org_id
+               AND binding.principal_id = v_actor_id
+               AND binding.principal_plane = 'tenant'
+               AND binding.status = 'active'
+             FOR UPDATE;
+            IF NOT FOUND OR v_binding.revision <> v_intent.actor_binding_revision THEN
+                RAISE EXCEPTION 'Actor identity binding is stale'
+                    USING ERRCODE = '40001';
+            END IF;
+
+            SELECT * INTO v_authority
+              FROM request_engine.identity_authorities
+             WHERE id = v_intent.target_authority_id
+             FOR SHARE;
+            IF NOT FOUND OR v_authority.status <> 'active' THEN
+                RAISE EXCEPTION 'Target identity authority is not active'
+                    USING ERRCODE = '23514';
+            END IF;
+            IF v_authority.kind = 'native' THEN
+                RAISE EXCEPTION 'Native identity linking uses the native confirmation path'
+                    USING ERRCODE = '55000';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                  FROM request_engine.identity_bindings AS existing
+                 WHERE existing.identity_authority_id = v_intent.target_authority_id
+                   AND existing.subject_id = v_subject_id
+                   AND existing.organization_id = v_org_id
+                   AND existing.status <> 'revoked'
+            ) THEN
+                RAISE EXCEPTION 'Identity subject is already linked in this tenant'
+                    USING ERRCODE = '23505';
+            END IF;
+
+            INSERT INTO request_engine.identity_bindings (
+                id, organization_id, principal_id, principal_plane,
+                identity_authority_id, subject_id, status
+            ) VALUES (
+                p_binding_id, v_org_id, v_actor_id, 'tenant',
+                v_intent.target_authority_id, v_subject_id, 'active'
+            );
+
+            UPDATE request_engine.identity_link_intents
+               SET status = 'consumed',
+                   consumed_at = clock_timestamp(),
+                   resulting_binding_id = p_binding_id
+             WHERE id = p_intent_id;
+
+            INSERT INTO request_engine.identity_link_facts (
+                actor_principal_id, organization_id, capability_key, action,
+                intent_id, target_authority_id, subject_id, binding_id,
+                nonce_digest, provenance_reference
+            ) VALUES (
+                v_actor_id, v_org_id, 'identity.link_self', 'linked',
+                p_intent_id, v_intent.target_authority_id, v_subject_id,
+                p_binding_id, v_intent.nonce_digest, btrim(p_provenance_reference)
+            );
+
+            RETURN QUERY SELECT p_binding_id, v_actor_id, 1::bigint;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.confirm_identity_link_subject(p_intent_id uuid, p_expected_actor_binding_revision bigint, p_subject_id text, p_binding_id uuid, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: consume_identity_exchange_candidate_v1(uuid, text, text, text, uuid); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.consume_identity_exchange_candidate_v1(p_candidate_id uuid, p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid) RETURNS TABLE(profile jsonb)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_org uuid;
+    v_actor uuid;
+    v_identity uuid;
+    v_party_kind text;
+BEGIN
+    v_org := nullif(current_setting('request_engine.organization_id', true), '')::uuid;
+    v_actor := nullif(current_setting('request_engine.authenticated_principal_id', true), '')::uuid;
+    IF v_org IS NULL OR v_actor IS NULL OR v_actor <> p_principal_id THEN
+        RAISE EXCEPTION 'identity adoption actor context mismatch' USING ERRCODE = '42501';
+    END IF;
+    SELECT c.portable_party_id, p.party_kind INTO v_identity, v_party_kind
+    FROM request_engine.identity_exchange_candidates c
+    JOIN request_engine.portable_party_identities p ON p.id = c.portable_party_id AND p.active
+    WHERE c.id = p_candidate_id AND c.organization_id = v_org
+      AND c.created_by_principal_id = p_principal_id AND c.kind = p_kind
+      AND c.authority = p_authority AND c.fingerprint = p_fingerprint
+      AND c.consumed_at IS NULL AND c.expires_at > clock_timestamp()
+    FOR UPDATE OF c;
+    IF v_identity IS NULL THEN RETURN; END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended(v_org::text || ':' || v_identity::text, 0));
+    IF NOT EXISTS (SELECT 1 FROM request_engine.identity_exchange_candidates c
+                   WHERE c.id = p_candidate_id AND c.organization_id = v_org
+                     AND c.created_by_principal_id = p_principal_id
+                     AND c.consumed_at IS NULL AND c.expires_at > clock_timestamp()) THEN
+        RETURN;
+    END IF;
+    IF EXISTS (SELECT 1 FROM request_engine.organization_party_bindings b
+               WHERE b.organization_id = v_org AND b.portable_party_id = v_identity AND b.active) THEN
+        RAISE EXCEPTION 'portable identity already adopted by organization'
+            USING ERRCODE = '23505', CONSTRAINT = 'organization_party_binding_identity_uq';
+    END IF;
+    UPDATE request_engine.identity_exchange_candidates SET consumed_at = clock_timestamp()
+    WHERE id = p_candidate_id AND organization_id = v_org;
+    RETURN QUERY SELECT jsonb_build_object(
+        'contact_points', coalesce((
+            SELECT jsonb_agg(DISTINCT item.value)
+            FROM request_engine.portable_party_profiles pp
+            CROSS JOIN LATERAL jsonb_array_elements(
+                coalesce(pp.profile->'contact_points', '[]'::jsonb)) item(value)
+            WHERE pp.portable_party_id = v_identity AND pp.active
+        ), '[]'::jsonb),
+        'insurance_identifiers', CASE WHEN v_party_kind = 'person' THEN coalesce((
+            SELECT jsonb_agg(DISTINCT item.value)
+            FROM request_engine.portable_party_profiles pp
+            CROSS JOIN LATERAL jsonb_array_elements(
+                coalesce(pp.profile->'insurance_identifiers', '[]'::jsonb)) item(value)
+            WHERE pp.portable_party_id = v_identity AND pp.active
+        ), '[]'::jsonb) ELSE '[]'::jsonb END
+    );
+END
+$$;
+
+
+ALTER FUNCTION request_engine.consume_identity_exchange_candidate_v1(p_candidate_id uuid, p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: create_delegation(uuid, uuid, uuid, text, text[], timestamp with time zone, timestamp with time zone, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.create_delegation(p_id uuid, p_delegator_principal_id uuid, p_delegate_principal_id uuid, p_purpose text, p_allowed_capabilities text[], p_not_before timestamp with time zone, p_expires_at timestamp with time zone, p_provenance_reference text) RETURNS bigint
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_capability text;
+            v_plane text;
+        BEGIN
+            v_actor_id := current_setting(
+                'request_engine.authenticated_principal_id', true
+            )::uuid;
+            IF v_actor_id IS NULL
+               OR v_actor_id <> p_delegator_principal_id
+               OR p_delegator_principal_id = p_delegate_principal_id
+               OR length(btrim(p_purpose)) = 0
+               OR length(btrim(p_provenance_reference)) = 0
+               OR p_not_before IS NULL
+               OR p_expires_at IS NULL
+               OR p_expires_at <= p_not_before
+               OR cardinality(COALESCE(p_allowed_capabilities, ARRAY[]::text[])) = 0
+               OR EXISTS (
+                   SELECT 1
+                     FROM unnest(p_allowed_capabilities) AS cap
+                    WHERE length(btrim(cap)) = 0
+               )
+               OR cardinality(p_allowed_capabilities) <>
+                  cardinality(
+                      ARRAY(
+                          SELECT DISTINCT cap
+                            FROM unnest(p_allowed_capabilities) AS cap
+                      )
+                  )
+            THEN
+                RAISE EXCEPTION 'Invalid delegation input' USING ERRCODE = '22023';
+            END IF;
+
+            FOR v_capability IN
+                SELECT cap FROM unnest(p_allowed_capabilities) AS cap
+            LOOP
+                SELECT authority_plane
+                  INTO v_plane
+                  FROM request_engine.principal_authority_grants
+                 WHERE organization_id = v_org_id
+                   AND principal_id = v_actor_id
+                   AND capability_key = v_capability
+                   AND status = 'active'
+                   AND delegable
+                 FOR SHARE;
+                IF NOT FOUND OR v_plane <> 'operational' THEN
+                    RAISE EXCEPTION
+                        'Delegation exceeds the delegator operational ceiling'
+                        USING ERRCODE = '42501';
+                END IF;
+            END LOOP;
+
+            INSERT INTO request_engine.delegations (
+                id,
+                organization_id,
+                delegator_principal_id,
+                delegate_principal_id,
+                purpose,
+                allowed_capabilities,
+                not_before,
+                expires_at,
+                provenance_reference
+            ) VALUES (
+                p_id,
+                v_org_id,
+                p_delegator_principal_id,
+                p_delegate_principal_id,
+                btrim(p_purpose),
+                p_allowed_capabilities,
+                p_not_before,
+                p_expires_at,
+                btrim(p_provenance_reference)
+            );
+            RETURN 1;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.create_delegation(p_id uuid, p_delegator_principal_id uuid, p_delegate_principal_id uuid, p_purpose text, p_allowed_capabilities text[], p_not_before timestamp with time zone, p_expires_at timestamp with time zone, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: create_identity_exchange_candidate_v1(text, text, text, uuid); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.create_identity_exchange_candidate_v1(p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid) RETURNS TABLE(candidate_ref uuid, candidate_expires_at timestamp with time zone)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $_$
+DECLARE
+    v_org uuid;
+    v_actor uuid;
+    v_party_kind text;
+    v_identity uuid;
+BEGIN
+    v_org := nullif(current_setting('request_engine.organization_id', true), '')::uuid;
+    v_actor := nullif(current_setting('request_engine.authenticated_principal_id', true), '')::uuid;
+    v_party_kind := request_engine.identity_exchange_subject_kind_v1(p_kind);
+    IF v_org IS NULL OR v_actor IS NULL OR v_actor <> p_principal_id
+       OR v_party_kind IS NULL
+       OR NOT request_engine.identity_exchange_identifier_valid_v1(p_kind, p_authority)
+       OR p_fingerprint !~ '^[0-9a-f]{64}$' THEN
+        RAISE EXCEPTION 'invalid identity match context' USING ERRCODE = '42501';
+    END IF;
+    SELECT i.portable_party_id INTO v_identity
+    FROM request_engine.portable_party_identifiers i
+    JOIN request_engine.portable_party_identities p ON p.id = i.portable_party_id AND p.active
+    WHERE i.party_kind = v_party_kind AND i.kind = p_kind AND i.authority = p_authority
+      AND i.fingerprint = p_fingerprint AND i.active
+      AND EXISTS (SELECT 1 FROM request_engine.portable_party_profiles pr
+                  WHERE pr.portable_party_id = i.portable_party_id AND pr.active)
+      AND NOT EXISTS (SELECT 1 FROM request_engine.organization_party_bindings b
+                      WHERE b.organization_id = v_org
+                        AND b.portable_party_id = i.portable_party_id AND b.active);
+    IF v_identity IS NULL THEN
+        RETURN QUERY SELECT NULL::uuid, NULL::timestamptz;
+        RETURN;
+    END IF;
+    RETURN QUERY INSERT INTO request_engine.identity_exchange_candidates(
+        organization_id, portable_party_id, kind, authority, fingerprint, created_by_principal_id)
+    VALUES (v_org, v_identity, p_kind, p_authority, p_fingerprint, p_principal_id)
+    RETURNING id, expires_at;
+END
+$_$;
+
+
+ALTER FUNCTION request_engine.create_identity_exchange_candidate_v1(p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: create_identity_link_intent(uuid, uuid, uuid, text, integer, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.create_identity_link_intent(p_intent_id uuid, p_actor_binding_id uuid, p_target_authority_id uuid, p_nonce_digest text, p_ttl_seconds integer, p_provenance_reference text) RETURNS TABLE(intent_id uuid, expires_at timestamp with time zone, target_authority_id uuid)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $_$
+        DECLARE
+            v_actor_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_binding request_engine.identity_bindings%ROWTYPE;
+            v_expires_at timestamptz;
+        BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+            PERFORM request_engine.lock_tenant_staff_root();
+            v_actor_id := request_engine.assert_staff_manager('identity.link_self');
+
+            IF p_intent_id IS NULL
+               OR p_actor_binding_id IS NULL
+               OR p_target_authority_id IS NULL THEN
+                RAISE EXCEPTION 'Identity link intent identifiers are required'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_ttl_seconds IS NULL OR p_ttl_seconds < 60 OR p_ttl_seconds > 900 THEN
+                RAISE EXCEPTION 'Identity link intent TTL must be between 60 and 900 seconds'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_nonce_digest IS NULL OR p_nonce_digest !~ '^[0-9a-f]{64}$' THEN
+                RAISE EXCEPTION 'Identity link intent nonce digest is invalid'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_provenance_reference IS NULL
+               OR length(btrim(p_provenance_reference)) NOT BETWEEN 1 AND 400 THEN
+                RAISE EXCEPTION 'Identity link intent provenance is required'
+                    USING ERRCODE = '22023';
+            END IF;
+
+            SELECT * INTO v_binding
+              FROM request_engine.identity_bindings
+             WHERE id = p_actor_binding_id
+               AND organization_id = v_org_id
+               AND principal_id = v_actor_id
+               AND principal_plane = 'tenant'
+               AND status = 'active'
+             FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Active actor identity binding not found'
+                    USING ERRCODE = 'P0002';
+            END IF;
+
+            PERFORM 1
+              FROM request_engine.identity_authorities
+             WHERE id = p_target_authority_id
+               AND status = 'active'
+             FOR SHARE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Target identity authority is not active'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            UPDATE request_engine.identity_link_intents AS intent
+               SET status = 'expired'
+             WHERE intent.organization_id = v_org_id
+               AND intent.actor_principal_id = v_actor_id
+               AND intent.status = 'pending'
+               AND intent.expires_at <= clock_timestamp();
+
+            IF EXISTS (
+                SELECT 1
+                  FROM request_engine.identity_link_intents AS intent
+                 WHERE intent.actor_principal_id = v_actor_id
+                   AND intent.target_authority_id = p_target_authority_id
+                   AND intent.status = 'pending'
+                   AND intent.expires_at > clock_timestamp()
+            ) THEN
+                RAISE EXCEPTION 'A live Identity link intent already exists for this authority'
+                    USING ERRCODE = '23505';
+            END IF;
+
+            v_expires_at := clock_timestamp()
+                + make_interval(secs => p_ttl_seconds);
+            INSERT INTO request_engine.identity_link_intents (
+                id, organization_id, actor_principal_id, actor_binding_id,
+                target_authority_id, actor_binding_revision, nonce_digest,
+                status, expires_at, provenance_reference
+            ) VALUES (
+                p_intent_id, v_org_id, v_actor_id, p_actor_binding_id,
+                p_target_authority_id, v_binding.revision, p_nonce_digest,
+                'pending', v_expires_at, btrim(p_provenance_reference)
+            );
+
+            INSERT INTO request_engine.identity_link_facts (
+                actor_principal_id, organization_id, capability_key, action,
+                intent_id, target_authority_id, nonce_digest,
+                provenance_reference
+            ) VALUES (
+                v_actor_id, v_org_id, 'identity.link_self', 'intent_created',
+                p_intent_id, p_target_authority_id, p_nonce_digest,
+                btrim(p_provenance_reference)
+            );
+
+            RETURN QUERY SELECT p_intent_id, v_expires_at, p_target_authority_id;
+        END
+        $_$;
+
+
+ALTER FUNCTION request_engine.create_identity_link_intent(p_intent_id uuid, p_actor_binding_id uuid, p_target_authority_id uuid, p_nonce_digest text, p_ttl_seconds integer, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: current_authenticated_principal_id(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.current_authenticated_principal_id() RETURNS uuid
+    LANGUAGE sql STABLE PARALLEL SAFE
+    AS $$
+    SELECT NULLIF(current_setting('request_engine.authenticated_principal_id', true), '')::uuid
+$$;
+
+
+ALTER FUNCTION request_engine.current_authenticated_principal_id() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: current_correlation_id(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.current_correlation_id() RETURNS uuid
+    LANGUAGE sql STABLE PARALLEL SAFE
+    AS $$
+    SELECT NULLIF(current_setting('request_engine.correlation_id', true), '')::uuid
+$$;
+
+
+ALTER FUNCTION request_engine.current_correlation_id() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: current_organization_id(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.current_organization_id() RETURNS uuid
+    LANGUAGE sql STABLE PARALLEL SAFE
+    AS $$
+    SELECT NULLIF(current_setting('request_engine.organization_id', true), '')::uuid
+$$;
+
+
+ALTER FUNCTION request_engine.current_organization_id() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: derive_authentication_assurance(text[], boolean, boolean); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.derive_authentication_assurance(p_methods text[], p_user_verified boolean, p_recovery_derived boolean) RETURNS text
+    LANGUAGE sql IMMUTABLE
+    SET search_path TO 'pg_catalog'
+    AS $$
+            SELECT CASE
+                WHEN p_methods IS NULL OR cardinality(p_methods) = 0 THEN NULL
+                WHEN p_recovery_derived OR 'recovery_code' = ANY(p_methods)
+                    THEN 'recovery'
+                WHEN 'webauthn' = ANY(p_methods) AND p_user_verified
+                    THEN 'phishing_resistant'
+                WHEN cardinality(p_methods)
+                     - (CASE WHEN 'recovery_code' = ANY(p_methods) THEN 1 ELSE 0 END) >= 2
+                    THEN 'mfa'
+                ELSE 'single_factor'
+            END
+        $$;
+
+
+ALTER FUNCTION request_engine.derive_authentication_assurance(p_methods text[], p_user_verified boolean, p_recovery_derived boolean) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_agent_profile(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_agent_profile() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        DECLARE
+            v_principal record;
+            v_sponsor record;
+            v_workload_kind text;
+        BEGIN
+            IF TG_OP = 'DELETE' THEN
+                RAISE EXCEPTION 'Agent profiles are append-preserving'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF TG_OP = 'UPDATE' THEN
+                IF ROW(
+                    NEW.principal_id,
+                    NEW.organization_id,
+                    NEW.display_name,
+                    NEW.purpose,
+                    NEW.sponsor_principal_id,
+                    NEW.operating_mode,
+                    NEW.workload_identity_id,
+                    NEW.established_by_principal_id,
+                    NEW.provenance_kind,
+                    NEW.provenance_reference,
+                    NEW.created_at
+                ) IS DISTINCT FROM ROW(
+                    OLD.principal_id,
+                    OLD.organization_id,
+                    OLD.display_name,
+                    OLD.purpose,
+                    OLD.sponsor_principal_id,
+                    OLD.operating_mode,
+                    OLD.workload_identity_id,
+                    OLD.established_by_principal_id,
+                    OLD.provenance_kind,
+                    OLD.provenance_reference,
+                    OLD.created_at
+                ) THEN
+                    RAISE EXCEPTION 'Agent profile identity is immutable'
+                        USING ERRCODE = '55000';
+                END IF;
+                IF OLD.status = NEW.status THEN
+                    RAISE EXCEPTION 'Invalid Agent profile update'
+                        USING ERRCODE = '55000';
+                END IF;
+                IF NEW.revision <> OLD.revision + 1
+                   OR NOT (
+                       (OLD.status = 'pending'
+                           AND NEW.status IN ('active', 'revoked'))
+                       OR (OLD.status = 'active'
+                           AND NEW.status IN ('suspended', 'revoked'))
+                       OR (OLD.status = 'suspended'
+                           AND NEW.status IN ('active', 'revoked'))
+                   )
+                THEN
+                    RAISE EXCEPTION 'Invalid Agent profile state transition'
+                        USING ERRCODE = '55000';
+                END IF;
+            END IF;
+
+            SELECT principal_plane, principal_kind, organization_id, active
+              INTO v_principal
+              FROM request_engine.principals
+             WHERE id = NEW.principal_id;
+            IF NOT FOUND
+               OR v_principal.principal_plane <> 'tenant'
+               OR v_principal.principal_kind <> 'agent'
+               OR v_principal.organization_id IS DISTINCT FROM NEW.organization_id
+            THEN
+                RAISE EXCEPTION 'Agent profile requires a tenant AGENT Principal'
+                    USING ERRCODE = '23514';
+            END IF;
+            IF (
+                NEW.status = 'active' AND NOT v_principal.active
+            ) OR (
+                NEW.status IN ('suspended', 'revoked') AND v_principal.active
+            ) THEN
+                RAISE EXCEPTION 'Agent profile status contradicts Principal state'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            SELECT principal_plane, principal_kind, organization_id, active
+              INTO v_sponsor
+              FROM request_engine.principals
+             WHERE id = NEW.sponsor_principal_id;
+            IF NOT FOUND
+               OR v_sponsor.principal_plane <> 'tenant'
+               OR v_sponsor.principal_kind <> 'human'
+               OR v_sponsor.organization_id IS DISTINCT FROM NEW.organization_id
+               OR NOT v_sponsor.active
+               OR NEW.sponsor_principal_id = NEW.principal_id
+            THEN
+                RAISE EXCEPTION 'Agent sponsor must be an active tenant HUMAN Principal'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            SELECT workload_kind
+              INTO v_workload_kind
+              FROM request_engine.workload_identities
+             WHERE id = NEW.workload_identity_id;
+            IF NOT FOUND OR v_workload_kind <> 'agent' THEN
+                RAISE EXCEPTION 'Agent profile requires an agent workload identity'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.guard_agent_profile() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_authority_reference_tenant(); Type: FUNCTION; Schema: request_engine; Owner: request_platform_control_definer
+--
+
+CREATE FUNCTION request_engine.guard_authority_reference_tenant() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor_ids uuid[];
+            v_actor_id uuid;
+            v_actor_org uuid;
+            v_platform_only boolean := false;
+        BEGIN
+            CASE TG_TABLE_NAME
+                WHEN 'organization_provisioning_facts',
+                     'organization_root_provisioning_facts' THEN
+                    v_actor_ids := ARRAY[NEW.provisioned_by_principal_id];
+                    v_platform_only := true;
+                WHEN 'staff_memberships' THEN
+                    v_actor_ids := ARRAY[NEW.established_by_principal_id];
+                    v_platform_only := NEW.provenance_kind = 'root_provisioning';
+                WHEN 'principal_authority_grants' THEN
+                    v_actor_ids := ARRAY[
+                        NEW.granted_by_principal_id, NEW.revoked_by_principal_id
+                    ];
+                ELSE
+                    RAISE EXCEPTION 'Unsupported authority reference relation'
+                        USING ERRCODE = '23514';
+            END CASE;
+            FOREACH v_actor_id IN ARRAY v_actor_ids LOOP
+                IF v_actor_id IS NULL THEN CONTINUE; END IF;
+                SELECT organization_id INTO v_actor_org
+                  FROM request_engine.principals WHERE id = v_actor_id;
+                IF NOT FOUND
+                   OR (v_platform_only AND v_actor_org IS NOT NULL)
+                   OR (NOT v_platform_only AND v_actor_org IS NOT NULL
+                       AND v_actor_org IS DISTINCT FROM NEW.organization_id)
+                THEN
+                    RAISE EXCEPTION 'Authority provenance cannot cross tenant boundaries'
+                        USING ERRCODE = '23514';
+                END IF;
+                IF TG_TABLE_NAME = 'staff_memberships'
+                   AND NOT v_platform_only AND v_actor_org IS NULL THEN
+                    RAISE EXCEPTION 'Staff invitation requires tenant-local provenance'
+                        USING ERRCODE = '23514';
+                END IF;
+            END LOOP;
+            RETURN NEW;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.guard_authority_reference_tenant() OWNER TO request_platform_control_definer;
+
+--
+-- Name: guard_booking_context_terms_scope(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_booking_context_terms_scope() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF OLD.organization_id <> NEW.organization_id
+       OR OLD.resource_location_assignment_id <> NEW.resource_location_assignment_id
+       OR OLD.offering_version_id <> NEW.offering_version_id THEN
+        RAISE EXCEPTION 'BookingContextTerms scope cannot be retargeted' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_booking_context_terms_scope() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_capacity_claim(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_capacity_claim() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_capacity_model text;
+    v_capacity_units integer;
+    v_resource_active boolean;
+    v_owner_offering_version uuid;
+    v_owner_during tstzrange;
+    v_owner_location uuid;
+    v_requirement_offering_version uuid;
+    v_required_capability uuid;
+    v_required_quantity integer;
+    v_other_quantity bigint;
+    v_other_count bigint;
+    v_promoting_hold boolean;
+    v_shared_capacity_identity_id uuid;
+    v_shared_conflict boolean;
+BEGIN
+    IF NEW.status <> 'active' THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT r.capacity_model, r.capacity_units, r.active
+      INTO v_capacity_model,
+           v_capacity_units,
+           v_resource_active
+      FROM request_engine.resources r
+     WHERE r.organization_id = NEW.organization_id
+       AND r.id = NEW.resource_id
+     FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Resource % does not exist for capacity claim', NEW.resource_id
+            USING ERRCODE = '23503';
+    END IF;
+    IF NOT v_resource_active THEN
+        RAISE EXCEPTION 'Resource % is inactive', NEW.resource_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF TG_OP = 'UPDATE' AND OLD.resource_id <> NEW.resource_id AND EXISTS (
+        SELECT 1
+          FROM request_engine.shared_capacity_claim_links
+         WHERE capacity_claim_id = OLD.id
+    ) THEN
+        RAISE EXCEPTION
+            'linked CapacityClaim cannot move between Resources; release/recreate it'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF NEW.reservation_id IS NOT NULL THEN
+        SELECT r.offering_version_id, r.during, r.location_id
+          INTO v_owner_offering_version, v_owner_during, v_owner_location
+          FROM request_engine.reservations r
+         WHERE r.organization_id = NEW.organization_id
+           AND r.id = NEW.reservation_id
+           AND r.status = 'confirmed';
+        IF NOT FOUND THEN
+            RAISE EXCEPTION
+                'active reservation claim requires confirmed Reservation %',
+                NEW.reservation_id
+                USING ERRCODE = '23514';
+        END IF;
+
+        v_promoting_hold := NEW.hold_id IS NOT NULL AND (
+            TG_OP = 'INSERT' OR OLD.reservation_id IS NULL
+        );
+        IF v_promoting_hold AND NOT EXISTS (
+            SELECT 1
+              FROM request_engine.capacity_holds h
+             WHERE h.organization_id = NEW.organization_id
+               AND h.id = NEW.hold_id
+               AND h.status = 'active'
+               AND h.expires_at > clock_timestamp()
+               AND h.offering_version_id = v_owner_offering_version
+               AND h.during = v_owner_during
+        ) THEN
+            RAISE EXCEPTION
+                'cannot promote expired, terminal, or mismatched CapacityHold %',
+                NEW.hold_id
+                USING ERRCODE = '23514';
+        END IF;
+    ELSE
+        IF NEW.hold_id IS NULL THEN
+            RAISE EXCEPTION 'active hold claim requires CapacityHold'
+                USING ERRCODE = '23514';
+        END IF;
+        SELECT h.offering_version_id, h.during, h.location_id
+          INTO v_owner_offering_version, v_owner_during, v_owner_location
+          FROM request_engine.capacity_holds h
+         WHERE h.organization_id = NEW.organization_id
+           AND h.id = NEW.hold_id
+           AND h.status = 'active'
+           AND h.expires_at > clock_timestamp();
+        IF NOT FOUND THEN
+            RAISE EXCEPTION
+                'active hold claim requires live, unexpired CapacityHold %',
+                NEW.hold_id
+                USING ERRCODE = '23514';
+        END IF;
+    END IF;
+
+    IF NEW.during <> v_owner_during THEN
+        RAISE EXCEPTION
+            'CapacityClaim interval must equal its Hold/Reservation interval'
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT rr.offering_version_id, rr.capability_id, rr.quantity
+      INTO v_requirement_offering_version,
+           v_required_capability,
+           v_required_quantity
+      FROM request_engine.offering_resource_requirements rr
+     WHERE rr.organization_id = NEW.organization_id
+       AND rr.id = NEW.requirement_id;
+    IF NOT FOUND OR v_requirement_offering_version <> v_owner_offering_version THEN
+        RAISE EXCEPTION
+            'CapacityClaim requirement does not belong to the owner OfferingVersion'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NEW.quantity <> v_required_quantity THEN
+        RAISE EXCEPTION
+            'CapacityClaim quantity % does not satisfy requirement quantity %',
+            NEW.quantity,
+            v_required_quantity
+            USING ERRCODE = '23514';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+          FROM request_engine.resource_capability_assignments a
+         WHERE a.organization_id = NEW.organization_id
+           AND a.resource_id = NEW.resource_id
+           AND a.capability_id = v_required_capability
+    ) THEN
+        RAISE EXCEPTION
+            'Resource % does not satisfy required capability',
+            NEW.resource_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT COALESCE(sum(c.quantity), 0), count(*)
+      INTO v_other_quantity, v_other_count
+      FROM request_engine.capacity_claims c
+      LEFT JOIN request_engine.reservations r
+        ON r.organization_id = c.organization_id
+       AND r.id = c.reservation_id
+      LEFT JOIN request_engine.capacity_holds h
+        ON h.organization_id = c.organization_id
+       AND h.id = c.hold_id
+     WHERE c.organization_id = NEW.organization_id
+       AND c.resource_id = NEW.resource_id
+       AND c.status = 'active'
+       AND c.id <> NEW.id
+       AND c.during && NEW.during
+       AND (
+           (c.reservation_id IS NOT NULL AND r.status = 'confirmed')
+           OR (
+               c.reservation_id IS NULL
+               AND h.status = 'active'
+               AND h.expires_at > clock_timestamp()
+           )
+       );
+    IF v_capacity_model = 'exclusive' AND v_other_count > 0 THEN
+        RAISE EXCEPTION
+            'exclusive Resource % has overlapping live capacity',
+            NEW.resource_id
+            USING ERRCODE = '23P01';
+    END IF;
+    IF v_capacity_model = 'units'
+       AND v_other_quantity + NEW.quantity > v_capacity_units THEN
+        RAISE EXCEPTION
+            'Resource % capacity exceeded: requested %, live %, capacity %',
+            NEW.resource_id,
+            NEW.quantity,
+            v_other_quantity,
+            v_capacity_units
+            USING ERRCODE = '23P01';
+    END IF;
+
+    SELECT b.shared_capacity_identity_id
+      INTO v_shared_capacity_identity_id
+      FROM request_engine.shared_capacity_bindings b
+     WHERE b.organization_id = NEW.organization_id
+       AND b.resource_id = NEW.resource_id
+       AND b.status = 'active';
+
+    IF v_shared_capacity_identity_id IS NOT NULL THEN
+        PERFORM 1
+          FROM request_engine.shared_capacity_identities
+         WHERE id = v_shared_capacity_identity_id
+           AND status = 'active'
+         FOR UPDATE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'capacity unavailable'
+                USING ERRCODE = '23P01';
+        END IF;
+
+        SELECT EXISTS (
+            SELECT 1
+              FROM request_engine.shared_capacity_claim_links link
+              JOIN request_engine.capacity_claims c
+                ON c.id = link.capacity_claim_id
+              LEFT JOIN request_engine.reservations r
+                ON r.organization_id = c.organization_id
+               AND r.id = c.reservation_id
+              LEFT JOIN request_engine.capacity_holds h
+                ON h.organization_id = c.organization_id
+               AND h.id = c.hold_id
+             WHERE link.shared_capacity_identity_id = v_shared_capacity_identity_id
+               AND c.id <> NEW.id
+               AND c.status = 'active'
+               AND c.during && NEW.during
+               AND (
+                   (c.reservation_id IS NOT NULL AND r.status = 'confirmed')
+                   OR (
+                       c.reservation_id IS NULL
+                       AND h.status = 'active'
+                       AND h.expires_at > clock_timestamp()
+                   )
+               )
+        ) INTO v_shared_conflict;
+
+        IF v_shared_conflict THEN
+            RAISE EXCEPTION 'capacity unavailable'
+                USING ERRCODE = '23P01';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_capacity_claim() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_capacity_claim_contextual_assignment(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_capacity_claim_contextual_assignment() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+DECLARE
+    v_assignment_resource uuid;
+    v_assignment_location uuid;
+    v_assignment_during tstzrange;
+    v_assignment_status text;
+    v_owner_location uuid;
+    v_owner_found boolean := false;
+BEGIN
+    IF TG_OP = 'UPDATE'
+       AND NEW.resource_location_assignment_id
+           IS DISTINCT FROM OLD.resource_location_assignment_id THEN
+        RAISE EXCEPTION
+            'CapacityClaim ResourceLocationAssignment provenance is immutable'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF NEW.status <> 'active' OR NEW.resource_location_assignment_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT a.resource_id, a.location_id, a.effective_during, a.status
+      INTO v_assignment_resource,
+           v_assignment_location,
+           v_assignment_during,
+           v_assignment_status
+      FROM request_engine.resource_location_assignments a
+     WHERE a.organization_id = NEW.organization_id
+       AND a.id = NEW.resource_location_assignment_id;
+    IF NOT FOUND THEN
+        -- Do not expose whether a caller-supplied foreign UUID exists elsewhere.
+        RAISE EXCEPTION 'ResourceLocationAssignment does not exist for capacity claim'
+            USING ERRCODE = '23503';
+    END IF;
+    IF v_assignment_resource <> NEW.resource_id THEN
+        RAISE EXCEPTION
+            'CapacityClaim ResourceLocationAssignment belongs to a different Resource'
+            USING ERRCODE = '23514';
+    END IF;
+    IF v_assignment_status <> 'active' THEN
+        RAISE EXCEPTION 'CapacityClaim ResourceLocationAssignment is not active'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NOT (v_assignment_during @> NEW.during) THEN
+        RAISE EXCEPTION
+            'CapacityClaim interval is outside ResourceLocationAssignment effective range'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF NEW.reservation_id IS NOT NULL THEN
+        SELECT r.location_id
+          INTO v_owner_location
+          FROM request_engine.reservations r
+         WHERE r.organization_id = NEW.organization_id
+           AND r.id = NEW.reservation_id;
+        v_owner_found := FOUND;
+    ELSIF NEW.hold_id IS NOT NULL THEN
+        SELECT h.location_id
+          INTO v_owner_location
+          FROM request_engine.capacity_holds h
+         WHERE h.organization_id = NEW.organization_id
+           AND h.id = NEW.hold_id;
+        v_owner_found := FOUND;
+    END IF;
+
+    IF v_owner_found
+       AND (
+           v_owner_location IS NULL
+           OR v_owner_location <> v_assignment_location
+       ) THEN
+        RAISE EXCEPTION
+            'CapacityClaim ResourceLocationAssignment belongs to a different Location '
+            'than the Hold/Reservation'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_capacity_claim_contextual_assignment() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_capacity_claim_replacement_provenance(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_capacity_claim_replacement_provenance() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+DECLARE
+    v_target_status text;
+    v_target_requirement_id uuid;
+    v_target_reservation_id uuid;
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.status <> 'active' OR NEW.replaced_by_claim_id IS NOT NULL THEN
+            RAISE EXCEPTION 'CapacityClaim must be created as active without replacement provenance'
+                USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF NEW.status <> 'replaced' THEN
+        IF NEW.replaced_by_claim_id IS NOT NULL THEN
+            RAISE EXCEPTION 'CapacityClaim replacement edge requires replaced status'
+                USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'replaced' THEN
+        RETURN NEW;
+    END IF;
+
+    IF OLD.status <> 'released' THEN
+        RAISE EXCEPTION 'CapacityClaim must be released before replacement is recorded'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF NEW.reservation_id IS NULL OR NEW.replaced_by_claim_id = NEW.id THEN
+        RAISE EXCEPTION 'CapacityClaim replacement provenance is invalid'
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT target.status, target.requirement_id, target.reservation_id
+      INTO v_target_status, v_target_requirement_id, v_target_reservation_id
+      FROM request_engine.capacity_claims target
+     WHERE target.organization_id = NEW.organization_id
+       AND target.id = NEW.replaced_by_claim_id
+     FOR UPDATE;
+
+    IF NOT FOUND
+       OR v_target_status <> 'active'
+       OR v_target_requirement_id <> NEW.requirement_id
+       OR v_target_reservation_id IS DISTINCT FROM NEW.reservation_id
+    THEN
+        RAISE EXCEPTION 'CapacityClaim replacement must target the live successor for the same owner and requirement'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_capacity_claim_replacement_provenance() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_capacity_claim_tenant_context(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_capacity_claim_tenant_context() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+DECLARE
+    v_context_organization_id uuid;
+    v_is_runtime_app boolean := false;
+BEGIN
+    IF current_user = 'request_engine_app' THEN
+        v_is_runtime_app := true;
+    ELSE
+        SELECT
+            pg_catalog.pg_has_role(current_user, 'request_engine_app', 'MEMBER')
+            AND NOT role_row.rolsuper
+            AND NOT role_row.rolbypassrls
+          INTO v_is_runtime_app
+          FROM pg_catalog.pg_roles AS role_row
+         WHERE role_row.rolname = current_user;
+    END IF;
+
+    IF COALESCE(v_is_runtime_app, false) THEN
+        v_context_organization_id := request_engine.current_organization_id();
+        IF v_context_organization_id IS NULL
+           OR NEW.organization_id IS DISTINCT FROM v_context_organization_id
+        THEN
+            RAISE EXCEPTION 'capacity claim organization context mismatch'
+                USING ERRCODE = '42501';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_capacity_claim_tenant_context() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_capacity_claim_terminal_transition(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_capacity_claim_terminal_transition() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+BEGIN
+    IF OLD.status = 'replaced' THEN
+        IF NEW.status <> 'replaced'
+           OR NEW.released_at IS DISTINCT FROM OLD.released_at
+           OR NEW.replaced_by_claim_id IS DISTINCT FROM OLD.replaced_by_claim_id
+        THEN
+            RAISE EXCEPTION 'terminal CapacityClaim % cannot be rewritten', OLD.id
+                USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'released' THEN
+        IF NEW.status NOT IN ('released', 'replaced') THEN
+            RAISE EXCEPTION 'terminal CapacityClaim % cannot reactivate from released to %',
+                OLD.id, NEW.status
+                USING ERRCODE = '23514';
+        END IF;
+        IF NEW.released_at IS DISTINCT FROM OLD.released_at THEN
+            RAISE EXCEPTION 'released CapacityClaim % release timestamp is immutable', OLD.id
+                USING ERRCODE = '23514';
+        END IF;
+        IF NEW.status = 'released'
+           AND NEW.replaced_by_claim_id IS DISTINCT FROM OLD.replaced_by_claim_id
+        THEN
+            RAISE EXCEPTION 'released CapacityClaim % replacement edge requires replaced status', OLD.id
+                USING ERRCODE = '23514';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_capacity_claim_terminal_transition() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_capacity_hold_provenance_update(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_capacity_hold_provenance_update() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+          FROM request_engine.slot_offers
+         WHERE organization_id = OLD.organization_id
+           AND capacity_hold_id = OLD.id
+    ) AND (
+        OLD.organization_id IS DISTINCT FROM NEW.organization_id
+        OR OLD.offering_version_id IS DISTINCT FROM NEW.offering_version_id
+        OR OLD.subject_party_id IS DISTINCT FROM NEW.subject_party_id
+        OR OLD.location_id IS DISTINCT FROM NEW.location_id
+        OR OLD.during IS DISTINCT FROM NEW.during
+        OR OLD.expires_at IS DISTINCT FROM NEW.expires_at
+        OR OLD.created_at IS DISTINCT FROM NEW.created_at
+    ) THEN
+        RAISE EXCEPTION 'SlotOffer source state is no longer valid: CapacityHold booking provenance is immutable after SlotOffer reference'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_capacity_hold_provenance_update() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_communication_escalations(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_communication_escalations() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'communication escalations is an append-only ledger'
+        USING ERRCODE = '23514';
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_communication_escalations() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_delegation(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_delegation() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        DECLARE
+            v_delegate_kind text;
+        BEGIN
+            IF TG_OP = 'DELETE' THEN
+                RAISE EXCEPTION 'Delegations are append-preserving'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF TG_OP = 'UPDATE' THEN
+                IF ROW(
+                    NEW.id,
+                    NEW.organization_id,
+                    NEW.delegator_principal_id,
+                    NEW.delegate_principal_id,
+                    NEW.purpose,
+                    NEW.allowed_capabilities,
+                    NEW.not_before,
+                    NEW.expires_at,
+                    NEW.provenance_reference,
+                    NEW.created_at
+                ) IS DISTINCT FROM ROW(
+                    OLD.id,
+                    OLD.organization_id,
+                    OLD.delegator_principal_id,
+                    OLD.delegate_principal_id,
+                    OLD.purpose,
+                    OLD.allowed_capabilities,
+                    OLD.not_before,
+                    OLD.expires_at,
+                    OLD.provenance_reference,
+                    OLD.created_at
+                ) THEN
+                    RAISE EXCEPTION 'Delegation identity is immutable'
+                        USING ERRCODE = '55000';
+                END IF;
+                IF OLD.status = 'active' AND NEW.status = 'revoked' THEN
+                    IF NEW.revision <> OLD.revision + 1 THEN
+                        RAISE EXCEPTION 'Invalid delegation revocation'
+                            USING ERRCODE = '55000';
+                    END IF;
+                    RETURN NEW;
+                END IF;
+                RAISE EXCEPTION 'Invalid delegation state transition'
+                    USING ERRCODE = '55000';
+            END IF;
+
+            SELECT principal_kind
+              INTO v_delegate_kind
+              FROM request_engine.principals
+             WHERE organization_id = NEW.organization_id
+               AND id = NEW.delegate_principal_id;
+            IF NOT FOUND OR v_delegate_kind <> 'agent' THEN
+                RAISE EXCEPTION 'Delegation delegate must be a tenant AGENT Principal'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.guard_delegation() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_discovery_handoff_latest_version(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_discovery_definer
+--
+
+CREATE FUNCTION request_engine.guard_discovery_handoff_latest_version() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_handoff_id uuid;
+    v_offering_id uuid;
+    v_latest_id uuid;
+    v_latest_bookable boolean;
+BEGIN
+    BEGIN
+        v_handoff_id := NULLIF(
+            current_setting('request_engine.discovery_handoff_id', true), ''
+        )::uuid;
+    EXCEPTION WHEN invalid_text_representation THEN
+        RAISE EXCEPTION 'invalid discovery handoff context' USING ERRCODE = '22023';
+    END;
+    IF v_handoff_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT dp.offering_id
+      INTO v_offering_id
+      FROM request_engine.discovery_booking_handoffs h
+      JOIN request_engine.discovery_publications dp
+        ON dp.organization_id = h.organization_id
+       AND dp.id = h.publication_id
+     WHERE h.id = v_handoff_id
+       AND h.organization_id = NEW.organization_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'discovery option stale' USING ERRCODE = '40001';
+    END IF;
+
+    PERFORM 1
+      FROM request_engine.offerings o
+     WHERE o.organization_id = NEW.organization_id
+       AND o.id = v_offering_id
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'discovery option stale' USING ERRCODE = '40001';
+    END IF;
+
+    SELECT ov.id, ov.bookable
+      INTO v_latest_id, v_latest_bookable
+      FROM request_engine.offering_versions ov
+     WHERE ov.organization_id = NEW.organization_id
+       AND ov.offering_id = v_offering_id
+     ORDER BY ov.version DESC
+     LIMIT 1;
+    IF NOT FOUND OR v_latest_id <> NEW.offering_version_id OR NOT v_latest_bookable THEN
+        RAISE EXCEPTION 'discovery option stale' USING ERRCODE = '40001';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_discovery_handoff_latest_version() OWNER TO request_engine_discovery_definer;
+
+--
+-- Name: guard_discovery_handoff_reservation(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_discovery_definer
+--
+
+CREATE FUNCTION request_engine.guard_discovery_handoff_reservation() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_handoff_id uuid;
+    v_handoff request_engine.discovery_booking_handoffs%ROWTYPE;
+    v_publication request_engine.discovery_publications%ROWTYPE;
+    v_mapping request_engine.offering_service_classifications%ROWTYPE;
+BEGIN
+    BEGIN
+        v_handoff_id := NULLIF(
+            current_setting('request_engine.discovery_handoff_id', true), ''
+        )::uuid;
+    EXCEPTION WHEN invalid_text_representation THEN
+        RAISE EXCEPTION 'invalid discovery handoff context' USING ERRCODE = '22023';
+    END;
+    IF v_handoff_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT * INTO v_handoff
+      FROM request_engine.discovery_booking_handoffs
+     WHERE id = v_handoff_id
+       AND organization_id = NEW.organization_id
+     FOR UPDATE;
+    IF NOT FOUND OR v_handoff.expires_at <= clock_timestamp()
+       OR v_handoff.consumed_reservation_id IS NOT NULL THEN
+        RAISE EXCEPTION 'discovery option stale' USING ERRCODE = '40001';
+    END IF;
+
+    SELECT * INTO v_mapping
+      FROM request_engine.offering_service_classifications
+     WHERE organization_id = v_handoff.organization_id
+       AND id = v_handoff.mapping_id
+       AND status = 'active'
+       AND revision = v_handoff.mapping_revision
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'discovery option stale' USING ERRCODE = '40001';
+    END IF;
+
+    SELECT * INTO v_publication
+      FROM request_engine.discovery_publications
+     WHERE organization_id = v_handoff.organization_id
+       AND id = v_handoff.publication_id
+       AND status = 'active'
+       AND revision = v_handoff.publication_revision
+       AND NEW.during <@ effective_during
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'discovery option stale' USING ERRCODE = '40001';
+    END IF;
+
+    IF NEW.offering_version_id <> v_handoff.offering_version_id
+       OR NEW.location_id IS DISTINCT FROM v_handoff.location_id
+       OR lower(NEW.during) <> (v_handoff.selection->>'start_at')::timestamptz
+       OR upper(NEW.during) <> (v_handoff.selection->>'end_at')::timestamptz THEN
+        RAISE EXCEPTION 'discovery option does not match Reservation' USING ERRCODE = '23514';
+    END IF;
+
+    UPDATE request_engine.discovery_booking_handoffs
+       SET consumed_reservation_id = NEW.id
+     WHERE id = v_handoff.id;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_discovery_handoff_reservation() OWNER TO request_engine_discovery_definer;
+
+--
+-- Name: guard_exact_revision_step(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_exact_revision_step() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF NEW.revision = OLD.revision THEN
+        NEW.revision := OLD.revision + 1;
+    ELSIF NEW.revision <> OLD.revision + 1 THEN
+        RAISE EXCEPTION '% revision must advance exactly one step: old %, attempted %',
+            TG_TABLE_NAME, OLD.revision, NEW.revision
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_exact_revision_step() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_f2_mapping_lifecycle(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_f2_mapping_lifecycle() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF OLD.organization_id <> NEW.organization_id OR OLD.offering_id <> NEW.offering_id THEN
+        RAISE EXCEPTION 'OfferingServiceClassification scope cannot be retargeted'
+            USING ERRCODE = '23514';
+    END IF;
+    IF OLD.status = 'revoked' AND NEW.status <> 'revoked' THEN
+        RAISE EXCEPTION 'revoked OfferingServiceClassification cannot be reactivated'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_f2_mapping_lifecycle() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_f2_publication_broad_specific_overlap(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_f2_publication_broad_specific_overlap() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_lock_key bigint;
+BEGIN
+    v_lock_key := hashtextextended(
+        NEW.organization_id::text || ':' || NEW.offering_id::text || ':' || NEW.location_id::text,
+        0
+    );
+    PERFORM pg_advisory_xact_lock(v_lock_key);
+    IF NEW.status = 'active' AND EXISTS (
+        SELECT 1
+          FROM request_engine.discovery_publications p
+         WHERE p.organization_id = NEW.organization_id
+           AND p.offering_id = NEW.offering_id
+           AND p.location_id = NEW.location_id
+           AND p.id <> NEW.id
+           AND p.status = 'active'
+           AND p.effective_during && NEW.effective_during
+           AND (p.resource_id IS NULL OR NEW.resource_id IS NULL)
+    ) THEN
+        RAISE EXCEPTION 'broad and resource-specific discovery publications cannot overlap'
+            USING ERRCODE = '23P01';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_f2_publication_broad_specific_overlap() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_f2_publication_lifecycle(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_f2_publication_lifecycle() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF OLD.organization_id <> NEW.organization_id
+       OR OLD.offering_id <> NEW.offering_id
+       OR OLD.location_id <> NEW.location_id
+       OR OLD.resource_id IS DISTINCT FROM NEW.resource_id
+       OR OLD.effective_during <> NEW.effective_during
+       OR OLD.provider_visibility <> NEW.provider_visibility THEN
+        RAISE EXCEPTION
+            'DiscoveryPublication scope/effective interval/visibility cannot be retargeted'
+            USING ERRCODE = '23514';
+    END IF;
+    IF OLD.status = 'revoked' AND NEW.status <> 'revoked' THEN
+        RAISE EXCEPTION 'revoked DiscoveryPublication cannot be reactivated'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_f2_publication_lifecycle() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_hold_transition(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_hold_transition() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF OLD.status IN ('consumed', 'released', 'expired') AND NEW.status <> OLD.status THEN
+        RAISE EXCEPTION 'terminal CapacityHold % cannot transition from % to %', OLD.id, OLD.status, NEW.status
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF OLD.status = 'active' AND NEW.status NOT IN ('active', 'consumed', 'released', 'expired') THEN
+        RAISE EXCEPTION 'invalid CapacityHold transition from % to %', OLD.status, NEW.status
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF NEW.revision < OLD.revision THEN
+        RAISE EXCEPTION 'CapacityHold revision cannot move backwards'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_hold_transition() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_identity_binding(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_identity_binding() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        DECLARE
+            v_org uuid;
+            v_plane text;
+            v_principal_active boolean;
+            v_authority_active boolean;
+        BEGIN
+            IF TG_OP = 'DELETE' THEN
+                RAISE EXCEPTION 'Identity bindings are append-preserving' USING ERRCODE = '55000';
+            END IF;
+            IF TG_OP = 'UPDATE' THEN
+                IF ROW(NEW.organization_id, NEW.principal_id, NEW.principal_plane,
+                       NEW.identity_authority_id, NEW.subject_id, NEW.created_at)
+                   IS DISTINCT FROM
+                   ROW(OLD.organization_id, OLD.principal_id, OLD.principal_plane,
+                       OLD.identity_authority_id, OLD.subject_id, OLD.created_at)
+                THEN
+                    RAISE EXCEPTION 'Identity binding identity and scope are immutable'
+                        USING ERRCODE = '55000';
+                END IF;
+                IF OLD.last_seen_at IS NOT NULL
+                   AND (NEW.last_seen_at IS NULL OR NEW.last_seen_at < OLD.last_seen_at)
+                THEN
+                    RAISE EXCEPTION 'Identity binding last_seen_at cannot regress'
+                        USING ERRCODE = '55000';
+                END IF;
+                IF NEW.status = OLD.status THEN
+                    IF NEW.revision <> OLD.revision
+                       OR NEW.revoked_at IS DISTINCT FROM OLD.revoked_at
+                       OR NEW.last_seen_at IS NOT DISTINCT FROM OLD.last_seen_at
+                    THEN
+                        RAISE EXCEPTION 'Only monotonic last_seen_at may change'
+                            USING ERRCODE = '55000';
+                    END IF;
+                    RETURN NEW;
+                END IF;
+                IF NEW.revision <> OLD.revision + 1
+                   OR NOT (
+                       (OLD.status = 'pending' AND NEW.status IN ('active', 'revoked'))
+                       OR (OLD.status = 'active' AND NEW.status IN ('suspended', 'revoked'))
+                       OR (OLD.status = 'suspended' AND NEW.status IN ('active', 'revoked'))
+                   )
+                THEN
+                    RAISE EXCEPTION 'Invalid Identity binding state transition'
+                        USING ERRCODE = '55000';
+                END IF;
+            END IF;
+
+            SELECT organization_id, principal_plane, active
+              INTO v_org, v_plane, v_principal_active
+              FROM request_engine.principals WHERE id = NEW.principal_id;
+            IF NOT FOUND OR NEW.organization_id IS DISTINCT FROM v_org
+               OR NEW.principal_plane <> v_plane
+            THEN
+                RAISE EXCEPTION 'Identity binding scope must match target Principal scope'
+                    USING ERRCODE = '23514';
+            END IF;
+            SELECT status = 'active' INTO v_authority_active
+              FROM request_engine.identity_authorities WHERE id = NEW.identity_authority_id;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Identity authority does not exist' USING ERRCODE = '23514';
+            END IF;
+            IF NEW.status IN ('pending', 'active')
+               AND (NOT v_principal_active OR NOT v_authority_active)
+            THEN
+                RAISE EXCEPTION 'Live Identity binding requires active authority and Principal'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.guard_identity_binding() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_identity_link_intent(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_identity_link_intent() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        BEGIN
+            IF TG_OP = 'DELETE' THEN
+                RAISE EXCEPTION 'Identity link intents are append-preserving'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF ROW(NEW.id, NEW.organization_id, NEW.actor_principal_id,
+                   NEW.actor_binding_id, NEW.target_authority_id,
+                   NEW.actor_binding_revision, NEW.nonce_digest, NEW.expires_at,
+                   NEW.provenance_reference, NEW.created_at)
+               IS DISTINCT FROM
+               ROW(OLD.id, OLD.organization_id, OLD.actor_principal_id,
+                   OLD.actor_binding_id, OLD.target_authority_id,
+                   OLD.actor_binding_revision, OLD.nonce_digest, OLD.expires_at,
+                   OLD.provenance_reference, OLD.created_at)
+            THEN
+                RAISE EXCEPTION 'Identity link intent identity and scope are immutable'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF OLD.status = 'pending' AND NEW.status = 'consumed'
+               AND NEW.consumed_at IS NOT NULL
+               AND NEW.resulting_binding_id IS NOT NULL
+            THEN
+                RETURN NEW;
+            END IF;
+            IF OLD.status = 'pending' AND NEW.status IN ('revoked', 'expired') THEN
+                RETURN NEW;
+            END IF;
+            RAISE EXCEPTION 'Invalid Identity link intent mutation'
+                USING ERRCODE = '55000';
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.guard_identity_link_intent() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_integration_fact(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_integration_fact() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'pg_temp'
+    AS $$
+        BEGIN
+            RAISE EXCEPTION 'Integration provenance is immutable and append-preserving'
+                USING ERRCODE = '55000';
+        END $$;
+
+
+ALTER FUNCTION request_engine.guard_integration_fact() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_linked_capacity_claim_provenance(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_linked_capacity_claim_provenance() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+DECLARE
+    v_linked boolean;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1
+          FROM request_engine.shared_capacity_claim_links link
+         WHERE link.capacity_claim_id = OLD.id
+    ) INTO v_linked;
+
+    IF NOT v_linked THEN
+        RETURN NEW;
+    END IF;
+
+    IF OLD.id IS DISTINCT FROM NEW.id
+       OR OLD.organization_id IS DISTINCT FROM NEW.organization_id
+       OR OLD.resource_id IS DISTINCT FROM NEW.resource_id
+       OR OLD.requirement_id IS DISTINCT FROM NEW.requirement_id
+       OR OLD.hold_id IS DISTINCT FROM NEW.hold_id
+       OR OLD.during IS DISTINCT FROM NEW.during
+       OR OLD.quantity IS DISTINCT FROM NEW.quantity
+       OR OLD.created_at IS DISTINCT FROM NEW.created_at
+    THEN
+        RAISE EXCEPTION 'linked CapacityClaim material provenance is immutable'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF OLD.reservation_id IS NOT NULL
+       AND NEW.reservation_id IS DISTINCT FROM OLD.reservation_id
+    THEN
+        RAISE EXCEPTION 'linked CapacityClaim Reservation provenance cannot be rewritten'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF OLD.reservation_id IS NULL
+       AND NEW.reservation_id IS NOT NULL
+       AND (OLD.status <> 'active' OR NEW.status <> 'active')
+    THEN
+        RAISE EXCEPTION 'only an active linked Hold claim may be promoted to a Reservation'
+            USING ERRCODE = '55000';
+    END IF;
+
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_linked_capacity_claim_provenance() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_live_capacity_projection_policy(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_live_capacity_projection_policy() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'LiveCapacityProjectionPolicy is durable configuration; deactivate it'
+            USING ERRCODE = '23514';
+    END IF;
+    IF OLD.organization_id IS DISTINCT FROM NEW.organization_id
+       OR OLD.id IS DISTINCT FROM NEW.id
+       OR OLD.service_queue_id IS DISTINCT FROM NEW.service_queue_id THEN
+        RAISE EXCEPTION 'LiveCapacityProjectionPolicy identity cannot be retargeted'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NEW IS DISTINCT FROM OLD AND NEW.revision <> OLD.revision + 1 THEN
+        RAISE EXCEPTION 'LiveCapacityProjectionPolicy revision must advance exactly one step'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NEW IS DISTINCT FROM OLD THEN
+        NEW.updated_at := clock_timestamp();
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_live_capacity_projection_policy() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_live_capacity_workload_estimate_policy(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_live_capacity_workload_estimate_policy() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'LiveCapacityWorkloadEstimatePolicy is durable configuration; deactivate it'
+            USING ERRCODE = '23514';
+    END IF;
+    IF OLD.organization_id IS DISTINCT FROM NEW.organization_id
+       OR OLD.id IS DISTINCT FROM NEW.id
+       OR OLD.workload_classification_id IS DISTINCT FROM NEW.workload_classification_id THEN
+        RAISE EXCEPTION 'LiveCapacityWorkloadEstimatePolicy identity cannot be retargeted'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NEW IS DISTINCT FROM OLD AND NEW.revision <> OLD.revision + 1 THEN
+        RAISE EXCEPTION 'LiveCapacityWorkloadEstimatePolicy revision must advance exactly one step'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NEW IS DISTINCT FROM OLD THEN
+        NEW.updated_at := clock_timestamp();
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_live_capacity_workload_estimate_policy() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_live_resource_occupation(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_live_resource_occupation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_validate_assignment boolean;
+BEGIN
+    PERFORM 1 FROM request_engine.resources
+     WHERE organization_id = NEW.organization_id AND id = NEW.resource_id
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Resource % does not exist', NEW.resource_id USING ERRCODE = '23503';
+    END IF;
+
+    IF TG_TABLE_NAME = 'service_sessions' THEN
+        v_validate_assignment := TG_OP = 'INSERT';
+        IF TG_OP = 'UPDATE' THEN
+            v_validate_assignment := NEW.resource_id IS DISTINCT FROM OLD.resource_id
+                OR NEW.location_id IS DISTINCT FROM OLD.location_id
+                OR NEW.started_at IS DISTINCT FROM OLD.started_at;
+        END IF;
+        IF v_validate_assignment AND NOT EXISTS (
+            SELECT 1 FROM request_engine.resource_location_assignments a
+             WHERE a.organization_id = NEW.organization_id
+               AND a.resource_id = NEW.resource_id
+               AND a.location_id = NEW.location_id
+               AND a.status = 'active'
+               AND a.effective_during @> NEW.started_at
+        ) THEN
+            RAISE EXCEPTION 'Resource % is not assigned to Location % at execution time',
+                NEW.resource_id, NEW.location_id USING ERRCODE = '23514';
+        END IF;
+        IF NEW.status IN ('active', 'paused') AND EXISTS (
+            SELECT 1 FROM request_engine.resource_activities a
+             WHERE a.organization_id = NEW.organization_id
+               AND a.resource_id = NEW.resource_id AND a.ended_at IS NULL
+        ) THEN
+            RAISE EXCEPTION 'Resource % has an open ResourceActivity', NEW.resource_id
+                USING ERRCODE = '23P01';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'resource_activities' THEN
+        v_validate_assignment := TG_OP = 'INSERT';
+        IF TG_OP = 'UPDATE' THEN
+            v_validate_assignment := NEW.resource_id IS DISTINCT FROM OLD.resource_id
+                OR NEW.location_id IS DISTINCT FROM OLD.location_id
+                OR NEW.started_at IS DISTINCT FROM OLD.started_at;
+        END IF;
+        IF v_validate_assignment AND NEW.location_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM request_engine.resource_location_assignments a
+             WHERE a.organization_id = NEW.organization_id
+               AND a.resource_id = NEW.resource_id
+               AND a.location_id = NEW.location_id
+               AND a.status = 'active'
+               AND a.effective_during @> NEW.started_at
+        ) THEN
+            RAISE EXCEPTION 'Resource % is not assigned to Location % at activity start',
+                NEW.resource_id, NEW.location_id USING ERRCODE = '23514';
+        END IF;
+        IF NEW.ended_at IS NULL AND EXISTS (
+            SELECT 1 FROM request_engine.service_sessions s
+             WHERE s.organization_id = NEW.organization_id
+               AND s.resource_id = NEW.resource_id AND s.status IN ('active', 'paused')
+        ) THEN
+            RAISE EXCEPTION 'Resource % has a live ServiceSession', NEW.resource_id
+                USING ERRCODE = '23P01';
+        END IF;
+    ELSE
+        RAISE EXCEPTION 'guard_live_resource_occupation attached to unsupported relation %',
+            TG_TABLE_NAME USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_live_resource_occupation() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_location_operational_revision(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_location_operational_revision() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_material_change boolean;
+BEGIN
+    v_material_change := NEW.active IS DISTINCT FROM OLD.active
+        OR NEW.timezone IS DISTINCT FROM OLD.timezone;
+    IF v_material_change THEN
+        IF NEW.operational_revision = OLD.operational_revision THEN
+            NEW.operational_revision := OLD.operational_revision + 1;
+        ELSIF NEW.operational_revision <> OLD.operational_revision + 1 THEN
+            RAISE EXCEPTION 'Location operational_revision must advance exactly one step for a material availability change'
+                USING ERRCODE = '23514';
+        END IF;
+    ELSIF NEW.operational_revision NOT IN (OLD.operational_revision, OLD.operational_revision + 1) THEN
+        RAISE EXCEPTION 'Location operational_revision cannot jump from % to %',
+            OLD.operational_revision, NEW.operational_revision USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.guard_location_operational_revision() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_native_credential(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_native_credential() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $_$
+        BEGIN
+            IF TG_OP = 'INSERT' THEN
+                RETURN NEW;
+            END IF;
+            IF ROW(NEW.id, NEW.native_identity_id, NEW.kind, NEW.created_at)
+               IS DISTINCT FROM
+               ROW(OLD.id, OLD.native_identity_id, OLD.kind, OLD.created_at)
+            THEN
+                RAISE EXCEPTION 'Native credential identity is immutable'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF NEW.verifier IS DISTINCT FROM OLD.verifier THEN
+                -- Only a scrypt -> Argon2id upgrade is permitted, and only as an
+                -- isolated verifier change.
+                IF NOT (OLD.verifier LIKE 'scrypt$%' AND NEW.verifier LIKE '$argon2id$%') THEN
+                    RAISE EXCEPTION 'Native credential verifier may only be upgraded'
+                        USING ERRCODE = '55000';
+                END IF;
+                IF ROW(NEW.status, NEW.revision, NEW.rotated_at, NEW.revoked_at,
+                       NEW.last_used_at)
+                   IS DISTINCT FROM
+                   ROW(OLD.status, OLD.revision, OLD.rotated_at, OLD.revoked_at,
+                       OLD.last_used_at)
+                THEN
+                    RAISE EXCEPTION 'Native credential verifier upgrade must be isolated'
+                        USING ERRCODE = '55000';
+                END IF;
+                RETURN NEW;
+            END IF;
+            IF NEW.status = OLD.status
+               AND NEW.revision = OLD.revision
+               AND NEW.rotated_at IS NOT DISTINCT FROM OLD.rotated_at
+               AND NEW.revoked_at IS NOT DISTINCT FROM OLD.revoked_at
+               AND (OLD.last_used_at IS NULL OR NEW.last_used_at >= OLD.last_used_at)
+            THEN
+                RETURN NEW;
+            END IF;
+            IF OLD.status = 'active'
+               AND NEW.status = 'revoked'
+               AND NEW.revision = OLD.revision + 1
+               AND NEW.revoked_at IS NOT NULL
+               AND NEW.last_used_at IS NOT DISTINCT FROM OLD.last_used_at
+            THEN
+                RETURN NEW;
+            END IF;
+            RAISE EXCEPTION 'Invalid Native credential mutation' USING ERRCODE = '55000';
+        END
+        $_$;
+
+
+ALTER FUNCTION request_engine.guard_native_credential() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_native_identity(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_native_identity() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        DECLARE
+            v_authority_kind text;
+            v_authority_status text;
+        BEGIN
+            SELECT kind, status INTO v_authority_kind, v_authority_status
+              FROM request_engine.identity_authorities
+             WHERE id = NEW.identity_authority_id;
+            IF NOT FOUND OR v_authority_kind <> 'native' THEN
+                RAISE EXCEPTION 'Native identity requires a Native identity authority'
+                    USING ERRCODE = '23514';
+            END IF;
+            IF TG_OP = 'INSERT' THEN
+                IF v_authority_status <> 'active' THEN
+                    RAISE EXCEPTION 'Native identity authority must be active'
+                        USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+            END IF;
+
+            IF ROW(NEW.id, NEW.identity_authority_id, NEW.login_handle, NEW.created_at)
+               IS DISTINCT FROM
+               ROW(OLD.id, OLD.identity_authority_id, OLD.login_handle, OLD.created_at)
+            THEN
+                RAISE EXCEPTION 'Native identity and login handle are immutable'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF OLD.status <> 'active' THEN
+                RAISE EXCEPTION 'Disabled Native identity is terminal'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF NEW.status = 'disabled' THEN
+                IF NEW.revision <> OLD.revision + 1
+                   OR NEW.session_epoch <> OLD.session_epoch + 1
+                   OR NEW.disabled_at IS NULL
+                THEN
+                    RAISE EXCEPTION 'Invalid Native identity disable transition'
+                        USING ERRCODE = '55000';
+                END IF;
+                RETURN NEW;
+            END IF;
+            IF NEW.status = 'active'
+               AND NEW.revision = OLD.revision + 1
+               AND NEW.session_epoch = OLD.session_epoch + 1
+               AND NEW.disabled_at IS NULL
+            THEN
+                RETURN NEW;
+            END IF;
+            RAISE EXCEPTION 'Invalid Native identity mutation' USING ERRCODE = '55000';
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.guard_native_identity() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_native_recovery_intent(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_native_recovery_intent() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        BEGIN
+            IF TG_OP = 'INSERT' THEN
+                RETURN NEW;
+            END IF;
+            IF ROW(NEW.id, NEW.native_identity_id, NEW.token_digest, NEW.token_fingerprint,
+                   NEW.created_at, NEW.expires_at)
+               IS DISTINCT FROM
+               ROW(OLD.id, OLD.native_identity_id, OLD.token_digest, OLD.token_fingerprint,
+                   OLD.created_at, OLD.expires_at)
+            THEN
+                RAISE EXCEPTION 'Native recovery credential material is immutable'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF OLD.status = 'pending'
+               AND (
+                   (NEW.status = 'consumed' AND NEW.consumed_at IS NOT NULL
+                    AND NEW.revoked_at IS NULL)
+                   OR
+                   (NEW.status = 'revoked' AND NEW.revoked_at IS NOT NULL
+                    AND NEW.consumed_at IS NULL)
+               )
+            THEN
+                RETURN NEW;
+            END IF;
+            RAISE EXCEPTION 'Invalid Native recovery mutation' USING ERRCODE = '55000';
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.guard_native_recovery_intent() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: guard_native_session(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.guard_native_session() RETURNS trigger
+    LANGUAGE plpgsql

@@ -98,6 +98,7 @@ Identity/authentication and deployment references:
 - `architecture/http-runtime-deployment.md` — native-first and separate private provisioning ASGI factories, explicit configuration, least-privilege startup and readiness limits;
 - `architecture/auth-implementation-status.md` — dated validation evidence and remaining identity-plan acceptance gaps;
 - `architecture/docker-e2e-ci-plan.md` — reusable clean-install black-box system/E2E execution platform.
+- `architecture/p7-platform-configuration-secrets-implementation-handoff.md` — executable P7 handoff for governed platform configuration, secret lifecycle, provider validation/hot reload and operational disaster-recovery acceptance.
 
 ## 4. Current capability/domain contracts
 

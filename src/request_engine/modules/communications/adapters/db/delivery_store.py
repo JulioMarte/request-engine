@@ -607,12 +607,23 @@ async def _latest_delivery(
 
 
 def _lookup_request(delivery: RowMapping) -> ProviderLookupRequest:
+    result_data = cast(dict[str, object], delivery["result_data"])
+    source_value = result_data.get("provider_configuration_source")
+    revision_value = result_data.get("provider_configuration_revision")
+    configuration_source = source_value if isinstance(source_value, str) else None
+    configuration_revision = (
+        revision_value
+        if isinstance(revision_value, int) and not isinstance(revision_value, bool)
+        else None
+    )
     return ProviderLookupRequest(
         delivery_id=cast(UUID, delivery["id"]),
         communication_task_id=cast(UUID, delivery["communication_task_id"]),
         provider_key=cast(str, delivery["provider_key"]),
         provider_idempotency_key=cast(str, delivery["provider_idempotency_key"]),
         provider_message_id=cast(str | None, delivery["provider_message_id"]),
+        provider_configuration_source=configuration_source,
+        provider_configuration_revision=configuration_revision,
     )
 
 

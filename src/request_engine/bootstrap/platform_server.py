@@ -1,8 +1,10 @@
 """Private native control-plane ASGI process with distinct least-privilege pools."""
 
 import asyncio
+import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -10,11 +12,40 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from request_engine.bootstrap.recovery_delivery import build_recovery_secret_delivery
+from request_engine.bootstrap.appointment_signing import (
+    AppointmentSigningSecretStoreSettings,
+    build_appointment_signing_secret_store,
+)
+from request_engine.bootstrap.outbound_fence import OutboundSideEffectFence
+from request_engine.bootstrap.platform_secrets import build_platform_secret_store
+from request_engine.bootstrap.recovery_delivery import (
+    RecoveryDeliverySettings,
+    build_native_recovery_messenger,
+    build_recovery_secret_delivery,
+    has_recovery_secret_store_configuration,
+)
 from request_engine.bootstrap.settings import PlatformControlSettings
 from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
+from request_engine.modules.platform_configuration.adapters.db.runtime import (
+    PostgresActivePlatformConfigurationSource,
+)
+from request_engine.modules.platform_configuration.adapters.managed_smtp_delivery import (
+    ManagedSmtpRecoveryDeliveryChannel,
+)
+from request_engine.modules.platform_configuration.adapters.smtp import (
+    SmtplibConfigurationValidator,
+    SmtplibProviderTester,
+)
+from request_engine.modules.platform_configuration.api.http import PlatformDeploymentReadinessFacts
+from request_engine.modules.platform_configuration.application.recovery_certification import (
+    parse_recovery_certification,
+)
+from request_engine.modules.platform_configuration.application.runtime import (
+    ActivePlatformConfigurationResolver,
+)
 from request_engine.modules.tenancy.api import NATIVE_INITIAL_CONTROLLER_POLICY
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
+from request_engine.platform.observability.p7_metrics import P7OperationalMetrics
 from request_engine.platform.security.webauthn import WebAuthnPolicy
 
 _READ = (
@@ -22,6 +53,9 @@ _READ = (
     "request_platform.read_platform_provisioners(uuid,uuid,integer)",
     "request_platform.read_identity_recovery_cases(uuid,uuid,integer)",
     "request_platform.read_native_identities(uuid,uuid,integer)",
+    "request_platform.read_platform_configuration_revisions(text)",
+    "request_platform.read_platform_secret_binding(uuid)",
+    "request_platform.read_platform_readiness()",
 )
 _PROVISIONER = "request_platform.provision_native_tenant_provisioner(uuid,uuid,uuid,uuid,text)"
 _RECOVERY_OPERATOR = "request_platform.provision_native_recovery_operator(uuid,uuid,uuid,uuid,text)"
@@ -41,6 +75,14 @@ _RECOVERY = (
     "uuid,bigint,integer,uuid,bytea,text,timestamp with time zone,uuid,text,text,text,text)",
     "request_platform.revoke_identity_recovery_case(uuid,bigint,text,text,text)",
 )
+_OWNER = (
+    "request_platform.transition_native_platform_owner(uuid,text,bigint,text,text,text,text)",
+    "request_platform.create_platform_owner_invitation("
+    "uuid,bytea,text,timestamp with time zone,text,text,text)",
+    "request_platform.enroll_platform_owner_invitation(bytea,uuid,uuid,text,text)",
+    "request_platform.activate_platform_owner_invitation(uuid,uuid,uuid,text,text)",
+    "request_platform.revoke_platform_owner_invitation(uuid,text,text,text)",
+)
 _SETUP = (
     "request_platform.read_platform_instance()",
     "request_platform.create_setup_session(uuid,bytea,text,text,integer)",
@@ -51,6 +93,19 @@ _SETUP = (
     "request_platform.read_installation_claim(text,text)",
     "request_platform.read_installation_claim_intent_digest(text)",
     "request_platform.finalize_instance_claim(uuid,text,text,text,text,uuid)",
+)
+_PLATFORM_CONFIGURATION = (
+    "request_platform.stage_platform_configuration(text,text,jsonb,uuid,text,text)",
+    "request_platform.validate_platform_configuration_provider(text,bigint,bigint,integer,text,text)",
+    "request_platform.activate_platform_configuration(text,bigint,bigint,text,text)",
+    "request_platform.disable_platform_configuration(text,bigint,text,text)",
+    "request_platform.prepare_platform_secret_mutation(text,text,text,uuid,bigint,integer,text,text)",
+    "request_platform.mark_platform_secret_backend_applied(uuid,integer)",
+    "request_platform.commit_platform_secret_mutation(uuid)",
+    "request_platform.resolve_platform_provider_secret(uuid,text)",
+    "request_platform.read_platform_provider_candidate(text,bigint,text)",
+    "request_platform.record_platform_provider_test(text,bigint,bigint,integer,text,text,text,text)",
+    "request_platform.read_active_platform_runtime_configuration(text)",
 )
 
 
@@ -75,16 +130,23 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
         if allowed is not True:
             raise RuntimeError("Platform HTTP database login violates least-privilege requirements")
         if group == "request_engine_app":
-            platform_access = await connection.scalar(
+            signing_runtime = "request_platform.read_active_appointment_option_signing_keyring()"
+            signing_access = await connection.scalar(
+                text("SELECT has_function_privilege(current_user, :function, 'EXECUTE')"),
+                {"function": signing_runtime},
+            )
+            extra_platform_access = await connection.scalar(
                 text("""
                 SELECT EXISTS (
                     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
                      WHERE n.nspname = 'request_platform'
+                       AND p.oid::regprocedure::text <> CAST(:permitted AS text)
                        AND has_function_privilege(current_user, p.oid, 'EXECUTE')
                 )
-                """)
+                """),
+                {"permitted": signing_runtime},
             )
-            if platform_access is not False:
+            if signing_access is not True or extra_platform_access is not False:
                 raise RuntimeError("App authentication connection has private platform authority")
             return
         direct_authority = await connection.scalar(
@@ -114,7 +176,9 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
                 _POLICY,
                 *_LIFECYCLE,
                 *_RECOVERY,
+                *_OWNER,
                 *_SETUP,
+                *_PLATFORM_CONFIGURATION,
             )
         )
         for function in required:
@@ -153,7 +217,32 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
 
 def create_app() -> FastAPI:
     settings = PlatformControlSettings.model_validate({})
-    delivery = build_recovery_secret_delivery()
+    recovery_settings = RecoveryDeliverySettings()
+    outbound_fence = OutboundSideEffectFence.from_environment()
+    operational_metrics = P7OperationalMetrics()
+    recovery_certification = None
+    if settings.recovery_certification_file is not None:
+        certification_path = settings.recovery_certification_file.resolve()
+        payload = json.loads(certification_path.read_text(encoding="utf-8"))
+        recovery_certification = parse_recovery_certification(
+            payload,
+            reference=str(certification_path),
+        )
+        now = datetime.now(UTC)
+        operational_metrics.observe_last_successful_backup_age(
+            recovery_certification.backup_age_seconds(now=now)
+        )
+        operational_metrics.observe_restore_drill_age(
+            recovery_certification.restore_drill_age_seconds(now=now)
+        )
+        operational_metrics.observe_restore_drill_evidence_reference(
+            recovery_certification.reference
+        )
+    bootstrap_native_recovery_messenger = build_native_recovery_messenger(recovery_settings)
+    platform_secret_store = build_platform_secret_store()
+    appointment_signing_secret_store = build_appointment_signing_secret_store(
+        AppointmentSigningSecretStoreSettings()
+    )
     engines = tuple(
         create_postgres_engine(url.get_secret_value())
         for url in (
@@ -169,12 +258,49 @@ def create_app() -> FastAPI:
         raise ValueError(
             "Platform HTTP requires three distinct logins on the same database endpoint"
         )
+    platform_write_session_factory = create_session_factory(engines[2])
+    managed_smtp_resolver = ActivePlatformConfigurationResolver(
+        source=PostgresActivePlatformConfigurationSource(platform_write_session_factory),
+        secret_store=platform_secret_store,
+        telemetry=operational_metrics,
+    )
+    managed_native_recovery_messenger = ManagedSmtpRecoveryDeliveryChannel(
+        resolver=managed_smtp_resolver,
+        fallback=bootstrap_native_recovery_messenger,
+        reset_url=recovery_settings.recovery_reset_url,
+        operational_metrics=operational_metrics,
+    )
+    native_recovery_messenger = outbound_fence.recovery(managed_native_recovery_messenger)
+    assert native_recovery_messenger is not None
+    delivery = outbound_fence.secret_delivery(
+        build_recovery_secret_delivery(
+            recovery_settings,
+            channel_override=native_recovery_messenger,
+        )
+        if has_recovery_secret_store_configuration(recovery_settings)
+        else None
+    )
+
     app = create_platform_control_app(
         auth_session_factory=create_session_factory(engines[0]),
         platform_read_session_factory=create_session_factory(engines[1]),
-        platform_write_session_factory=create_session_factory(engines[2]),
+        platform_write_session_factory=platform_write_session_factory,
         native_authority_id=settings.native_identity_authority_id,
         recovery_delivery=delivery,
+        native_recovery_messenger=native_recovery_messenger,
+        platform_secret_store=platform_secret_store,
+        appointment_signing_secret_store=appointment_signing_secret_store,
+        smtp_validator=outbound_fence.smtp_validator(SmtplibConfigurationValidator()),
+        smtp_tester=outbound_fence.smtp_tester(SmtplibProviderTester()),
+        operational_metrics=operational_metrics,
+        deployment_readiness=PlatformDeploymentReadinessFacts(
+            clone_fence="fenced" if outbound_fence.fenced else "open",
+            secret_store="configured" if platform_secret_store is not None else "unconfigured",
+            bootstrap_recovery_delivery_configured=bootstrap_native_recovery_messenger is not None,
+            backup_evidence="verified" if recovery_certification is not None else "unknown",
+            restore_drill="verified" if recovery_certification is not None else "unknown",
+            oidc="optional",
+        ),
         webauthn_policy=WebAuthnPolicy(
             rp_id=settings.webauthn_rp_id,
             rp_name=settings.webauthn_rp_name,
@@ -188,20 +314,27 @@ def create_app() -> FastAPI:
     )
     original_lifespan = app.router.lifespan_context
 
+    last_ready_state: bool | None = None
+
     async def ready_state() -> bool:
+        nonlocal last_ready_state
         async with asyncio.timeout(settings.database_probe_timeout_seconds):
             for engine, group in zip(
                 engines, ("request_engine_app", None, "request_platform_control"), strict=True
             ):
                 await _verify_login(engine, group)
             async with engines[0].connect() as connection:
-                return (
+                available = (
                     await connection.scalar(
                         text("SELECT request_auth.is_native_authority_ready(:authority_id)"),
                         {"authority_id": settings.native_identity_authority_id},
                     )
                     is True
                 )
+        if last_ready_state is not None and available is not last_ready_state:
+            operational_metrics.record_readiness_transition()
+        last_ready_state = available
+        return available
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncGenerator[None]:

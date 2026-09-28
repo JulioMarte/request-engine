@@ -10,7 +10,15 @@ from psycopg import ClientCursor
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST_PATH = ROOT / "manifest.json"
-APPLICATION_SCHEMAS = ("request_admin", "request_cmd", "request_engine", "request_read")
+APPLICATION_SCHEMAS = (
+    "request_admin",
+    "request_auth",
+    "request_cmd",
+    "request_engine",
+    "request_platform",
+    "request_read",
+)
+_MANAGED_ROLE_PATTERNS = ("request_engine_%", "request_platform_%", "request_bootstrap_%")
 _ROLE_NAME = re.compile(r'^CREATE ROLE "([^"]+)" WITH .+;$')
 _ROLE_QUERY = """
     SELECT rolname,
@@ -25,7 +33,7 @@ _ROLE_QUERY = """
            rolvaliduntil::text,
            rolpassword IS NOT NULL
     FROM pg_authid
-    WHERE rolname LIKE 'request_engine_%'
+    WHERE rolname LIKE ANY(%s)
     ORDER BY rolname
 """
 _MEMBERSHIP_QUERY = """
@@ -33,8 +41,8 @@ _MEMBERSHIP_QUERY = """
     FROM pg_auth_members membership
     JOIN pg_roles parent ON parent.oid = membership.roleid
     JOIN pg_roles member ON member.oid = membership.member
-    WHERE parent.rolname LIKE 'request_engine_%'
-       OR member.rolname LIKE 'request_engine_%'
+    WHERE parent.rolname LIKE ANY(%s)
+       OR member.rolname LIKE ANY(%s)
     ORDER BY parent.rolname, member.rolname
 """
 _SETTING_QUERY = """
@@ -42,7 +50,7 @@ _SETTING_QUERY = """
     FROM pg_db_role_setting setting
     JOIN pg_roles role ON role.oid = setting.setrole
     LEFT JOIN pg_database database ON database.oid = setting.setdatabase
-    WHERE role.rolname LIKE 'request_engine_%'
+    WHERE role.rolname LIKE ANY(%s)
     ORDER BY role.rolname, database.datname
 """
 _ROLE_FIELDS = (
@@ -112,7 +120,7 @@ def load_role_statements() -> dict[str, str]:
     statements: dict[str, str] = {}
     for line in payload.decode("utf-8").splitlines():
         statement = line.strip()
-        if not statement:
+        if not statement or statement.startswith("--"):
             continue
         match = _ROLE_NAME.fullmatch(statement)
         if match is None:
@@ -131,7 +139,7 @@ def load_role_statements() -> dict[str, str]:
 
 
 def _actual_roles(cursor: ClientCursor[Any]) -> dict[str, dict[str, Any]]:
-    rows = cursor.execute(_ROLE_QUERY).fetchall()
+    rows = cursor.execute(_ROLE_QUERY, (list(_MANAGED_ROLE_PATTERNS),)).fetchall()
     return {str(row[0]): dict(zip(_ROLE_FIELDS, row[1:], strict=True)) for row in rows}
 
 
@@ -163,7 +171,7 @@ def ensure_exact_roles(driver_connection: Any) -> None:
         unexpected = sorted(set(actual) - set(expected_roles))
         if unexpected:
             raise RuntimeError(
-                "unexpected Request Engine roles already exist: " + ", ".join(unexpected)
+                "unexpected Request Engine managed roles already exist: " + ", ".join(unexpected)
             )
 
         for role_name in sorted(set(expected_roles) - set(actual)):
@@ -180,10 +188,11 @@ def ensure_exact_roles(driver_connection: Any) -> None:
                     f"existing Request Engine role {role_name} does not match audited topology"
                 )
 
-        memberships = cursor.execute(_MEMBERSHIP_QUERY).fetchall()
+        patterns = list(_MANAGED_ROLE_PATTERNS)
+        memberships = cursor.execute(_MEMBERSHIP_QUERY, (patterns, patterns)).fetchall()
         if memberships != role_manifest["role_memberships"]:
             raise RuntimeError("Request Engine roles have unexpected role memberships")
 
-        settings = cursor.execute(_SETTING_QUERY).fetchall()
+        settings = cursor.execute(_SETTING_QUERY, (patterns,)).fetchall()
         if settings != role_manifest["role_settings"]:
             raise RuntimeError("Request Engine roles have unexpected role settings")

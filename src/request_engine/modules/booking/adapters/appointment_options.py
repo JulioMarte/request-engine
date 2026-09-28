@@ -2,10 +2,11 @@ import base64
 import hashlib
 import hmac
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from threading import RLock
 from typing import cast
 from uuid import UUID
 
@@ -15,9 +16,11 @@ from request_engine.modules.booking.application.errors import (
 )
 from request_engine.modules.booking.contracts.appointment_options import DecodedAppointmentOption
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
+from request_engine.platform.security.appointment_option_keyring import AppointmentOptionKeyring
 
 _PREFIX = "aptopt_v2"
 _FORMAT = 2
+_MAX_CLOCK_SKEW = timedelta(seconds=30)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,14 +46,32 @@ class SignedAppointmentOptionCodec:
         self,
         signing_key: bytes,
         *,
+        signing_key_id: str = "default",
+        verification_keys: Mapping[str, bytes] | None = None,
+        legacy_verification_keys: tuple[bytes, ...] = (),
         ttl: timedelta = timedelta(minutes=10),
         now: Callable[[], datetime] | None = None,
     ) -> None:
-        if len(signing_key) < 32:
-            raise ValueError("appointment option signing key must contain at least 32 bytes")
+        _validate_signing_key(signing_key)
+        active_key_id = _validate_signing_key_id(signing_key_id)
         if ttl <= timedelta(0):
             raise ValueError("appointment option ttl must be positive")
-        self._signing_key = signing_key
+
+        resolved_keys: dict[str, bytes] = {}
+        for key_id, key in (verification_keys or {}).items():
+            normalized_key_id = _validate_signing_key_id(key_id)
+            _validate_signing_key(key)
+            resolved_keys[normalized_key_id] = key
+        existing_active = resolved_keys.get(active_key_id)
+        if existing_active is not None and existing_active != signing_key:
+            raise ValueError("active signing key id conflicts with verification key material")
+        resolved_keys[active_key_id] = signing_key
+        for key in legacy_verification_keys:
+            _validate_signing_key(key)
+
+        self._active_key_id = active_key_id
+        self._verification_keys = resolved_keys
+        self._legacy_verification_keys = (signing_key, *legacy_verification_keys)
         self._ttl = ttl
         self._now = now or (lambda: datetime.now(UTC))
 
@@ -62,6 +83,7 @@ class SignedAppointmentOptionCodec:
 
         payload: dict[str, object] = {
             "v": _FORMAT,
+            "signing_key_id": self._active_key_id,
             "organization_id": str(organization_id),
             "offering_version_id": str(slot.offering_version_id),
             "start_at": _require_aware(slot.start_at, "slot.start_at").isoformat(),
@@ -95,10 +117,10 @@ class SignedAppointmentOptionCodec:
             raise AppointmentOptionInvalid("unsupported token format")
 
         encoded_payload, encoded_signature = parts[1], parts[2]
-        self._verify_signature(encoded_payload, encoded_signature)
         payload = _payload(encoded_payload)
         if payload.get("v") != _FORMAT:
             raise AppointmentOptionInvalid("unsupported payload version")
+        self._verify_signature(payload, encoded_payload, encoded_signature)
 
         common = self._decode_common(organization_id, payload)
         duration = _positive_int_field(payload, "planned_duration_minutes")
@@ -128,16 +150,35 @@ class SignedAppointmentOptionCodec:
         encoded_payload = _encode(
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         )
-        signature = _signature(self._signing_key, encoded_payload)
+        signature = _signature(self._verification_keys[self._active_key_id], encoded_payload)
         return f"{_PREFIX}.{encoded_payload}.{_encode(signature)}"
 
-    def _verify_signature(self, encoded_payload: str, encoded_signature: str) -> None:
+    def _verify_signature(
+        self,
+        payload: dict[str, object],
+        encoded_payload: str,
+        encoded_signature: str,
+    ) -> None:
         try:
             supplied_signature = _decode(encoded_signature)
         except ValueError as exc:
             raise AppointmentOptionInvalid("malformed signature") from exc
-        expected_signature = _signature(self._signing_key, encoded_payload)
-        if not hmac.compare_digest(supplied_signature, expected_signature):
+
+        raw_key_id = payload.get("signing_key_id")
+        if raw_key_id is None:
+            keys = self._legacy_verification_keys
+        elif isinstance(raw_key_id, str):
+            key = self._verification_keys.get(raw_key_id)
+            if key is None:
+                raise AppointmentOptionInvalid("signing key is not accepted")
+            keys = (key,)
+        else:
+            raise AppointmentOptionInvalid("signing_key_id is malformed")
+
+        if not any(
+            hmac.compare_digest(supplied_signature, _signature(key, encoded_payload))
+            for key in keys
+        ):
             raise AppointmentOptionInvalid("signature verification failed")
 
     def _decode_common(
@@ -152,10 +193,15 @@ class SignedAppointmentOptionCodec:
         start_at = _datetime_field(payload, "start_at")
         end_at = _datetime_field(payload, "end_at")
         expires_at = _datetime_field(payload, "expires_at")
-        _datetime_field(payload, "issued_at")
+        issued_at = _datetime_field(payload, "issued_at")
+        now = _require_aware(self._now(), "codec clock")
         if end_at <= start_at:
             raise AppointmentOptionInvalid("slot interval is invalid")
-        if expires_at <= _require_aware(self._now(), "codec clock"):
+        if issued_at > now + _MAX_CLOCK_SKEW:
+            raise AppointmentOptionInvalid("token issued_at is in the future")
+        if expires_at <= issued_at or expires_at - issued_at > self._ttl:
+            raise AppointmentOptionInvalid("token lifetime exceeds the accepted ttl")
+        if expires_at <= now:
             raise AppointmentOptionExpired()
 
         return _DecodedCommon(
@@ -167,6 +213,94 @@ class SignedAppointmentOptionCodec:
             resources=_resource_fields(payload),
             expires_at=expires_at,
         )
+
+
+class ReloadableSignedAppointmentOptionCodec:
+    """Thread-safe sync facade whose managed keyring can be hot-replaced."""
+
+    def __init__(
+        self,
+        initial_signing_key: bytes | None = None,
+        *,
+        ttl: timedelta = timedelta(minutes=10),
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
+        if ttl <= timedelta(0):
+            raise ValueError("appointment option ttl must be positive")
+        self._ttl = ttl
+        self._now = now or (lambda: datetime.now(UTC))
+        self._lock = RLock()
+        self._delegate = (
+            None
+            if initial_signing_key is None
+            else SignedAppointmentOptionCodec(
+                initial_signing_key,
+                ttl=ttl,
+                now=self._now,
+            )
+        )
+
+    @property
+    def enabled(self) -> bool:
+        with self._lock:
+            return self._delegate is not None
+
+    def replace_signing_key(self, signing_key: bytes) -> None:
+        replacement = SignedAppointmentOptionCodec(
+            signing_key,
+            ttl=self._ttl,
+            now=self._now,
+        )
+        with self._lock:
+            self._delegate = replacement
+
+    def replace_keyring(self, keyring: AppointmentOptionKeyring) -> None:
+        accepted = keyring.accepted_keys(now=self._now())
+        active = accepted.get(keyring.active_key_id)
+        if active is None:
+            raise ValueError("appointment option keyring has no accepted active key")
+        replacement = SignedAppointmentOptionCodec(
+            active,
+            signing_key_id=keyring.active_key_id,
+            verification_keys=accepted,
+            ttl=self._ttl,
+            now=self._now,
+        )
+        with self._lock:
+            self._delegate = replacement
+
+    def disable(self) -> None:
+        with self._lock:
+            self._delegate = None
+
+    def issue(self, organization_id: UUID, slot: AppointmentSlot) -> str:
+        return self._current().issue(organization_id, slot)
+
+    def decode(self, organization_id: UUID, token: str) -> DecodedAppointmentOption:
+        return self._current().decode(organization_id, token)
+
+    def _current(self) -> SignedAppointmentOptionCodec:
+        with self._lock:
+            delegate = self._delegate
+        if delegate is None:
+            raise AppointmentOptionInvalid("appointment option signing is unavailable")
+        return delegate
+
+
+def _validate_signing_key(key: bytes) -> None:
+    if len(key) < 32:
+        raise ValueError("appointment option signing key must contain at least 32 bytes")
+
+
+def _validate_signing_key_id(key_id: str) -> str:
+    normalized = key_id.strip()
+    if (
+        not normalized
+        or len(normalized) > 80
+        or not all(character.isalnum() or character in "._-" for character in normalized)
+    ):
+        raise ValueError("appointment option signing key id is invalid")
+    return normalized
 
 
 def _validate_slot(slot: AppointmentSlot) -> None:

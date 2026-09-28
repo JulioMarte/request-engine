@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import FastAPI, Request, Response
 
+import request_engine.modules.booking.api as booking_api
 from request_engine.entrypoints.http.capabilities import create_capability_router
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
 from request_engine.entrypoints.http.module_composition import install_business_modules
@@ -24,7 +25,12 @@ from request_engine.modules.tenancy.api import build_principal_authority_reader
 from request_engine.platform.db.agent_budget_enforcer import PostgresAgentBudgetEnforcer
 from request_engine.platform.db.agent_policy_reader import PostgresAgentPolicyReader
 from request_engine.platform.db.delegation_reader import PostgresDelegationReader
+from request_engine.platform.db.native_recovery_address_store import (
+    PostgresNativeRecoveryAddressStore,
+)
+from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
 from request_engine.platform.security.acting_operator import (
     ActingOperatorActorResolver,
     OperatorActorResolver,
@@ -43,13 +49,21 @@ from request_engine.platform.security.http import (
     request_correlation_id,
 )
 from request_engine.platform.security.native_human_auth import NativeHumanAuthService
+from request_engine.platform.security.native_recovery_addresses import (
+    NativeRecoveryAddressService,
+    NativeRecoveryMessenger,
+)
 from request_engine.platform.security.native_session import NativeSessionAuthenticator
+from request_engine.platform.security.native_webauthn_auth import NativeWebAuthnAuthService
+from request_engine.platform.security.native_webauthn_login import NativeWebAuthnLoginService
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
 from request_engine.platform.security.oidc_link import OidcLinkVerifier
+from request_engine.platform.security.recovery_codes import NativeRecoveryCodeService
 from request_engine.platform.security.subject_http import (
     HttpSubjectResolver,
     ProviderNeutralHttpActorResolver,
 )
+from request_engine.platform.security.webauthn import WebAuthnPolicy
 
 _APPOINTMENT_OPTION_SIGNING_KEY_ENV = "REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY"
 _IDENTITY_EXCHANGE_KEY_ENV = "REQUEST_ENGINE_IDENTITY_EXCHANGE_KEY"
@@ -75,6 +89,7 @@ def create_app(
     actor_resolver: ActorResolver,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
+    appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
     operator_actor_resolver: OperatorActorResolver | None = None,
@@ -82,6 +97,10 @@ def create_app(
     native_auth_service: NativeHumanAuthService | None = None,
     native_session_authenticator: NativeSessionAuthenticator | None = None,
     native_identity_authority_id: UUID | None = None,
+    native_recovery_codes: NativeRecoveryCodeService | None = None,
+    native_recovery_addresses: NativeRecoveryAddressService | None = None,
+    native_webauthn_login: NativeWebAuthnLoginService | None = None,
+    native_webauthn_auth: NativeWebAuthnAuthService | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
 ) -> FastAPI:
     """Compose the full single-app HTTP surface (business + operational configuration).
@@ -103,12 +122,12 @@ def create_app(
     """
 
     signing_key = appointment_option_signing_key
-    if signing_key is None:
+    if appointment_option_codec is None and signing_key is None:
         configured_key = os.environ.get(_APPOINTMENT_OPTION_SIGNING_KEY_ENV)
         if configured_key is None:
             raise RuntimeError(
                 f"{_APPOINTMENT_OPTION_SIGNING_KEY_ENV} must be configured when no signing key "
-                "is supplied explicitly"
+                "or codec is supplied explicitly"
             )
         signing_key = configured_key.encode("utf-8")
     identity_key = identity_exchange_fingerprint_key
@@ -156,6 +175,10 @@ def create_app(
                 service=native_auth_service,
                 authenticator=native_session_authenticator,
                 identity_authority_id=native_identity_authority_id,
+                webauthn_login=native_webauthn_login,
+                webauthn_auth=native_webauthn_auth,
+                recovery_codes=native_recovery_codes,
+                recovery_addresses=native_recovery_addresses,
             )
         )
     app.include_router(
@@ -170,6 +193,7 @@ def create_app(
         actor_resolver=execution_actor_resolver,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=signing_key,
+        appointment_option_codec=appointment_option_codec,
         identity_exchange_fingerprint_key=identity_key,
         identity_link_verifier=identity_link_verifier,
     )
@@ -188,6 +212,7 @@ def create_authenticated_app(
     subject_resolver: HttpSubjectResolver,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
+    appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
     operator_actor_resolver: OperatorActorResolver | None = None,
@@ -204,6 +229,7 @@ def create_authenticated_app(
         actor_resolver=actor_resolver,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=appointment_option_signing_key,
+        appointment_option_codec=appointment_option_codec,
         identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
         tenant_capability_policy=tenant_capability_policy,
         operator_actor_resolver=operator_actor_resolver,
@@ -217,12 +243,16 @@ def create_native_app(
     native_identity_authority_id: UUID,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
+    appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
     operator_actor_resolver: OperatorActorResolver | None = None,
     operator_capability_source: OperatorCapabilitySource | None = None,
     oidc_subject_resolver: OidcHttpSubjectResolver | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
+    webauthn_policy: WebAuthnPolicy | None = None,
+    webauthn_decoy_key: bytes | None = None,
+    native_recovery_messenger: NativeRecoveryMessenger | None = None,
 ) -> FastAPI:
     """Compose a providerless deployment whose protected routes trust Native evidence.
 
@@ -245,6 +275,24 @@ def create_native_app(
             else OidcAuthRuntime(subject_resolver=oidc_subject_resolver)
         ),
     )
+    if (webauthn_policy is None) != (webauthn_decoy_key is None):
+        raise ValueError("WebAuthn policy and deployment decoy key must be configured together")
+    webauthn_store = None if webauthn_policy is None else PostgresWebAuthnStore(session_factory)
+    webauthn_auth = (
+        None
+        if webauthn_store is None or webauthn_policy is None
+        else NativeWebAuthnAuthService(policy=webauthn_policy, store=webauthn_store)
+    )
+    if webauthn_auth is None or webauthn_store is None:
+        webauthn_login = None
+    else:
+        assert webauthn_decoy_key is not None
+        webauthn_login = NativeWebAuthnLoginService(
+            webauthn=webauthn_auth,
+            identities=webauthn_store,
+            decoy_key=webauthn_decoy_key,
+        )
+
     return create_app(
         session_factory=session_factory,
         actor_resolver=AgentPolicyActorResolver(
@@ -257,6 +305,7 @@ def create_native_app(
         ),
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=appointment_option_signing_key,
+        appointment_option_codec=appointment_option_codec,
         identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
         tenant_capability_policy=tenant_capability_policy,
         operator_actor_resolver=operator_actor_resolver,
@@ -264,5 +313,14 @@ def create_native_app(
         native_auth_service=runtime.service,
         native_session_authenticator=runtime.authenticator,
         native_identity_authority_id=native_identity_authority_id,
+        native_recovery_codes=NativeRecoveryCodeService(
+            store=PostgresRecoveryCodeStore(session_factory)
+        ),
+        native_recovery_addresses=NativeRecoveryAddressService(
+            store=PostgresNativeRecoveryAddressStore(session_factory),
+            messenger=native_recovery_messenger,
+        ),
+        native_webauthn_login=webauthn_login,
+        native_webauthn_auth=webauthn_auth,
         identity_link_verifier=identity_link_verifier,
     )

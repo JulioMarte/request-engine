@@ -17,6 +17,7 @@ from request_engine.platform.security.freshness import (
     PhishingResistantAuthenticationRequired,
     ReauthenticationRequired,
     RecentAuthenticationRequired,
+    RecoveryCompletionRequired,
 )
 from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
 
@@ -83,6 +84,20 @@ async def phishing_resistant_auth_required_handler(_: Request, exc: Exception) -
         ErrorBody(
             code="phishing_resistant_auth_required",
             message="a recent phishing-resistant authentication is required",
+            resolution=ErrorResolution.REAUTHENTICATE,
+        ),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def recovery_completion_required_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, RecoveryCompletionRequired):
+        raise exc
+    return render_error_response(
+        status.HTTP_403_FORBIDDEN,
+        ErrorBody(
+            code="recovery_completion_required",
+            message="complete account recovery with a recent phishing-resistant proof",
             resolution=ErrorResolution.REAUTHENTICATE,
         ),
         headers={"Cache-Control": "no-store"},

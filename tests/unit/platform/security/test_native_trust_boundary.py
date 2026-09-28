@@ -176,6 +176,7 @@ async def test_http_native_resolver_reloads_current_authority_for_selected_tenan
         authentication_assurance=AuthenticationAssurance.SINGLE_FACTOR,
         user_verified=False,
         recovery_derived=False,
+        recovery_restricted=False,
         expires_at=NOW + timedelta(hours=1),
         created_at=NOW,
         last_seen_at=None,

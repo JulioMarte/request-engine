@@ -209,7 +209,7 @@ def _read_instance_receipt(state_dir: Path) -> dict[str, str] | None:
 
 def _claim_instance(
     control_url: str, login_handle: str, password: str, state_dir: Path
-) -> tuple[dict[str, str], SoftwareAuthenticator | None]:
+) -> tuple[dict[str, str], SoftwareAuthenticator | None, str | None]:
     """Claim a fresh instance over HTTP and return the built-in authority ids.
 
     The receipt is cached in the ephemeral state workspace so multi-phase suites
@@ -224,7 +224,7 @@ def _claim_instance(
     """
     receipt = _read_instance_receipt(state_dir)
     if receipt is not None:
-        return receipt, None
+        return receipt, None, None
     discovery = _http_json("GET", f"{control_url}/v1/setup")
     if discovery.get("setup_required") is not True:
         raise RuntimeError(
@@ -265,12 +265,16 @@ def _claim_instance(
         payload={"credential": credential},
         expected_statuses=(204,),
     )
-    _http_json(
+    recovery_codes = _http_json(
         "POST",
         f"{control_url}/v1/setup/recovery-codes",
         setup_token=setup_token,
         expected_statuses=(201,),
     )
+    raw_codes = recovery_codes.get("codes")
+    if not isinstance(raw_codes, list) or not raw_codes or not isinstance(raw_codes[0], str):
+        raise RuntimeError("setup recovery-code response did not contain offline codes")
+    offline_recovery_code = raw_codes[0]
     finalized = _http_json(
         "POST",
         f"{control_url}/v1/setup:finalize",
@@ -297,7 +301,7 @@ def _claim_instance(
     path = state_dir / "instance.json"
     path.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
     os.chmod(path, 0o600)
-    return receipt, authenticator
+    return receipt, authenticator, offline_recovery_code
 
 
 def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
@@ -380,8 +384,13 @@ def _run_api_restart(checkpoints: list[dict[str, str]], phase: str) -> None:
     api_url = "http://api:8000"
     control_url = "http://control-plane:8001"
     if phase == "before-fault":
-        _run_f01_foundation(checkpoints, "main", include_continuity=False)
-        state_dir, _ = _handoff()
+        _run_f01_foundation(
+            checkpoints,
+            "main",
+            include_continuity=False,
+            include_offline_recovery=False,
+        )
+        state_dir, controller = _handoff()
         receipt = _read_instance_receipt(state_dir)
         if receipt is None:
             raise RuntimeError("instance claim receipt is missing after the F01 foundation")
@@ -393,7 +402,17 @@ def _run_api_restart(checkpoints: list[dict[str, str]], phase: str) -> None:
             _required_string(foundation, "tenant_login", "F01 foundation state"),
             "f01-restart-staff",
         )
-        restart_identity_id = _native_identity(control_url, restart_login, restart_password)
+        platform_token = _native_session(
+            control_url,
+            _required_string(controller, "login_handle", "platform-controller secret"),
+            _required_string(controller, "password", "platform-controller secret"),
+        )
+        restart_identity_id = _native_identity(
+            control_url,
+            restart_login,
+            restart_password,
+            bearer=platform_token,
+        )
         invite: dict[str, object] = {
             "identity_authority_id": native_authority_id,
             "native_identity_id": restart_identity_id,
@@ -549,14 +568,68 @@ def _native_session(base_url: str, login: str, password: str) -> str:
     return _required_string(response, "access_token", "native session response")
 
 
-def _native_identity(base_url: str, login: str, password: str) -> str:
+def _native_identity(
+    base_url: str,
+    login: str,
+    password: str,
+    *,
+    bearer: str,
+) -> str:
     response = _http_json(
         "POST",
-        f"{base_url}/auth/native/identities",
+        f"{base_url}/v1/platform/native-identities",
+        bearer=bearer,
         payload={"login_handle": login, "password": password},
         expected_statuses=(201,),
     )
-    return _required_string(response, "native_identity_id", "native enrollment response")
+    return _required_string(response, "native_identity_id", "governed native enrollment response")
+
+
+def _strong_native_session(
+    control_url: str,
+    login_handle: str,
+    password: str,
+) -> str:
+    """Create a password session, enroll a fresh passkey and step it up.
+
+    F01 uses this for bounded HUMAN platform actors so an authorization-denial
+    proof is not accidentally short-circuited by the stronger authentication
+    requirement shared by recovery mutations.
+    """
+
+    token = _native_session(control_url, login_handle, password)
+    options = _http_json(
+        "POST",
+        f"{control_url}/auth/native/sessions/current/webauthn/registration-options",
+        bearer=token,
+    )
+    public_key_value = options.get("public_key")
+    if not isinstance(public_key_value, dict):
+        raise RuntimeError("WebAuthn registration options are missing public_key")
+    public_key = cast(dict[str, object], public_key_value)
+    rp_value = public_key.get("rp")
+    if not isinstance(rp_value, dict):
+        raise RuntimeError("WebAuthn registration options are missing rp")
+    rp_id = _required_string(cast(dict[str, object], rp_value), "id", "WebAuthn registration rp")
+    challenge = _required_string(public_key, "challenge", "WebAuthn registration challenge")
+    authenticator = SoftwareAuthenticator(rp_id=rp_id, origin=f"https://{rp_id}")
+    credential = authenticator.registration_credential(
+        challenge=websafe_decode(challenge),
+        user_verified=True,
+    )
+    _http_json(
+        "POST",
+        f"{control_url}/auth/native/sessions/current/webauthn/registrations",
+        bearer=token,
+        payload={"credential": credential},
+        expected_statuses=(201,),
+    )
+    stepped = _step_up_native_session(control_url, token, authenticator)
+    if stepped.get("authentication_assurance") != "phishing_resistant":
+        raise RuntimeError("bounded platform actor did not reach phishing-resistant assurance")
+    if stepped.get("user_verified") is not True:
+        raise RuntimeError("bounded platform actor WebAuthn step-up lacks user verification")
+    return token
 
 
 def _webauthn_platform_session(
@@ -597,8 +670,39 @@ def _webauthn_platform_session(
     return token, evidence
 
 
+def _step_up_native_session(
+    control_url: str,
+    token: str,
+    authenticator: SoftwareAuthenticator,
+) -> dict[str, object]:
+    options = _http_json(
+        "POST",
+        f"{control_url}/auth/native/sessions/current/webauthn/step-up-options",
+        bearer=token,
+    )
+    public_key_value = options.get("public_key")
+    if not isinstance(public_key_value, dict):
+        raise RuntimeError("WebAuthn step-up options are missing public_key")
+    public_key = cast(dict[str, object], public_key_value)
+    challenge = _required_string(public_key, "challenge", "WebAuthn step-up challenge")
+    credential = authenticator.authentication_credential(
+        challenge=websafe_decode(challenge),
+        user_verified=True,
+    )
+    return _http_json(
+        "POST",
+        f"{control_url}/auth/native/sessions/current/webauthn/step-up",
+        bearer=token,
+        payload={"credential": credential},
+    )
+
+
 def _run_f01_foundation(
-    checkpoints: list[dict[str, str]], phase: str, *, include_continuity: bool = True
+    checkpoints: list[dict[str, str]],
+    phase: str,
+    *,
+    include_continuity: bool = True,
+    include_offline_recovery: bool = True,
 ) -> None:
     if phase not in {"main", "prepare-worker"}:
         raise RuntimeError("f01-foundation only supports main or prepare-worker")
@@ -608,7 +712,7 @@ def _run_f01_foundation(
     control_url = "http://control-plane:8001"
     api_url = "http://api:8000"
 
-    claim, claim_authenticator = _claim_instance(
+    claim, claim_authenticator, offline_recovery_code = _claim_instance(
         control_url, platform_login, platform_password, state_dir
     )
     native_authority_id = claim["native_authority_id"]
@@ -645,7 +749,12 @@ def _run_f01_foundation(
         )
     provisioner_login = "f01-security-operator@example.invalid"
     provisioner_password = _derived_password(platform_password, "f01-security-operator")
-    provisioner_identity_id = _native_identity(control_url, provisioner_login, provisioner_password)
+    provisioner_identity_id = _native_identity(
+        control_url,
+        provisioner_login,
+        provisioner_password,
+        bearer=platform_token,
+    )
     provisioner = _http_json(
         "POST",
         f"{control_url}/v1/platform/provisioners",
@@ -664,7 +773,12 @@ def _run_f01_foundation(
 
     tenant_login = "f01-tenant-controller@example.invalid"
     tenant_password = _derived_password(platform_password, "f01-tenant-controller")
-    tenant_identity_id = _native_identity(control_url, tenant_login, tenant_password)
+    tenant_identity_id = _native_identity(
+        control_url,
+        tenant_login,
+        tenant_password,
+        bearer=platform_token,
+    )
     organization = _http_json(
         "POST",
         f"{control_url}/v1/platform/organizations",
@@ -761,6 +875,7 @@ def _run_f01_foundation(
             control_url=control_url,
             api_url=api_url,
             tenant_token=tenant_token,
+            platform_token=platform_token,
             tenant_password=tenant_password,
             organization_id=organization_id,
             native_authority_id=native_authority_id,
@@ -782,9 +897,19 @@ def _run_f01_foundation(
             workload_authority_id=workload_authority_id,
             expires_at=expires_at,
         )
+    if phase == "main" or _active_suite in {
+        "recovery-delivery",
+        "platform-configuration",
+        "clone-fence",
+    }:
         recovery_login = "f01-recovery-operator@example.invalid"
         recovery_password = _derived_password(platform_password, "f01-recovery-operator")
-        recovery_identity_id = _native_identity(control_url, recovery_login, recovery_password)
+        recovery_identity_id = _native_identity(
+            control_url,
+            recovery_login,
+            recovery_password,
+            bearer=platform_token,
+        )
         recovery_operator = _http_json(
             "POST",
             f"{control_url}/v1/platform/recovery-operators",
@@ -808,25 +933,26 @@ def _run_f01_foundation(
                 "bounded platform recovery approver provisioned over HTTP",
             )
         )
-        _exercise_recovery_governance(
-            checkpoints,
-            control_url=control_url,
-            api_url=api_url,
-            platform_token=platform_token,
-            provisioner_login=provisioner_login,
-            provisioner_password=provisioner_password,
-            recovery_login=recovery_login,
-            recovery_password=recovery_password,
-            target_native_identity_id=tenant_identity_id,
-        )
-        if include_continuity:
-            _exercise_last_controller_refusal(
+        if phase == "main":
+            _exercise_recovery_governance(
                 checkpoints,
+                control_url=control_url,
                 api_url=api_url,
-                tenant_token=tenant_token,
-                organization_id=organization_id,
-                controller_binding_id=controller_binding_id,
+                platform_token=platform_token,
+                provisioner_login=provisioner_login,
+                provisioner_password=provisioner_password,
+                recovery_login=recovery_login,
+                recovery_password=recovery_password,
+                target_native_identity_id=tenant_identity_id,
             )
+    if phase == "main" and include_continuity:
+        _exercise_last_controller_refusal(
+            checkpoints,
+            api_url=api_url,
+            tenant_token=tenant_token,
+            organization_id=organization_id,
+            controller_binding_id=controller_binding_id,
+        )
     foundation = {
         "organization_id": organization_id,
         "organization_party_id": organization_party_id,
@@ -835,11 +961,115 @@ def _run_f01_foundation(
         "platform_provisioner_principal_id": provisioner_principal_id,
         "worker_principal_id": integration_principal_id,
         "tenant_login": tenant_login,
+        "tenant_native_identity_id": tenant_identity_id,
     }
     (state_dir / "f01-foundation.json").write_text(
         json.dumps(foundation, sort_keys=True) + "\n", encoding="utf-8"
     )
     checkpoints.append(_checkpoint("f01-foundation-state", "passed"))
+
+    if phase == "main" and include_offline_recovery and offline_recovery_code is not None:
+        recovered_password = _derived_password(platform_password, "f01-offline-recovered-owner")
+        _http_request(
+            "POST",
+            f"{control_url}/auth/native/password:recover-with-code",
+            payload={
+                "recovery_code": offline_recovery_code,
+                "new_password": recovered_password,
+            },
+            expected_statuses=(204,),
+        )
+        _http_request(
+            "POST",
+            f"{control_url}/auth/native/sessions",
+            payload={"login_handle": platform_login, "password": platform_password},
+            expected_statuses=(401,),
+        )
+        recovered_session = _native_session(
+            control_url,
+            platform_login,
+            recovered_password,
+        )
+        if not recovered_session:
+            raise RuntimeError("offline recovery did not yield a usable replacement password")
+
+        restricted = _http_json(
+            "GET",
+            f"{control_url}/auth/native/sessions/current",
+            bearer=recovered_session,
+        )
+        if restricted.get("recovery_restricted") is not True:
+            raise RuntimeError("offline recovery did not enter recovery-restricted posture")
+
+        if claim_authenticator is None:
+            raise RuntimeError("fresh-world break-glass drill lost the claim passkey")
+        stepped = _step_up_native_session(
+            control_url,
+            recovered_session,
+            claim_authenticator,
+        )
+        if stepped.get("authentication_assurance") != "phishing_resistant":
+            raise RuntimeError("break-glass passkey proof did not become phishing-resistant")
+
+        completed = _http_json(
+            "POST",
+            f"{control_url}/auth/native/sessions/current/recovery:complete",
+            bearer=recovered_session,
+        )
+        if completed.get("recovery_state") != "normal":
+            raise RuntimeError("strong factor proof did not complete account recovery")
+
+        restored = _http_json(
+            "GET",
+            f"{control_url}/auth/native/sessions/current",
+            bearer=recovered_session,
+        )
+        if restored.get("recovery_restricted") is not False:
+            raise RuntimeError("completed recovery remained restricted")
+
+        setup_state = _http_json("GET", f"{control_url}/v1/setup")
+        if setup_state.get("setup_required") is not False:
+            raise RuntimeError("break-glass recovery reopened first-run setup")
+
+        drill_invitation = _http_json(
+            "POST",
+            f"{control_url}/v1/platform/owner-invitations",
+            bearer=recovered_session,
+            idempotency_key="f01-break-glass-owner-proof",
+            payload={"provenance_reference": "e2e:f01:break-glass-authority-proof"},
+            expected_statuses=(201,),
+        )
+        invitation_id = _required_string(
+            drill_invitation,
+            "invitation_id",
+            "break-glass authority proof invitation",
+        )
+        _http_json(
+            "POST",
+            f"{control_url}/v1/platform/owner-invitations/{invitation_id}:revoke",
+            bearer=recovered_session,
+            idempotency_key="f01-break-glass-owner-proof-revoke",
+            payload={"reason_code": "invitation_cancelled"},
+        )
+
+        _http_request(
+            "POST",
+            f"{control_url}/auth/native/password:recover-with-code",
+            payload={
+                "recovery_code": offline_recovery_code,
+                "new_password": _derived_password(recovered_password, "replay"),
+            },
+            expected_statuses=(401,),
+        )
+        checkpoints.append(
+            _checkpoint(
+                "f01-18-offline-owner-recovery",
+                "passed",
+                "offline code restored the existing owner while SMTP/OpenBao were absent; "
+                "recovery stayed restricted until the original passkey was proven, "
+                "setup remained closed and sensitive owner authority worked afterward",
+            )
+        )
 
 
 def _exercise_staff_zero_authority(
@@ -848,13 +1078,19 @@ def _exercise_staff_zero_authority(
     control_url: str,
     api_url: str,
     tenant_token: str,
+    platform_token: str,
     tenant_password: str,
     organization_id: str,
     native_authority_id: str,
 ) -> None:
     staff_login = "f01-bounded-staff@example.invalid"
     staff_password = _derived_password(tenant_password, "f01-bounded-staff")
-    staff_identity_id = _native_identity(control_url, staff_login, staff_password)
+    staff_identity_id = _native_identity(
+        control_url,
+        staff_login,
+        staff_password,
+        bearer=platform_token,
+    )
     invited = _http_json(
         "POST",
         f"{api_url}/v1/staff/members/native",
@@ -1140,7 +1376,11 @@ def _exercise_recovery_governance(
     ):
         raise RuntimeError("a requester was allowed to approve their own recovery case")
 
-    provisioner_token = _native_session(control_url, provisioner_login, provisioner_password)
+    provisioner_token = _strong_native_session(
+        control_url,
+        provisioner_login,
+        provisioner_password,
+    )
     unauthorized = _http_json(
         "POST",
         f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
@@ -1155,7 +1395,11 @@ def _exercise_recovery_governance(
     ):
         raise RuntimeError("a principal without recovery authority approved a case")
 
-    recovery_token = _native_session(control_url, recovery_login, recovery_password)
+    recovery_token = _strong_native_session(
+        control_url,
+        recovery_login,
+        recovery_password,
+    )
     _http_request(
         "POST",
         f"{control_url}/v1/platform/organizations",
@@ -1593,6 +1837,571 @@ def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
     )
 
 
+def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> None:
+    if phase == "prepare-worker":
+        _run_f01_foundation(checkpoints, phase)
+        return
+    if phase != "main":
+        raise RuntimeError("recovery-delivery requires prepare-worker then main")
+
+    state_dir, controller = _handoff()
+    foundation = _json_object(state_dir / "f01-foundation.json")
+    control_url = "http://control-plane:8001"
+    platform_login = _required_string(controller, "login_handle", "platform-controller secret")
+    platform_password = _required_string(controller, "password", "platform-controller secret")
+    target_identity_id = _required_string(
+        foundation, "tenant_native_identity_id", "F01 foundation state"
+    )
+    platform_token = _strong_native_session(
+        control_url,
+        platform_login,
+        platform_password,
+    )
+
+    recovery_login = "f01-recovery-operator@example.invalid"
+    recovery_password = _derived_password(platform_password, "f01-recovery-operator")
+    recovery_operator_token = _strong_native_session(
+        control_url,
+        recovery_login,
+        recovery_password,
+    )
+
+    destination = "e2e-runner@example.invalid"
+    case = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases",
+        bearer=platform_token,
+        idempotency_key="delivery-e2e-recovery-case-v1",
+        payload={
+            "target_native_identity_id": target_identity_id,
+            "reason_code": "lost_credential",
+            "evidence_reference": "e2e:recovery-delivery",
+            "delivery_destination_reference": destination,
+        },
+        expected_statuses=(201,),
+    )
+    case_id = _required_string(case, "case_id", "recovery case create response")
+    approved = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
+        bearer=recovery_operator_token,
+        idempotency_key="delivery-e2e-recovery-approve-v1",
+        payload={"expected_revision": 1, "reason_code": "ownership_verified"},
+    )
+    if approved.get("status") != "approved" or approved.get("revision") != 2:
+        raise RuntimeError("recovery case was not independently approved")
+
+    issued = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:issue",
+        bearer=platform_token,
+        idempotency_key="delivery-e2e-recovery-issue-v1",
+        payload={"expected_revision": 2},
+        expected_statuses=(202,),
+    )
+    if issued.get("status") != "issued":
+        raise RuntimeError("configured recovery issuance did not reach issued state")
+
+    deadline = time.monotonic() + 60
+    body = ""
+    last_delivery_status = str(issued.get("delivery_status", "unknown"))
+    while time.monotonic() < deadline:
+        current = _http_json(
+            "GET",
+            f"{control_url}/v1/platform/identity-recovery-cases/{case_id}",
+            bearer=platform_token,
+        )
+        last_delivery_status = str(current.get("delivery_status", "unknown"))
+        if last_delivery_status in {"failed", "unknown"}:
+            raise RuntimeError(
+                "recovery delivery reached terminal status "
+                f"{last_delivery_status!r} before Mailpit received the proof"
+            )
+        try:
+            body = _http_get("http://mailpit:8025/view/latest.txt")
+        except (RuntimeError, urllib.error.URLError):
+            body = ""
+        if "Recovery code: " in body:
+            break
+        time.sleep(1)
+    marker = "Recovery code: "
+    if marker not in body:
+        raise RuntimeError(
+            "Mailpit never received the recovery proof; "
+            f"last delivery status was {last_delivery_status!r}"
+        )
+    proof = body.split(marker, 1)[1].splitlines()[0].strip()
+    if not proof:
+        raise RuntimeError("Mailpit recovery message contained an empty proof")
+
+    current = _http_json(
+        "GET",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}",
+        bearer=platform_token,
+    )
+    if current.get("delivery_status") != "delivered":
+        raise RuntimeError("recovery ticket was not finalized as delivered")
+
+    tenant_login = _required_string(foundation, "tenant_login", "F01 foundation state")
+    old_password = _derived_password(platform_password, "f01-tenant-controller")
+    new_password = _derived_password(platform_password, "recovery-delivery-reset")
+    _http_request(
+        "POST",
+        f"{control_url}/auth/native/password:recover",
+        payload={"recovery_token": proof, "new_password": new_password},
+        expected_statuses=(204,),
+    )
+    _http_request(
+        "POST",
+        f"{control_url}/auth/native/sessions",
+        payload={"login_handle": tenant_login, "password": old_password},
+        expected_statuses=(401,),
+    )
+    _native_session(control_url, tenant_login, new_password)
+    _http_request(
+        "POST",
+        f"{control_url}/auth/native/password:recover",
+        payload={
+            "recovery_token": proof,
+            "new_password": _derived_password(new_password, "replay"),
+        },
+        expected_statuses=(401,),
+    )
+    checkpoints.append(
+        _checkpoint(
+            "recovery-delivery-openbao-mailpit",
+            "passed",
+            "OpenBao staged a one-time proof, worker delivered it through Mailpit, "
+            "and the proof rotated the target password exactly once",
+        )
+    )
+
+
+def _p7_stage_smtp_configuration(
+    control_url: str,
+    token: str,
+    *,
+    secret_binding_id: str,
+    sender: str,
+    idempotency_key: str,
+) -> int:
+    response = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/configurations/email.delivery/revisions",
+        bearer=token,
+        idempotency_key=idempotency_key,
+        payload={
+            "provider_kind": "smtp",
+            "configuration": {
+                "host": "mailpit",
+                "port": 1025,
+                "sender": sender,
+                "security": "plain",
+                "username": "managed-smtp",
+            },
+            "secret_binding_id": secret_binding_id,
+        },
+        expected_statuses=(201,),
+    )
+    revision = response.get("revision")
+    if not isinstance(revision, int):
+        raise RuntimeError("staged platform configuration is missing an integer revision")
+    return revision
+
+
+def _p7_validate_configuration(
+    control_url: str,
+    token: str,
+    *,
+    revision: int,
+    idempotency_key: str,
+) -> None:
+    response = _http_json(
+        "POST",
+        (f"{control_url}/v1/platform/configurations/email.delivery/revisions/{revision}:validate"),
+        bearer=token,
+        idempotency_key=idempotency_key,
+    )
+    if response.get("state") != "validated":
+        raise RuntimeError("platform configuration did not reach validated state")
+
+
+def _p7_activate_configuration(
+    control_url: str,
+    token: str,
+    *,
+    revision: int,
+    expected_active_revision: int | None,
+    idempotency_key: str,
+) -> None:
+    response = _http_json(
+        "POST",
+        (f"{control_url}/v1/platform/configurations/email.delivery/revisions/{revision}:activate"),
+        bearer=token,
+        idempotency_key=idempotency_key,
+        payload={"expected_active_revision": expected_active_revision},
+    )
+    if response.get("state") != "active":
+        raise RuntimeError("platform configuration did not reach active state")
+
+
+def _p7_issue_governed_recovery(
+    control_url: str,
+    *,
+    platform_token: str,
+    operator_token: str,
+    target_identity_id: str,
+    suffix: str,
+    destination: str,
+) -> str:
+    case = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases",
+        bearer=platform_token,
+        idempotency_key=f"p7-config-recovery-case-{suffix}-v1",
+        payload={
+            "target_native_identity_id": target_identity_id,
+            "reason_code": "lost_credential",
+            "evidence_reference": "e2e:platform-configuration",
+            "delivery_destination_reference": destination,
+        },
+        expected_statuses=(201,),
+    )
+    case_id = _required_string(case, "case_id", "recovery case create response")
+    approved = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
+        bearer=operator_token,
+        idempotency_key=f"p7-config-recovery-approve-{suffix}-v1",
+        payload={"expected_revision": 1, "reason_code": "ownership_verified"},
+    )
+    if approved.get("status") != "approved":
+        raise RuntimeError("governed recovery case was not independently approved")
+    issued = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:issue",
+        bearer=platform_token,
+        idempotency_key=f"p7-config-recovery-issue-{suffix}-v1",
+        payload={"expected_revision": 2},
+        expected_statuses=(202,),
+    )
+    if issued.get("status") != "issued":
+        raise RuntimeError("governed recovery case did not reach issued state")
+    return case_id
+
+
+def _p7_wait_for_case_delivery(
+    control_url: str,
+    token: str,
+    case_id: str,
+    *,
+    timeout_seconds: float = 60.0,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last_status = "unknown"
+    while time.monotonic() < deadline:
+        current = _http_json(
+            "GET",
+            f"{control_url}/v1/platform/identity-recovery-cases/{case_id}",
+            bearer=token,
+        )
+        last_status = str(current.get("delivery_status", "unknown"))
+        if last_status == "delivered":
+            return
+        if last_status in {"failed", "unknown"}:
+            raise RuntimeError(
+                f"recovery delivery reached terminal status {last_status!r} before completion"
+            )
+        time.sleep(1)
+    raise RuntimeError(f"recovery case was not delivered; last status {last_status!r}")
+
+
+def _p7_mailpit_recovery_senders() -> list[str]:
+    payload = _http_get_json("http://mailpit:8025/api/v1/messages?limit=100")
+    raw_messages = payload.get("messages")
+    if not isinstance(raw_messages, list):
+        return []
+    senders: list[str] = []
+    for raw in cast(list[object], raw_messages):
+        if not isinstance(raw, dict):
+            continue
+        message = cast(dict[str, object], raw)
+        if message.get("Subject") != "Request Engine identity recovery":
+            continue
+        raw_from = message.get("From")
+        if not isinstance(raw_from, dict):
+            continue
+        address = cast(dict[str, object], raw_from).get("Address")
+        if isinstance(address, str):
+            senders.append(address)
+    return senders
+
+
+def _p7_wait_for_recovery_sender(expected: str, *, timeout_seconds: float = 90.0) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    seen: list[str] = []
+    while time.monotonic() < deadline:
+        try:
+            seen = _p7_mailpit_recovery_senders()
+        except (RuntimeError, urllib.error.URLError):
+            seen = []
+        if expected in seen:
+            return
+        time.sleep(1)
+    raise RuntimeError(
+        f"Mailpit never received a managed recovery message from {expected!r}; seen={seen!r}"
+    )
+
+
+def _run_platform_configuration(checkpoints: list[dict[str, str]], phase: str) -> None:
+    if phase == "prepare-worker":
+        _run_f01_foundation(checkpoints, phase)
+        return
+    if phase != "main":
+        raise RuntimeError("platform-configuration requires prepare-worker then main")
+
+    state_dir, controller = _handoff()
+    foundation = _json_object(state_dir / "f01-foundation.json")
+    control_url = "http://control-plane:8001"
+    platform_login = _required_string(controller, "login_handle", "platform-controller secret")
+    platform_password = _required_string(controller, "password", "platform-controller secret")
+    target_identity_id = _required_string(
+        foundation, "tenant_native_identity_id", "F01 foundation state"
+    )
+
+    platform_token = _strong_native_session(control_url, platform_login, platform_password)
+    recovery_login = "f01-recovery-operator@example.invalid"
+    recovery_password = _derived_password(platform_password, "f01-recovery-operator")
+    recovery_operator_token = _strong_native_session(
+        control_url,
+        recovery_login,
+        recovery_password,
+    )
+
+    created = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/secrets",
+        bearer=platform_token,
+        idempotency_key="p7-config-secret-create-v1",
+        payload={"purpose": "email.smtp.password", "value": "managed-smtp-secret-v1"},
+        expected_statuses=(201,),
+    )
+    binding_id = _required_string(created, "binding_id", "platform secret create response")
+    checkpoints.append(
+        _checkpoint(
+            "p7-01-secret-create",
+            "passed",
+            "managed SMTP credential stored as an opaque secret binding over HTTP",
+        )
+    )
+
+    revision_one = _p7_stage_smtp_configuration(
+        control_url,
+        platform_token,
+        secret_binding_id=binding_id,
+        sender="managed-one@example.invalid",
+        idempotency_key="p7-config-stage-one-v1",
+    )
+    _p7_validate_configuration(
+        control_url,
+        platform_token,
+        revision=revision_one,
+        idempotency_key="p7-config-validate-one-v1",
+    )
+    checkpoints.append(
+        _checkpoint(
+            "p7-02-stage-validate",
+            "passed",
+            "typed SMTP revision staged and validated against the live provider",
+        )
+    )
+
+    provider_test = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/providers/email.delivery/{revision_one}:test",
+        bearer=platform_token,
+        idempotency_key="p7-config-provider-test-v1",
+        payload={"destination": "p7-probe@example.invalid"},
+    )
+    if str(provider_test.get("outcome")) not in {"delivered", "unknown"}:
+        raise RuntimeError("provider test did not record a controlled outcome")
+
+    _p7_activate_configuration(
+        control_url,
+        platform_token,
+        revision=revision_one,
+        expected_active_revision=None,
+        idempotency_key="p7-config-activate-one-v1",
+    )
+    checkpoints.append(
+        _checkpoint("p7-03-activate", "passed", "validated SMTP revision activated with one ACTIVE")
+    )
+
+    case_one = _p7_issue_governed_recovery(
+        control_url,
+        platform_token=platform_token,
+        operator_token=recovery_operator_token,
+        target_identity_id=target_identity_id,
+        suffix="one",
+        destination="p7-recovery-one@example.invalid",
+    )
+    _p7_wait_for_case_delivery(control_url, platform_token, case_one)
+    _p7_wait_for_recovery_sender("managed-one@example.invalid")
+    checkpoints.append(
+        _checkpoint(
+            "p7-04-worker-managed-delivery",
+            "passed",
+            "live worker delivered a governed recovery through the ACTIVE managed SMTP revision",
+        )
+    )
+
+    rotated = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/secrets/{binding_id}:rotate",
+        bearer=platform_token,
+        idempotency_key="p7-config-secret-rotate-v1",
+        payload={
+            "expected_revision": created["revision"],
+            "expected_backend_version": created["backend_version"],
+            "value": "managed-smtp-secret-v2",
+        },
+    )
+    if rotated.get("status") != "active":
+        raise RuntimeError("rotated secret binding did not remain active")
+
+    revision_two = _p7_stage_smtp_configuration(
+        control_url,
+        platform_token,
+        secret_binding_id=binding_id,
+        sender="managed-two@example.invalid",
+        idempotency_key="p7-config-stage-two-v1",
+    )
+    _p7_validate_configuration(
+        control_url,
+        platform_token,
+        revision=revision_two,
+        idempotency_key="p7-config-validate-two-v1",
+    )
+    _p7_activate_configuration(
+        control_url,
+        platform_token,
+        revision=revision_two,
+        expected_active_revision=revision_one,
+        idempotency_key="p7-config-activate-two-v1",
+    )
+
+    case_two = _p7_issue_governed_recovery(
+        control_url,
+        platform_token=platform_token,
+        operator_token=recovery_operator_token,
+        target_identity_id=target_identity_id,
+        suffix="two",
+        destination="p7-recovery-two@example.invalid",
+    )
+    _p7_wait_for_case_delivery(control_url, platform_token, case_two)
+    _p7_wait_for_recovery_sender("managed-two@example.invalid")
+    checkpoints.append(
+        _checkpoint(
+            "p7-05-worker-hot-reload",
+            "passed",
+            "same worker process adopted the rotated secret and newly active "
+            "revision without restart",
+        )
+    )
+
+    readiness = _http_json(
+        "GET",
+        f"{control_url}/v1/platform/readiness",
+        bearer=platform_token,
+    )
+    if readiness.get("managed_smtp_source") != "managed":
+        raise RuntimeError("readiness did not report the managed SMTP source")
+    if readiness.get("smtp_active_revision") != revision_two:
+        raise RuntimeError("readiness did not report the newly active revision")
+    if readiness.get("secret_store") != "configured":
+        raise RuntimeError("readiness did not report the configured secret store")
+    if readiness.get("recovery_delivery_source") != "managed":
+        raise RuntimeError("readiness did not report managed recovery delivery")
+    if readiness.get("clone_fence") != "open":
+        raise RuntimeError("normal P7 runtime did not report its explicitly open clone fence")
+    if readiness.get("oidc") != "optional":
+        raise RuntimeError("native-only runtime did not report OIDC as optional")
+    checkpoints.append(
+        _checkpoint(
+            "p7-06-readiness",
+            "passed",
+            "readiness reported ACTIVE managed SMTP plus deployment fence, secret-store, "
+            "recovery-delivery and optional-OIDC facts without becoming an authority source",
+        )
+    )
+
+
+def _run_clone_fence(checkpoints: list[dict[str, str]], phase: str) -> None:
+    if phase == "prepare-worker":
+        _run_f01_foundation(checkpoints, phase)
+        _prepare_durable_booking(checkpoints)
+        return
+    if phase != "main":
+        raise RuntimeError("clone-fence requires prepare-worker then main")
+
+    state_dir, controller = _handoff()
+    foundation = _json_object(state_dir / "f01-foundation.json")
+    booking = _json_object(state_dir / "worker-booking.json")
+    reservation_id = _required_string(booking, "reservation_id", "worker booking state")
+    control_url = "http://control-plane:8001"
+
+    platform_login = _required_string(controller, "login_handle", "platform-controller secret")
+    platform_password = _required_string(controller, "password", "platform-controller secret")
+    platform_token = _strong_native_session(control_url, platform_login, platform_password)
+    recovery_login = "f01-recovery-operator@example.invalid"
+    recovery_password = _derived_password(platform_password, "f01-recovery-operator")
+    operator_token = _strong_native_session(control_url, recovery_login, recovery_password)
+    target_identity_id = _required_string(
+        foundation, "tenant_native_identity_id", "F01 foundation state"
+    )
+
+    case_id = _p7_issue_governed_recovery(
+        control_url,
+        platform_token=platform_token,
+        operator_token=operator_token,
+        target_identity_id=target_identity_id,
+        suffix="clone-fence",
+        destination="clone-fence@example.invalid",
+    )
+
+    time.sleep(5)
+
+    sink_status = _http_get_json("http://event-sink:8090/status")
+    if sink_status.get("attempt_count") != 0 or sink_status.get("accepted_count") != 0:
+        raise RuntimeError("clone fence allowed an outbox request to reach the external sink")
+    if _matching_sink_event(_sink_events("attempts"), reservation_id):
+        raise RuntimeError("clone fence allowed the durable reservation event to leave the worker")
+
+    try:
+        senders = _p7_mailpit_recovery_senders()
+    except (RuntimeError, urllib.error.URLError):
+        senders = []
+    if senders:
+        raise RuntimeError(f"clone fence allowed recovery SMTP delivery: senders={senders!r}")
+
+    current = _http_json(
+        "GET",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}",
+        bearer=platform_token,
+    )
+    if current.get("delivery_status") == "delivered":
+        raise RuntimeError("clone fence reported recovery delivery despite blocking SMTP")
+
+    checkpoints.append(
+        _checkpoint(
+            "p7-clone-fence",
+            "passed",
+            "fenced worker/control-plane stayed live while SMTP and outbox side effects "
+            "were blocked before reaching Mailpit or the event sink",
+        )
+    )
+
+
 Suite = Callable[[list[dict[str, str]], str], None]
 SUITES: dict[str, Suite] = {
     "smoke": _run_smoke,
@@ -1600,6 +2409,9 @@ SUITES: dict[str, Suite] = {
     "api-restart": _run_api_restart,
     "f01-foundation": _run_f01_foundation,
     "worker-runtime": _run_worker_runtime,
+    "recovery-delivery": _run_recovery_delivery,
+    "platform-configuration": _run_platform_configuration,
+    "clone-fence": _run_clone_fence,
 }
 
 

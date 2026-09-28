@@ -90,6 +90,55 @@ def app_role_conn(
 
 
 @pytest.fixture
+def platform_read_conn_factory(
+    admin_conn: PgConnection,
+    pg_conninfo: str,
+) -> Iterator[Callable[[], PgConnection]]:
+    """Factory for release-shaped least-privilege platform read LOGINs."""
+
+    role_name = f"re_platform_read_{uuid4().hex[:12]}"
+    password = uuid4().hex
+    admin_conn.execute(
+        sql.SQL(
+            "CREATE ROLE {} LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER "
+            "NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD {}"
+        ).format(sql.Identifier(role_name), sql.Literal(password))
+    )
+    for signature in (
+        "request_platform.read_platform_configuration_revisions(text)",
+        "request_platform.read_platform_secret_binding(uuid)",
+        "request_platform.read_platform_readiness()",
+    ):
+        admin_conn.execute(
+            sql.SQL("GRANT EXECUTE ON FUNCTION " + signature + " TO {}").format(
+                sql.Identifier(role_name)
+            )
+        )
+    admin_conn.execute(
+        sql.SQL("GRANT USAGE ON SCHEMA request_platform TO {}").format(sql.Identifier(role_name))
+    )
+
+    parts = dict(part.split("=", 1) for part in pg_conninfo.split())
+    created: list[PgConnection] = []
+
+    def factory() -> PgConnection:
+        conn: PgConnection = psycopg.connect(
+            f"host={parts['host']} port={parts['port']} dbname={parts['dbname']} "
+            f"user={role_name} password={password}"
+        )
+        created.append(conn)
+        return conn
+
+    try:
+        yield factory
+    finally:
+        for conn in created:
+            conn.close()
+        admin_conn.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
+        admin_conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
+
+
+@pytest.fixture
 def platform_control_conn_factory(
     admin_conn: PgConnection,
     pg_conninfo: str,

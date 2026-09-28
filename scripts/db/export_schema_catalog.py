@@ -7,7 +7,14 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
-SCHEMAS = ("request_engine", "request_read", "request_cmd", "request_admin")
+SCHEMAS = (
+    "request_admin",
+    "request_auth",
+    "request_cmd",
+    "request_engine",
+    "request_platform",
+    "request_read",
+)
 _SCHEMALESS_QUERIES = {"roles", "role_memberships", "default_acls"}
 QUERIES = {
     "schemas": """
@@ -143,7 +150,11 @@ QUERIES = {
         SELECT rolname AS role_name, rolsuper AS superuser, rolinherit AS inherit,
                rolcreaterole AS create_role, rolcreatedb AS create_db, rolcanlogin AS can_login,
                rolbypassrls AS bypass_rls
-        FROM pg_roles WHERE rolname LIKE 'request_engine_%' ORDER BY 1
+        FROM pg_roles
+        WHERE rolname LIKE 'request_engine_%'
+           OR rolname LIKE 'request_platform_%'
+           OR rolname LIKE 'request_bootstrap_%'
+        ORDER BY 1
     """,
     "role_memberships": """
         SELECT parent.rolname AS parent_role, member.rolname AS member_role,
@@ -171,6 +182,8 @@ QUERIES = {
         LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
         CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
         WHERE pg_get_userbyid(d.defaclrole) LIKE 'request_engine_%'
+           OR pg_get_userbyid(d.defaclrole) LIKE 'request_platform_%'
+           OR pg_get_userbyid(d.defaclrole) LIKE 'request_bootstrap_%'
         ORDER BY 1,2,3,4,5,6
     """,
 }

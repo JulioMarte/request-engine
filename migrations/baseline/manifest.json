@@ -1,149 +1,306 @@
 {
   "schema_version": 1,
   "source": {
-    "branch": "cohesion/system-optimization",
-    "head_sha": "4ba7dbf092528f26aee5db1003af455a381d3431",
-    "ci_run_number": 4164,
-    "ci_run_id": 34065584913,
-    "postgresql_version": "18.6"
+    "branch": "feature/rebaseline-0094",
+    "head_sha": "3e938a888e576919b5b75f449fe86014b5cbd7f9",
+    "ci_run_number": 17,
+    "ci_run_id": 36354361866,
+    "postgresql_version": "18.6",
+    "pg_dump_version": "pg_dump (PostgreSQL) 18.6 (Debian 18.6-1.pgdg13+2)",
+    "source_alembic_head": "0094_managed_oidc_readiness"
   },
   "schema_payload": {
-    "source_artifact_name": "rebaseline-candidate.sql",
-    "bytes": 734622,
-    "sha256": "6e7d98e995c882336eeb4c2674bca9eb37269b1b5f29ed15bfbfb4b2bbe04a9d",
+    "bytes": 1779614,
+    "sha256": "4ca49de594e06cac8a1af94738dcc83b792540efa76226397290e0187d793b01",
     "materialized_parts": [
       {
         "path": "0001_schema.01.sql",
-        "bytes": 124970,
-        "sha256": "a7bfe75c4aa1e5e61a84984a8da829a3b104667470a4511ca40c838de4bae224"
+        "bytes": 119996,
+        "sha256": "fa69d8483fe2203721cedc31bcf8d39237f7517df5a8811947cb4d816294047d"
       },
       {
         "path": "0001_schema.02.sql",
-        "bytes": 124996,
-        "sha256": "e31a059f603f327b1e236710e6d77b7ac96a36332f7981db6733227f631c3598"
+        "bytes": 119983,
+        "sha256": "b4e9318978df418a2836b1dd30f68b2d773e4683f096283aa6086fb9f6889e52"
       },
       {
         "path": "0001_schema.03.sql",
-        "bytes": 124984,
-        "sha256": "b5905eb626b04ec7341b8f2ba900686f396a2548740581ce8fc0afe40d544806"
+        "bytes": 119998,
+        "sha256": "1392ba665c06a290b070036b772bfca10e985c8110879d8e839d6aaed84efcfd"
       },
       {
         "path": "0001_schema.04.sql",
-        "bytes": 124942,
-        "sha256": "030f79b5aed1c7d96732dd7f00897d0fca948939f4423042fb5aa7f67f961725"
+        "bytes": 119999,
+        "sha256": "813b27b73f162c52793da72e8424af4169ec198fc6ac0b9a00f01326e9dbdfe0"
       },
       {
         "path": "0001_schema.05.sql",
-        "bytes": 125000,
-        "sha256": "39ac061dbe0b58506209e2153810e5e5ec5ed61cfd32a875eb840c913150d83e"
+        "bytes": 119990,
+        "sha256": "be8194cb51af9084618d3353598e4b93f844e9d5da83b4a85dc7023df21013d6"
       },
       {
         "path": "0001_schema.06.sql",
-        "bytes": 109730,
-        "sha256": "6fce5a5cd73e59d4c41aea7bdc2fc074c30347bf63ef652fda84e84a7f8c49aa"
+        "bytes": 119985,
+        "sha256": "70fc1de6c59c66301fdf94c6ce259197f978e5824657765e31e6cf30da81d073"
+      },
+      {
+        "path": "0001_schema.07.sql",
+        "bytes": 119913,
+        "sha256": "bfc73fa64bec29485602946f63c73dcbf55ab39119a3284c840f0f9c8887f8d0"
+      },
+      {
+        "path": "0001_schema.08.sql",
+        "bytes": 119948,
+        "sha256": "44289fa5bea0395d90445f8287ad99bd10439b09efca786cbeb51160dcaefa73"
+      },
+      {
+        "path": "0001_schema.09.sql",
+        "bytes": 119951,
+        "sha256": "c20bffcf256281057a863aa6d64377e65efb69c8c36290246f5d470fb3862545"
+      },
+      {
+        "path": "0001_schema.10.sql",
+        "bytes": 120034,
+        "sha256": "b2a61e4eb8e8e2dfe07425e434f6605e514e2677cef6cb81193cb78d59dcdf09"
+      },
+      {
+        "path": "0001_schema.11.sql",
+        "bytes": 119981,
+        "sha256": "5417b43abb5e12f7434681e8579589b57710d02ae42737b89141a49a8d1475ab"
+      },
+      {
+        "path": "0001_schema.12.sql",
+        "bytes": 119971,
+        "sha256": "439278566a5a4e74d276b9124eb18ed7f54a902f8dc0a1b5c8aa88c78ebf7ec3"
+      },
+      {
+        "path": "0001_schema.13.sql",
+        "bytes": 119943,
+        "sha256": "f9f58542e067963557d7856bac6ba8e274e58a7587539a4b63d275a406a149ec"
+      },
+      {
+        "path": "0001_schema.14.sql",
+        "bytes": 119946,
+        "sha256": "927d3c4c8465f1cad43acc19eaf87dd5ebb4fe4accb6976a343d36142d8bac92"
+      },
+      {
+        "path": "0001_schema.15.sql",
+        "bytes": 99976,
+        "sha256": "fef433056d5858409d348e45c384317a2a528b2efac020ad43ee5bf19ba0bdf6"
       }
-    ]
+    ],
+    "source_artifact": {
+      "name": "rebaseline-0094-candidate-v2/0001_schema.sql",
+      "bytes": 1779489,
+      "sha256": "66daabe2f565153f736c6802f895cfe311f99d84652b6349833041caf2424849"
+    },
+    "canonicalization": {
+      "reason": "installation-local identity must be generated independently for every fresh installation",
+      "changes": [
+        "built-in native/workload identity-authority UUIDs use table defaults instead of copied source values",
+        "platform_instance references the freshly generated built-in authorities",
+        "installation-local creation timestamps use PostgreSQL defaults instead of copied source timestamps"
+      ],
+      "ddl_changed": false,
+      "canonical_payload_bytes": 1779614,
+      "canonical_payload_sha256": "4ca49de594e06cac8a1af94738dcc83b792540efa76226397290e0187d793b01"
+    }
   },
   "role_bootstrap": {
-    "source_artifact_name": "rebaseline-role-bootstrap.sql",
+    "source_artifact_name": "rebaseline-0094-candidate-v2/0001_roles.sql",
     "path": "0001_roles.sql",
-    "bytes": 852,
-    "sha256": "19d9b3f1856de381a4899ce97023f66d7b429c8ab50839ff3b83885a157162df",
+    "bytes": 1549,
+    "sha256": "82fc350878ddfe46e6874810d4584c72dc5183243c022575b4fdad79fbaacdb9",
     "expected_roles": {
-      "request_engine_admin": {
-        "superuser": false,
-        "inherit": true,
-        "create_role": false,
-        "create_db": false,
-        "can_login": false,
-        "replication": false,
+      "request_bootstrap_definer": {
         "bypass_rls": true,
+        "can_login": false,
         "connection_limit": -1,
-        "valid_until": null,
-        "has_password": false
+        "create_db": false,
+        "create_role": false,
+        "has_password": false,
+        "inherit": true,
+        "replication": false,
+        "superuser": false,
+        "valid_until": null
+      },
+      "request_engine_admin": {
+        "bypass_rls": true,
+        "can_login": false,
+        "connection_limit": -1,
+        "create_db": false,
+        "create_role": false,
+        "has_password": false,
+        "inherit": true,
+        "replication": false,
+        "superuser": false,
+        "valid_until": null
       },
       "request_engine_app": {
-        "superuser": false,
-        "inherit": true,
-        "create_role": false,
-        "create_db": false,
-        "can_login": false,
-        "replication": false,
         "bypass_rls": false,
+        "can_login": false,
         "connection_limit": -1,
-        "valid_until": null,
-        "has_password": false
+        "create_db": false,
+        "create_role": false,
+        "has_password": false,
+        "inherit": true,
+        "replication": false,
+        "superuser": false,
+        "valid_until": null
       },
       "request_engine_discovery": {
-        "superuser": false,
-        "inherit": true,
-        "create_role": false,
-        "create_db": false,
-        "can_login": false,
-        "replication": false,
         "bypass_rls": false,
+        "can_login": false,
         "connection_limit": -1,
-        "valid_until": null,
-        "has_password": false
+        "create_db": false,
+        "create_role": false,
+        "has_password": false,
+        "inherit": true,
+        "replication": false,
+        "superuser": false,
+        "valid_until": null
       },
       "request_engine_discovery_definer": {
-        "superuser": false,
-        "inherit": true,
-        "create_role": false,
-        "create_db": false,
-        "can_login": false,
-        "replication": false,
         "bypass_rls": true,
+        "can_login": false,
         "connection_limit": -1,
-        "valid_until": null,
-        "has_password": false
+        "create_db": false,
+        "create_role": false,
+        "has_password": false,
+        "inherit": true,
+        "replication": false,
+        "superuser": false,
+        "valid_until": null
       },
       "request_engine_schema_owner": {
-        "superuser": false,
-        "inherit": true,
-        "create_role": false,
-        "create_db": false,
-        "can_login": false,
-        "replication": false,
         "bypass_rls": false,
+        "can_login": false,
         "connection_limit": -1,
-        "valid_until": null,
-        "has_password": false
+        "create_db": false,
+        "create_role": false,
+        "has_password": false,
+        "inherit": true,
+        "replication": false,
+        "superuser": false,
+        "valid_until": null
       },
       "request_engine_worker": {
-        "superuser": false,
-        "inherit": true,
-        "create_role": false,
-        "create_db": false,
-        "can_login": false,
-        "replication": false,
         "bypass_rls": false,
+        "can_login": false,
         "connection_limit": -1,
-        "valid_until": null,
-        "has_password": false
+        "create_db": false,
+        "create_role": false,
+        "has_password": false,
+        "inherit": true,
+        "replication": false,
+        "superuser": false,
+        "valid_until": null
+      },
+      "request_platform_control": {
+        "bypass_rls": false,
+        "can_login": false,
+        "connection_limit": -1,
+        "create_db": false,
+        "create_role": false,
+        "has_password": false,
+        "inherit": true,
+        "replication": false,
+        "superuser": false,
+        "valid_until": null
+      },
+      "request_platform_control_definer": {
+        "bypass_rls": true,
+        "can_login": false,
+        "connection_limit": -1,
+        "create_db": false,
+        "create_role": false,
+        "has_password": false,
+        "inherit": true,
+        "replication": false,
+        "superuser": false,
+        "valid_until": null
+      },
+      "request_platform_definer": {
+        "bypass_rls": true,
+        "can_login": false,
+        "connection_limit": -1,
+        "create_db": false,
+        "create_role": false,
+        "has_password": false,
+        "inherit": true,
+        "replication": false,
+        "superuser": false,
+        "valid_until": null
       }
     },
     "role_memberships": [],
     "role_settings": []
   },
+  "seed_data": {
+    "path": "seed-data-catalog.json",
+    "bytes": 40056,
+    "sha256": "cebf4efcc8100d9f89d6cd85e1e91e3732e50734afc4730cdbeb2d1dc99af74a",
+    "counts": {
+      "nonempty_tables": 4,
+      "rows": 11,
+      "sequences": 0,
+      "tables": 142
+    },
+    "representation": "semantic-normalized",
+    "normalized_fresh_install_fields": [
+      "request_engine.identity_authorities.id for built-in native/workload authorities",
+      "request_engine.identity_authorities.created_at for built-in native/workload authorities",
+      "request_engine.platform_instance.id",
+      "request_engine.platform_instance.created_at",
+      "request_engine.platform_instance built-in authority foreign keys"
+    ],
+    "source_artifact": {
+      "name": "rebaseline-0094-candidate-v2/source-seed-data-catalog.json",
+      "bytes": 40115,
+      "sha256": "8a71a29e7be3038b112db99dd6b69a0c4b7386858227ded86f816cc918d4c7f6"
+    },
+    "canonicalization": {
+      "raw_byte_identical_to_source_artifact": false,
+      "semantic_equivalence_after_installation_identity_normalization": true
+    }
+  },
   "effective_model": {
-    "relations": 99,
-    "tables": 90,
+    "relations": 151,
+    "tables": 142,
     "views": 9,
-    "columns": 1085,
-    "constraints": 1575,
-    "indexes": 276,
-    "routines": 145,
-    "triggers": 162,
-    "policies": 84,
-    "roles": 6,
+    "columns": 1654,
+    "constraints": 2441,
+    "indexes": 404,
+    "routines": 325,
+    "triggers": 208,
+    "policies": 96,
+    "roles": 10,
     "role_memberships": 0,
-    "column_grants": 12
+    "column_grants": 677
   },
   "proof": {
-    "fresh_schema_equivalent": true,
-    "fresh_roles_equivalent": true,
-    "current_product_executed_test_files": 256,
-    "current_product_proof_gaps": []
+    "historical_chain_to_0094": true,
+    "candidate_schema_equivalent": true,
+    "candidate_roles_equivalent": true,
+    "candidate_seed_data_equivalent": true,
+    "candidate_exact_ddl_equivalent": true,
+    "clean_postgresql18_install_equivalent": true,
+    "clean_seed_data_equivalent": true,
+    "clean_exact_ddl_equivalent": true,
+    "ci_run_id": 36354361866,
+    "ci_run_number": 17,
+    "proof_head_sha": "3e938a888e576919b5b75f449fe86014b5cbd7f9",
+    "schema_comparison_first_difference": null,
+    "canonical_payload_byte_identical_to_candidate": false,
+    "canonical_ddl_equivalent_to_candidate": true,
+    "canonical_seed_data_semantically_equivalent": true,
+    "canonical_installation_identity_unique": true
+  },
+  "installation_identity": {
+    "generated_per_fresh_install": true,
+    "platform_instance_id": "gen_random_uuid()",
+    "built_in_authority_ids": "gen_random_uuid()",
+    "created_at": "clock_timestamp()",
+    "proof_requirement": "two clean 0001 installations must have distinct platform/native/workload UUIDs"
   }
 }

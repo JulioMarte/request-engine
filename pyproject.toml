@@ -23,6 +23,8 @@ request-engine-worker = "request_engine.entrypoints.worker.cli:main"
 
 [dependency-groups]
 dev = [
+    "aiosmtpd>=1.4.6,<2",
+    "cryptography>=50,<51",
     "pyright[nodejs]>=1.1.411,<1.2",
     "pytest>=9.1.1,<10",
     "pytest-asyncio>=1.4.0,<2",

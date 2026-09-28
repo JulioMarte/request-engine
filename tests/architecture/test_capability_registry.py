@@ -116,3 +116,39 @@ def test_canonical_registry_contains_expected_current_surface() -> None:
         "communications.configure",
         "onboarding.read",
     } <= canonical_capability_keys()
+
+
+def test_platform_configuration_capabilities_are_explicit_high_risk_platform_authority() -> None:
+    by_key = {definition.key: definition for definition in CAPABILITIES}
+    expected = {
+        "platform.configuration.read",
+        "platform.configuration.stage",
+        "platform.configuration.validate",
+        "platform.configuration.activate",
+        "platform.configuration.disable",
+        "platform.secret.write",
+        "platform.secret.rotate",
+        "platform.secret.revoke",
+        "platform.provider.test",
+        "platform.readiness.read",
+    }
+    assert expected <= set(by_key)
+    runtime_surface = {
+        "platform.configuration.read",
+        "platform.configuration.stage",
+        "platform.configuration.validate",
+        "platform.configuration.activate",
+        "platform.configuration.disable",
+        "platform.secret.write",
+        "platform.secret.rotate",
+        "platform.secret.revoke",
+        "platform.provider.test",
+        "platform.readiness.read",
+    }
+    for key in expected:
+        definition = by_key[key]
+        assert definition.authority_plane.value == "platform"
+        assert definition.runtime_available is (key in runtime_surface)
+    for key in expected - {"platform.configuration.read", "platform.readiness.read"}:
+        assert by_key[key].requires_recent_authentication is True
+        assert by_key[key].idempotency is IdempotencyPolicy.REQUIRED

@@ -1,0 +1,41 @@
+name: Coolify adapter contract
+
+on:
+  push:
+    branches:
+      - feature/platform-config-openbao-recovery
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coolify-image-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      COOLIFY_IMAGE: ghcr.io/coollabsio/coolify:4.3.23
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.12.5"
+      - name: Pull pinned upstream Coolify image
+        run: docker pull "$COOLIFY_IMAGE"
+      - name: Extract upstream Coolify API route source
+        run: |
+          docker create --name coolify-contract "$COOLIFY_IMAGE"
+          docker cp coolify-contract:/var/www/html/routes/api.php /tmp/coolify-api.php
+          docker rm coolify-contract
+      - name: Prove expected backup API routes exist in upstream image
+        run: python scripts/ci/check_coolify_backup_routes.py /tmp/coolify-api.php
+      - name: Run deployment adapter contract tests
+        run: |
+          uv run pytest -q \
+            tests/modules/platform_configuration/test_coolify_recovery_adapter.py \
+            tests/modules/platform_configuration/test_deployment_reconciliation.py \
+            tests/modules/platform_configuration/test_deployment_binding.py

@@ -1,3 +1,7 @@
+import base64
+import hashlib
+import hmac
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
@@ -5,12 +9,18 @@ from uuid import uuid4
 import pytest
 
 from request_engine.modules.booking.adapters.appointment_options import (
+    ReloadableSignedAppointmentOptionCodec,
     SignedAppointmentOptionCodec,
 )
 from request_engine.modules.booking.application.errors import AppointmentOptionInvalid
 from request_engine.modules.booking.contracts.appointments import (
     AppointmentSlot,
     ResourceChoice,
+)
+from request_engine.platform.security.appointment_option_keyring import (
+    create_appointment_option_keyring,
+    parse_appointment_option_keyring,
+    rotate_appointment_option_keyring,
 )
 
 _NOW = datetime(2030, 1, 7, 12, tzinfo=UTC)
@@ -155,3 +165,148 @@ def test_slot_requires_positive_assignment_revision() -> None:
 
     with pytest.raises(ValueError, match="positive assignment revision"):
         _codec().issue(uuid4(), slot)
+
+
+@pytest.mark.unit
+def test_rotated_keyring_verifies_retiring_key_during_overlap() -> None:
+    organization_id = uuid4()
+    slot = _contextual_slot()
+    old_key = b"request-engine-appointment-option-old-key-0001"
+    new_key = b"request-engine-appointment-option-new-key-0002"
+
+    old_codec = SignedAppointmentOptionCodec(
+        old_key,
+        signing_key_id="appointment-2026-09-a",
+        now=lambda: _NOW,
+    )
+    old_token = old_codec.issue(organization_id, slot)
+
+    rotated = SignedAppointmentOptionCodec(
+        new_key,
+        signing_key_id="appointment-2026-09-b",
+        verification_keys={"appointment-2026-09-a": old_key},
+        now=lambda: _NOW,
+    )
+
+    assert rotated.decode(organization_id, old_token).location_id == slot.location_id
+    new_token = rotated.issue(organization_id, slot)
+    assert rotated.decode(organization_id, new_token).location_id == slot.location_id
+
+
+@pytest.mark.unit
+def test_retired_key_is_rejected_after_overlap_is_removed() -> None:
+    organization_id = uuid4()
+    slot = _contextual_slot()
+    old_key = b"request-engine-appointment-option-old-key-0001"
+    new_key = b"request-engine-appointment-option-new-key-0002"
+    old_token = SignedAppointmentOptionCodec(
+        old_key,
+        signing_key_id="appointment-old",
+        now=lambda: _NOW,
+    ).issue(organization_id, slot)
+
+    retired = SignedAppointmentOptionCodec(
+        new_key,
+        signing_key_id="appointment-new",
+        now=lambda: _NOW,
+    )
+
+    with pytest.raises(AppointmentOptionInvalid, match="signing key is not accepted"):
+        retired.decode(organization_id, old_token)
+
+
+@pytest.mark.unit
+def test_signing_key_id_is_covered_by_signature() -> None:
+    organization_id = uuid4()
+    token = SignedAppointmentOptionCodec(
+        _KEY,
+        signing_key_id="appointment-current",
+        now=lambda: _NOW,
+    ).issue(organization_id, _contextual_slot())
+    prefix, payload, signature = token.split(".")
+    raw = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+    changed = raw.replace(b"appointment-current", b"appointment-retired")
+    changed_payload = base64.urlsafe_b64encode(changed).rstrip(b"=").decode("ascii")
+    tampered = f"{prefix}.{changed_payload}.{signature}"
+
+    codec = SignedAppointmentOptionCodec(
+        _KEY,
+        signing_key_id="appointment-retired",
+        now=lambda: _NOW,
+    )
+    with pytest.raises(AppointmentOptionInvalid, match="signature verification failed"):
+        codec.decode(organization_id, tampered)
+
+
+@pytest.mark.unit
+def test_keyring_rejects_conflicting_active_key_material() -> None:
+    with pytest.raises(ValueError, match="conflicts"):
+        SignedAppointmentOptionCodec(
+            _KEY,
+            signing_key_id="current",
+            verification_keys={"current": b"different-appointment-option-signing-key-0002"},
+        )
+
+
+@pytest.mark.unit
+def test_reloadable_codec_switches_active_key_and_keeps_bounded_overlap() -> None:
+    organization_id = uuid4()
+    slot = _contextual_slot()
+    wrapper = ReloadableSignedAppointmentOptionCodec(_KEY, now=lambda: _NOW)
+    legacy = wrapper.issue(organization_id, slot)
+
+    initial = create_appointment_option_keyring(
+        "k1",
+        key=b"appointment-managed-key-one-000000000000001",
+    )
+    rotated = rotate_appointment_option_keyring(
+        initial,
+        new_key_id="k2",
+        now=_NOW,
+        new_key=b"appointment-managed-key-two-000000000000002",
+    )
+    wrapper.replace_keyring(parse_appointment_option_keyring(rotated))
+    managed = wrapper.issue(organization_id, slot)
+
+    assert ".k2" not in managed
+    assert wrapper.decode(organization_id, managed).location_id == slot.location_id
+    with pytest.raises(AppointmentOptionInvalid):
+        wrapper.decode(organization_id, legacy)
+
+
+@pytest.mark.unit
+def test_reloadable_codec_fails_closed_when_disabled() -> None:
+    wrapper = ReloadableSignedAppointmentOptionCodec(_KEY, now=lambda: _NOW)
+    wrapper.disable()
+    with pytest.raises(AppointmentOptionInvalid, match="unavailable"):
+        wrapper.issue(uuid4(), _contextual_slot())
+
+
+@pytest.mark.unit
+def test_signed_token_cannot_extend_lifetime_beyond_codec_ttl() -> None:
+    organization_id = uuid4()
+    token = _codec().issue(organization_id, _contextual_slot())
+    prefix, encoded_payload, _signature = token.split(".")
+    padding = "=" * (-len(encoded_payload) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(encoded_payload + padding))
+    payload["expires_at"] = (_NOW + timedelta(hours=4)).isoformat()
+    tampered_payload = (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        )
+        .rstrip(b"=")
+        .decode()
+    )
+    forged_signature = (
+        base64.urlsafe_b64encode(
+            hmac.new(_KEY, f"{prefix}.{tampered_payload}".encode(), hashlib.sha256).digest()
+        )
+        .rstrip(b"=")
+        .decode()
+    )
+
+    with pytest.raises(AppointmentOptionInvalid, match="lifetime"):
+        _codec().decode(
+            organization_id,
+            f"{prefix}.{tampered_payload}.{forged_signature}",
+        )

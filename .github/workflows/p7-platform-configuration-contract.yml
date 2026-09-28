@@ -1,0 +1,151 @@
+name: P7 platform configuration contract
+
+on:
+  pull_request:
+    paths:
+      - "migrations/versions/0080_platform_configuration_governance.py"
+      - "migrations/versions/0081_platform_configuration_read_boundary.py"
+      - "migrations/versions/0090_platform_readiness_projection.py"
+      - "migrations/versions/0093_managed_oidc_authority_projection.py"
+      - "migrations/versions/0094_managed_oidc_readiness.py"
+      - "src/request_engine/modules/platform_configuration/**"
+      - "src/request_engine/bootstrap/platform_server.py"
+      - "src/request_engine/bootstrap/reference_worker_factory.py"
+      - "src/request_engine/entrypoints/http/platform_control_app.py"
+      - "src/request_engine/platform/security/oidc_auth.py"
+      - "src/request_engine/platform/observability/p7_metrics.py"
+      - "scripts/operations/recovery_bundle.py"
+      - "scripts/operations/openbao_operational_acceptance.py"
+      - "scripts/operations/recovery_drill_evidence.py"
+      - "scripts/operations/smtp_production_acceptance.py"
+      - "scripts/operations/p7_production_certification.py"
+      - "scripts/ci/openbao_raft_restore_smoke.sh"
+      - "tests/modules/platform_configuration/**"
+      - "tests/db/test_platform_configuration_*.py"
+      - "tests/db/test_managed_oidc_projection.py"
+      - "tests/platform/observability/test_p7_metrics.py"
+      - "tests/unit/operations/test_recovery_drill_evidence.py"
+      - "tests/unit/operations/test_openbao_operational_acceptance.py"
+      - "tests/unit/operations/test_smtp_production_acceptance.py"
+      - "tests/unit/operations/test_p7_production_certification.py"
+      - "tests/unit/scripts/test_recovery_bundle.py"
+      - ".github/workflows/p7-platform-configuration-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p7-platform-configuration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.5"
+
+jobs:
+  p7-contract:
+    name: P7 governed configuration proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: request_engine_p7
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d request_engine_p7"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: request_engine_p7
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_p7
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install project
+        run: uv sync --all-groups --frozen
+      - name: Migrate a clean PostgreSQL 18 database to exact head
+        run: |
+          uv run alembic upgrade head
+          expected="$(uv run alembic heads | awk 'NF {print $1}')"
+          actual="$(psql -Atc 'SELECT version_num FROM alembic_version')"
+          test "$actual" = "$expected"
+      - name: Run complete P7 module and PostgreSQL proof set
+        run: |
+          mkdir -p .ci
+          uv run pytest \
+            tests/modules/platform_configuration \
+            tests/unit/platform/secrets/test_platform_secret_administration.py \
+            tests/platform/observability/test_p7_metrics.py \
+            tests/unit/operations/test_recovery_drill_evidence.py \
+            tests/unit/operations/test_openbao_operational_acceptance.py \
+            tests/unit/operations/test_smtp_production_acceptance.py \
+            tests/unit/operations/test_p7_production_certification.py \
+            tests/unit/scripts/test_recovery_bundle.py \
+            tests/db/test_platform_configuration_foundation.py \
+            tests/db/test_platform_configuration_governance.py \
+            tests/db/test_platform_configuration_hot_reload.py \
+            tests/db/test_managed_oidc_projection.py \
+            'tests/e2e/test_platform_control_runtime_factory.py::test_private_runtime_rechecks_privileges_and_authority[membership]' \
+            -q --tb=short --durations=20 \
+            --junitxml=.ci/p7-platform-configuration.xml
+      - name: Start real OpenBao engine for CAS acceptance
+        run: |
+          docker run -d --name p7-openbao \
+            --cap-add IPC_LOCK \
+            -p 127.0.0.1:8200:8200 \
+            -e VAULT_DEV_ROOT_TOKEN_ID=ci-root-token \
+            openbao/openbao:2.6.1 \
+            server -dev -dev-root-token-id=ci-root-token -dev-listen-address=0.0.0.0:8200
+          for attempt in $(seq 1 30); do
+            if docker exec p7-openbao bao status -address=http://127.0.0.1:8200 >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs p7-openbao
+          exit 1
+      - name: Run real OpenBao CAS/concurrency/revocation acceptance
+        env:
+          REQUEST_ENGINE_OPENBAO_ACCEPTANCE_TOKEN: ci-root-token
+        run: |
+          uv run python scripts/operations/openbao_operational_acceptance.py \
+            --address http://127.0.0.1:8200 \
+            --token-env REQUEST_ENGINE_OPENBAO_ACCEPTANCE_TOKEN \
+            --topology-reference github-actions-openbao-2.6.1-dev-mode \
+            --output .ci/openbao-operational-acceptance.json
+      - name: Stop real OpenBao engine
+        if: always()
+        run: docker rm -f p7-openbao >/dev/null 2>&1 || true
+      - name: Prove clean-target OpenBao Raft restore lifecycle
+        run: |
+          bash scripts/ci/openbao_raft_restore_smoke.sh \
+            .ci/openbao-raft-restore-smoke.json
+      - name: Upload P7 proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p7-platform-configuration-proof
+          path: |
+            .ci/p7-platform-configuration.xml
+            .ci/openbao-operational-acceptance.json
+            .ci/openbao-raft-restore-smoke.json
+          if-no-files-found: error
+          retention-days: 90

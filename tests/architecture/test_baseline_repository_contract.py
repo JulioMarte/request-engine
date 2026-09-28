@@ -18,6 +18,7 @@ def test_accepted_baseline_surface_is_canonical_and_transitional_surfaces_are_go
     assert (baseline / "manifest.json").is_file()
     assert (baseline / "loader.py").is_file()
     assert (baseline / "0001_roles.sql").is_file()
+    assert (baseline / "seed-data-catalog.json").is_file()
     assert list(baseline.glob("0001_schema.*.sql"))
 
     assert not (MIGRATIONS / "rebaseline_candidate").exists()
@@ -46,3 +47,21 @@ def test_baseline_integrity_proof_does_not_freeze_current_head_to_0001() -> None
         "render_role_bootstrap.py",
     )
     assert all(not (ROOT / "scripts" / "db" / name).exists() for name in retired)
+
+
+def test_baseline_does_not_freeze_proof_database_installation_identity() -> None:
+    baseline = MIGRATIONS / "baseline"
+    schema = "".join(
+        path.read_text(encoding="utf-8") for path in sorted(baseline.glob("0001_schema.*.sql"))
+    )
+    for frozen in (
+        "63b59f87-62b8-499c-bb75-fa63e01ae520",
+        "8b2ea2d3-acb2-4442-9709-bff751a31350",
+        "9e915fcf-775e-4836-8ea3-23119ec9afc3",
+    ):
+        assert frozen not in schema
+
+    seed = (baseline / "seed-data-catalog.json").read_text(encoding="utf-8")
+    assert "<generated:platform-instance-id>" in seed
+    assert "<generated:built-in-native-authority-id>" in seed
+    assert "<generated:built-in-workload-authority-id>" in seed

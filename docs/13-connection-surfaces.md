@@ -9,7 +9,7 @@
 Request Engine is designed on three simultaneous axes:
 
 1. **horizontal responsibilities** — transport, application, domain, persistence/provider mechanics;
-2. **vertical ownership** — current business modules such as tenancy, catalog, requests, booking, queue, communications, discovery, delivery, live capacity, operational recovery and bounded operational tooling;
+2. **vertical ownership** — current business modules such as tenancy, platform configuration, catalog, requests, booking, queue, communications, discovery, delivery, live capacity, operational recovery and bounded operational tooling;
 3. **connection surfaces** — explicit contracts where information/control crosses a boundary.
 
 A component is not considered designed until its inbound and outbound connection surfaces are identified.
@@ -292,3 +292,8 @@ Ask:
 8. Does this edge make ownership clearer, or only hide/repackage existing coupling?
 
 Architecture tests should make high-value connection rules executable whenever practical. Intentional evolution is allowed under `architecture/continuous-evolution-policy.md`; mechanical boundary weakening is not.
+
+
+## P7 platform configuration surfaces
+
+The `platform_configuration` module is the product boundary for installation-wide configuration lifecycle. HTTP composition may call its public contracts. Runtime consumers receive narrow typed resolver contracts; they do not read administrative tables or OpenBao directly. Secret plaintext crosses only the trusted runtime `PlatformSecretStore` boundary and is never returned by human-facing read surfaces. Provider network I/O must occur outside authoritative PostgreSQL locks.

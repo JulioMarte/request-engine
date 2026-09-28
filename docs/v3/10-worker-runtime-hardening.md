@@ -18,9 +18,20 @@ Business state remains owned by the module that created or consumes the work.
 
 On top of those primitives the process also runs operational streams that reuse
 the same claim/fencing protocol: the F5 `recovery_sweep` fallback sweep and the
-governed `identity_recovery_delivery` lane that delivers staged native identity
-recovery secrets. They are registered as ordinary fenced runtimes under the same
-supervisor, not as a second execution engine.
+governed `identity_recovery_delivery` lane that delivers staged administrator-governed
+identity recovery secrets, and the `native_recovery_delivery` lane for public
+verified-address Native HUMAN recovery. They are registered as ordinary fenced
+runtimes under the same supervisor, not as a second execution engine.
+
+The public Native recovery request path is deliberately not a delivery runtime.
+It performs only bounded PostgreSQL enqueue work and returns the same accepted
+response whether the login handle is unknown, lacks a verified recovery address,
+is throttled, or produces one queued request. SMTP and secret-store latency are
+therefore outside the public request timing boundary. The worker, not the HTTP
+request, generates the bearer proof, stages it through the configured
+`RecoverySecretDelivery` secret-store boundary, persists only digest/reference
+metadata in PostgreSQL, and then performs provider delivery outside the enqueue
+transaction.
 
 ## Claim and fencing protocol
 
@@ -92,8 +103,22 @@ Examples:
 - communication provider sends use deterministic provider idempotency keys and reconciliation after ambiguity.
 - ReservationAccess provider artifacts use a stable `(reservation, access_key, reservation revision)` materialization key. A later claimant reuses recorded provider evidence or performs a non-creating provider lookup before deciding whether provisioning or revocation is still required.
 - F5 recovery source changes append immutable reassessment work keyed by `(ServiceQueue, recovery_source_revision)`. Replaying an old row cannot regress the incident because the authoritative write revalidates the current revision under lock.
+- Native verified-address recovery reclaims an expired `sending` lease by returning
+  the durable request to `pending`, clearing the stale claim token and assigning a
+  fresh token on the next claim. If a proof had already been staged before the
+  crash, its opaque secret reference/digest and issuance generation are preserved;
+  the next worker reuses/reconciles that proof rather than minting another one.
+  If staging had not committed, the next claimant may create the first proof for
+  the generation. Expiry or attempt-budget exhaustion terminalizes the request and
+  revokes any still-pending recovery intent.
+- A stale Native recovery worker cannot activate, retry, complete, or renew work
+  after losing its claim token. Activation of a freshly staged proof is fenced
+  before publication; if that fence is lost, the worker best-effort discards the
+  orphaned staged secret and does not publish it.
 
-Exactly-once execution outside PostgreSQL is not promised.
+Exactly-once execution outside PostgreSQL is not promised. In particular SMTP
+cannot prove exactly-once delivery: an ambiguous post-connect outcome remains
+`unknown` rather than triggering a blind duplicate send.
 
 ## Outbox pipeline
 
@@ -212,6 +237,14 @@ The F5 reassessment handler follows this boundary explicitly: the ScheduledActio
 
 The same rule applies to Outbox-derived authoritative writes. When an app transaction must validate a worker-control fact, it uses a narrow `SECURITY DEFINER` fence rather than granting the app broad Outbox access or granting the worker business-table DML. `request_cmd.lock_outbox_message_claim(...)` requires tenant-context equality plus the exact current, unexpired Outbox token and locks that row for the duration of the app transaction. `PUBLIC` cannot execute it and its `search_path` is pinned.
 
+The recovery delivery streams are technical worker lanes. Their claim, activation,
+retry, lease-renewal and finalization functions are executable only through the
+worker-role boundary; the ordinary app role cannot execute those worker functions.
+For `native_recovery_delivery`, the app role can only call the narrow enqueue
+function. The raw proof never becomes an app-visible table value or a worker
+argument loaded from PostgreSQL: it is read back only through the configured
+technical secret-store adapter at publish time.
+
 Production assembly receives independent `worker_session_factory` and `domain_session_factory` objects. `ScheduledAction`, `OutboxMessage`, and `ProviderEvent` control stores are constructed only with `worker_session_factory`. Booking and Queue scheduled handler factories receive only `domain_session_factory`, and Communications reminder/delivery authoritative adapters are also constructed with `domain_session_factory`. Reservation lifecycle composition also receives only `domain_session_factory`; reserved lifecycle event names cannot bypass that factory through generic Outbox handler registration. The F5 recovery reassessment adapter is likewise constructed only with `domain_session_factory`. The composition root rejects reuse of the same factory object for both roles.
 
 The factory-identity check is a guardrail, not the entire security proof. PostgreSQL integration evidence must also demonstrate that the worker factory authenticates through the `request_engine_worker` role boundary and the domain factory through `request_engine_app`; distinct Python wrappers around one privileged credential do not satisfy this contract.
@@ -220,7 +253,7 @@ The factory-identity check is a guardrail, not the entire security proof. Postgr
 
 ## Process assembly and deployment
 
-`request_engine.bootstrap.worker.build_worker_process` is the production composition surface. It creates independent fenced runtimes for ScheduledAction, OutboxMessage and ProviderEvent, plus the F5 `recovery_sweep` and governed `identity_recovery_delivery` streams, under a single `WorkerProcess`/`WorkerSupervisor` failure boundary. An unexpected stream failure cancels siblings; graceful shutdown shares one stop event across all streams.
+`request_engine.bootstrap.worker.build_worker_process` is the production composition surface. It creates independent fenced runtimes for ScheduledAction, OutboxMessage and ProviderEvent, plus the F5 `recovery_sweep`, governed `identity_recovery_delivery`, and optional `native_recovery_delivery` streams, under a single `WorkerProcess`/`WorkerSupervisor` failure boundary. The Native recovery stream is optional at the generic composition layer because the deployment still owns transport/secret-store adapter selection; a deployment that exposes verified-address recovery must supply that runtime rather than falling back to synchronous SMTP in the public HTTP process. An unexpected stream failure cancels siblings; graceful shutdown shares one stop event across all streams.
 
 The ScheduledAction router is assembled in a dedicated bootstrap component so adding a module handler does not grow the process supervisor itself. F5 recovery reassessment is part of the standard registry rather than an optional deployment hook; once F5 source freshness enqueues work, a normally assembled worker knows how to route it.
 

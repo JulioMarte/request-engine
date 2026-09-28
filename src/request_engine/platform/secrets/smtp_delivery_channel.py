@@ -9,6 +9,7 @@ and from an ambiguous post-connect failure that must not be retried blindly.
 import asyncio
 import hashlib
 import smtplib
+import ssl
 from collections.abc import Callable
 from email.message import EmailMessage
 from urllib.parse import quote
@@ -20,6 +21,7 @@ from request_engine.platform.secrets.delivery import (
 )
 
 _SUBJECT = "Request Engine identity recovery"
+_VERIFICATION_SUBJECT = "Verify your Request Engine recovery address"
 
 
 class SmtpRecoveryDeliveryChannel:
@@ -48,8 +50,8 @@ class SmtpRecoveryDeliveryChannel:
         self._host = host
         self._port = port
         self._sender = sender
-        self._username = username
-        self._password = password
+        self._username = username.strip() if username is not None and username.strip() else None
+        self._password = password if password is not None and password.strip() else None
         self._starttls = starttls
         self._use_ssl = use_ssl
         self._timeout_seconds = timeout_seconds
@@ -68,6 +70,35 @@ class SmtpRecoveryDeliveryChannel:
         if not destination_reference.strip() or "@" not in destination_reference:
             raise RecoveryDeliveryPermanent("recovery destination is not a deliverable address")
         message = self._build_message(
+            secret=secret,
+            destination_reference=destination_reference,
+            idempotency_key=idempotency_key,
+        )
+        return await asyncio.to_thread(self._deliver_blocking, message)
+
+    async def send_recovery(
+        self,
+        *,
+        secret: str,
+        destination_reference: str,
+        idempotency_key: str,
+    ) -> DeliveryOutcome:
+        return await self.send(
+            secret=secret,
+            destination_reference=destination_reference,
+            idempotency_key=idempotency_key,
+        )
+
+    async def send_verification(
+        self,
+        *,
+        secret: str,
+        destination_reference: str,
+        idempotency_key: str,
+    ) -> DeliveryOutcome:
+        if not destination_reference.strip() or "@" not in destination_reference:
+            raise RecoveryDeliveryPermanent("verification destination is not a deliverable address")
+        message = self._build_verification_message(
             secret=secret,
             destination_reference=destination_reference,
             idempotency_key=idempotency_key,
@@ -109,12 +140,44 @@ class SmtpRecoveryDeliveryChannel:
         message.set_content(body)
         return message
 
+    def _build_verification_message(
+        self,
+        *,
+        secret: str,
+        destination_reference: str,
+        idempotency_key: str,
+    ) -> EmailMessage:
+        message = EmailMessage()
+        message["From"] = self._sender
+        message["To"] = destination_reference
+        message["Subject"] = _VERIFICATION_SUBJECT
+        message_id = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+        message["Message-ID"] = f"<{message_id}@request-engine>"
+        message.set_content(
+            "A recovery address was added to a Request Engine identity.\n\n"
+            f"Verification code: {secret}\n\n"
+            "If you did not request this, do not share or use this code.\n"
+        )
+        return message
+
     def _deliver_blocking(self, message: EmailMessage) -> DeliveryOutcome:
         try:
-            with self._transport(self._host, self._port, timeout=self._timeout_seconds) as client:
+            # smtplib's built-in defaults for SMTP_SSL/starttls do not verify the
+            # server certificate or hostname; always pass a verifying context so
+            # a recovery proof cannot be leaked to an on-path impersonator.
+            if self._use_ssl:
+                client = self._transport(
+                    self._host,
+                    self._port,
+                    timeout=self._timeout_seconds,
+                    context=ssl.create_default_context(),
+                )
+            else:
+                client = self._transport(self._host, self._port, timeout=self._timeout_seconds)
+            with client:
                 client.ehlo()
                 if self._starttls and not self._use_ssl:
-                    client.starttls()
+                    client.starttls(context=ssl.create_default_context())
                 if self._username is not None:
                     client.login(self._username, self._password or "")
                 client.send_message(message)
@@ -122,6 +185,8 @@ class SmtpRecoveryDeliveryChannel:
             smtplib.SMTPRecipientsRefused,
             smtplib.SMTPSenderRefused,
             smtplib.SMTPAuthenticationError,
+            smtplib.SMTPNotSupportedError,
+            ssl.SSLCertVerificationError,
         ):
             return DeliveryOutcome.FAILED
         except TimeoutError:

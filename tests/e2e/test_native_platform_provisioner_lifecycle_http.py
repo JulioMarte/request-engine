@@ -65,7 +65,8 @@ async def test_platform_provisioner_lifecycle_http_is_revisioned_and_audited(
         root_headers = {"Authorization": f"Bearer {root_login.json()['access_token']}"}
 
         enrollment = await client.post(
-            "/auth/native/identities",
+            "/v1/platform/native-identities",
+            headers=root_headers,
             json={
                 "login_handle": "lifecycle-provisioner@example.test",
                 "password": "lifecycle provisioner proof password",

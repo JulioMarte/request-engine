@@ -3,6 +3,9 @@ from request_engine.platform.security.capability_registry_identity_authority imp
     IDENTITY_AUTHORITY_CAPABILITIES,
 )
 from request_engine.platform.security.capability_registry_live import LIVE_CAPABILITIES
+from request_engine.platform.security.capability_registry_platform_configuration import (
+    PLATFORM_CONFIGURATION_CAPABILITIES,
+)
 from request_engine.platform.security.capability_registry_requests import REQUEST_CAPABILITIES
 from request_engine.platform.security.capability_registry_waitlist import (
     WAITLIST_REMINDER_CAPABILITIES,
@@ -19,6 +22,7 @@ from request_engine.platform.security.capability_types import (
 CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     FOUNDATION_CAPABILITIES
     + IDENTITY_AUTHORITY_CAPABILITIES
+    + PLATFORM_CONFIGURATION_CAPABILITIES
     + LIVE_CAPABILITIES
     + WAITLIST_REMINDER_CAPABILITIES
     + REQUEST_CAPABILITIES

@@ -1,11 +1,30 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Final, Protocol
 
 from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.capabilities import capability_definition
 from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.operation_risk import OperationRiskClass
+
+
+class AuthenticationFreshnessContext(Protocol):
+    @property
+    def authentication_assurance(self) -> AuthenticationAssurance | None: ...
+
+    @property
+    def user_verified(self) -> bool: ...
+
+    @property
+    def recovery_derived(self) -> bool: ...
+
+    @property
+    def recovery_restricted(self) -> bool: ...
+
+    @property
+    def authenticated_at(self) -> datetime | None: ...
+
 
 REAUTHENTICATION_WINDOW: Final[timedelta] = timedelta(minutes=5)
 
@@ -22,8 +41,12 @@ class RecentAuthenticationRequired(PermissionError):
     """Raised when a strong proof exists but is older than the freshness window."""
 
 
+class RecoveryCompletionRequired(PermissionError):
+    """Raised when account recovery must be completed before sensitive authority use."""
+
+
 def require_recent_authentication(
-    actor: ActorContext,
+    actor: AuthenticationFreshnessContext,
     *,
     now: datetime,
     window: timedelta = REAUTHENTICATION_WINDOW,
@@ -34,6 +57,10 @@ def require_recent_authentication(
     or timezone-naive ``authenticated_at`` is treated as stale.
     """
 
+    if actor.recovery_restricted:
+        raise RecoveryCompletionRequired(
+            "complete account recovery before using sensitive authority"
+        )
     authenticated_at = actor.authenticated_at
     if authenticated_at is None or authenticated_at.tzinfo is None:
         raise ReauthenticationRequired("recent reauthentication is required")
@@ -42,7 +69,7 @@ def require_recent_authentication(
 
 
 def require_phishing_resistant_authentication(
-    actor: ActorContext,
+    actor: AuthenticationFreshnessContext,
     *,
     now: datetime,
     window: timedelta = REAUTHENTICATION_WINDOW,
@@ -61,6 +88,10 @@ def require_phishing_resistant_authentication(
     request. It is not SMTP-, P7- or Platform-Owner-specific.
     """
 
+    if actor.recovery_restricted:
+        raise RecoveryCompletionRequired(
+            "complete account recovery before using sensitive authority"
+        )
     if actor.recovery_derived or (
         actor.authentication_assurance is not AuthenticationAssurance.PHISHING_RESISTANT
         or not actor.user_verified
@@ -73,6 +104,30 @@ def require_phishing_resistant_authentication(
         raise RecentAuthenticationRequired("recent strong authentication is required")
     if now - authenticated_at > window:
         raise RecentAuthenticationRequired("recent strong authentication is required")
+
+
+def recovery_safe_capabilities(
+    capabilities: frozenset[str],
+    *,
+    recovery_restricted: bool,
+) -> frozenset[str]:
+    """Temporarily fence authority-changing capabilities during account recovery.
+
+    This does not mutate standing grants. It shapes only the request-local effective
+    actor after authentication, preserving ordinary reads and non-authority product
+    operations while preventing recovery from becoming an authority-change bypass.
+    """
+
+    if not recovery_restricted:
+        return capabilities
+    return frozenset(
+        capability
+        for capability in capabilities
+        if (
+            (definition := capability_definition(capability)) is None
+            or definition.effective_risk_class is not OperationRiskClass.AUTHORITY_CHANGE
+        )
+    )
 
 
 def enforce_step_up(

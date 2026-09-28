@@ -56,6 +56,7 @@ from request_engine.modules.booking.application.operational_errors import (
     ResourceAvailabilityRevisionConflict,
     ResourceLocationAssignmentRevisionConflict,
 )
+from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
@@ -67,8 +68,16 @@ def install_http(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     party_authority_reader: PartyAuthorityReader,
-    appointment_option_signing_key: bytes,
+    appointment_option_signing_key: bytes | None = None,
+    appointment_option_codec: AppointmentOptionCodec | None = None,
 ) -> None:
+    if appointment_option_codec is not None and appointment_option_signing_key is not None:
+        raise ValueError("provide appointment option codec or signing key, not both")
+    option_codec = appointment_option_codec
+    if option_codec is None:
+        if appointment_option_signing_key is None:
+            raise ValueError("appointment option signing requires a codec or signing key")
+        option_codec = SignedAppointmentOptionCodec(appointment_option_signing_key)
     reservations = CapacitySafeReservationCommands(session_factory)
     commitments = CapacitySafeBookingCommitmentCommands(session_factory)
     app.add_exception_handler(BookingError, booking_error_handler)
@@ -76,7 +85,7 @@ def install_http(
     app.include_router(
         create_router(
             availability_reader=PostgresAppointmentAvailabilityReader(session_factory),
-            option_codec=SignedAppointmentOptionCodec(appointment_option_signing_key),
+            option_codec=option_codec,
             discovery_handoff_reader=PostgresDiscoveryHandoffReader(session_factory),
             book_handler=DiscoverySafeBookAppointmentHandler(reservations),
             cancel_handler=reservations,

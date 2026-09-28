@@ -144,6 +144,10 @@ uv run pytest \
   tests/db/test_native_multi_session.py \
   tests/db/test_platform_instance_setup.py \
   tests/db/test_instance_claim.py \
+  tests/db/test_platform_configuration_foundation.py \
+  tests/db/test_platform_configuration_governance.py \
+  tests/db/test_recovery_code_persistence.py \
+  tests/db/test_native_recovery_addresses.py \
   tests/db/test_webauthn_persistence.py \
   tests/db/test_webauthn_concurrency.py \
   -q -m postgres --tb=short --durations=20 \
@@ -189,6 +193,37 @@ uv run pytest \
   tests/unit/platform/security/test_privileged_authentication.py \
   -q --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/privileged-authentication.xml"
+
+
+# P7 platform configuration HTTP governance is current product truth. Keep the
+# module-owned route/capability contract, secret-payload rejection and strong
+# step-up proof in the same evidence packet as the database governance proofs.
+uv run pytest \
+  tests/modules/platform_configuration/test_http_contract.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/platform-configuration-http.xml"
+
+# P7 secret administration and managed runtime are current product truth. Keep
+# the secret-lifecycle reconciliation, hot-reload cache/invalidation, typed SMTP
+# provider proofs and the real-server SMTP TLS/AUTH transport-security proof in
+# the same evidence packet so the corresponding guarantees are backed by
+# executed evidence rather than dormant unit files.
+uv run pytest \
+  tests/unit/platform/secrets/test_platform_secret_administration.py \
+  tests/modules/platform_configuration/test_runtime_resolver.py \
+  tests/modules/platform_configuration/test_runtime_invalidation.py \
+  tests/modules/platform_configuration/test_smtp_provider.py \
+  tests/modules/platform_configuration/test_smtp_tls_protocol.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/platform-configuration-runtime.xml"
+
+# The resolver's polling backstop must converge on the PostgreSQL ACTIVE revision
+# even when no LISTEN/NOTIFY invalidation reaches the process. Run the real
+# Postgres poll-convergence proof on the accepted migration head.
+uv run pytest \
+  tests/db/test_platform_configuration_hot_reload.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/platform-configuration-hot-reload.xml"
 
 # Tenant RLS catalog isolation is current-product truth. Run the adversarial
 # catalog enumeration against the accepted Alembic head so post-baseline tenant
@@ -277,6 +312,34 @@ uv run pytest \
   tests/integration/v3_booking_commitments \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/booking-capacity-regression.xml"
+
+# Platform secret-store portability is a current technical contract. OpenBao is
+# the self-hosted reference backend, but runtime code depends on the provider-
+# neutral PlatformSecretStore boundary and must preserve CAS/no-secret-replay
+# behavior independently of a live external service.
+uv run pytest \
+  tests/unit/platform/secrets/test_openbao_secret_store.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/platform-secret-store.xml"
+
+# P7 operational safety and signing-key overlap are current product guarantees.
+# Execute their mapped proofs in this gate so clone fencing, readiness,
+# recovery-package generation and retiring-key verification cannot become
+# dormant evidence that exists in the repository but never runs.
+uv run pytest \
+  tests/modules/platform/test_outbound_fence.py \
+  tests/architecture/test_e2e_platform_contract.py \
+  tests/modules/platform_configuration/test_readiness_deployment_facts.py \
+  tests/modules/platform_configuration/test_platform_recovery_policy.py \
+  tests/modules/platform_configuration/test_recovery_policy_validation.py \
+  tests/unit/scripts/test_recovery_bundle.py \
+  tests/unit/scripts/test_render_recovery_backup_systemd.py \
+  tests/modules/booking/test_appointment_options.py \
+  tests/unit/platform/security/test_appointment_option_keyring.py \
+  tests/unit/test_managed_appointment_signing.py \
+  tests/db/test_appointment_signing_runtime_projection.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/p7-operational-safety.xml"
 
 # A proof-map entry counts only when its test actually ran in this gate. This
 # prevents dormant legacy files from silently satisfying current guarantees.

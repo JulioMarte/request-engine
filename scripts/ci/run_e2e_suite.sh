@@ -31,6 +31,7 @@ print(spec["artifact_namespace"])
 for profile in spec.get("profiles", []): print(f"profile:{profile}")
 for service in spec.get("services", []): print(f"service:{service}")
 for service in spec.get("deferred_services", []): print(f"deferred:{service}")
+for item in spec.get("environment", []): print(f"environment:{item}")
 for mapping in spec.get("runtime_env_from_state", []): print(f"runtimeenv:{mapping}")
 for fault in spec.get("faults", []): print(f"fault:{fault}")
 PY
@@ -40,6 +41,7 @@ namespace="${resolved[1]}"
 profiles=()
 runtime_services=()
 deferred_services=()
+static_environment=()
 runtime_env_from_state=()
 faults=()
 for item in "${resolved[@]:2}"; do
@@ -47,9 +49,19 @@ for item in "${resolved[@]:2}"; do
     profile:*) profiles+=("${item#profile:}") ;;
     service:*) runtime_services+=("${item#service:}") ;;
     deferred:*) deferred_services+=("${item#deferred:}") ;;
+    environment:*) static_environment+=("${item#environment:}") ;;
     runtimeenv:*) runtime_env_from_state+=("${item#runtimeenv:}") ;;
     fault:*) faults+=("${item#fault:}") ;;
   esac
+done
+for assignment in "${static_environment[@]}"; do
+  variable="${assignment%%=*}"
+  value="${assignment#*=}"
+  [[ "$variable" =~ ^[A-Z][A-Z0-9_]*$ && "$assignment" != "$variable" ]] || {
+    echo "invalid suite environment assignment: $assignment" >&2
+    exit 2
+  }
+  export "$variable=$value"
 done
 ((${#runtime_services[@]} > 0)) || { echo "suite '$requested' declares no runtime services" >&2; exit 2; }
 
@@ -91,13 +103,40 @@ if [[ "${E2E_IMAGES_READY:-0}" != "1" ]]; then build_images; fi
 infra=(postgres)
 for profile in "${profiles[@]}"; do
   case "$profile" in
-    secrets) infra+=(vault) ;;
-    delivery) infra+=(mailpit) ;;
+    secrets) infra+=(openbao) ;;
+    delivery|managed-delivery) infra+=(mailpit) ;;
     worker) infra+=(event-sink) ;;
   esac
 done
 retry_docker "$suite_artifacts/phases/infrastructure.log" \
   "${compose[@]}" up -d --wait --wait-timeout "${INFRA_READY_TIMEOUT_SECONDS:-120}" "${infra[@]}"
+
+for profile in "${profiles[@]}"; do
+  case "$profile" in
+    secrets)
+      export REQUEST_ENGINE_OPENBAO_ADDR="http://openbao:8200"
+      export REQUEST_ENGINE_OPENBAO_TOKEN="ci-root-token"
+      ;;
+    delivery)
+      # Legacy/bootstrap SMTP is intentionally injected only for suites whose
+      # contract exercises that fallback. Managed P7 suites use
+      # `managed-delivery` so the processes receive no REQUEST_ENGINE_SMTP_*
+      # values and must resolve SMTP entirely from ACTIVE governed config.
+      export REQUEST_ENGINE_SMTP_HOST="mailpit"
+      export REQUEST_ENGINE_SMTP_PORT="1025"
+      export REQUEST_ENGINE_SMTP_SENDER="recovery@example.test"
+      export REQUEST_ENGINE_SMTP_STARTTLS="false"
+      export REQUEST_ENGINE_SMTP_SSL="false"
+      ;;
+    managed-delivery)
+      # Infrastructure only. Do not export bootstrap SMTP configuration.
+      unset REQUEST_ENGINE_SMTP_HOST REQUEST_ENGINE_SMTP_PORT
+      unset REQUEST_ENGINE_SMTP_SENDER REQUEST_ENGINE_SMTP_USERNAME
+      unset REQUEST_ENGINE_SMTP_PASSWORD REQUEST_ENGINE_SMTP_STARTTLS
+      unset REQUEST_ENGINE_SMTP_SSL
+      ;;
+  esac
+done
 
 {
   "${compose[@]}" run --rm --no-deps migrate
@@ -161,7 +200,7 @@ export E2E_RUNTIME_SERVICES="${runtime_services[*]}"
 bash scripts/ci/assert_reference_image_identity.sh 2>&1 | tee "$suite_artifacts/phases/image-identity.log"
 
 if ((${#faults[@]} == 0)); then
-  if ((${#deferred_services[@]} == 0)); then run_runner main 2>&1 | tee "$suite_artifacts/phases/runner.log"; fi
+  run_runner main 2>&1 | tee "$suite_artifacts/phases/runner.log"
 else
   run_runner before-fault 2>&1 | tee "$suite_artifacts/phases/runner-before-fault.log"
   for fault in "${faults[@]}"; do bash scripts/ci/e2e_fault_injection.sh "$fault" 2>&1 | tee -a "$suite_artifacts/phases/faults.log"; done

@@ -166,6 +166,10 @@ The public Booking API returns the same opaque `appointment_unavailable` respons
 
 The F7 arrival-estimate slice touched Booking's API composition (`api/__init__.py`, `api/errors.py`) and `reservation_commands.py` read plumbing without touching capacity semantics: it added a public `appointments.record_arrival_estimate` capability whose command takes only the reservation row lock, never resource locks, and records no capacity claims; its typed errors (`ReservationNotConfirmed`, `ArrivalEstimateInvalid`, revision conflict) ride the existing booking error envelope. Shared-capacity lock order, `guard_capacity_claim` and the `23P01` boundary above are unchanged by that slice.
 
+### Post-V3 P7 appointment-signing composition note
+
+P7-I touches `booking/api/__init__.py` only at the module composition boundary: Booking may now receive an already-composed `AppointmentOptionCodec` so the deployment can hot-reload an installation-wide signing keyring without rebuilding the Booking router. The opaque appointment option still carries the same tenant-local contextual Resource/Location provenance and is revalidated by the same authoritative Booking transaction. This change does not add a capacity authority, does not alter local-Resource-first/shared-root lock order, does not expose hidden shared-capacity identifiers, and does not change the opaque `appointment_unavailable` contention boundary.
+
 ### Post-V3 operator day-board composition note (F7)
 
 The operator day-board slice also touches Booking API composition, but it is read-only. `/v1/appointments/day-board` reads the tenant-scoped `request_read.reservation_day_v1` `security_invoker` projection under `appointments.day_board`; it creates no Reservation or `CapacityClaim`, acquires no capacity root, and cannot alter shared-capacity serialization. Foreign-tenant rows remain hidden by the ordinary tenant transaction/RLS boundary, so shared-capacity privacy and the lock topology above are unchanged.

@@ -1,0 +1,36 @@
+name: request-engine-openbao
+
+services:
+  openbao:
+    image: openbao/openbao:2.6.1
+    command: ["bao", "server", "-config=/openbao/config/openbao.hcl"]
+    cap_add: [IPC_LOCK]
+    volumes:
+      - openbao-data:/openbao/data
+      - ./openbao.hcl:/openbao/config/openbao.hcl:ro
+      - ./tls:/openbao/tls:ro
+    ports:
+      - "127.0.0.1:8200:8200"
+    healthcheck:
+      test: ["CMD", "bao", "status"]
+      interval: 5s
+      timeout: 4s
+      retries: 30
+    restart: unless-stopped
+
+  openbao-proxy:
+    image: openbao/openbao:2.6.1
+    command: ["bao", "proxy", "-config=/openbao/config/proxy.hcl"]
+    depends_on:
+      openbao:
+        condition: service_started
+    volumes:
+      - ./proxy.hcl:/openbao/config/proxy.hcl:ro
+      - ./tls:/openbao/tls:ro
+      - ./auth:/run/openbao-auth
+    ports:
+      - "127.0.0.1:8100:8100"
+    restart: unless-stopped
+
+volumes:
+  openbao-data: {}

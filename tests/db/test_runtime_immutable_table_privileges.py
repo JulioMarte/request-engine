@@ -87,6 +87,11 @@ _EXACT_DEFINER_OWNERS = {
         "assert_platform_identity_actor",
         "p_capability text",
     ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "assert_platform_owner_actor",
+        "p_capability text",
+    ): "request_platform_control_definer",
     # 0065 atomic Instance claim surface.
     (
         "request_platform",
@@ -191,6 +196,65 @@ _EXACT_DEFINER_OWNERS = {
     ): "request_platform_control_definer",
     (
         "request_platform",
+        "grant_platform_owner_v2_capabilities_on_claim",
+        "",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "native_identity_ready_for_platform_owner",
+        "p_identity_authority_id uuid, p_native_identity_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "principal_is_effective_platform_owner",
+        "p_principal_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "assert_other_platform_owner",
+        "p_excluded_principal_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "provision_native_platform_owner",
+        "p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, "
+        "p_native_identity_id uuid, p_provenance_reference text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "transition_native_platform_owner",
+        "p_principal_id uuid, p_action text, p_expected_revision bigint, "
+        "p_reason_code text, p_external_case_reference text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "create_platform_owner_invitation",
+        "p_invitation_id uuid, p_token_digest bytea, p_token_fingerprint text, "
+        "p_expires_at timestamp with time zone, p_provenance_reference text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "enroll_platform_owner_invitation",
+        "p_token_digest bytea, p_native_identity_id uuid, p_credential_id uuid, "
+        "p_login_handle text, p_password_verifier text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "activate_platform_owner_invitation",
+        "p_invitation_id uuid, p_principal_id uuid, p_binding_id uuid, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "revoke_platform_owner_invitation",
+        "p_invitation_id uuid, p_reason_code text, p_idempotency_key_digest text, "
+        "p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
         "assert_platform_has_controller",
         "",
     ): "request_platform_control_definer",
@@ -210,6 +274,129 @@ _EXACT_DEFINER_OWNERS = {
         "read_setup_session",
         "p_token_digest bytea",
     ): "request_platform_control_definer",
+    (
+        "request_engine",
+        "adopt_platform_owner_v3",
+        "",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "assert_platform_configuration_actor",
+        "p_capability text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_platform_configuration_revisions",
+        "p_configuration_kind text",
+    ): "request_platform_definer",
+    (
+        "request_platform",
+        "read_platform_secret_binding",
+        "p_binding_id uuid",
+    ): "request_platform_definer",
+    (
+        "request_platform",
+        "stage_platform_configuration",
+        "p_configuration_kind text, p_provider_kind text, p_configuration jsonb, "
+        "p_secret_binding_id uuid, p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "validate_platform_configuration",
+        "p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, "
+        "p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "activate_platform_configuration",
+        "p_configuration_kind text, p_revision bigint, p_expected_active_revision bigint, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "disable_platform_configuration",
+        "p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, "
+        "p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "record_platform_secret_binding",
+        "p_purpose text, p_backend text, p_secret_id uuid, p_backend_version integer, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "commit_platform_secret_rotation",
+        "p_binding_id uuid, p_expected_revision bigint, p_expected_backend_version integer, "
+        "p_new_backend_version integer, p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "revoke_platform_secret_binding",
+        "p_binding_id uuid, p_expected_revision bigint, p_expected_backend_version integer, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "prepare_platform_secret_mutation",
+        "p_operation_kind text, p_purpose text, p_backend text, p_binding_id uuid, "
+        "p_expected_binding_revision bigint, p_expected_backend_version integer, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "mark_platform_secret_backend_applied",
+        "p_operation_id uuid, p_applied_backend_version integer",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "commit_platform_secret_mutation",
+        "p_operation_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "resolve_platform_provider_secret",
+        "p_binding_id uuid, p_capability_key text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_platform_provider_candidate",
+        "p_configuration_kind text, p_revision bigint, p_capability_key text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "validate_platform_configuration_provider",
+        "p_configuration_kind text, p_revision bigint, p_expected_binding_revision bigint, "
+        "p_expected_backend_version integer, p_idempotency_key_digest text, "
+        "p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "record_platform_provider_test",
+        "p_configuration_kind text, p_revision bigint, p_expected_binding_revision bigint, "
+        "p_expected_backend_version integer, p_outcome text, p_detail_code text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_active_platform_runtime_configuration",
+        "p_configuration_kind text",
+    ): "request_platform_definer",
+    (
+        "request_platform",
+        "read_active_appointment_option_signing_keyring",
+        "",
+    ): "request_platform_definer",
+    (
+        "request_platform",
+        "read_platform_runtime_configuration_revision",
+        "p_configuration_kind text, p_revision bigint",
+    ): "request_platform_definer",
+    (
+        "request_platform",
+        "read_platform_readiness",
+        "",
+    ): "request_platform_definer",
 }
 _COLUMN_UPDATE_AUTHORITY = {
     "operational_recovery_executions": {
