@@ -295,6 +295,24 @@ async def test_setup_page_degrades_when_control_unreachable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dashboard_degrades_on_non_object_control_error_body() -> None:
+    class PlainTextFailure(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if method == "GET" and path == "/v1/platform/observability":
+                return ControlResponse(500, "Internal Server Error", {})
+            return await super().request(method, path, **kwargs)
+
+    app = create_admin_console_app(_settings(), client=PlainTextFailure())
+    async with _client(app) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get("/")
+
+    assert response.status_code == 200
+    assert "control plane returned HTTP 500" in response.text
+    assert "Internal Server Error" in response.text
+
+
+@pytest.mark.asyncio
 async def test_dashboard_degrades_when_control_unreachable() -> None:
     class PartlyUnreachable(FakeControl):
         async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
