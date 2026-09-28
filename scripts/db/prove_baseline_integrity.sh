@@ -96,6 +96,31 @@ if [[ "$actual_head" != "0001_initial" ]]; then
   exit 1
 fi
 
+# Installation identity is generated at install time, not copied from the
+# rebaseline proof database. Install immutable 0001 into a second clean database
+# and require all three installation-local UUIDs to differ.
+IDENTITY_PROBE_DB="request_engine_baseline_identity_probe"
+admin_psql=(psql --host=127.0.0.1 --port="$PORT" --username=postgres --dbname=postgres --set=ON_ERROR_STOP=1)
+"${admin_psql[@]}" --command="CREATE DATABASE \"${IDENTITY_PROBE_DB}\""
+export MIGRATION_DATABASE_URL="postgresql+psycopg://postgres:${PGPASSWORD}@127.0.0.1:${PORT}/${IDENTITY_PROBE_DB}"
+uv run alembic -c "$ALEMBIC_DIR/alembic.ini" upgrade head
+unset MIGRATION_DATABASE_URL
+
+identity_query="SELECT instance.id::text, instance.built_in_native_authority_id::text, instance.built_in_workload_authority_id::text FROM request_engine.platform_instance AS instance WHERE instance.singleton_key = 1"
+first_identity="$("${baseline_psql[@]}" --tuples-only --no-align --field-separator='|' --command="$identity_query")"
+probe_psql=(psql --host=127.0.0.1 --port="$PORT" --username=postgres --dbname="$IDENTITY_PROBE_DB" --set=ON_ERROR_STOP=1)
+second_identity="$("${probe_psql[@]}" --tuples-only --no-align --field-separator='|' --command="$identity_query")"
+IFS='|' read -r first_instance first_native first_workload <<< "$first_identity"
+IFS='|' read -r second_instance second_native second_workload <<< "$second_identity"
+for value in "$first_instance" "$first_native" "$first_workload" "$second_instance" "$second_native" "$second_workload"; do
+  [[ -n "$value" ]] || { echo "baseline installation identity probe returned an empty UUID" >&2; exit 1; }
+done
+if [[ "$first_instance" == "$second_instance" || "$first_native" == "$second_native" || "$first_workload" == "$second_workload" ]]; then
+  echo "fresh 0001 installations reused an installation-local UUID" >&2
+  printf 'first=%s second=%s\n' "$first_identity" "$second_identity" >&2
+  exit 1
+fi
+
 PGHOST=127.0.0.1 PGPORT="$PORT" PGDATABASE="$SOURCE_DB" PGUSER=postgres \
   uv run python scripts/db/export_schema_catalog.py --output "$SCHEMA_CATALOG"
 PGHOST=127.0.0.1 PGPORT="$PORT" PGDATABASE="$SOURCE_DB" PGUSER=postgres \

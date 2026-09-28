@@ -11,8 +11,8 @@
   },
   "schema_payload": {
     "source_artifact_name": "rebaseline-0094-candidate-v2/0001_schema.sql",
-    "bytes": 1779489,
-    "sha256": "66daabe2f565153f736c6802f895cfe311f99d84652b6349833041caf2424849",
+    "bytes": 1779614,
+    "sha256": "4ca49de594e06cac8a1af94738dcc83b792540efa76226397290e0187d793b01",
     "materialized_parts": [
       {
         "path": "0001_schema.01.sql",
@@ -61,8 +61,8 @@
       },
       {
         "path": "0001_schema.10.sql",
-        "bytes": 119909,
-        "sha256": "3fed1728c780d1139d77f95bdf28236575d8a557eaa17967d913c30a3d989632"
+        "bytes": 120034,
+        "sha256": "b2a61e4eb8e8e2dfe07425e434f6605e514e2677cef6cb81193cb78d59dcdf09"
       },
       {
         "path": "0001_schema.11.sql",
@@ -224,14 +224,22 @@
   "seed_data": {
     "source_artifact_name": "rebaseline-0094-candidate-v2/source-seed-data-catalog.json",
     "path": "seed-data-catalog.json",
-    "bytes": 40115,
-    "sha256": "8a71a29e7be3038b112db99dd6b69a0c4b7386858227ded86f816cc918d4c7f6",
+    "bytes": 40056,
+    "sha256": "cebf4efcc8100d9f89d6cd85e1e91e3732e50734afc4730cdbeb2d1dc99af74a",
     "counts": {
       "nonempty_tables": 4,
       "rows": 11,
       "sequences": 0,
       "tables": 142
-    }
+    },
+    "representation": "semantic-normalized",
+    "normalized_fresh_install_fields": [
+      "request_engine.identity_authorities.id for built-in native/workload authorities",
+      "request_engine.identity_authorities.created_at for built-in native/workload authorities",
+      "request_engine.platform_instance.id",
+      "request_engine.platform_instance.created_at",
+      "request_engine.platform_instance built-in authority foreign keys"
+    ]
   },
   "effective_model": {
     "relations": 151,
@@ -260,5 +268,12 @@
     "ci_run_number": 17,
     "proof_head_sha": "3e938a888e576919b5b75f449fe86014b5cbd7f9",
     "schema_comparison_first_difference": null
+  },
+  "installation_identity": {
+    "generated_per_fresh_install": true,
+    "platform_instance_id": "gen_random_uuid()",
+    "built_in_authority_ids": "gen_random_uuid()",
+    "created_at": "clock_timestamp()",
+    "proof_requirement": "two clean 0001 installations must have distinct platform/native/workload UUIDs"
   }
 }

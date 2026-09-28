@@ -530,8 +530,8 @@ ALTER VIEW request_read.service_session_status_v1 OWNER TO request_engine_schema
 -- Data for Name: identity_authorities; Type: TABLE DATA; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-INSERT INTO request_engine.identity_authorities VALUES ('8b2ea2d3-acb2-4442-9709-bff751a31350', 'native', 'request-engine-native', 'active', NULL, 1, '2026-09-27 22:11:02.465504+00');
-INSERT INTO request_engine.identity_authorities VALUES ('9e915fcf-775e-4836-8ea3-23119ec9afc3', 'workload', 'request-engine-workload', 'active', NULL, 1, '2026-09-27 22:11:02.465757+00');
+INSERT INTO request_engine.identity_authorities (\n    kind, issuer_or_environment\n) VALUES (\n    'native', 'request-engine-native'\n);
+INSERT INTO request_engine.identity_authorities (\n    kind, issuer_or_environment\n) VALUES (\n    'workload', 'request-engine-workload'\n);
 
 
 --
@@ -891,7 +891,7 @@ INSERT INTO request_engine.initial_controller_policies VALUES ('tenant-controlle
 -- Data for Name: platform_instance; Type: TABLE DATA; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-INSERT INTO request_engine.platform_instance VALUES (1, '63b59f87-62b8-499c-bb75-fa63e01ae520', 'unclaimed', 1, '8b2ea2d3-acb2-4442-9709-bff751a31350', '9e915fcf-775e-4836-8ea3-23119ec9afc3', '2026-09-27 22:11:02.466113+00', NULL, NULL, NULL);
+INSERT INTO request_engine.platform_instance (\n    singleton_key,\n    built_in_native_authority_id,\n    built_in_workload_authority_id\n)\nSELECT 1, native.id, workload.id\nFROM request_engine.identity_authorities AS native\nCROSS JOIN request_engine.identity_authorities AS workload\nWHERE native.kind = 'native'\n  AND native.issuer_or_environment = 'request-engine-native'\n  AND workload.kind = 'workload'\n  AND workload.issuer_or_environment = 'request-engine-workload';
 
 
 --

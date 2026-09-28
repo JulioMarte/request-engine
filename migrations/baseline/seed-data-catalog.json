@@ -122,8 +122,8 @@
       "relation_name": "identity_authorities",
       "row_count": 2,
       "rows": [
-        "{\"id\": \"8b2ea2d3-acb2-4442-9709-bff751a31350\", \"kind\": \"native\", \"status\": \"active\", \"revision\": 1, \"created_at\": \"2026-09-27T22:11:02.465504+00:00\", \"configuration_ref\": null, \"issuer_or_environment\": \"request-engine-native\"}",
-        "{\"id\": \"9e915fcf-775e-4836-8ea3-23119ec9afc3\", \"kind\": \"workload\", \"status\": \"active\", \"revision\": 1, \"created_at\": \"2026-09-27T22:11:02.465757+00:00\", \"configuration_ref\": null, \"issuer_or_environment\": \"request-engine-workload\"}"
+        "{\"configuration_ref\":null,\"created_at\":\"<generated:created-at>\",\"id\":\"<generated:built-in-native-authority-id>\",\"issuer_or_environment\":\"request-engine-native\",\"kind\":\"native\",\"revision\":1,\"status\":\"active\"}",
+        "{\"configuration_ref\":null,\"created_at\":\"<generated:created-at>\",\"id\":\"<generated:built-in-workload-authority-id>\",\"issuer_or_environment\":\"request-engine-workload\",\"kind\":\"workload\",\"revision\":1,\"status\":\"active\"}"
       ],
       "schema_name": "request_engine"
     },
@@ -485,7 +485,7 @@
       "relation_name": "platform_instance",
       "row_count": 1,
       "rows": [
-        "{\"id\": \"63b59f87-62b8-499c-bb75-fa63e01ae520\", \"state\": \"unclaimed\", \"revision\": 1, \"claimed_at\": null, \"created_at\": \"2026-09-27T22:11:02.466113+00:00\", \"singleton_key\": 1, \"claim_provenance\": null, \"initial_owner_principal_id\": null, \"built_in_native_authority_id\": \"8b2ea2d3-acb2-4442-9709-bff751a31350\", \"built_in_workload_authority_id\": \"9e915fcf-775e-4836-8ea3-23119ec9afc3\"}"
+        "{\"built_in_native_authority_id\":\"<generated:built-in-native-authority-id>\",\"built_in_workload_authority_id\":\"<generated:built-in-workload-authority-id>\",\"claim_provenance\":null,\"claimed_at\":null,\"created_at\":\"<generated:created-at>\",\"id\":\"<generated:platform-instance-id>\",\"initial_owner_principal_id\":null,\"revision\":1,\"singleton_key\":1,\"state\":\"unclaimed\"}"
       ],
       "schema_name": "request_engine"
     },
