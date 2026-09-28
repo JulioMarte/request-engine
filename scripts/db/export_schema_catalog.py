@@ -205,8 +205,7 @@ def main() -> None:
     payload["counts"] = {
         name: len(rows) for name, rows in payload.items() if isinstance(rows, list)
     }
-    serialized = json.dumps(payload, indent=2, sort_keys=True) + "
-"
+    serialized = json.dumps(payload, indent=2, sort_keys=True) + "\\n"
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(serialized, encoding="utf-8")
 
