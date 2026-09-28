@@ -1,0 +1,887 @@
+{
+  "counts": {
+    "nonempty_tables": 4,
+    "rows": 11,
+    "sequences": 0,
+    "tables": 142
+  },
+  "schema_version": 1,
+  "schemas": [
+    "request_admin",
+    "request_auth",
+    "request_cmd",
+    "request_engine",
+    "request_platform",
+    "request_read"
+  ],
+  "sequences": [],
+  "tables": [
+    {
+      "relation_name": "agent_budget_windows",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "agent_policies",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "agent_profiles",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "attendance_responses",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "audit_records",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "booking_context_terms",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "capacity_claims",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "capacity_holds",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "communication_deliveries",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "communication_escalations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "communication_tasks",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "delegations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "discovery_booking_handoffs",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "discovery_publications",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "external_correlations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "global_identities",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "idempotency_records",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "identity_authorities",
+      "row_count": 2,
+      "rows": [
+        "{\"id\": \"8b2ea2d3-acb2-4442-9709-bff751a31350\", \"kind\": \"native\", \"status\": \"active\", \"revision\": 1, \"created_at\": \"2026-09-27T22:11:02.465504+00:00\", \"configuration_ref\": null, \"issuer_or_environment\": \"request-engine-native\"}",
+        "{\"id\": \"9e915fcf-775e-4836-8ea3-23119ec9afc3\", \"kind\": \"workload\", \"status\": \"active\", \"revision\": 1, \"created_at\": \"2026-09-27T22:11:02.465757+00:00\", \"configuration_ref\": null, \"issuer_or_environment\": \"request-engine-workload\"}"
+      ],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "identity_bindings",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "identity_exchange_candidates",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "identity_link_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "identity_link_intents",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "identity_recovery_cases",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "identity_recovery_delivery_tickets",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "identity_recovery_issuance_reservations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "initial_controller_policies",
+      "row_count": 5,
+      "rows": [
+        "{\"grants\": [{\"delegable\": true, \"capability_key\": \"agent.policy.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"agent.manage_policy\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.provision\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.manage_authority\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.suspend\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"delegation.create\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"delegation.revoke\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"organization.bootstrap\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.manage\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"booking.manage_supply\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"discovery.manage\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"onboarding.read\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"business.get_info\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.search_offerings\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.get_offering_details\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"parties.register\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"parties.lookup\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.find_slots\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.book\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.read\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.cancel\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.reschedule\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.subject_override\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.day_board\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"agent.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"authority.read_self\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"controller_policy_upgrade\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"authority.inspect_resource\", \"authority_plane\": \"operational\"}], \"revision\": 5, \"policy_key\": \"tenant-controller-v5\"}",
+        "{\"grants\": [{\"delegable\": true, \"capability_key\": \"agent.policy.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"agent.manage_policy\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.provision\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.manage_authority\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.suspend\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"delegation.create\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"delegation.revoke\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"organization.bootstrap\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.manage\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"booking.manage_supply\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"discovery.manage\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"onboarding.read\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"business.get_info\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.search_offerings\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.get_offering_details\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"parties.register\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"parties.lookup\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.find_slots\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.book\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.read\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.cancel\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.reschedule\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.subject_override\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.day_board\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"agent.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"authority.read_self\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"controller_policy_upgrade\", \"authority_plane\": \"tenant_control\"}], \"revision\": 4, \"policy_key\": \"tenant-controller-v4\"}",
+        "{\"grants\": [{\"delegable\": true, \"capability_key\": \"agent.policy.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"agent.manage_policy\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.provision\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.manage_authority\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.suspend\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"delegation.create\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"delegation.revoke\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"organization.bootstrap\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.manage\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"booking.manage_supply\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"discovery.manage\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"onboarding.read\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"business.get_info\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.search_offerings\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.get_offering_details\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"parties.register\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"parties.lookup\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.find_slots\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.book\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.read\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.cancel\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.reschedule\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.subject_override\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.day_board\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"agent.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"authority.read_self\", \"authority_plane\": \"operational\"}], \"revision\": 3, \"policy_key\": \"tenant-controller-v3\"}",
+        "{\"grants\": [{\"delegable\": true, \"capability_key\": \"agent.policy.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"agent.manage_policy\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.provision\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.manage_authority\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.suspend\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"delegation.create\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"delegation.revoke\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"organization.bootstrap\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.manage\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"booking.manage_supply\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"discovery.manage\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"onboarding.read\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"business.get_info\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.search_offerings\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.get_offering_details\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"parties.register\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"parties.lookup\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.find_slots\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.book\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.read\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.cancel\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.reschedule\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.subject_override\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.day_board\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"agent.read\", \"authority_plane\": \"tenant_control\"}], \"revision\": 2, \"policy_key\": \"tenant-controller-v2\"}",
+        "{\"grants\": [{\"delegable\": true, \"capability_key\": \"agent.policy.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"agent.manage_policy\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.provision\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.read\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.manage_authority\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"integration.suspend\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"delegation.create\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"delegation.revoke\", \"authority_plane\": \"tenant_control\"}, {\"delegable\": true, \"capability_key\": \"organization.bootstrap\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.manage\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"booking.manage_supply\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"discovery.manage\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"onboarding.read\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"business.get_info\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.search_offerings\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"catalog.get_offering_details\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"parties.register\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"parties.lookup\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.find_slots\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.book\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.read\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.cancel\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.reschedule\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.subject_override\", \"authority_plane\": \"operational\"}, {\"delegable\": true, \"capability_key\": \"appointments.day_board\", \"authority_plane\": \"operational\"}], \"revision\": 1, \"policy_key\": \"tenant-controller-v1\"}"
+      ],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "integration_governance_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "live_capacity_projection_policies",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "live_capacity_workload_estimate_policies",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "location_hours_exceptions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "location_operational_hours",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "location_public_contact_endpoints",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "locations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_credentials",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_identities",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_identity_recovery_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_identity_recovery_state",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_recovery_address_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_recovery_address_verifications",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_recovery_addresses",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_recovery_delivery_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_recovery_delivery_requests",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_recovery_intents",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "native_sessions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "offering_resource_requirements",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "offering_service_classifications",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "offering_version_booking_policies",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "offering_version_booking_terms",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "offering_versions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "offerings",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "operational_recovery_actions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "operational_recovery_autonomy_policies",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "operational_recovery_escalations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "operational_recovery_executions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "operational_recovery_incidents",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "operational_recovery_proposals",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "operational_workload_classifications",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "organization_channel_policies",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "organization_party_bindings",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "organization_provisioning_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "organization_public_contact_endpoints",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "organization_root_provisioning_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "organizations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "outbox_messages",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "parties",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "party_administrative_identifiers",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "party_contact_points",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "party_identity_documents",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "party_identity_revisions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_authority_lifecycle_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_bootstrap_intents",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_configuration_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_configuration_revisions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_identity_disable_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_identity_recovery_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_installation_claim_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_instance",
+      "row_count": 1,
+      "rows": [
+        "{\"id\": \"63b59f87-62b8-499c-bb75-fa63e01ae520\", \"state\": \"unclaimed\", \"revision\": 1, \"claimed_at\": null, \"created_at\": \"2026-09-27T22:11:02.466113+00:00\", \"singleton_key\": 1, \"claim_provenance\": null, \"initial_owner_principal_id\": null, \"built_in_native_authority_id\": \"8b2ea2d3-acb2-4442-9709-bff751a31350\", \"built_in_workload_authority_id\": \"9e915fcf-775e-4836-8ea3-23119ec9afc3\"}"
+      ],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_owner_invitation_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_owner_invitations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_owner_policies",
+      "row_count": 3,
+      "rows": [
+        "{\"grants\": [{\"delegable\": true, \"capability_key\": \"platform.principal.provision\"}, {\"delegable\": true, \"capability_key\": \"platform.tenant_provisioner.provision\"}, {\"delegable\": false, \"capability_key\": \"platform.recovery_operator.provision\"}, {\"delegable\": true, \"capability_key\": \"organization.provision\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.recover\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.read\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.provision\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.recovery_approve\"}, {\"delegable\": false, \"capability_key\": \"platform.provisioner.read\"}, {\"delegable\": false, \"capability_key\": \"platform.provisioner.manage_lifecycle\"}, {\"delegable\": false, \"capability_key\": \"platform.owner.read\"}, {\"delegable\": false, \"capability_key\": \"platform.owner.provision\"}, {\"delegable\": false, \"capability_key\": \"platform.owner.manage_lifecycle\"}, {\"delegable\": false, \"capability_key\": \"platform.configuration.read\"}, {\"delegable\": false, \"capability_key\": \"platform.configuration.stage\"}, {\"delegable\": false, \"capability_key\": \"platform.configuration.validate\"}, {\"delegable\": false, \"capability_key\": \"platform.configuration.activate\"}, {\"delegable\": false, \"capability_key\": \"platform.configuration.disable\"}, {\"delegable\": false, \"capability_key\": \"platform.secret.write\"}, {\"delegable\": false, \"capability_key\": \"platform.secret.rotate\"}, {\"delegable\": false, \"capability_key\": \"platform.secret.revoke\"}, {\"delegable\": false, \"capability_key\": \"platform.provider.test\"}, {\"delegable\": false, \"capability_key\": \"platform.readiness.read\"}], \"revision\": 3, \"policy_key\": \"platform-owner-v3\"}",
+        "{\"grants\": [{\"delegable\": true, \"capability_key\": \"platform.principal.provision\"}, {\"delegable\": true, \"capability_key\": \"platform.tenant_provisioner.provision\"}, {\"delegable\": false, \"capability_key\": \"platform.recovery_operator.provision\"}, {\"delegable\": true, \"capability_key\": \"organization.provision\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.recover\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.read\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.provision\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.recovery_approve\"}, {\"delegable\": false, \"capability_key\": \"platform.provisioner.read\"}, {\"delegable\": false, \"capability_key\": \"platform.provisioner.manage_lifecycle\"}, {\"delegable\": false, \"capability_key\": \"platform.owner.read\"}, {\"delegable\": false, \"capability_key\": \"platform.owner.provision\"}, {\"delegable\": false, \"capability_key\": \"platform.owner.manage_lifecycle\"}], \"revision\": 2, \"policy_key\": \"platform-owner-v2\"}",
+        "{\"grants\": [{\"delegable\": true, \"capability_key\": \"platform.principal.provision\"}, {\"delegable\": true, \"capability_key\": \"platform.tenant_provisioner.provision\"}, {\"delegable\": false, \"capability_key\": \"platform.recovery_operator.provision\"}, {\"delegable\": true, \"capability_key\": \"organization.provision\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.recover\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.read\"}, {\"delegable\": false, \"capability_key\": \"platform.identity.recovery_approve\"}, {\"delegable\": false, \"capability_key\": \"platform.provisioner.read\"}, {\"delegable\": false, \"capability_key\": \"platform.provisioner.manage_lifecycle\"}], \"revision\": 1, \"policy_key\": \"platform-owner-v1\"}"
+      ],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_owner_provisioning_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_recovery_code_facts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_secret_bindings",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "platform_secret_mutations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "portable_party_identifiers",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "portable_party_identities",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "portable_party_profiles",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "principal_authority_grants",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "principal_contacts",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "principals",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "provider_events",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "queue_entries",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "queue_entry_operator_selections",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "queue_entry_recall_holds",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "queue_entry_skips",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "recovery_code_sets",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "recovery_codes",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "recovery_source_revisions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "reminder_acknowledgements",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "reminder_plans",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "representations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "request_definition_versions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "request_definitions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "request_participants",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "requests",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "reservation_access",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "reservation_arrival_estimates",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "reservation_attendance",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "reservation_commercial_commitment_context_terms",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "reservation_commercial_commitments",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "reservations",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "resource_activities",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "resource_capabilities",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "resource_capability_assignments",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "resource_location_assignments",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "resource_location_availability",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "resource_location_schedule_exceptions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "resource_public_profiles",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "resources",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "schedule_exceptions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "scheduled_actions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "service_classification_authority_events",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "service_classifications",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "service_queue_intake_controls",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "service_queues",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "service_session_interruptions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "service_sessions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "setup_pending_identity",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "setup_pending_webauthn_credential",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "setup_sessions",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "shared_capacity_authority_events",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "shared_capacity_bindings",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "shared_capacity_claim_links",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "shared_capacity_identities",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "slot_offers",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "slot_opportunities",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "staff_memberships",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "waitlist_entries",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "webauthn_challenges",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "webauthn_credentials",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "workload_credentials",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    },
+    {
+      "relation_name": "workload_identities",
+      "row_count": 0,
+      "rows": [],
+      "schema_name": "request_engine"
+    }
+  ]
+}

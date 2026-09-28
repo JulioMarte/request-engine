@@ -19,7 +19,7 @@ migrations/baseline/          immutable payload for accepted 0001_initial
 migrations/sql/design_chain/  historical V2 design proof still required by CI
 ```
 
-`migrations/versions/0001_initial.py` is the accepted pre-production baseline. It bootstraps the six audited Request Engine roles and installs the checksummed PostgreSQL 18 schema payload from `migrations/baseline/`.
+`migrations/versions/0001_initial.py` is the accepted pre-production baseline. It bootstraps the ten audited Request Engine/platform bootstrap roles and installs the checksummed PostgreSQL 18 schema payload from `migrations/baseline/`.
 
 The baseline is **history now, not a mutable schema template**. Future product changes append `0002+` revisions. Do not regenerate or edit `0001_initial` or `migrations/baseline/` merely because current HEAD evolves.
 
@@ -35,16 +35,16 @@ Those contracts must not be collapsed into `HEAD == 0001`. A reviewed `0002+` is
 The accepted baseline model recorded in `migrations/baseline/manifest.json` is:
 
 ```text
-99 relations = 90 tables + 9 views
-1,085 columns
-1,575 validated constraints
-276 indexes
-145 routines
-162 triggers
-84 RLS policies
-6 Request Engine roles
+151 relations = 142 tables + 9 views
+1,654 columns
+2,441 validated constraints
+404 indexes
+325 routines
+208 triggers
+96 RLS policies
+10 Request Engine/platform bootstrap roles
 0 role memberships
-12 column grants
+677 column grants
 ```
 
 These counts describe the accepted `0001` checkpoint. They are **not ratchets for current HEAD**. Current product counts may change through legitimate migrations; baseline-integrity proof remains pinned to the historical baseline.
@@ -53,7 +53,7 @@ These counts describe the accepted `0001` checkpoint. They are **not ratchets fo
 
 `migrations/sql/design_chain/` is retained because the repository's V2 design-history status check still executes it through `scripts/db/apply_design_chain.sh`. It is not the current schema source of truth.
 
-The old V3 Base85 payload, V3 candidate SQL, feature-step helper modules and the pre-rebaseline `0002..0050` chain are intentionally absent from current HEAD. Their provenance remains in Git history and historical documentation; keeping dead executable migration machinery beside the accepted baseline would create a false second authority.
+The old V3 payloads, candidate SQL, feature-step helper modules and the certified pre-rebaseline 0002..0094 chain are intentionally absent from current HEAD. Their provenance remains in Git history and in GitHub Actions run 36354361866; keeping dead executable migration machinery beside the accepted baseline would create a false second authority.
 
 ## Schema-change discipline
 
