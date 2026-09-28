@@ -29,11 +29,32 @@ _FORM_ID = "operation-form"
 
 def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def _probe(session: Any, method: str, path: str) -> tuple[int, dict[str, Any], str]:
+        """Fetch one dashboard fact without letting one bad probe take down the page.
+
+        The control plane normally returns JSON objects, but reverse proxies and
+        unhandled 5xx responses can legally arrive as text, lists, or an empty
+        body. The dashboard is an observability surface, so those responses must
+        be rendered as degraded facts rather than raising while coercing them to
+        a mapping.
+        """
+
         try:
             response = await state.control_request(method, path, bearer=session.access_token)
         except httpx.HTTPError:
             return 0, {}, "control plane unreachable"
-        return response.status_code, as_mapping(response.payload), ""
+
+        payload = response.payload
+        if isinstance(payload, dict):
+            detail = as_mapping(payload)
+        elif payload is None:
+            detail = {}
+        else:
+            detail = {"response": payload}
+
+        error = ""
+        if response.status_code >= 500:
+            error = f"control plane returned HTTP {response.status_code}"
+        return response.status_code, detail, error
 
     async def dashboard(request: Request) -> Response:
         session = state.session(request)
