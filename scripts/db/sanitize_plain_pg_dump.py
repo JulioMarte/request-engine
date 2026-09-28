@@ -17,9 +17,7 @@ def main() -> None:
         if line.startswith("\\restrict ") or line.startswith("\\unrestrict "):
             continue
         if line.startswith("\\"):
-            raise SystemExit(
-                f"unexpected psql meta-command in pg_dump output: {line.rstrip()!r}"
-            )
+            raise SystemExit(f"unexpected psql meta-command in pg_dump output: {line.rstrip()!r}")
         kept.append(line)
     args.target.parent.mkdir(parents=True, exist_ok=True)
     args.target.write_text("".join(kept), encoding="utf-8")
