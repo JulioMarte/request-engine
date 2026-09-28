@@ -52,9 +52,7 @@ def materialize(catalog: dict[str, Any]) -> str:
         lines.append("")
         lines.append("-- Role memberships")
     for membership in memberships:
-        if not membership.get("inherit_option", True) or not membership.get(
-            "set_option", True
-        ):
+        if not membership.get("inherit_option", True) or not membership.get("set_option", True):
             raise SystemExit(
                 "non-default PostgreSQL membership INHERIT/SET options require "
                 "explicit review before rebaseline"
