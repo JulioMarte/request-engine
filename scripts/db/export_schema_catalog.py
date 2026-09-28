@@ -7,7 +7,14 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
-SCHEMAS = ("request_admin", "request_auth", "request_cmd", "request_engine", "request_platform", "request_read")
+SCHEMAS = (
+    "request_admin",
+    "request_auth",
+    "request_cmd",
+    "request_engine",
+    "request_platform",
+    "request_read",
+)
 _SCHEMALESS_QUERIES = {"roles", "role_memberships", "default_acls"}
 QUERIES = {
     "schemas": """
@@ -143,7 +150,11 @@ QUERIES = {
         SELECT rolname AS role_name, rolsuper AS superuser, rolinherit AS inherit,
                rolcreaterole AS create_role, rolcreatedb AS create_db, rolcanlogin AS can_login,
                rolbypassrls AS bypass_rls
-        FROM pg_roles\n        WHERE rolname LIKE 'request_engine_%'\n           OR rolname LIKE 'request_platform_%'\n           OR rolname LIKE 'request_bootstrap_%'\n        ORDER BY 1
+        FROM pg_roles
+        WHERE rolname LIKE 'request_engine_%'
+           OR rolname LIKE 'request_platform_%'
+           OR rolname LIKE 'request_bootstrap_%'
+        ORDER BY 1
     """,
     "role_memberships": """
         SELECT parent.rolname AS parent_role, member.rolname AS member_role,
@@ -170,7 +181,9 @@ QUERIES = {
         FROM pg_default_acl d
         LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
         CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
-        WHERE pg_get_userbyid(d.defaclrole) LIKE 'request_engine_%'\n           OR pg_get_userbyid(d.defaclrole) LIKE 'request_platform_%'\n           OR pg_get_userbyid(d.defaclrole) LIKE 'request_bootstrap_%'
+        WHERE pg_get_userbyid(d.defaclrole) LIKE 'request_engine_%'
+           OR pg_get_userbyid(d.defaclrole) LIKE 'request_platform_%'
+           OR pg_get_userbyid(d.defaclrole) LIKE 'request_bootstrap_%'
         ORDER BY 1,2,3,4,5,6
     """,
 }
@@ -192,7 +205,8 @@ def main() -> None:
     payload["counts"] = {
         name: len(rows) for name, rows in payload.items() if isinstance(rows, list)
     }
-    serialized = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    serialized = json.dumps(payload, indent=2, sort_keys=True) + "
+"
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(serialized, encoding="utf-8")
 
