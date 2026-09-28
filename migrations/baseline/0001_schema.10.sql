@@ -530,8 +530,16 @@ ALTER VIEW request_read.service_session_status_v1 OWNER TO request_engine_schema
 -- Data for Name: identity_authorities; Type: TABLE DATA; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-INSERT INTO request_engine.identity_authorities (\n    kind, issuer_or_environment\n) VALUES (\n    'native', 'request-engine-native'\n);
-INSERT INTO request_engine.identity_authorities (\n    kind, issuer_or_environment\n) VALUES (\n    'workload', 'request-engine-workload'\n);
+INSERT INTO request_engine.identity_authorities (
+    kind, issuer_or_environment
+) VALUES (
+    'native', 'request-engine-native'
+);
+INSERT INTO request_engine.identity_authorities (
+    kind, issuer_or_environment
+) VALUES (
+    'workload', 'request-engine-workload'
+);
 
 
 --
@@ -891,7 +899,18 @@ INSERT INTO request_engine.initial_controller_policies VALUES ('tenant-controlle
 -- Data for Name: platform_instance; Type: TABLE DATA; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-INSERT INTO request_engine.platform_instance (\n    singleton_key,\n    built_in_native_authority_id,\n    built_in_workload_authority_id\n)\nSELECT 1, native.id, workload.id\nFROM request_engine.identity_authorities AS native\nCROSS JOIN request_engine.identity_authorities AS workload\nWHERE native.kind = 'native'\n  AND native.issuer_or_environment = 'request-engine-native'\n  AND workload.kind = 'workload'\n  AND workload.issuer_or_environment = 'request-engine-workload';
+INSERT INTO request_engine.platform_instance (
+    singleton_key,
+    built_in_native_authority_id,
+    built_in_workload_authority_id
+)
+SELECT 1, native.id, workload.id
+FROM request_engine.identity_authorities AS native
+CROSS JOIN request_engine.identity_authorities AS workload
+WHERE native.kind = 'native'
+  AND native.issuer_or_environment = 'request-engine-native'
+  AND workload.kind = 'workload'
+  AND workload.issuer_or_environment = 'request-engine-workload';
 
 
 --
