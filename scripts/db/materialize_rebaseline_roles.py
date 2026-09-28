@@ -52,13 +52,18 @@ def materialize(catalog: dict[str, Any]) -> str:
         lines.append("")
         lines.append("-- Role memberships")
     for membership in memberships:
-        if not membership.get("inherit_option", True) or not membership.get("set_option", True):
+        if not membership.get("inherit_option", True) or not membership.get(
+            "set_option", True
+        ):
             raise SystemExit(
-                "non-default PostgreSQL membership INHERIT/SET options require explicit review before rebaseline"
+                "non-default PostgreSQL membership INHERIT/SET options require "
+                "explicit review before rebaseline"
             )
         suffix = " WITH ADMIN OPTION" if membership.get("admin_option") else ""
         lines.append(
-            f"GRANT {_ident(membership['parent_role'])} TO {_ident(membership['member_role'])}{suffix};"
+            "GRANT "
+            f"{_ident(membership['parent_role'])} "
+            f"TO {_ident(membership['member_role'])}{suffix};"
         )
 
     settings = catalog.get("role_settings", [])
