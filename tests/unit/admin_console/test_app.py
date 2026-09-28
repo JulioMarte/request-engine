@@ -295,6 +295,18 @@ async def test_setup_page_degrades_when_control_unreachable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dashboard_does_not_execute_remote_deployment_plan() -> None:
+    control = FakeControl()
+    app = create_admin_console_app(_settings(), client=control)
+    async with _client(app) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get("/")
+
+    assert response.status_code == 200
+    assert "GET /v1/platform/deployment-recovery:plan" not in control.calls
+
+
+@pytest.mark.asyncio
 async def test_dashboard_degrades_on_non_object_control_error_body() -> None:
     class PlainTextFailure(FakeControl):
         async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
