@@ -491,7 +491,7 @@ After this rebaseline, migrations/versions/0001_initial.py is the only historica
 1,654 columns
 2,441 validated constraints
 404 indexes
-210 routines
+325 routines
 208 triggers
 96 RLS policies
 10 Request Engine/platform bootstrap roles
