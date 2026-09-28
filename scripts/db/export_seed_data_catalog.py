@@ -8,7 +8,14 @@ from typing import Any
 import psycopg
 from psycopg import sql
 
-SCHEMAS = ("request_admin", "request_auth", "request_cmd", "request_engine", "request_platform", "request_read")
+SCHEMAS = (
+    "request_admin",
+    "request_auth",
+    "request_cmd",
+    "request_engine",
+    "request_platform",
+    "request_read",
+)
 
 
 def _relations(conn: psycopg.Connection[Any]) -> list[tuple[str, str]]:
@@ -88,7 +95,9 @@ def export(conn: psycopg.Connection[Any]) -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export deterministic migration-owned seed/reference state")
+    parser = argparse.ArgumentParser(
+        description="Export deterministic migration-owned seed/reference state"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     with psycopg.connect("") as conn:
