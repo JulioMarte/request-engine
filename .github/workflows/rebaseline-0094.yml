@@ -1,4 +1,4 @@
-name: Promote and verify certified PostgreSQL 18 rebaseline
+name: PostgreSQL 18 rebaseline promotion
 
 on:
   push:
@@ -14,8 +14,8 @@ env:
   UV_VERSION: "0.12.5"
 
 jobs:
-  rebaseline:
-    name: Promote or verify canonical 0001
+  promote-or-prove:
+    name: Promote or prove canonical 0001
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     services:
@@ -54,20 +54,17 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Detect rebaseline state
+      - name: Detect promotion state
         id: state
-        shell: bash
         run: |
-          if [[ -f migrations/versions/0094_managed_oidc_readiness.py ]]; then
-            echo "mode=promote" >> "$GITHUB_OUTPUT"
-            echo "historical 0002..0094 chain is present; promotion mode"
+          if [[ -f scripts/db/promote_rebaseline_0094.py ]]; then
+            echo "promote=true" >> "$GITHUB_OUTPUT"
           else
-            echo "mode=verify" >> "$GITHUB_OUTPUT"
-            echo "historical chain is absent; post-promotion verification mode"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Download certified schema-and-seed proof
-        if: steps.state.outputs.mode == 'promote'
+        if: steps.state.outputs.promote == 'true'
         run: >-
           gh run download 36354361866
           --repo "${GITHUB_REPOSITORY}"
@@ -75,7 +72,7 @@ jobs:
           --dir "${REBASELINE_PROOF_DIR}"
 
       - name: Prepare destructive promotion from certified artifact
-        if: steps.state.outputs.mode == 'promote'
+        if: steps.state.outputs.promote == 'true'
         run: python scripts/db/promote_rebaseline_0094.py
 
       - name: Install repository
@@ -105,18 +102,24 @@ jobs:
         run: bash scripts/ci/run_current_product.sh
 
       - name: Check promotion diff
-        if: steps.state.outputs.mode == 'promote'
+        if: steps.state.outputs.promote == 'true'
         run: |
+          # run_current_product normalizes CI line endings. The workflow is
+          # transition infrastructure, not part of the certified DB baseline.
+          # Restore it so the bot commit contains only the reviewed promotion.
+          git restore -- .github/workflows/rebaseline-0094.yml
           git diff --check -- . ':(exclude)migrations/baseline/0001_schema.*.sql'
           git status --short
           test -z "$(find migrations/versions -maxdepth 1 -type f -name '0*.py' ! -name '0001_initial.py' -print -quit)"
 
       - name: Commit certified baseline promotion
-        if: steps.state.outputs.mode == 'promote'
+        if: steps.state.outputs.promote == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git restore -- .github/workflows/rebaseline-0094.yml
           git add -A
+          git diff --cached --quiet && { echo "promotion produced no commit"; exit 1; }
           git commit -m "db: promote certified 0094 model into canonical baseline"
           git push origin HEAD:feature/rebaseline-0094
 
@@ -124,7 +127,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rebaseline-0094-${{ steps.state.outputs.mode }}-evidence
+          name: rebaseline-0094-evidence-${{ github.run_id }}
           path: |
             .ci/rebaseline-proof/
             .ci/current-product/
