@@ -77,9 +77,19 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
         observability_status, observability, observability_error = await _probe(
             session, "GET", "/v1/platform/observability"
         )
-        deployment_status, deployment, deployment_error = await _probe(
-            session, "GET", "/v1/platform/deployment-recovery:plan"
-        )
+        deployment_status = readiness_status
+        deployment = {
+            key: readiness[key]
+            for key in (
+                "backup_evidence",
+                "restore_drill",
+                "clone_fence",
+                "secret_store",
+                "recovery_delivery_source",
+            )
+            if key in readiness
+        }
+        deployment_error = readiness_error
         return state.templates.TemplateResponse(
             request,
             "dashboard.html",
