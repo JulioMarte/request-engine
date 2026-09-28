@@ -15,7 +15,9 @@ def _sha256(path: Path) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Require two generated proof files to be byte-identical")
+    parser = argparse.ArgumentParser(
+        description="Require two generated proof files to be byte-identical"
+    )
     parser.add_argument("--expected", type=Path, required=True)
     parser.add_argument("--actual", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
