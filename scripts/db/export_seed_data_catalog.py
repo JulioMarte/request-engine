@@ -19,21 +19,27 @@ SCHEMAS = (
 
 
 def _relations(conn: psycopg.Connection[Any]) -> list[tuple[str, str]]:
-    return [(str(row[0]), str(row[1])) for row in conn.execute(
-        """SELECT n.nspname, c.relname FROM pg_class AS c
+    return [
+        (str(row[0]), str(row[1]))
+        for row in conn.execute(
+            """SELECT n.nspname, c.relname FROM pg_class AS c
            JOIN pg_namespace AS n ON n.oid = c.relnamespace
            WHERE n.nspname = ANY(%s) AND c.relkind = 'r' ORDER BY 1, 2""",
-        (list(SCHEMAS),),
-    ).fetchall()]
+            (list(SCHEMAS),),
+        ).fetchall()
+    ]
 
 
 def _sequences(conn: psycopg.Connection[Any]) -> list[tuple[str, str]]:
-    return [(str(row[0]), str(row[1])) for row in conn.execute(
-        """SELECT n.nspname, c.relname FROM pg_class AS c
+    return [
+        (str(row[0]), str(row[1]))
+        for row in conn.execute(
+            """SELECT n.nspname, c.relname FROM pg_class AS c
            JOIN pg_namespace AS n ON n.oid = c.relnamespace
            WHERE n.nspname = ANY(%s) AND c.relkind = 'S' ORDER BY 1, 2""",
-        (list(SCHEMAS),),
-    ).fetchall()]
+            (list(SCHEMAS),),
+        ).fetchall()
+    ]
 
 
 def _normalize_seed_row(schema_name: str, relation_name: str, raw: str) -> str:
@@ -42,8 +48,13 @@ def _normalize_seed_row(schema_name: str, relation_name: str, raw: str) -> str:
         return raw
     value = json.loads(raw)
     if relation_name == "identity_authorities":
-        shape = (value.get("kind"), value.get("issuer_or_environment"), value.get("status"),
-                 value.get("revision"), value.get("configuration_ref"))
+        shape = (
+            value.get("kind"),
+            value.get("issuer_or_environment"),
+            value.get("status"),
+            value.get("revision"),
+            value.get("configuration_ref"),
+        )
         if shape == ("native", "request-engine-native", "active", 1, None):
             value["id"] = "<generated:built-in-native-authority-id>"
             value["created_at"] = "<generated:created-at>"
@@ -53,9 +64,14 @@ def _normalize_seed_row(schema_name: str, relation_name: str, raw: str) -> str:
         else:
             return raw
     elif relation_name == "platform_instance":
-        shape = (value.get("singleton_key"), value.get("state"), value.get("revision"),
-                 value.get("claimed_at"), value.get("initial_owner_principal_id"),
-                 value.get("claim_provenance"))
+        shape = (
+            value.get("singleton_key"),
+            value.get("state"),
+            value.get("revision"),
+            value.get("claimed_at"),
+            value.get("initial_owner_principal_id"),
+            value.get("claim_provenance"),
+        )
         if shape != (1, "unclaimed", 1, None, None, None):
             return raw
         value["id"] = "<generated:platform-instance-id>"
@@ -72,26 +88,49 @@ def export(conn: psycopg.Connection[Any]) -> dict[str, Any]:
     total_rows = 0
     for schema_name, relation_name in _relations(conn):
         query = sql.SQL("SELECT to_jsonb(t)::text FROM {}.{} AS t").format(
-            sql.Identifier(schema_name), sql.Identifier(relation_name))
-        rows = sorted(_normalize_seed_row(schema_name, relation_name, str(row[0]))
-                      for row in conn.execute(query).fetchall())
+            sql.Identifier(schema_name), sql.Identifier(relation_name)
+        )
+        rows = sorted(
+            _normalize_seed_row(schema_name, relation_name, str(row[0]))
+            for row in conn.execute(query).fetchall()
+        )
         total_rows += len(rows)
-        tables.append({"schema_name": schema_name, "relation_name": relation_name,
-                       "row_count": len(rows), "rows": rows})
+        tables.append(
+            {
+                "schema_name": schema_name,
+                "relation_name": relation_name,
+                "row_count": len(rows),
+                "rows": rows,
+            }
+        )
     sequences: list[dict[str, Any]] = []
     for schema_name, sequence_name in _sequences(conn):
         query = sql.SQL("SELECT last_value::text, is_called FROM {}.{}").format(
-            sql.Identifier(schema_name), sql.Identifier(sequence_name))
+            sql.Identifier(schema_name), sql.Identifier(sequence_name)
+        )
         row = conn.execute(query).fetchone()
         if row is None:
             raise RuntimeError(f"sequence state unavailable: {schema_name}.{sequence_name}")
-        sequences.append({"schema_name": schema_name, "sequence_name": sequence_name,
-                          "last_value": str(row[0]), "is_called": bool(row[1])})
-    return {"schema_version": 1, "schemas": list(SCHEMAS),
-            "counts": {"tables": len(tables),
-                       "nonempty_tables": sum(1 for table in tables if table["row_count"]),
-                       "rows": total_rows, "sequences": len(sequences)},
-            "tables": tables, "sequences": sequences}
+        sequences.append(
+            {
+                "schema_name": schema_name,
+                "sequence_name": sequence_name,
+                "last_value": str(row[0]),
+                "is_called": bool(row[1]),
+            }
+        )
+    return {
+        "schema_version": 1,
+        "schemas": list(SCHEMAS),
+        "counts": {
+            "tables": len(tables),
+            "nonempty_tables": sum(1 for table in tables if table["row_count"]),
+            "rows": total_rows,
+            "sequences": len(sequences),
+        },
+        "tables": tables,
+        "sequences": sequences,
+    }
 
 
 def main() -> None:
