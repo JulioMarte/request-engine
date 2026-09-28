@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Operations &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Operations</h1>
+  <p class="muted">Every operation is projected from the control-plane OpenAPI document.</p>
+  {% if catalog_error %}<div class="alert error">{{ catalog_error }}</div>{% endif %}
+  <div class="chips">
+    <a class="chip {% if not selected_group %}active{% endif %}" href="/operations">All</a>
+    {% for name in groups %}
+      <a class="chip {% if selected_group == name %}active{% endif %}"
+         href="/operations?group={{ name | urlencode }}">{{ name }}</a>
+    {% endfor %}
+  </div>
+</section>
+<section class="card">
+  <table class="ops">
+    <thead><tr><th>Method</th><th>Operation</th><th>Path</th><th>Capability</th></tr></thead>
+    <tbody>
+    {% for operation in visible_operations %}
+      <tr>
+        <td><span class="method {{ operation.method | lower }}">{{ operation.method }}</span></td>
+        <td><a href="/operations/{{ operation.operation_id }}">{{ operation.operation_id }}</a>
+            <div class="muted small">{{ operation.summary }}</div></td>
+        <td><code>{{ operation.path_template }}</code></td>
+        <td>{% if operation.capability %}<code>{{ operation.capability }}</code>{% else %}<span class="muted">—</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Dashboard &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Dashboard</h1>
+  {% if catalog_error %}<div class="alert error">{{ catalog_error }}</div>{% endif %}
+  <ul class="stats">
+    <li><span class="stat">{{ operation_count }}</span> operations projected</li>
+    <li><span class="stat">{{ platform_operation_count }}</span> platform operations</li>
+    <li><span class="stat">{{ group_count }}</span> groups</li>
+  </ul>
+  <p><a class="button" href="/operations">Open operations console</a>
+     <a class="button secondary" href="/setup">First-run setup</a></p>
+</section>
+<section class="card">
+  <h2>Readiness <span class="badge">{{ readiness_status }}</span></h2>
+  <pre class="payload">{{ readiness | tojson(indent=2) }}</pre>
+</section>
+{% endblock %}

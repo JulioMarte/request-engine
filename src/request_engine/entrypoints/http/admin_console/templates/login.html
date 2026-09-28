@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Sign in &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card narrow auth">
+  <div class="brand-mark">RE</div>
+  <h1>Request Engine</h1>
+  <p class="muted">Platform administration</p>
+
+  <div class="auth-block">
+    <h2>Sign in with a passkey</h2>
+    <button id="passkey-login-btn" type="button" class="wide">Continue with passkey</button>
+    <p id="passkey-login-status" class="muted small">
+      No password or username needed. Your browser shows your passkeys.
+    </p>
+  </div>
+
+  <details class="auth-block">
+    <summary>Sign in with password instead</summary>
+    <form method="post" action="/login" class="stack" autocomplete="off">
+      <label>Login handle
+        <input name="login_handle" type="text" required />
+      </label>
+      <label>Password
+        <input name="password" type="password" required />
+      </label>
+      <button type="submit">Sign in with password</button>
+    </form>
+  </details>
+</section>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Error &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Something went wrong</h1>
+  <p class="alert error">The console hit an unexpected error while handling this request.</p>
+  <p>Request id: <code>{{ request_id }}</code></p>
+  <p class="muted">Search the server log for this request id to see the structured failure line.</p>
+  {% if detail %}
+    <details><summary>Traceback (debug enabled)</summary><pre class="payload">{{ detail }}</pre></details>
+  {% endif %}
+  <p><a class="button" href="/">Back to dashboard</a>
+     <a class="button secondary" href="/diagnostics">Diagnostics</a></p>
+</section>
+{% endblock %}

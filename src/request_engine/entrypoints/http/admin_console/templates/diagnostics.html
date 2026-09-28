@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Diagnostics &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Diagnostics</h1>
+  <p class="muted">Correlate a failing browser action with a structured server log line using its request id.</p>
+  <ul class="stats">
+    <li><span class="stat">{{ metrics.requests }}</span> requests</li>
+    <li><span class="stat">{{ metrics.errors }}</span> request errors</li>
+    <li><span class="stat">{{ metrics.control_calls }}</span> control calls</li>
+    <li><span class="stat">{{ metrics.control_errors }}</span> control errors</li>
+    <li><span class="stat">{{ metrics.uptime_seconds }}</span> seconds up</li>
+  </ul>
+  <p class="muted">Current page request id: <code>{{ request_id }}</code></p>
+</section>
+
+<section class="card">
+  <h2>Configuration</h2>
+  <pre class="payload">{{ config | tojson(indent=2) }}</pre>
+  <p>Operations in catalog:
+    {% if operation_count is none %}<span class="muted">control plane unreachable</span>
+    {% else %}<code>{{ operation_count }}</code>{% endif %}</p>
+</section>
+
+<section class="card">
+  <h2>Recent errors <span class="badge">{{ error_total }}</span></h2>
+  {% if not errors %}
+    <p class="muted">No errors recorded since startup.</p>
+  {% else %}
+    <table class="ops">
+      <thead><tr><th>When</th><th>Request id</th><th>Kind</th><th>Method/path</th><th>Status</th><th>Message</th></tr></thead>
+      <tbody>
+      {% for event in errors %}
+        <tr>
+          <td><small>{{ event.at }}</small></td>
+          <td><code>{{ event.request_id }}</code></td>
+          <td>{{ event.kind }}</td>
+          <td><code>{{ event.method }} {{ event.path }}</code></td>
+          <td>{{ event.status if event.status is not none else "" }}</td>
+          <td>{{ event.message }}{% if event.detail %}<details><summary>trace</summary><pre class="payload">{{ event.detail }}</pre></details>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  <p><a class="button secondary" href="/diagnostics/errors.json">Errors JSON</a></p>
+</section>
+{% endblock %}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Request Engine admin{% endblock %}</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <script defer src="/static/htmx.min.js"></script>
+    <script defer src="/static/admin.js"></script>
+  </head>
+  <body data-csrf="{{ csrf_token }}">
+    <header class="topbar">
+      <span class="brand">Request Engine &middot; Admin console</span>
+      <nav>
+        {% if authenticated %}
+          <a href="/">Dashboard</a>
+          <a href="/operations">Operations</a>
+          <a href="/setup">Setup</a>
+          <a href="/diagnostics">Diagnostics</a>
+          <form method="post" action="/logout" class="inline">
+            <button type="submit" class="linklike">Sign out</button>
+          </form>
+        {% else %}
+          <a href="/login">Sign in</a>
+        {% endif %}
+      </nav>
+    </header>
+    <main>
+      {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+      {% if notice %}<div class="alert notice">{{ notice }}</div>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="foot">
+      <span>Control plane: {{ control_base_url }}</span>
+    </footer>
+  </body>
+</html>
