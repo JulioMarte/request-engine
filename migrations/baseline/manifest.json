@@ -10,7 +10,6 @@
     "source_alembic_head": "0094_managed_oidc_readiness"
   },
   "schema_payload": {
-    "source_artifact_name": "rebaseline-0094-candidate-v2/0001_schema.sql",
     "bytes": 1779614,
     "sha256": "4ca49de594e06cac8a1af94738dcc83b792540efa76226397290e0187d793b01",
     "materialized_parts": [
@@ -89,7 +88,23 @@
         "bytes": 99976,
         "sha256": "fef433056d5858409d348e45c384317a2a528b2efac020ad43ee5bf19ba0bdf6"
       }
-    ]
+    ],
+    "source_artifact": {
+      "name": "rebaseline-0094-candidate-v2/0001_schema.sql",
+      "bytes": 1779489,
+      "sha256": "66daabe2f565153f736c6802f895cfe311f99d84652b6349833041caf2424849"
+    },
+    "canonicalization": {
+      "reason": "installation-local identity must be generated independently for every fresh installation",
+      "changes": [
+        "built-in native/workload identity-authority UUIDs use table defaults instead of copied source values",
+        "platform_instance references the freshly generated built-in authorities",
+        "installation-local creation timestamps use PostgreSQL defaults instead of copied source timestamps"
+      ],
+      "ddl_changed": false,
+      "canonical_payload_bytes": 1779614,
+      "canonical_payload_sha256": "4ca49de594e06cac8a1af94738dcc83b792540efa76226397290e0187d793b01"
+    }
   },
   "role_bootstrap": {
     "source_artifact_name": "rebaseline-0094-candidate-v2/0001_roles.sql",
@@ -222,7 +237,6 @@
     "role_settings": []
   },
   "seed_data": {
-    "source_artifact_name": "rebaseline-0094-candidate-v2/source-seed-data-catalog.json",
     "path": "seed-data-catalog.json",
     "bytes": 40056,
     "sha256": "cebf4efcc8100d9f89d6cd85e1e91e3732e50734afc4730cdbeb2d1dc99af74a",
@@ -239,7 +253,16 @@
       "request_engine.platform_instance.id",
       "request_engine.platform_instance.created_at",
       "request_engine.platform_instance built-in authority foreign keys"
-    ]
+    ],
+    "source_artifact": {
+      "name": "rebaseline-0094-candidate-v2/source-seed-data-catalog.json",
+      "bytes": 40115,
+      "sha256": "8a71a29e7be3038b112db99dd6b69a0c4b7386858227ded86f816cc918d4c7f6"
+    },
+    "canonicalization": {
+      "raw_byte_identical_to_source_artifact": false,
+      "semantic_equivalence_after_installation_identity_normalization": true
+    }
   },
   "effective_model": {
     "relations": 151,
@@ -267,7 +290,11 @@
     "ci_run_id": 36354361866,
     "ci_run_number": 17,
     "proof_head_sha": "3e938a888e576919b5b75f449fe86014b5cbd7f9",
-    "schema_comparison_first_difference": null
+    "schema_comparison_first_difference": null,
+    "canonical_payload_byte_identical_to_candidate": false,
+    "canonical_ddl_equivalent_to_candidate": true,
+    "canonical_seed_data_semantically_equivalent": true,
+    "canonical_installation_identity_unique": true
   },
   "installation_identity": {
     "generated_per_fresh_install": true,
