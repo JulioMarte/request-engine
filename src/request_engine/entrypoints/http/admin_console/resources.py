@@ -67,6 +67,19 @@ class WorkspaceSpec:
 
 RESOURCE_SPECS: tuple[ResourceSpec, ...] = (
     ResourceSpec(
+        key="organizations",
+        title="Organizations",
+        owner="tenancy",
+        summary="Platform organization roots and their current operational profile.",
+        list_operation_id="platform_organization_list",
+        get_operation_id="platform_organization_get",
+        item_param="organization_id",
+        item_key="organization_id",
+        columns=("organization_key", "display_name", "operational_status", "default_timezone"),
+        create_operation_id="platform_native_organization_create",
+        create_label="Create organization",
+    ),
+    ResourceSpec(
         key="native-identities",
         title="Native identities",
         owner="tenancy",
@@ -206,12 +219,12 @@ WORKSPACE_SPECS: tuple[WorkspaceSpec, ...] = (
     ),
     WorkspaceSpec(
         key="provisioning",
-        title="Organizations and recovery operators",
+        title="Recovery operators",
         owner="tenancy",
-        summary="One-shot provisioning commands that create roots but cannot be listed.",
+        summary="Provision platform recovery operators through the available command.",
         no_list_note=(
-            "These are create-only operations: no list/read operation is mounted, "
-            "so they are shown as explicit commands rather than a resource table."
+            "This is a create-only operation: no recovery-operator list/read operation "
+            "is mounted, so the workspace shows the command rather than a resource table."
         ),
     ),
 )
@@ -250,7 +263,6 @@ OWNER_OPERATION_IDS = {
     "revoke": "platform_owner_revoke",
 }
 PROVISIONING_OPERATION_IDS = {
-    "organization_create": "platform_native_organization_create",
     "recovery_operator_create": "platform_native_recovery_operator_create",
 }
 

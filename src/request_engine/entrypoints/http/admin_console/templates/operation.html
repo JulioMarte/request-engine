@@ -23,6 +23,7 @@
   <form id="operation-form" class="stack" method="post" action="/operations/{{ operation.operation_id }}"
         hx-post="/operations/{{ operation.operation_id }}" hx-target="#result" hx-swap="innerHTML">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="_intent_id" value="" data-form-intent />
     {{ ui.render(inputs) }}
     <button type="submit">Run operation</button>
   </form>

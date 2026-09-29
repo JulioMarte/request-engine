@@ -18,7 +18,8 @@ control plane  -->  PostgreSQL / OpenBao / providers
   session cookie and is never exposed to browser JavaScript.
 - The browser talks only to the console origin, so no CORS and no ambient
   cross-site credential are introduced.
-- Mutating operations get an `Idempotency-Key` automatically.
+- Mutating forms get an intent-scoped `Idempotency-Key` automatically. The key
+  survives passkey step-up and resubmission of the same browser intent.
 - `phishing_resistant_auth_required` / `recent_authentication_required`
   responses surface a passkey step-up action and retry.
 - Security headers: `Cache-Control: no-store`, `X-Frame-Options: DENY`,
@@ -118,9 +119,18 @@ operation, capability, idempotency and step-up rules as the API.
 - **Secrets and signing keyrings** — lookup by binding id (no enumeration
   operation exists), create, rotate and revoke; secret values are never echoed.
 - **Deployment recovery** — inspect the active binding, configure and reconcile.
-- **Platform owners** and **organizations / recovery operators** — no read/list
-  operation is mounted, so these pages state that explicitly and expose only the
-  available commands rather than fabricating an empty table.
+- **Organizations** — list and detail views from the platform control plane,
+  plus the canonical organization-provisioning command.
+- **Platform owners** and **recovery operators** — no read/list operation is
+  mounted, so these pages state that explicitly and expose only the available
+  commands rather than fabricating an empty table.
+
+Staff membership operations are deliberately not projected by this console yet.
+They belong to the tenant-scoped operational API (`/v1/staff`) and require an
+organization actor context, while this console authenticates to the platform
+control plane. Adding a second upstream and reusing the platform bearer would be
+an authority-boundary bug; Staff needs an explicit tenant-selection and
+tenant-authentication design before it can be added safely.
 
 Both the workspaces and the generic `/operations` browser execute through a
 single `execution.execute_operation` path, so there is no second execution path.
@@ -135,6 +145,15 @@ projects the complete admin surface by construction; `/operations` remains the
 complete, searchable escape hatch when a workspace does not exist for a given
 operation. Operations under `/v1/setup` and `/auth/native` additionally have
 curated first-run and login journeys.
+
+`presentation.py` classifies discoverability only: journey, workspace/overview,
+or an explicitly accepted Advanced-only operation. It never copies capability,
+authority, idempotency, revision or authentication policy from OpenAPI. The
+architecture coverage contract composes the real control-plane OpenAPI and fails
+when an operator operation has not received an explicit admin destination, or
+when a curated surface references an operation that is no longer mounted. The
+runtime still falls back to Advanced so catalog drift cannot make an operation
+silently unreachable while diagnostics are being performed.
 
 ## Diagnostics and error tracking
 
@@ -160,7 +179,19 @@ and must never be deployed.
 uv run python scripts/dev/mock_control_plane.py   # :8001
 # then start the console with
 # REQUEST_ENGINE_ADMIN_CONSOLE_CONTROL_API_BASE_URL=http://127.0.0.1:8001
+# Optional tenant/runtime API; required for organization staff management.
+# REQUEST_ENGINE_ADMIN_CONSOLE_RUNTIME_API_BASE_URL=http://127.0.0.1:8000
 ```
+
+The console keeps both upstreams separate. Platform organization reads and
+creation use the control plane. The organization staff workspace uses the
+runtime API and forwards `X-RE-Organization-ID` only as a tenant selector; the
+runtime still resolves the bearer binding and rechecks every staff capability.
+If the runtime URL is absent, the staff workspace fails closed with `503`.
+
+The current `staff_invite` operation binds an already-provisioned native
+identity. It is not an email invitation or an atomic create-and-invite workflow;
+the UI labels this limitation explicitly.
 
 ## Tests
 
@@ -172,4 +203,3 @@ They cover the signed-session codec, the OpenAPI catalog and `$ref` resolution,
 schema-driven form parsing, cookie/session flow, security headers, disabled
 operator docs, request-id propagation, redaction, the bounded error tracker and
 the diagnostics surface.
-

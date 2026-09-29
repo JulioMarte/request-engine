@@ -1,20 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Resources &middot; Request Engine admin{% endblock %}
 {% block content %}
-<section class="card">
-  <h1>Resource workspaces</h1>
-  <p class="muted">Task-oriented views over the control-plane operations. Read
-    operations load the current state; every command runs through the same owner
-    operation, capability and step-up rules as the API.</p>
+<header class="page-heading">
+  <div><p class="eyebrow">Dashboard / Workspaces</p><h1>Workspaces</h1>
+  <p>Manage Request Engine through task-focused views. Authority and validation still come from the control plane.</p></div>
+  <a class="button secondary" href="/operations">Advanced operations →</a>
+</header>
+<section class="workspace-intro panel">
+  <div><span aria-hidden="true">✦</span><div><strong>Start with the task, not the endpoint</strong><p>Workspaces translate technical operations into guided administrative actions. Anything not curated remains reachable in Advanced.</p></div></div>
 </section>
-{% for owner, items in groups.items() %}
-<section class="card">
-  <h2>{{ owner }}</h2>
+{% for section, items in groups.items() %}
+<section class="workspace-section">
+  <div class="section-heading"><h2>{{ section }}</h2></div>
   <div class="workspace-grid">
     {% for item in items %}
     <a class="workspace" href="/resources/{{ item.key }}">
-      <strong>{{ item.title }}</strong>
-      <span class="muted small">{{ item.summary }}</span>
+      <span class="workspace-icon" aria-hidden="true">{% if 'recover' in item.key %}↻{% elif 'secret' in item.key %}⌁{% elif 'config' in item.key %}◫{% elif 'identit' in item.key %}◎{% else %}◇{% endif %}</span>
+      <span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small></span>
+      <b>Open workspace <span aria-hidden="true">→</span></b>
     </a>
     {% endfor %}
   </div>

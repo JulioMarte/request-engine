@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partials/action_form.html" as action_form %}
 {% block title %}Platform configuration &middot; Request Engine admin{% endblock %}
 {% block content %}
 <section class="card">
@@ -12,14 +13,20 @@
       <strong>{{ kind }}</strong>
       <span class="muted small">{{ count }} revision(s)</span>
     </a>
-    {% else %}
+    {% else %}{% if not list_error %}
     <p class="muted">No configuration revisions yet. Open a kind to stage the first one.</p>
+    {% endif %}
     {% endfor %}
   </div>
 </section>
+{% if stage %}<details class="card create-disclosure"{% if not kinds and not list_error %} open{% endif %}>
+  <summary>Stage a new configuration revision</summary>
+  <div class="create-form"><p class="muted">Choose a configuration kind and provider, then enter its provider-specific settings.</p><div id="result"></div>{{ action_form.render(stage) }}</div>
+</details>{% endif %}
 <section class="card">
   <h2>Recovery policy</h2>
-  {% if policy %}
+  {% if policy_error %}<div class="error-state" role="alert"><span aria-hidden="true">!</span><div><strong>Could not load recovery policy</strong><p>{{ policy_error }}. No missing policy is being assumed.</p></div></div>
+  {% elif policy %}
   <dl class="detail">
     {% for key, value in policy_detail[0] %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}
   </dl>

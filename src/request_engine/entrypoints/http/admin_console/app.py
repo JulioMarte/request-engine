@@ -37,6 +37,9 @@ from request_engine.entrypoints.http.admin_console.routes_resources import (
     install_resource_routes,
 )
 from request_engine.entrypoints.http.admin_console.routes_setup import install_setup_routes
+from request_engine.entrypoints.http.admin_console.routes_tenant_staff import (
+    install_tenant_staff_routes,
+)
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
@@ -56,6 +59,7 @@ def create_admin_console_app(
     settings: AdminConsoleSettings,
     *,
     client: ControlPlanePort | None = None,
+    runtime_client: ControlPlanePort | None = None,
 ) -> FastAPI:
     """Build the private admin console app around a control-plane client."""
 
@@ -64,6 +68,12 @@ def create_admin_console_app(
         base_url=settings.control_api_base_url,
         timeout_seconds=settings.request_timeout_seconds,
     )
+    owns_runtime = runtime_client is None and settings.runtime_api_base_url is not None
+    runtime = runtime_client
+    if runtime is None and settings.runtime_api_base_url is not None:
+        runtime = ControlPlaneClient(
+            base_url=settings.runtime_api_base_url, timeout_seconds=settings.request_timeout_seconds
+        )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -72,6 +82,8 @@ def create_admin_console_app(
         finally:
             if owns_client:
                 await control.aclose()
+            if owns_runtime and runtime is not None:
+                await runtime.aclose()
 
     app = FastAPI(
         title="Request Engine admin console",
@@ -87,7 +99,9 @@ def create_admin_console_app(
         StaticFiles(directory=str(Path(__file__).parent / "static")),
         name="static",
     )
-    state = AdminConsoleState(settings=settings, control=control, templates=templates)
+    state = AdminConsoleState(
+        settings=settings, control=control, runtime=runtime, templates=templates
+    )
 
     async def observability(
         request: Request,
@@ -189,6 +203,7 @@ def create_admin_console_app(
     install_setup_routes(app, state)
     install_operation_routes(app, state)
     install_resource_routes(app, state)
+    install_tenant_staff_routes(app, state)
     install_diagnostics_routes(app, state)
     return app
 

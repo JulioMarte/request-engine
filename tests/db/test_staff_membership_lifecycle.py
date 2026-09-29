@@ -10,9 +10,13 @@ from psycopg import Connection, Error
 from request_engine.modules.tenancy.adapters.db.staff_membership_reader import (
     PostgresStaffMembershipReader,
 )
-from request_engine.modules.tenancy.application.errors import StaffMembershipForbidden
+from request_engine.modules.tenancy.application.errors import (
+    StaffMembershipForbidden,
+    StaffMembershipRevisionConflict,
+)
 from request_engine.modules.tenancy.application.queries.staff_membership import (
     ListStaffMembershipsQuery,
+    PlanStaffAuthorityQuery,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
@@ -319,6 +323,80 @@ def test_staff_authority_replace_is_bounded_by_delegable_ceiling(
         (staff_id,),
     ).fetchall()
     assert active == [("staff.invite", False)]
+
+
+@pytest.mark.asyncio
+async def test_staff_overview_and_authority_plan_are_read_only_and_ceiling_bounded(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
+    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
+    membership_id, staff_id, _staff_binding_id = _invite_and_activate(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        party_id=party_id,
+        authority_id=authority_id,
+        native_identity_id=native_identity_id,
+    )
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.principal_authority_grants (
+            organization_id, principal_id, principal_plane, authority_plane,
+            capability_key, delegable, granted_by_principal_id,
+            provenance_kind, provenance_reference
+        ) VALUES (%s, %s, 'tenant', 'operational', 'appointments.read', false,
+                  %s, 'authority_management', %s)
+        """,
+        (organization_id, staff_id, root_id, f"foreign-grant:{uuid4().hex}"),
+    )
+    revision = _principal_revision(admin_conn, staff_id)
+    actor = ActorContext(
+        organization_id=organization_id,
+        principal_id=root_id,
+        capabilities=frozenset({"staff.read", "staff.manage_authority"}),
+        authority_revision=_principal_revision(admin_conn, root_id),
+    )
+    reader = PostgresStaffMembershipReader(command_session_factory)
+
+    overview = await reader.read_overview(actor)
+    plan = await reader.plan_authority(
+        actor,
+        PlanStaffAuthorityQuery(
+            membership_id=membership_id,
+            expected_authority_revision=revision,
+            desired_capabilities=("staff.invite", "appointments.cancel"),
+        ),
+    )
+
+    assert overview.total == 2
+    assert overview.active == 2
+    assert (overview.invited, overview.suspended, overview.revoked) == (0, 0, 0)
+    # appointments.read belongs to the target but is outside this actor's
+    # delegable ceiling, so planning must not turn it into a disclosure oracle.
+    assert plan.current == ()
+    assert plan.desired == ("appointments.cancel", "staff.invite")
+    assert plan.added == plan.desired
+    assert plan.removed == ()
+    assert plan.assignable is False
+    assert plan.blocked_capabilities == ("appointments.cancel",)
+    assert _principal_revision(admin_conn, staff_id) == revision
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.principal_authority_grants "
+        "WHERE principal_id = %s AND status = 'active'",
+        (staff_id,),
+    ).fetchone() == (1,)
+
+    with pytest.raises(StaffMembershipRevisionConflict):
+        await reader.plan_authority(
+            actor,
+            PlanStaffAuthorityQuery(
+                membership_id=membership_id,
+                expected_authority_revision=revision + 1,
+                desired_capabilities=("staff.invite",),
+            ),
+        )
 
 
 def test_staff_suspension_disables_principal_and_revokes_native_session(

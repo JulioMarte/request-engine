@@ -73,7 +73,6 @@ _OWNER_ACTIONS = {
     "revoke": OWNER_OPERATION_IDS["revoke"],
 }
 _PROVISIONING_ACTIONS = {
-    "organization": PROVISIONING_OPERATION_IDS["organization_create"],
     "recovery-operator": PROVISIONING_OPERATION_IDS["recovery_operator_create"],
 }
 
@@ -97,6 +96,21 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         )
 
     def _drift(request: Request, operation_id: str) -> Response:
+        if request.method == "GET":
+            return state.templates.TemplateResponse(
+                request,
+                "unavailable.html",
+                state.context(
+                    request,
+                    title="Workspace unavailable",
+                    message=(
+                        "The control plane no longer exposes the operation this workspace needs. "
+                        "No action is available until the console and control plane are aligned."
+                    ),
+                    operation_id=operation_id,
+                ),
+                status_code=503,
+            )
         outcome = local_error(
             503, "operation_unavailable", f"control plane no longer exposes {operation_id}"
         )
@@ -156,15 +170,26 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def resources_index(request: Request) -> Response:
         if _session(request) is None:
             return RedirectResponse("/login", status_code=303)
-        groups: dict[str, list[dict[str, str]]] = {}
-        for spec in RESOURCE_SPECS:
-            groups.setdefault(spec.owner, []).append(
-                {"key": spec.key, "title": spec.title, "summary": spec.summary}
-            )
-        for workspace in WORKSPACE_SPECS:
-            groups.setdefault(workspace.owner, []).append(
-                {"key": workspace.key, "title": workspace.title, "summary": workspace.summary}
-            )
+        sections = {
+            "People & access": (
+                "native-identities",
+                "provisioners",
+                "recovery-cases",
+                "owners",
+                "organizations",
+                "provisioning",
+            ),
+            "Platform": ("configurations", "secrets"),
+            "Reliability": ("deployment-recovery",),
+        }
+        available = {
+            item.key: {"key": item.key, "title": item.title, "summary": item.summary}
+            for item in (*RESOURCE_SPECS, *WORKSPACE_SPECS)
+        }
+        groups = {
+            title: [available[key] for key in keys if key in available]
+            for title, keys in sections.items()
+        }
         return state.templates.TemplateResponse(
             request, "resources/index.html", state.context(request, groups=groups)
         )
@@ -281,7 +306,9 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                         description=action.description,
                     )
                     for action, operation in actions
-                ],
+                ]
+                if response.ok
+                else [],
             ),
         )
 
@@ -315,6 +342,10 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
             )
         except MissingOperation as exc:
             return _drift(request, exc.operation_id)
+        try:
+            stage_operation = resolve_operation(catalog, CONFIGURATION_OPERATION_IDS["stage"])
+        except MissingOperation:
+            stage_operation = None
         assert list_operation is not None
         response = await state.control_request(
             list_operation.method, list_operation.path_template, bearer=_bearer(request)
@@ -325,12 +356,15 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 kind = str(item.get("configuration_kind", "?"))
                 kinds[kind] = kinds.get(kind, 0) + 1
         policy: dict[str, Any] = {}
+        policy_error = ""
         if policy_operation is not None:
             policy_response = await state.control_request(
                 policy_operation.method, policy_operation.path_template, bearer=_bearer(request)
             )
             if policy_response.ok:
                 policy = as_mapping(policy_response.payload)
+            else:
+                policy_error = _error_text(policy_response)
         return state.templates.TemplateResponse(
             request,
             "resources/configurations.html",
@@ -339,8 +373,23 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 kinds=sorted(kinds.items()),
                 policy=policy,
                 policy_detail=summarize_payload(policy) if policy else ([], []),
+                policy_error=policy_error,
                 list_error="" if response.ok else _error_text(response),
+                stage=_action_context(
+                    request,
+                    stage_operation,
+                    action_url="/resources/configurations/stage",
+                    form_id="stage-first",
+                    submit_label="Stage revision",
+                )
+                if stage_operation is not None
+                else None,
             ),
+        )
+
+    async def configuration_stage_first(request: Request) -> Response:
+        return await _run_action(
+            request, CONFIGURATION_OPERATION_IDS["stage"], form_id="stage-first"
         )
 
     async def configuration_kind(request: Request, kind: str) -> Response:
@@ -421,7 +470,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         )
         base_values = {"configuration_kind": kind, "revision": revision}
         actions: list[dict[str, Any]] = []
-        for key, operation in resolved.items():
+        for key, operation in resolved.items() if detail_response.ok else ():
             values = dict(base_values)
             if key == "activate":
                 values["expected_active_revision"] = active
@@ -544,6 +593,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 item_error="" if response.ok else _error_text(response),
                 detail=summarize_payload(payload),
                 detail_kind="keyring" if is_keyring else "secret",
+                can_act=response.ok,
                 rotate=_action_context(
                     request,
                     rotate_operation,
@@ -609,6 +659,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 item=payload,
                 item_error="" if response.ok else _error_text(response),
                 detail=summarize_payload(payload),
+                can_act=response.ok,
                 configure=_action_context(
                     request,
                     configure,
@@ -694,9 +745,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 operation,
                 action_url=f"/resources/provisioning/actions/{key}",
                 form_id=f"provisioning-{key}",
-                submit_label="Create organization"
-                if key == "organization"
-                else "Create recovery operator",
+                submit_label="Create recovery operator",
             )
             for key, operation in resolved.items()
         }
@@ -723,6 +772,11 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         configurations,
         methods=["GET"],
         response_class=HTMLResponse,
+    )
+    app.add_api_route(
+        "/resources/configurations/stage",
+        configuration_stage_first,
+        methods=["POST"],
     )
     app.add_api_route(
         "/resources/configurations/{kind}",

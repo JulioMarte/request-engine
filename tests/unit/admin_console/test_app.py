@@ -311,3 +311,55 @@ async def test_dashboard_degrades_when_control_unreachable() -> None:
         response = await client.get("/")
     assert response.status_code == 200
     assert "control plane unreachable" in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["drifted", "missing"])
+async def test_dashboard_flags_deployment_recovery_drift(state: str) -> None:
+    class DeploymentState(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if path == "/v1/platform/observability":
+                return ControlResponse(200, {"alerts": []}, {})
+            if path == "/v1/platform/deployment-recovery:plan":
+                return ControlResponse(200, {"state": state}, {})
+            return await super().request(method, path, **kwargs)
+
+    app = create_admin_console_app(_settings(), client=DeploymentState())
+    async with _client(app) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get("/")
+    assert response.status_code == 200
+    assert "Some operational checks need attention" in response.text
+    assert "Deployment binding" in response.text
+    assert f"recovery binding is {state}" in response.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_does_not_show_internal_coverage_or_empty_activity() -> None:
+    app = create_admin_console_app(_settings(), client=FakeControl())
+    async with _client(app) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get("/")
+    assert "Admin coverage" not in response.text
+    assert "Recent operational activity" not in response.text
+    assert "Sign out" in response.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_does_not_claim_health_from_incomplete_success_payload() -> None:
+    class IncompleteReadiness(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if path == "/v1/platform/readiness":
+                return ControlResponse(200, {}, {})
+            if path == "/v1/platform/observability":
+                return ControlResponse(200, {"alerts": []}, {})
+            if path == "/v1/platform/deployment-recovery:plan":
+                return ControlResponse(200, {"state": "in_sync"}, {})
+            return await super().request(method, path, **kwargs)
+
+    app = create_admin_console_app(_settings(), client=IncompleteReadiness())
+    async with _client(app) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get("/")
+    assert "Operational status is incomplete" in response.text
+    assert "Core operational checks are healthy" not in response.text

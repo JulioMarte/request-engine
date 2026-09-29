@@ -8,6 +8,16 @@ from .http_surface import (
 
 STAFF_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     PublicHttpOperation(
+        "staff.overview",
+        "GET",
+        "/v1/staff/overview",
+        "staff.read",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe("/v1/staff/overview"),
+    ),
+    PublicHttpOperation(
         "staff.list",
         "GET",
         "/v1/staff/members",
@@ -58,6 +68,22 @@ STAFF_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
                 "expected_authority_revision": 1,
                 "desired_capabilities": ["staff.invite"],
                 "provenance_reference": "surface-probe",
+            },
+        ),
+    ),
+    PublicHttpOperation(
+        "staff.authority.plan",
+        "POST",
+        "/v1/staff/members/{membership_id}/authority:plan",
+        "staff.plan_authority",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(
+            f"/v1/staff/members/{PROBE_UUID}/authority:plan",
+            body={
+                "expected_authority_revision": 1,
+                "desired_capabilities": ["staff.invite"],
             },
         ),
     ),

@@ -5,14 +5,21 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from request_engine.modules.tenancy.application.errors import (
+    StaffMembershipForbidden,
+    StaffMembershipInputInvalid,
+)
 from request_engine.modules.tenancy.application.queries.staff_membership import (
     ListStaffMembershipsQuery,
+    PlanStaffAuthorityQuery,
+    StaffAuthorityPlan,
     StaffMembershipReader,
     StaffMembershipSummary,
+    StaffOverview,
 )
 from request_engine.platform.http.capability_routes import add_capability_route
-from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import require_capability
+from request_engine.platform.security.context import ActorContext, PrincipalKind
+from request_engine.platform.security.http import CapabilityRequired, require_capability
 
 
 class StaffGrantView(BaseModel):
@@ -34,6 +41,31 @@ class StaffMembershipView(BaseModel):
 class StaffMembershipPageView(BaseModel):
     items: list[StaffMembershipView]
     next_cursor: UUID | None
+
+
+class StaffOverviewView(BaseModel):
+    total: int
+    active: int
+    invited: int
+    suspended: int
+    revoked: int
+
+
+class StaffAuthorityPlanBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_authority_revision: int = Field(ge=1)
+    desired_capabilities: list[str] = Field(max_length=128)
+
+
+class StaffAuthorityPlanView(BaseModel):
+    membership_id: UUID
+    authority_revision: int
+    current: list[str]
+    desired: list[str]
+    added: list[str]
+    removed: list[str]
+    assignable: bool
+    blocked_capabilities: list[str]
 
 
 class StaffMembershipListParams(BaseModel):
@@ -58,12 +90,43 @@ def _view(member: StaffMembershipSummary) -> StaffMembershipView:
     )
 
 
+def _overview_view(overview: StaffOverview) -> StaffOverviewView:
+    return StaffOverviewView(
+        total=overview.total,
+        active=overview.active,
+        invited=overview.invited,
+        suspended=overview.suspended,
+        revoked=overview.revoked,
+    )
+
+
+def _plan_view(plan: StaffAuthorityPlan) -> StaffAuthorityPlanView:
+    return StaffAuthorityPlanView(
+        membership_id=plan.membership_id,
+        authority_revision=plan.authority_revision,
+        current=list(plan.current),
+        desired=list(plan.desired),
+        added=list(plan.added),
+        removed=list(plan.removed),
+        assignable=plan.assignable,
+        blocked_capabilities=list(plan.blocked_capabilities),
+    )
+
+
 def add_staff_membership_reads(
     router: APIRouter,
     *,
     reader: StaffMembershipReader,
     authenticated_actor: Callable[[Request], Awaitable[ActorContext]],
 ) -> None:
+    async def read_overview(
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        response: Response,
+    ) -> StaffOverviewView:
+        require_capability(actor, "staff.read")
+        response.headers["Cache-Control"] = "no-store"
+        return _overview_view(await reader.read_overview(actor))
+
     async def list_memberships(
         params: Annotated[StaffMembershipListParams, Query()],
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
@@ -88,6 +151,40 @@ def add_staff_membership_reads(
         response.headers["Cache-Control"] = "no-store"
         return _view(await reader.read_membership(actor, membership_id))
 
+    async def plan_authority(
+        membership_id: UUID,
+        body: StaffAuthorityPlanBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        response: Response,
+    ) -> StaffAuthorityPlanView:
+        if not (actor.allows("staff.plan_authority") or actor.allows("staff.manage_authority")):
+            raise CapabilityRequired("staff.plan_authority")
+        if actor.principal_kind is not PrincipalKind.HUMAN:
+            raise StaffMembershipForbidden("staff authority planning requires a HUMAN actor")
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            plan = await reader.plan_authority(
+                actor,
+                PlanStaffAuthorityQuery(
+                    membership_id=membership_id,
+                    expected_authority_revision=body.expected_authority_revision,
+                    desired_capabilities=tuple(body.desired_capabilities),
+                ),
+            )
+        except ValueError as exc:
+            raise StaffMembershipInputInvalid(str(exc)) from None
+        return _plan_view(plan)
+
+    add_capability_route(
+        router,
+        "/overview",
+        read_overview,
+        methods=["GET"],
+        capability="staff.read",
+        operation_id="staff_overview_get",
+        response_model=StaffOverviewView,
+    )
+
     add_capability_route(
         router,
         "/members",
@@ -105,4 +202,13 @@ def add_staff_membership_reads(
         capability="staff.read",
         operation_id="staff_get",
         response_model=StaffMembershipView,
+    )
+    add_capability_route(
+        router,
+        "/members/{membership_id}/authority:plan",
+        plan_authority,
+        methods=["POST"],
+        capability="staff.plan_authority",
+        operation_id="staff_authority_plan",
+        response_model=StaffAuthorityPlanView,
     )

@@ -1,16 +1,12 @@
 {% extends "base.html" %}
 {% import "partials/action_form.html" as action_form %}
-{% block title %}Provisioning &middot; Request Engine admin{% endblock %}
+{% block title %}Recovery operators &middot; Request Engine admin{% endblock %}
 {% block content %}
 <section class="card">
   <p><a href="/resources">&larr; Workspaces</a></p>
-  <h1>Organizations and recovery operators</h1>
+  <h1>Recovery operators</h1>
   <div class="alert notice">{{ note }}</div>
   <div id="result"></div>
-</section>
-<section class="card">
-  <h2>Create organization</h2>
-  {{ action_form.render(forms['organization']) }}
 </section>
 <section class="card">
   <h2>Create recovery operator</h2>

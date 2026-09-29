@@ -9,6 +9,7 @@ form. Execution is delegated to the shared ``execution.execute_operation`` path.
 
 from __future__ import annotations
 
+from asyncio import gather
 from typing import Any
 
 import httpx
@@ -22,9 +23,131 @@ from request_engine.entrypoints.http.admin_console.execution import (
 )
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs, summarize_payload
 from request_engine.entrypoints.http.admin_console.json_types import as_mapping
+from request_engine.entrypoints.http.admin_console.resources import RESOURCE_SPECS, WORKSPACE_SPECS
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 _FORM_ID = "operation-form"
+
+_GOOD_STATES = frozenset({"active", "available", "configured", "healthy", "ok", "ready"})
+
+
+def _probe_view(
+    title: str,
+    status: int,
+    payload: dict[str, Any],
+    error: str,
+    href: str,
+    healthy_override: bool | None = None,
+) -> dict[str, str]:
+    raw_state = payload.get("status", payload.get("state"))
+    state = str(raw_state).lower() if raw_state is not None else ""
+    healthy = (
+        200 <= status < 300 and state in (_GOOD_STATES | {"in_sync"})
+        if healthy_override is None
+        else healthy_override
+    )
+    if status == 0:
+        label = "Unavailable"
+    elif not 200 <= status < 300:
+        label = f"HTTP {status}"
+    elif state:
+        label = state.replace("_", " ").title()
+    else:
+        label = "Available"
+    return {
+        "title": title,
+        "label": label,
+        "tone": "ok" if healthy else ("neutral" if 200 <= status < 300 else "warn"),
+        "detail": error
+        or (
+            "Responding normally"
+            if healthy
+            else "Data available"
+            if status == 200
+            else "Review current state"
+        ),
+        "href": href,
+    }
+
+
+def _attention_items(
+    readiness_status: int,
+    readiness: dict[str, Any],
+    readiness_error: str,
+    observability_status: int,
+    observability: dict[str, Any],
+    observability_error: str,
+    deployment_status: int,
+    deployment: dict[str, Any],
+    deployment_error: str,
+) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    dependencies = (
+        (readiness_status, readiness_error, "Platform readiness", "/diagnostics"),
+        (observability_status, observability_error, "Operational telemetry", "/diagnostics"),
+        (
+            deployment_status,
+            deployment_error,
+            "Deployment recovery",
+            "/resources/deployment-recovery",
+        ),
+    )
+    for status, error, title, href in dependencies:
+        if not 200 <= status < 300:
+            items.append(
+                {
+                    "title": title,
+                    "detail": error or f"The control plane returned HTTP {status}.",
+                    "href": href,
+                    "action": "Review",
+                }
+            )
+    for alert in observability.get("alerts", []):
+        alert_body = as_mapping(alert)
+        code = str(alert_body.get("code") or "Operational alert")
+        metric = str(alert_body.get("metric") or "A monitored threshold was crossed")
+        items.append(
+            {
+                "title": code.replace("_", " ").title(),
+                "detail": metric.replace("_", " "),
+                "href": "/diagnostics",
+                "action": "Inspect diagnostics",
+            }
+        )
+    readiness_checks = (
+        ("secret_store", "Secret store", "/resources/secrets"),
+        ("recovery_delivery_source", "Recovery delivery", "/resources/configurations"),
+        ("restore_drill", "Restore drill", "/resources/deployment-recovery"),
+    )
+    for field, title, href in readiness_checks:
+        value = readiness.get(field)
+        if value is None:
+            continue
+        normalized = str(value).lower()
+        if normalized in _GOOD_STATES or normalized in {"managed", "bootstrap", "current"}:
+            continue
+        items.append(
+            {
+                "title": title,
+                "detail": f"Current reported state: {str(value).replace('_', ' ')}.",
+                "href": href,
+                "action": "Review",
+            }
+        )
+    deployment_state = str(deployment.get("state", "")).lower()
+    if 200 <= deployment_status < 300 and deployment_state not in {"", "in_sync"}:
+        items.append(
+            {
+                "title": "Deployment binding",
+                "detail": (
+                    "The recovery binding is "
+                    f"{deployment_state.replace('_', ' ')} and needs review."
+                ),
+                "href": "/resources/deployment-recovery",
+                "action": "Review binding",
+            }
+        )
+    return items
 
 
 def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
@@ -39,35 +162,90 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
         session = state.session(request)
         if session is None:
             return RedirectResponse("/login", status_code=303)
-        operation_count = 0
-        platform_operation_count = 0
-        group_count = 0
         catalog_error: str | None = None
         try:
-            catalog = await state.catalog()
-            operation_count = len(catalog.operations)
-            platform_operation_count = len(catalog.platform_operations())
-            group_count = len(catalog.groups())
+            await state.catalog()
         except Exception:
             catalog_error = "control plane unreachable"
-        readiness_status, readiness, readiness_error = await _probe(
-            session, "GET", "/v1/platform/readiness"
+        (
+            (readiness_status, readiness, readiness_error),
+            (observability_status, observability, observability_error),
+            (deployment_status, deployment, deployment_error),
+        ) = await gather(
+            _probe(session, "GET", "/v1/platform/readiness"),
+            _probe(session, "GET", "/v1/platform/observability"),
+            _probe(session, "GET", "/v1/platform/deployment-recovery:plan"),
         )
-        observability_status, observability, observability_error = await _probe(
-            session, "GET", "/v1/platform/observability"
+        attention = _attention_items(
+            readiness_status,
+            readiness,
+            readiness_error,
+            observability_status,
+            observability,
+            observability_error,
+            deployment_status,
+            deployment,
+            deployment_error,
         )
-        deployment_status, deployment, deployment_error = await _probe(
-            session, "GET", "/v1/platform/deployment-recovery:plan"
+        readiness_fields = ("secret_store", "recovery_delivery_source", "restore_drill")
+        readiness_good = readiness_status in range(200, 300) and (
+            str(readiness.get("status", "")).lower() in _GOOD_STATES
+            or all(
+                field in readiness
+                and str(readiness[field]).lower()
+                in (_GOOD_STATES | {"managed", "bootstrap", "current"})
+                for field in readiness_fields
+            )
+        )
+        observability_good = observability_status in range(200, 300) and not observability.get(
+            "alerts", []
+        )
+        deployment_good = (
+            deployment_status in range(200, 300)
+            and str(deployment.get("state", "")).lower() == "in_sync"
+        )
+        services = (
+            _probe_view(
+                "Control plane",
+                readiness_status,
+                readiness,
+                readiness_error,
+                "/diagnostics",
+                readiness_good,
+            ),
+            _probe_view(
+                "Observability",
+                observability_status,
+                observability,
+                observability_error,
+                "/diagnostics",
+                observability_good,
+            ),
+            _probe_view(
+                "Recovery binding",
+                deployment_status,
+                deployment,
+                deployment_error,
+                "/resources/deployment-recovery",
+                deployment_good,
+            ),
+        )
+        overall_state = (
+            "attention"
+            if attention
+            else "healthy"
+            if all(service["tone"] == "ok" for service in services)
+            else "incomplete"
         )
         return state.templates.TemplateResponse(
             request,
             "dashboard.html",
             state.context(
                 request,
-                operation_count=operation_count,
-                platform_operation_count=platform_operation_count,
-                group_count=group_count,
                 catalog_error=catalog_error,
+                services=services,
+                attention=attention,
+                overall_state=overall_state,
                 readiness_status=readiness_status,
                 readiness_detail=summarize_payload(readiness) if readiness else ([], []),
                 readiness_error=readiness_error,
@@ -82,7 +260,9 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             ),
         )
 
-    async def operations(request: Request, group: str | None = None) -> Response:
+    async def operations(
+        request: Request, group: str | None = None, q: str | None = None
+    ) -> Response:
         session = state.session(request)
         if session is None:
             return RedirectResponse("/login", status_code=303)
@@ -102,10 +282,32 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             )
         groups = catalog.groups()
         selected = group if group in groups else None
+        query = (q or "").strip().lower()
         if selected is not None:
             visible: tuple[AdminOperation, ...] = groups[selected]
         else:
             visible = tuple(operation for items in groups.values() for operation in items)
+        if query:
+            visible = tuple(
+                operation
+                for operation in visible
+                if query
+                in " ".join(
+                    (
+                        operation.operation_id,
+                        operation.summary,
+                        operation.description,
+                        operation.path_template,
+                        operation.owner or "",
+                        operation.capability or "",
+                    )
+                ).lower()
+            )
+        workspaces = tuple(
+            item
+            for item in (*RESOURCE_SPECS, *WORKSPACE_SPECS)
+            if query and query in f"{item.title} {item.summary} {item.owner}".lower()
+        )
         return state.templates.TemplateResponse(
             request,
             "operations.html",
@@ -113,6 +315,8 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 request,
                 groups=groups,
                 selected_group=selected,
+                query=q or "",
+                matching_workspaces=workspaces,
                 visible_operations=visible,
                 catalog_error=None,
             ),

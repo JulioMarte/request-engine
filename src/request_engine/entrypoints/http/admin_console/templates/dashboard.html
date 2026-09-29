@@ -1,37 +1,51 @@
 {% extends "base.html" %}
-{% block title %}Dashboard &middot; Request Engine admin{% endblock %}
-{% macro facts(title, status, detail, error) %}
-  <section class="card">
-    <h2>{{ title }} <span class="badge">{{ status if status else '—' }}</span></h2>
-    {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
-    {% if detail[0] %}
-    <dl class="detail">
-      {% for key, value in detail[0] %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}
-    </dl>
-    {% endif %}
-    {% for key, value in detail[1] %}
-      <details><summary>{{ key }}</summary><pre class="payload">{{ value }}</pre></details>
-    {% endfor %}
-  </section>
-{% endmacro %}
+{% block title %}Overview · Request Engine admin{% endblock %}
 {% block content %}
-<section class="card">
-  <h1>Dashboard</h1>
-  {% if catalog_error %}<div class="alert error">{{ catalog_error }}</div>{% endif %}
-  <ul class="stats">
-    <li><span class="stat">{{ operation_count }}</span> operations projected</li>
-    <li><span class="stat">{{ platform_operation_count }}</span> platform operations</li>
-    <li><span class="stat">{{ group_count }}</span> owner groups</li>
-  </ul>
-  <p>
-    <a class="button" href="/resources">Resource workspaces</a>
-    <a class="button secondary" href="/operations">All operations</a>
-    <a class="button secondary" href="/setup">First-run setup</a>
-  </p>
+<header class="page-heading">
+  <div><p class="eyebrow">Dashboard / Overview</p><h1>Overview</h1><p>See what is healthy, what needs attention, and where to act.</p></div>
+  <a class="button secondary" href="/diagnostics">View diagnostics <span aria-hidden="true">→</span></a>
+</header>
+{% if catalog_error %}<div class="alert error" role="alert">The operation catalog is unavailable. {{ catalog_error }}</div>{% endif %}
+
+<section class="health-banner {% if overall_state != 'healthy' %}{{ overall_state }}{% endif %}" aria-labelledby="health-title">
+  <span class="health-icon" aria-hidden="true">{% if overall_state == 'healthy' %}✓{% elif overall_state == 'attention' %}!{% else %}i{% endif %}</span>
+  <div><h2 id="health-title">{% if overall_state == 'healthy' %}Core operational checks are healthy{% elif overall_state == 'attention' %}Some operational checks need attention{% else %}Operational status is incomplete{% endif %}</h2>
+  <p>{% if overall_state == 'healthy' %}The control-plane surfaces checked by this page are responding normally.{% elif overall_state == 'attention' %}Review the items below before making sensitive changes.{% else %}One or more checks responded without enough information to claim a healthy state.{% endif %}</p></div>
+  <a href="/diagnostics">View system status <span aria-hidden="true">→</span></a>
 </section>
-<div class="dashboard-grid">
-  {{ facts('Readiness', readiness_status, readiness_detail, readiness_error) }}
-  {{ facts('Observability', observability_status, observability_detail, observability_error) }}
-  {{ facts('Deployment recovery plan', deployment_status, deployment_detail, deployment_error) }}
+
+<div class="status-grid" aria-label="Platform status">
+  {% for service in services %}
+  <a class="status-card" href="{{ service.href }}">
+    <span class="status-symbol {{ service.tone }}" aria-hidden="true">{% if service.tone == 'ok' %}✓{% elif service.tone == 'warn' %}!{% else %}i{% endif %}</span>
+    <span><small>{{ service.title }}</small><strong>{{ service.label }}</strong><em>{{ service.detail }}</em></span>
+  </a>
+  {% endfor %}
 </div>
+
+<div class="overview-grid">
+  <section class="panel" aria-labelledby="attention-title">
+    <div class="panel-heading"><div><p class="eyebrow">Act first</p><h2 id="attention-title">Needs attention <span class="count-badge">{{ attention | length }}</span></h2></div><a href="/diagnostics">View diagnostics →</a></div>
+    <div class="attention-list">
+      {% for item in attention %}
+      <article class="attention-item"><span aria-hidden="true">!</span><div><strong>{{ item.title }}</strong><p>{{ item.detail }}</p></div><a class="button quiet" href="{{ item.href }}">{{ item.action }}</a></article>
+      {% else %}
+      <div class="empty-state compact"><span aria-hidden="true">✓</span><div><strong>Nothing needs immediate attention</strong><p>No alerts or unavailable operational surfaces were reported.</p></div></div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="actions-title">
+    <div class="panel-heading"><div><p class="eyebrow">Shortcuts</p><h2 id="actions-title">Common tasks</h2></div><a href="/resources">All workspaces →</a></div>
+    <div class="quick-grid">
+      <a href="/resources/native-identities"><span aria-hidden="true">◎</span><span><strong>Manage identities</strong><small>Provision and disable native identities</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/configurations"><span aria-hidden="true">◫</span><span><strong>Configure platform</strong><small>Stage, validate, test, and activate</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/secrets"><span aria-hidden="true">⌁</span><span><strong>Manage secrets</strong><small>Use governed bindings and keyrings</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/recovery-cases"><span aria-hidden="true">↻</span><span><strong>Recovery cases</strong><small>Review assisted identity recovery</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/deployment-recovery"><span aria-hidden="true">◉</span><span><strong>Deployment recovery</strong><small>Inspect and reconcile the active binding</small></span><b aria-hidden="true">→</b></a>
+      <a href="/operations"><span aria-hidden="true">⌘</span><span><strong>Advanced operations</strong><small>Complete OpenAPI-driven escape hatch</small></span><b aria-hidden="true">→</b></a>
+    </div>
+  </section>
+</div>
+
 {% endblock %}

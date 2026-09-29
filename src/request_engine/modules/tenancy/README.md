@@ -11,6 +11,12 @@ Other modules consume only public tenancy contracts; participant roles or extern
 `api/native_platform_provisioning.py` owns native provisioner and organization-root
 creation transport; `api/platform_provisioner_management.py` owns the provisioner
 read projection and lifecycle transport (`list`/`get`/`suspend`/`reactivate`/`revoke`).
+`api/platform_organization_reads.py` owns the private platform organization
+projection (`GET /v1/platform/organizations` and
+`GET /v1/platform/organizations/{organization_id}`) under the explicit
+`platform.organization.read` capability. The projection is read-only, keyset
+paginated, never exposes tenant-internal authority, and returns `404` for an
+absent organization without creating a second organization authority path.
 Their typed application commands and queries execute through the dedicated
 platform-control and platform-read DB connections. The separate HTTP entrypoint only
 composes that supported API. See `docs/architecture/http-runtime-deployment.md` for
@@ -128,3 +134,15 @@ which are verified by provenance. `principal_id` is forced from the
 authenticated actor; integration/relay callers get a typed 403. Replay of the
 verification request never re-exposes a code, and the 0025 DB guard keeps
 `verified` monotone even against direct SQL.
+
+## Staff administration reads
+
+`GET /v1/staff/overview` summarizes membership lifecycle counts for the current
+tenant under `staff.read`. `POST /v1/staff/members/{membership_id}/authority:plan`
+is a revision-bound, read-only preview under query capability
+`staff.plan_authority`; existing `staff.manage_authority` grants remain accepted
+for that narrower preview. The plan returns only target grants inside the
+caller's current delegable ceiling, reports requested capabilities outside that
+ceiling as blocked, and never writes authority, audit, or idempotency state. The
+authoritative `PUT .../authority` command independently revalidates its revision,
+ceiling, controller continuity, and tenant state while holding its normal locks.

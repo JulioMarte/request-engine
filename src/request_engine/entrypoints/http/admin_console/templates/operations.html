@@ -1,32 +1,46 @@
 {% extends "base.html" %}
-{% block title %}Operations &middot; Request Engine admin{% endblock %}
+{% block title %}Advanced operations · Request Engine admin{% endblock %}
 {% block content %}
-<section class="card">
-  <h1>Operations</h1>
-  <p class="muted">Every operation is projected from the control-plane OpenAPI document.</p>
+<header class="page-heading">
+  <div><p class="eyebrow">Dashboard / Advanced</p><h1>Advanced operations</h1>
+  <p>The complete OpenAPI-driven escape hatch. Use a workspace for routine administration.</p></div>
+</header>
+<section class="panel filter-panel">
   {% if catalog_error %}<div class="alert error">{{ catalog_error }}</div>{% endif %}
+  <form class="operation-search" method="get" action="/operations" role="search">
+    <label class="sr-only" for="operation-search">Search advanced operations</label>
+    <input id="operation-search" type="search" name="q" value="{{ query }}" placeholder="Search by task, operation, owner, capability, or path…" />
+    {% if selected_group %}<input type="hidden" name="group" value="{{ selected_group }}" />{% endif %}
+    <button type="submit">Search</button>
+  </form>
   <div class="chips">
-    <a class="chip {% if not selected_group %}active{% endif %}" href="/operations">All</a>
+    <a class="chip {% if not selected_group %}active{% endif %}" href="/operations{% if query %}?q={{ query | urlencode }}{% endif %}">All</a>
     {% for name in groups %}
-      <a class="chip {% if selected_group == name %}active{% endif %}"
-         href="/operations?group={{ name | urlencode }}">{{ name }}</a>
+      <a class="chip {% if selected_group == name %}active{% endif %}" href="/operations?group={{ name | urlencode }}{% if query %}&q={{ query | urlencode }}{% endif %}">{{ name }}</a>
     {% endfor %}
   </div>
 </section>
-<section class="card">
-  <table class="ops">
-    <thead><tr><th>Method</th><th>Operation</th><th>Path</th><th>Capability</th></tr></thead>
+{% if matching_workspaces %}
+<section class="panel"><div class="panel-heading"><h2>Matching workspaces</h2></div><div class="workspace-results">
+  {% for item in matching_workspaces %}<a href="/resources/{{ item.key }}"><strong>{{ item.title }}</strong><small>{{ item.summary }}</small><span aria-hidden="true">→</span></a>{% endfor %}
+</div></section>
+{% endif %}
+<section class="panel">
+  <div class="panel-heading"><h2>{% if query %}Search results{% else %}Operation catalog{% endif %}</h2><span class="muted small">{{ visible_operations | length }} operations</span></div>
+  <div class="table-scroll"><table class="ops">
+    <thead><tr><th scope="col">Method</th><th scope="col">Operation</th><th scope="col">Path</th><th scope="col">Capability</th></tr></thead>
     <tbody>
     {% for operation in visible_operations %}
       <tr>
         <td><span class="method {{ operation.method | lower }}">{{ operation.method }}</span></td>
-        <td><a href="/operations/{{ operation.operation_id }}">{{ operation.operation_id }}</a>
-            <div class="muted small">{{ operation.summary }}</div></td>
+        <td><a href="/operations/{{ operation.operation_id }}">{{ operation.operation_id }}</a><div class="muted small">{{ operation.summary }}</div></td>
         <td><code>{{ operation.path_template }}</code></td>
         <td>{% if operation.capability %}<code>{{ operation.capability }}</code>{% else %}<span class="muted">—</span>{% endif %}</td>
       </tr>
+    {% else %}
+      <tr><td colspan="4"><div class="empty-state compact"><span aria-hidden="true">⌕</span><div><strong>No matching operations</strong><p>Try a broader task, owner, capability, or path.</p></div></div></td></tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </section>
 {% endblock %}

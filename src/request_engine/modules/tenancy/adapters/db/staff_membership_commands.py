@@ -25,14 +25,15 @@ from request_engine.modules.tenancy.application.errors import (
     StaffMembershipNotFound,
     StaffMembershipRevisionConflict,
 )
+from request_engine.modules.tenancy.application.staff_authority import (
+    validate_staff_capabilities,
+)
 from request_engine.platform.db.session import SessionFactory, actor_transaction
 from request_engine.platform.idempotency.postgres import (
     acquire_idempotency,
     command_fingerprint,
     complete_idempotency,
 )
-from request_engine.platform.security.capabilities import capability_definition
-from request_engine.platform.security.capability_types import AuthorityPlane
 from request_engine.platform.security.context import ActorContext, PrincipalKind
 
 _INVITE_CAPABILITY = "staff.invite"
@@ -57,21 +58,6 @@ def _validate_idempotency_key(value: str) -> str:
     if not normalized:
         raise ValueError("idempotency_key is required")
     return normalized
-
-
-def _validate_staff_capabilities(capabilities: tuple[str, ...]) -> tuple[str, ...]:
-    if len(set(capabilities)) != len(capabilities):
-        raise ValueError("desired_capabilities must not contain duplicates")
-    for capability in capabilities:
-        definition = capability_definition(capability)
-        if definition is None or definition.key != capability:
-            raise ValueError(f"unknown or non-canonical capability: {capability}")
-        if definition.authority_plane not in {
-            AuthorityPlane.TENANT_CONTROL,
-            AuthorityPlane.OPERATIONAL,
-        }:
-            raise ValueError(f"capability is not tenant authority: {capability}")
-    return capabilities
 
 
 def _require_human_actor(actor: ActorContext) -> None:
@@ -220,7 +206,7 @@ class PostgresStaffMembershipCommands:
         _require_human_actor(actor)
         if command.expected_authority_revision <= 0:
             raise ValueError("expected_authority_revision must be positive")
-        desired = _validate_staff_capabilities(command.desired_capabilities)
+        desired = validate_staff_capabilities(command.desired_capabilities)
         provenance = _validate_provenance_reference(command.provenance_reference)
         idempotency_key = _validate_idempotency_key(command.idempotency_key)
         fingerprint = command_fingerprint(

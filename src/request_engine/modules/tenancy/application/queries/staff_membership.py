@@ -24,12 +24,42 @@ class StaffMembershipSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class StaffOverview:
+    total: int
+    active: int
+    invited: int
+    suspended: int
+    revoked: int
+
+
+@dataclass(frozen=True, slots=True)
+class PlanStaffAuthorityQuery:
+    membership_id: UUID
+    expected_authority_revision: int
+    desired_capabilities: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class StaffAuthorityPlan:
+    membership_id: UUID
+    authority_revision: int
+    current: tuple[str, ...]
+    desired: tuple[str, ...]
+    added: tuple[str, ...]
+    removed: tuple[str, ...]
+    assignable: bool
+    blocked_capabilities: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ListStaffMembershipsQuery:
     after: UUID | None = None
     limit: int = 50
 
 
 class StaffMembershipReader(Protocol):
+    async def read_overview(self, actor: ActorContext) -> StaffOverview: ...
+
     async def list_memberships(
         self, actor: ActorContext, query: ListStaffMembershipsQuery
     ) -> tuple[StaffMembershipSummary, ...]: ...
@@ -37,3 +67,7 @@ class StaffMembershipReader(Protocol):
     async def read_membership(
         self, actor: ActorContext, membership_id: UUID
     ) -> StaffMembershipSummary: ...
+
+    async def plan_authority(
+        self, actor: ActorContext, query: PlanStaffAuthorityQuery
+    ) -> StaffAuthorityPlan: ...

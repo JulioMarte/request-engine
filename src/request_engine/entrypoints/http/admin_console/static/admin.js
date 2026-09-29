@@ -26,6 +26,66 @@
 
   document.addEventListener("DOMContentLoaded", rememberPasswordHandle);
 
+  function initializeFormIntents(root) {
+    var fields = (root || document).querySelectorAll("input[data-form-intent]");
+    fields.forEach(function (field) {
+      if (field.value) return;
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        field.value = window.crypto.randomUUID().replace(/-/g, "");
+      } else {
+        field.value = "intent-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+      }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () { initializeFormIntents(document); });
+  document.addEventListener("htmx:afterSwap", function (event) {
+    initializeFormIntents(event.detail.target || document);
+  });
+
+  function navigationElements() {
+    return {
+      sidebar: document.getElementById("admin-sidebar"),
+      toggle: document.querySelector(".menu-toggle"),
+      scrim: document.querySelector(".nav-scrim"),
+    };
+  }
+
+  function setNavigation(open, returnFocus) {
+    var elements = navigationElements();
+    if (!elements.sidebar || !elements.toggle) return;
+    var mobile = window.matchMedia("(max-width: 900px)").matches;
+    document.body.classList.toggle("nav-open", mobile && open);
+    elements.toggle.setAttribute("aria-expanded", mobile && open ? "true" : "false");
+    elements.sidebar.inert = mobile && !open;
+    if (elements.scrim) elements.scrim.tabIndex = mobile && open ? 0 : -1;
+    if (mobile && open) {
+      var firstLink = elements.sidebar.querySelector("a");
+      if (firstLink) firstLink.focus();
+    } else if (returnFocus) {
+      elements.toggle.focus();
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () { setNavigation(false, false); });
+  window.addEventListener("resize", function () { setNavigation(false, false); });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && document.body.classList.contains("nav-open")) {
+      setNavigation(false, true);
+    }
+  });
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest(".menu-toggle")) {
+      setNavigation(!document.body.classList.contains("nav-open"), false);
+      return;
+    }
+    if (target.closest(".nav-scrim") || (target.closest("#admin-sidebar a") && window.matchMedia("(max-width: 900px)").matches)) {
+      setNavigation(false, false);
+    }
+  });
+
   function b64url(buffer) {
     var bytes = new Uint8Array(buffer);
     var binary = "";
@@ -166,7 +226,30 @@
     var message = element && element.getAttribute ? element.getAttribute("data-confirm") : null;
     if (!message) return;
     event.preventDefault();
-    if (window.confirm(message)) event.detail.issueRequest(true);
+    var dialog = document.getElementById("confirm-dialog");
+    if (!dialog || typeof dialog.showModal !== "function") return;
+    var messageNode = document.getElementById("confirm-message");
+    if (messageNode) messageNode.textContent = message;
+    dialog.showModal();
+    dialog.addEventListener("close", function onClose() {
+      dialog.removeEventListener("close", onClose);
+      if (dialog.returnValue === "confirm") event.detail.issueRequest(true);
+    });
+  });
+
+  document.addEventListener("input", function (event) {
+    var input = event.target;
+    if (!(input instanceof HTMLInputElement) || !input.matches("[data-table-filter]")) return;
+    var query = input.value.trim().toLowerCase();
+    var rows = Array.from(document.querySelectorAll("[data-filter-row]"));
+    var visible = 0;
+    rows.forEach(function (row) {
+      var match = !query || (row.dataset.search || "").includes(query);
+      row.hidden = !match;
+      if (match) visible += 1;
+    });
+    var status = document.getElementById("filter-status");
+    if (status) status.textContent = visible + " of " + rows.length + " loaded results shown";
   });
 
   document.addEventListener("submit", function (event) {

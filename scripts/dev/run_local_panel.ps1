@@ -20,6 +20,7 @@ param(
   [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
   [int]$ControlPort = 8001,
   [int]$ConsolePort = 8002,
+  [int]$RuntimePort = 8000,
   [string]$Container = 'request-engine-postgres-1',
   [string]$Database = 'request_engine_current',
   [string]$DbSuperuser = 'request_engine'
@@ -64,6 +65,7 @@ function Start-Detached([string]$CommandLine) {
 $secret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 40 | ForEach-Object { [char]$_ })
 $decoy = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
 $controlLog = Join-Path $log 'control-plane.log'
+$runtimeLog = Join-Path $log 'runtime.log'
 $consoleLog = Join-Path $log 'console.log'
 
 $appUrl = "postgresql+asyncpg://re_dev_app:dev-app-only@127.0.0.1:5432/$Database"
@@ -84,12 +86,27 @@ $controlCmd = ('cmd.exe /c "cd /d "{0}" && ' +
   $Root, $appUrl, $readUrl, $controlDbUrl, $authority, $decoy, $ConsolePort, $python, $ControlPort, $controlLog
 Start-Detached $controlCmd
 
+$runtimeCmd = ('cmd.exe /c "cd /d "{0}" && ' +
+  'set REQUEST_ENGINE_DATABASE_URL={1}&& ' +
+  'set REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID={2}&& ' +
+  'set REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY={3}&& ' +
+  'set REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY={3}&& ' +
+  'set REQUEST_ENGINE_WEBAUTHN_DECOY_KEY={4}&& ' +
+  'set REQUEST_ENGINE_WEBAUTHN_RP_ID=localhost&& ' +
+  'set REQUEST_ENGINE_WEBAUTHN_RP_NAME=Request Engine&& ' +
+  'set REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS=http://localhost:{5}&& ' +
+  '"{6}" -m uvicorn request_engine.bootstrap.server:create_app --factory ' +
+  '--host 127.0.0.1 --port {7} > "{8}" 2>&1"') -f `
+  $Root, $appUrl, $authority, $secret, $decoy, $ConsolePort, $python, $RuntimePort, $runtimeLog
+Start-Detached $runtimeCmd
+
 $consoleCmd = ('cmd.exe /c "cd /d "{0}" && set REQUEST_ENGINE_ADMIN_CONSOLE_CONTROL_API_BASE_URL=http://127.0.0.1:{1}&& ' +
+  'set REQUEST_ENGINE_ADMIN_CONSOLE_RUNTIME_API_BASE_URL=http://127.0.0.1:{6}&& ' +
   'set REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_SECRET={2}&& ' +
   'set REQUEST_ENGINE_ADMIN_CONSOLE_COOKIE_SECURE=false&& ' +
   'set REQUEST_ENGINE_ADMIN_CONSOLE_DEBUG=true&& ' +
   '"{3}" -m uvicorn request_engine.bootstrap.admin_console_server:create_app --factory --host 127.0.0.1 --port {4} > "{5}" 2>&1"') -f `
-  $Root, $ControlPort, $secret, $python, $ConsolePort, $consoleLog
+  $Root, $ControlPort, $secret, $python, $ConsolePort, $consoleLog, $RuntimePort
 Start-Detached $consoleCmd
 
 function Wait-Http([string]$Url, [int]$Seconds) {
@@ -102,10 +119,13 @@ function Wait-Http([string]$Url, [int]$Seconds) {
 }
 
 $controlReady = Wait-Http "http://127.0.0.1:$ControlPort/health/ready" 60
+$runtimeReady = Wait-Http "http://127.0.0.1:$RuntimePort/health/ready" 60
 $consoleReady = Wait-Http "http://127.0.0.1:$ConsolePort/health/live" 60
+if ($runtimeReady -ne 200) { throw "runtime did not become ready; see $runtimeLog" }
 
 Write-Output "real control plane : http://127.0.0.1:$ControlPort  (health/ready = $controlReady)"
+Write-Output "tenant runtime     : http://127.0.0.1:$RuntimePort  (health/ready = $runtimeReady)"
 Write-Output "admin console      : http://localhost:$ConsolePort  (use localhost, not 127.0.0.1, for passkeys)"
 Write-Output "database           : $Database  (instance authority $authority)"
 Write-Output "logs               : $log"
-Write-Output "ready              : $($controlReady -eq 200 -and $consoleReady -eq 200)"
+Write-Output "ready              : $($controlReady -eq 200 -and $runtimeReady -eq 200 -and $consoleReady -eq 200)"

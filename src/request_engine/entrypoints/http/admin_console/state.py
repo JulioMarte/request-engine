@@ -53,10 +53,12 @@ class AdminConsoleState:
         *,
         settings: AdminConsoleSettings,
         control: ControlPlanePort,
+        runtime: ControlPlanePort | None,
         templates: Jinja2Templates,
     ) -> None:
         self.settings = settings
         self.control = control
+        self.runtime = runtime
         self.templates = templates
         self.logger = configure_logging(settings.log_level)
         self.errors = ErrorTracker()
@@ -64,6 +66,8 @@ class AdminConsoleState:
         self._secret = settings.session_secret.get_secret_value().encode("utf-8")
         self._catalog: AdminCatalog | None = None
         self._catalog_at = 0.0
+        self._runtime_catalog: AdminCatalog | None = None
+        self._runtime_catalog_at = 0.0
 
     @property
     def secret(self) -> bytes:
@@ -212,6 +216,38 @@ class AdminConsoleState:
             self.logger.warning("control call rejected", extra={"extra_fields": fields})
         return response
 
+    async def runtime_catalog(self) -> AdminCatalog:
+        if self.runtime is None:
+            raise RuntimeError("runtime API is not configured")
+        now = time.monotonic()
+        if (
+            self._runtime_catalog is not None
+            and now - self._runtime_catalog_at < self.settings.openapi_cache_seconds
+        ):
+            return self._runtime_catalog
+        self._runtime_catalog = load_catalog(await self.runtime.openapi())
+        self._runtime_catalog_at = now
+        return self._runtime_catalog
+
+    async def runtime_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        organization_id: str,
+        bearer: str | None,
+        json_body: object | None = None,
+        params: dict[str, str] | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> ControlResponse:
+        if self.runtime is None:
+            raise RuntimeError("runtime API is not configured")
+        headers = dict(extra_headers or {})
+        headers["X-RE-Organization-ID"] = organization_id
+        return await self.runtime.request(
+            method, path, bearer=bearer, json_body=json_body, params=params, extra_headers=headers
+        )
+
     def record_error(
         self,
         *,
@@ -243,6 +279,8 @@ class AdminConsoleState:
             "authenticated": session is not None,
             "csrf_token": session.csrf_token if session is not None else "",
             "control_base_url": self.settings.control_api_base_url,
+            "current_path": request.url.path,
+            "current_year": datetime.now(UTC).year,
         }
         base.update(extra)
         return base

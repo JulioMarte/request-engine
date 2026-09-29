@@ -27,7 +27,7 @@
   {% if not errors %}
     <p class="muted">No errors recorded since startup.</p>
   {% else %}
-    <table class="ops">
+    <div class="table-scroll"><table class="ops">
       <thead><tr><th>When</th><th>Request id</th><th>Kind</th><th>Method/path</th><th>Status</th><th>Message</th></tr></thead>
       <tbody>
       {% for event in errors %}
@@ -41,7 +41,7 @@
         </tr>
       {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   {% endif %}
   <p><a class="button secondary" href="/diagnostics/errors.json">Errors JSON</a></p>
 </section>

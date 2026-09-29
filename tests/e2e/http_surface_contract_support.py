@@ -7,6 +7,8 @@ _OPERATION_ID_OVERRIDES = {
     "agent.get": "agent_get",
     "staff.list": "staff_list",
     "staff.get": "staff_get",
+    "staff.overview": "staff_overview_get",
+    "staff.authority.plan": "staff_authority_plan",
     "identity_binding.list": "identity_binding_list",
     "identity_binding.get": "identity_binding_get",
     "identity_binding.suspend": "identity_binding_suspend",

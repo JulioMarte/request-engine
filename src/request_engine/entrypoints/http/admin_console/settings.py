@@ -20,6 +20,7 @@ class AdminConsoleSettings(BaseSettings):
     )
 
     control_api_base_url: str
+    runtime_api_base_url: str | None = None
     session_secret: SecretStr
     session_cookie_name: str = "re_admin_console"
     setup_cookie_name: str = "re_admin_setup"
@@ -32,9 +33,11 @@ class AdminConsoleSettings(BaseSettings):
     log_level: str = "INFO"
     debug: bool = False
 
-    @field_validator("control_api_base_url")
+    @field_validator("control_api_base_url", "runtime_api_base_url")
     @classmethod
-    def validate_base_url(cls, value: str) -> str:
+    def validate_base_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         trimmed = value.strip().rstrip("/")
         if not trimmed.startswith(("http://", "https://")):
             raise ValueError("control_api_base_url must be an absolute http(s) URL")

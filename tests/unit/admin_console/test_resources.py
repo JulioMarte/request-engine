@@ -243,12 +243,28 @@ def _openapi() -> dict[str, Any]:
                 )
             },
             "/v1/platform/organizations": {
+                "get": _op(
+                    "platform_organization_list",
+                    capability="platform.organization.read",
+                    kind="query",
+                    idempotency="none",
+                    params=[_param("after", "query"), _param("limit", "query")],
+                ),
                 "post": _op(
                     "platform_native_organization_create",
                     capability="organization.provision",
                     kind="command",
                     idempotency="required",
                     body=_obj(["organization_key"], {"organization_key": {"type": "string"}}),
+                ),
+            },
+            "/v1/platform/organizations/{organization_id}": {
+                "get": _op(
+                    "platform_organization_get",
+                    capability="platform.organization.read",
+                    kind="query",
+                    idempotency="none",
+                    params=[_param("organization_id", "path", True)],
                 )
             },
             "/v1/platform/recovery-operators": {
@@ -295,6 +311,14 @@ _PRINCIPAL_ITEM = {
     "active": True,
     "authority_revision": 7,
     "binding_status": "active",
+}
+_ORGANIZATION_ID = "33333333-3333-3333-3333-333333333333"
+_ORGANIZATION_ITEM = {
+    "organization_id": _ORGANIZATION_ID,
+    "organization_key": "acme",
+    "display_name": "Acme Clinic",
+    "operational_status": "active",
+    "default_timezone": "America/Santo_Domingo",
 }
 
 
@@ -373,6 +397,19 @@ class FakeControl:
                 },
                 {},
             )
+        if method == "POST" and path == "/v1/platform/organizations":
+            return ControlResponse(
+                201,
+                {
+                    "organization_id": _ORGANIZATION_ID,
+                    "organization_party_id": "44444444-4444-4444-4444-444444444444",
+                },
+                {},
+            )
+        if method == "GET" and path == "/v1/platform/organizations":
+            return ControlResponse(200, {"items": [_ORGANIZATION_ITEM], "next_after": None}, {})
+        if method == "GET" and path == f"/v1/platform/organizations/{_ORGANIZATION_ID}":
+            return ControlResponse(200, _ORGANIZATION_ITEM, {})
         if method == "GET" and path == "/v1/platform/configurations":
             return ControlResponse(
                 200,
@@ -502,6 +539,41 @@ async def test_native_identity_list_detail_and_prefill() -> None:
 
 
 @pytest.mark.asyncio
+async def test_detail_hides_actions_when_authoritative_read_fails() -> None:
+    class FailedDetail(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if method == "GET" and path == f"/v1/platform/native-identities/{_NATIVE_ID}":
+                return ControlResponse(404, {"error": {"code": "not_found", "message": "gone"}}, {})
+            return await super().request(method, path, **kwargs)
+
+    app = create_admin_console_app(_settings(), client=FailedDetail())
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(f"/resources/native-identities/{_NATIVE_ID}")
+    assert response.status_code == 200
+    assert "Item unavailable" in response.text
+    assert 'id="action-disable"' not in response.text
+
+
+@pytest.mark.asyncio
+async def test_list_error_is_not_rendered_as_a_genuine_empty_collection() -> None:
+    class FailedList(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if method == "GET" and path == "/v1/platform/native-identities":
+                return ControlResponse(
+                    503, {"error": {"code": "unavailable", "message": "later"}}, {}
+                )
+            return await super().request(method, path, **kwargs)
+
+    app = create_admin_console_app(_settings(), client=FailedList())
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get("/resources/native-identities")
+    assert "Could not load native identities" in response.text
+    assert "No native identities yet" not in response.text
+
+
+@pytest.mark.asyncio
 async def test_resource_action_runs_owner_operation_with_idempotency() -> None:
     control = FakeControl()
     app = create_admin_console_app(_settings(), client=control)
@@ -529,6 +601,40 @@ async def test_resource_action_runs_owner_operation_with_idempotency() -> None:
     assert call[2]["headers"]["idempotency-key"]
     assert call[2]["json"]["expected_revision"] == 7
     assert call[2]["bearer"] == "test-token"
+
+
+@pytest.mark.asyncio
+async def test_repeated_form_intent_reuses_the_same_idempotency_key() -> None:
+    control = FakeControl()
+    app = create_admin_console_app(_settings(), client=control)
+    async with _client(app) as client:
+        await _login(client)
+        detail = await client.get(f"/resources/provisioners/{_PRINCIPAL_ID}")
+        match = _CSRF_RE.search(detail.text)
+        assert match is not None
+        form = {
+            "csrf_token": match.group(1),
+            "_intent_id": "same-browser-intent",
+            "principal_id": _PRINCIPAL_ID,
+            "expected_revision": "7",
+            "reason_code": "security_investigation",
+        }
+        first = await client.post(
+            f"/resources/provisioners/{_PRINCIPAL_ID}/actions/suspend", data=form
+        )
+        second = await client.post(
+            f"/resources/provisioners/{_PRINCIPAL_ID}/actions/suspend", data=form
+        )
+    assert first.status_code == second.status_code == 200
+    calls = [
+        item
+        for item in control.calls
+        if item[0] == "POST" and item[1] == f"/v1/platform/provisioners/{_PRINCIPAL_ID}:suspend"
+    ]
+    assert [item[2]["headers"]["idempotency-key"] for item in calls] == [
+        "same-browser-intent",
+        "same-browser-intent",
+    ]
 
 
 @pytest.mark.asyncio
@@ -569,6 +675,8 @@ async def test_step_up_result_retries_the_same_form() -> None:
     assert executed.status_code == 200
     assert 'data-retry-form="action-suspend"' in executed.text
     assert "Confirm with passkey" in executed.text
+    assert "Your entries will be preserved" in executed.text
+    assert "Technical details" in executed.text
 
 
 @pytest.mark.asyncio
@@ -590,6 +698,40 @@ async def test_owners_workspace_states_it_cannot_list() -> None:
         response = await client.get("/resources/owners")
     assert response.status_code == 200
     assert "no owner enumeration operation" in response.text
+
+
+@pytest.mark.asyncio
+async def test_organizations_workspace_uses_platform_create_operation() -> None:
+    control = FakeControl()
+    app = create_admin_console_app(_settings(), client=control)
+    async with _client(app) as client:
+        await _login(client)
+        page = await client.get("/resources/organizations")
+        assert page.status_code == 200
+        assert "Acme Clinic" in page.text
+        detail = await client.get(f"/resources/organizations/{_ORGANIZATION_ID}")
+        assert detail.status_code == 200
+        assert "America/Santo_Domingo" in detail.text
+        match = _CSRF_RE.search(page.text)
+        assert match is not None
+        created = await client.post(
+            "/resources/organizations",
+            data={
+                "csrf_token": match.group(1),
+                "_intent_id": "create-organization-acme",
+                "organization_key": "acme",
+            },
+        )
+    assert created.status_code == 200
+    assert "completed successfully" in created.text
+    call = next(
+        item
+        for item in control.calls
+        if item[0] == "POST" and item[1] == "/v1/platform/organizations"
+    )
+    assert call[2]["json"] == {"organization_key": "acme"}
+    assert call[2]["headers"]["idempotency-key"] == "create-organization-acme"
+    assert call[2]["bearer"] == "test-token"
 
 
 @pytest.mark.asyncio
