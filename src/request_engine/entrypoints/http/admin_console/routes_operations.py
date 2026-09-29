@@ -152,11 +152,32 @@ def _attention_items(
 
 def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def _probe(session: Any, method: str, path: str) -> tuple[int, dict[str, Any], str]:
+        """Fetch one dashboard fact without letting one bad probe take down the page.
+
+        The control plane normally returns JSON objects, but reverse proxies and
+        unhandled 5xx responses can legally arrive as text, lists, or an empty
+        body. The dashboard is an observability surface, so those responses must
+        be rendered as degraded facts rather than raising while coercing them to
+        a mapping.
+        """
+
         try:
             response = await state.control_request(method, path, bearer=session.access_token)
         except httpx.HTTPError:
             return 0, {}, "control plane unreachable"
-        return response.status_code, as_mapping(response.payload), ""
+
+        payload = response.payload
+        if isinstance(payload, dict):
+            detail = as_mapping(payload)
+        elif payload is None:
+            detail = {}
+        else:
+            detail = {"response": payload}
+
+        error = ""
+        if response.status_code >= 500:
+            error = f"control plane returned HTTP {response.status_code}"
+        return response.status_code, detail, error
 
     async def dashboard(request: Request) -> Response:
         session = state.session(request)
@@ -170,12 +191,23 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
         (
             (readiness_status, readiness, readiness_error),
             (observability_status, observability, observability_error),
-            (deployment_status, deployment, deployment_error),
         ) = await gather(
             _probe(session, "GET", "/v1/platform/readiness"),
             _probe(session, "GET", "/v1/platform/observability"),
-            _probe(session, "GET", "/v1/platform/deployment-recovery:plan"),
         )
+        deployment_status = readiness_status
+        deployment = {
+            key: readiness[key]
+            for key in (
+                "backup_evidence",
+                "restore_drill",
+                "clone_fence",
+                "secret_store",
+                "recovery_delivery_source",
+            )
+            if key in readiness
+        }
+        deployment_error = readiness_error
         attention = _attention_items(
             readiness_status,
             readiness,
@@ -200,9 +232,9 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
         observability_good = observability_status in range(200, 300) and not observability.get(
             "alerts", []
         )
-        deployment_good = (
-            deployment_status in range(200, 300)
-            and str(deployment.get("state", "")).lower() == "in_sync"
+        deployment_good = deployment_status in range(200, 300) and all(
+            str(deployment.get(field, "")).lower() in (_GOOD_STATES | {"current"})
+            for field in ("backup_evidence", "restore_drill", "clone_fence")
         )
         services = (
             _probe_view(
@@ -222,7 +254,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 observability_good,
             ),
             _probe_view(
-                "Recovery binding",
+                "Recovery readiness",
                 deployment_status,
                 deployment,
                 deployment_error,

@@ -295,6 +295,36 @@ async def test_setup_page_degrades_when_control_unreachable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dashboard_does_not_execute_remote_deployment_plan() -> None:
+    control = FakeControl()
+    app = create_admin_console_app(_settings(), client=control)
+    async with _client(app) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get("/")
+
+    assert response.status_code == 200
+    assert "GET /v1/platform/deployment-recovery:plan" not in control.calls
+
+
+@pytest.mark.asyncio
+async def test_dashboard_degrades_on_non_object_control_error_body() -> None:
+    class PlainTextFailure(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if method == "GET" and path == "/v1/platform/observability":
+                return ControlResponse(500, "Internal Server Error", {})
+            return await super().request(method, path, **kwargs)
+
+    app = create_admin_console_app(_settings(), client=PlainTextFailure())
+    async with _client(app) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get("/")
+
+    assert response.status_code == 200
+    assert "control plane returned HTTP 500" in response.text
+    assert "Internal Server Error" in response.text
+
+
+@pytest.mark.asyncio
 async def test_dashboard_degrades_when_control_unreachable() -> None:
     class PartlyUnreachable(FakeControl):
         async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
@@ -315,13 +345,13 @@ async def test_dashboard_degrades_when_control_unreachable() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("state", ["drifted", "missing"])
-async def test_dashboard_flags_deployment_recovery_drift(state: str) -> None:
+async def test_dashboard_flags_reported_recovery_readiness_failure(state: str) -> None:
     class DeploymentState(FakeControl):
         async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
             if path == "/v1/platform/observability":
                 return ControlResponse(200, {"alerts": []}, {})
-            if path == "/v1/platform/deployment-recovery:plan":
-                return ControlResponse(200, {"state": state}, {})
+            if path == "/v1/platform/readiness":
+                return ControlResponse(200, {"restore_drill": state}, {})
             return await super().request(method, path, **kwargs)
 
     app = create_admin_console_app(_settings(), client=DeploymentState())
@@ -330,8 +360,8 @@ async def test_dashboard_flags_deployment_recovery_drift(state: str) -> None:
         response = await client.get("/")
     assert response.status_code == 200
     assert "Some operational checks need attention" in response.text
-    assert "Deployment binding" in response.text
-    assert f"recovery binding is {state}" in response.text
+    assert "Restore drill" in response.text
+    assert f"Current reported state: {state}" in response.text
 
 
 @pytest.mark.asyncio
