@@ -24,6 +24,10 @@ There is no planned blanket architecture freeze. A production release may make p
 
 ## 2. Current architecture map
 
+Admin organization/staff journey review and prioritized remediation are tracked in
+[`testing/admin-api-adversarial-handoff-2026-09-29.md`](testing/admin-api-adversarial-handoff-2026-09-29.md).
+This is a non-normative audit handoff with open findings, not production acceptance.
+
 Native initial provisioning authority is specified in `architecture/initial-controller-policy.md`; executed validation and remaining production gaps are tracked in `architecture/auth-implementation-status.md`.
 
 Current agent lifecycle/revision inspection and its explicit read authority are specified in `architecture/agent-governance-inspection.md`.

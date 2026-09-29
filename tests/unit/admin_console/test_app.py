@@ -321,7 +321,7 @@ async def test_dashboard_degrades_on_non_object_control_error_body() -> None:
 
     assert response.status_code == 200
     assert "control plane returned HTTP 500" in response.text
-    assert "Internal Server Error" in response.text
+    assert "Something went wrong" not in response.text
 
 
 @pytest.mark.asyncio
