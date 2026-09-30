@@ -52,6 +52,10 @@
     if (!form || target.matches('input[name="_intent_id"], input[name="_csrf"]')) return;
     var intent = form.querySelector('input[name="_intent_id"][data-form-intent]');
     if (intent) intent.value = newIntentId();
+    if (form.id === "staff-plan") {
+      var reviewed = document.getElementById("staff-plan-result");
+      if (reviewed) reviewed.replaceChildren();
+    }
   }
 
   document.addEventListener("DOMContentLoaded", function () { initializeFormIntents(document); });
