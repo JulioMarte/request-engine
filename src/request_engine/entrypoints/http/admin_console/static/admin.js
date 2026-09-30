@@ -38,10 +38,28 @@
     });
   }
 
+  function newIntentId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID().replace(/-/g, "");
+    }
+    return "intent-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+  }
+
+  function rotateIntentForEditedDraft(event) {
+    var target = event.target;
+    if (!(target instanceof Element)) return;
+    var form = target.closest("form");
+    if (!form || target.matches('input[name="_intent_id"], input[name="_csrf"]')) return;
+    var intent = form.querySelector('input[name="_intent_id"][data-form-intent]');
+    if (intent) intent.value = newIntentId();
+  }
+
   document.addEventListener("DOMContentLoaded", function () { initializeFormIntents(document); });
   document.addEventListener("htmx:afterSwap", function (event) {
     initializeFormIntents(event.detail.target || document);
   });
+  document.addEventListener("input", rotateIntentForEditedDraft);
+  document.addEventListener("change", rotateIntentForEditedDraft);
 
   function navigationElements() {
     return {
