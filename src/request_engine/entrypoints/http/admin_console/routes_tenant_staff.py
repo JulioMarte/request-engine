@@ -161,6 +161,11 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             surface="runtime",
             organization_id=organization_id,
         )
+        if outcome.ok and action in {"authority", "status"} and membership_id is not None:
+            location = f"/tenants/{organization_id}/staff/{membership_id}"
+            if request.headers.get("HX-Request", "").lower() == "true":
+                return Response(status_code=204, headers={"HX-Redirect": location})
+            return RedirectResponse(location, status_code=303)
         return state.templates.TemplateResponse(
             request,
             "partials/result.html",
