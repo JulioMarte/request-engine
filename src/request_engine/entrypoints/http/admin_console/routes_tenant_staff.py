@@ -5,7 +5,7 @@ from secrets import token_urlsafe
 from typing import Any
 from uuid import UUID
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import RedirectResponse, Response
 
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
@@ -30,7 +30,12 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         session = state.session(request)
         return session if session is not None else RedirectResponse("/login", status_code=303)
 
-    async def workspace(request: Request, organization_id: UUID) -> Response:
+    async def workspace(
+        request: Request,
+        organization_id: UUID,
+        after: UUID | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+    ) -> Response:
         session = session_or_redirect(request)
         if isinstance(session, RedirectResponse):
             return session
@@ -56,11 +61,9 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             organization_id=str(organization_id),
             bearer=session.access_token,
         )
-        limit = request.query_params.get("limit", "50")
-        after = request.query_params.get("after")
-        params = {"limit": limit}
-        if after:
-            params["after"] = after
+        params: dict[str, str | int] = {"limit": limit}
+        if after is not None:
+            params["after"] = str(after)
         list_response = await state.runtime_request(
             list_op.method,
             list_op.path_template,
@@ -79,7 +82,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 overview=as_mapping(overview_response.payload),
                 members=items,
                 next_cursor=body.get("next_cursor"),
-                page_limit=limit,
+                page_limit=str(limit),
                 error=""
                 if overview_response.ok and list_response.ok
                 else "Staff data is unavailable or access was denied.",
