@@ -47,6 +47,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         organization_id: UUID,
         after: UUID | None = None,
         limit: int = Query(default=50, ge=1, le=100),
+        trail: str = Query(default="", max_length=2048),
     ) -> Response:
         session = session_or_redirect(request)
         if isinstance(session, RedirectResponse):
@@ -88,6 +89,27 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             params=params,
         )
         reads_ok = overview_response.ok and list_response.ok
+        trail_parts = [part for part in trail.split(",") if part]
+        if len(trail_parts) > 100:
+            return Response("Pagination trail is too long", status_code=422)
+        try:
+            for part in trail_parts:
+                if part != "root":
+                    UUID(part)
+        except ValueError:
+            return Response("Pagination trail is invalid", status_code=422)
+        previous_url = ""
+        if after is not None and trail_parts:
+            previous = trail_parts[-1]
+            previous_trail = ",".join(trail_parts[:-1])
+            previous_url = f"/tenants/{organization_id}/staff?limit={limit}"
+            if previous != "root":
+                previous_url += f"&after={previous}"
+            if previous_trail:
+                previous_url += f"&trail={previous_trail}"
+        next_trail = ",".join(
+            [*trail_parts, "root" if after is None else str(after)]
+        )
         body = as_mapping(list_response.payload) if list_response.ok else {}
         items = (
             [as_mapping(item) for item in as_list(body.get("items"))]
@@ -107,6 +129,8 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 members=items,
                 next_cursor=body.get("next_cursor"),
                 page_limit=str(limit),
+                previous_url=previous_url,
+                next_trail=next_trail,
                 error="" if reads_ok else _read_error(failed_status),
                 can_mutate=reads_ok,
                 invite_inputs=build_inputs(invite_op) if reads_ok else [],
