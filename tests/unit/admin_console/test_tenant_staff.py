@@ -258,3 +258,74 @@ async def test_staff_detail_without_runtime_fails_closed() -> None:
         response = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
 
     assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("upstream_status", "message"),
+    [
+        (401, "session is no longer authorized"),
+        (403, "do not have permission"),
+        (404, "was not found"),
+        (503, "temporarily unavailable"),
+    ],
+)
+async def test_staff_workspace_failed_read_hides_mutations(
+    upstream_status: int, message: str
+) -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    original_request = runtime.request
+
+    async def failed_read(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path == "/v1/staff/members":
+            return ControlResponse(upstream_status, {"error": {"code": "read_failed"}}, {})
+        return await original_request(method, path, **kwargs)
+
+    runtime.request = failed_read  # type: ignore[method-assign]
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get(f"/tenants/{ORG}/staff")
+
+    assert response.status_code == upstream_status
+    assert message in response.text
+    assert "Add an existing native identity" not in response.text
+    assert 'id="staff-invite"' not in response.text
+
+
+@pytest.mark.asyncio
+async def test_staff_detail_not_found_renders_no_mutation_forms() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    original_request = runtime.request
+
+    async def missing_detail(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path == f"/v1/staff/members/{MEMBER}":
+            return ControlResponse(404, {"error": {"code": "not_found"}}, {})
+        return await original_request(method, path, **kwargs)
+
+    runtime.request = missing_detail  # type: ignore[method-assign]
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
+
+    assert response.status_code == 404
+    assert "was not found" in response.text
+    assert 'id="staff-plan"' not in response.text
+    assert 'id="staff-status"' not in response.text
