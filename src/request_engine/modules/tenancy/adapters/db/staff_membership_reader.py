@@ -168,7 +168,42 @@ class PostgresStaffMembershipReader:
                                      WHERE ceiling.capability_key = requested
                                 )
                                 ORDER BY requested
-                           ), ARRAY[]::text[]) AS blocked_capabilities
+                           ), ARRAY[]::text[]) AS blocked_capabilities,
+                           CASE
+                               WHEN target.principal_id IS NULL THEN false
+                               WHEN (
+                                   SELECT count(DISTINCT grant_row.capability_key) = 3
+                                     FROM request_engine.principal_authority_grants grant_row
+                                    WHERE grant_row.principal_id = target.principal_id
+                                      AND grant_row.status = 'active'
+                                      AND grant_row.capability_key IN (
+                                          'staff.manage_membership',
+                                          'staff.manage_authority',
+                                          'identity.bind'
+                                      )
+                               )
+                               AND NOT (
+                                   SELECT count(DISTINCT requested) = 3
+                                     FROM unnest(CAST(:desired AS text[])) requested
+                                    WHERE requested IN (
+                                        'staff.manage_membership',
+                                        'staff.manage_authority',
+                                        'identity.bind'
+                                    )
+                               )
+                               AND NOT EXISTS (
+                                   SELECT 1
+                                     FROM request_engine.staff_memberships other_membership
+                                    WHERE other_membership.organization_id = :organization_id
+                                      AND other_membership.status = 'active'
+                                      AND other_membership.principal_id <> target.principal_id
+                                      AND request_engine.principal_is_effective_tenant_controller(
+                                          :organization_id, other_membership.principal_id
+                                      )
+                               )
+                               THEN true
+                               ELSE false
+                           END AS last_controller_blocked
                       FROM access LEFT JOIN target ON true
                     """),
                         {
@@ -193,6 +228,7 @@ class PostgresStaffMembershipReader:
             raise StaffMembershipRevisionConflict("staff authority revision is stale")
         current = tuple(row["current_capabilities"])
         blocked = tuple(row["blocked_capabilities"])
+        blockers = ("last_controller",) if bool(row["last_controller_blocked"]) else ()
         current_set = set(current)
         desired_set = set(desired)
         return StaffAuthorityPlan(
@@ -204,6 +240,8 @@ class PostgresStaffMembershipReader:
             removed=tuple(sorted(current_set - desired_set)),
             assignable=not blocked,
             blocked_capabilities=blocked,
+            can_apply=not blocked and not blockers,
+            blockers=blockers,
         )
 
     async def _read(
