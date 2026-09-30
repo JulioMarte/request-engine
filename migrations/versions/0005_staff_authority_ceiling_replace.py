@@ -12,7 +12,12 @@ down_revision: str | None = "0004_platform_control_org_read"
 branch_labels: str | None = None
 depends_on: str | None = None
 
-_UPGRADE = r'''CREATE OR REPLACE FUNCTION request_engine.replace_staff_authority(p_membership_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) RETURNS bigint
+_UPGRADE = r'''CREATE OR REPLACE FUNCTION request_engine.replace_staff_authority(
+    p_membership_id uuid,
+    p_expected_authority_revision bigint,
+    p_desired_capabilities text[],
+    p_provenance_reference text
+) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
     AS $$
@@ -195,7 +200,12 @@ _UPGRADE = r'''CREATE OR REPLACE FUNCTION request_engine.replace_staff_authority
         END
         $$;
 '''
-_DOWNGRADE = r'''CREATE OR REPLACE FUNCTION request_engine.replace_staff_authority(p_membership_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) RETURNS bigint
+_DOWNGRADE = r'''CREATE OR REPLACE FUNCTION request_engine.replace_staff_authority(
+    p_membership_id uuid,
+    p_expected_authority_revision bigint,
+    p_desired_capabilities text[],
+    p_provenance_reference text
+) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
     AS $$
