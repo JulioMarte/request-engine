@@ -1,5 +1,6 @@
 """Tenant staff workspace projected from the canonical runtime API."""
 
+import json
 from secrets import token_urlsafe
 from typing import Any
 
@@ -102,6 +103,12 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         item = as_mapping(response.payload)
         operations: dict[str, Any] = {}
         if response.ok:
+            visible_capabilities = [
+                str(grant.get("capability"))
+                for grant in (as_mapping(value) for value in as_list(item.get("standing_grants")))
+                if grant.get("capability")
+            ]
+            authority_draft = json.dumps(sorted(visible_capabilities))
             for key in ("plan", "authority", "status"):
                 operation = resolve_operation(catalog, _OPS[key])
                 assert operation is not None
@@ -113,6 +120,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                             "membership_id": membership_id,
                             "expected_authority_revision": str(item.get("authority_revision", "")),
                             "expected_revision": str(item.get("membership_revision", "")),
+                            "desired_capabilities": authority_draft,
                         },
                     ),
                     "url": f"/tenants/{organization_id}/staff/{membership_id}/{key}",
