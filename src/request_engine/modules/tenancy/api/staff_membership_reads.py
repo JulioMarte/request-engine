@@ -66,6 +66,8 @@ class StaffAuthorityPlanView(BaseModel):
     removed: list[str]
     assignable: bool
     blocked_capabilities: list[str]
+    can_apply: bool
+    blockers: list[str]
 
 
 class StaffMembershipListParams(BaseModel):
@@ -110,6 +112,8 @@ def _plan_view(plan: StaffAuthorityPlan) -> StaffAuthorityPlanView:
         removed=list(plan.removed),
         assignable=plan.assignable,
         blocked_capabilities=list(plan.blocked_capabilities),
+        can_apply=plan.can_apply,
+        blockers=list(plan.blockers),
     )
 
 
