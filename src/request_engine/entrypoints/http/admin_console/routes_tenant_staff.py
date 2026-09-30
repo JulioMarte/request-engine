@@ -50,11 +50,15 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 ),
                 status_code=503,
             )
-        catalog = await state.runtime_catalog()
+        try:
+            catalog = await state.runtime_catalog()
+        except Exception:
+            return Response("Staff operation catalog unavailable", status_code=503)
         overview_op = resolve_operation(catalog, _OPS["overview"])
         list_op = resolve_operation(catalog, _OPS["list"])
         invite_op = resolve_operation(catalog, _OPS["invite"])
-        assert overview_op and list_op and invite_op
+        if overview_op is None or list_op is None or invite_op is None:
+            return Response("Staff operation catalog incomplete", status_code=503)
         overview_response = await state.runtime_request(
             overview_op.method,
             overview_op.path_template,
@@ -97,7 +101,10 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             return session
         if state.runtime is None:
             return Response("Runtime API unavailable", status_code=503)
-        catalog = await state.runtime_catalog()
+        try:
+            catalog = await state.runtime_catalog()
+        except Exception:
+            return Response("Staff operation catalog unavailable", status_code=503)
         get_op = resolve_operation(catalog, _OPS["get"])
         if get_op is None:
             return Response("Staff operation unavailable", status_code=503)
@@ -118,7 +125,8 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             authority_draft = json.dumps(sorted(visible_capabilities))
             for key in ("plan", "authority", "status"):
                 operation = resolve_operation(catalog, _OPS[key])
-                assert operation is not None
+                if operation is None:
+                    return Response("Staff operation catalog incomplete", status_code=503)
                 operations[key] = {
                     "operation": operation,
                     "inputs": build_inputs(
@@ -164,7 +172,11 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         form = {key: str(value) for key, value in (await request.form()).items()}
         if not state.csrf_matches(form.get("csrf_token"), session.csrf_token):
             return Response("CSRF token missing or invalid", status_code=403)
-        operation = resolve_operation(await state.runtime_catalog(), _OPS[action])
+        try:
+            catalog = await state.runtime_catalog()
+        except Exception:
+            return Response("Staff operation catalog unavailable", status_code=503)
+        operation = resolve_operation(catalog, _OPS[action])
         if operation is None:
             return Response("Staff operation unavailable", status_code=503)
         if membership_id:
