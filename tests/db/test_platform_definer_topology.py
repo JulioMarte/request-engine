@@ -88,6 +88,15 @@ _EXPECTED_COLUMN_PRIVILEGES = {
     ("platform_secret_bindings", "created_at", "SELECT"),
     ("platform_secret_bindings", "rotated_at", "SELECT"),
     ("platform_secret_bindings", "revoked_at", "SELECT"),
+    ("organizations", "id", "SELECT"),
+    ("organizations", "organization_key", "SELECT"),
+    ("organizations", "display_name", "SELECT"),
+    ("organizations", "operational_status", "SELECT"),
+    ("organizations", "default_timezone", "SELECT"),
+    ("organizations", "default_locale", "SELECT"),
+    ("organizations", "default_currency", "SELECT"),
+    ("organizations", "created_at", "SELECT"),
+    ("organizations", "updated_at", "SELECT"),
 }
 
 
@@ -252,6 +261,13 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
             "request_platform",
             "read_platform_configuration_revisions",
             "p_configuration_kind text",
+            True,
+            ["search_path=pg_catalog, request_engine, pg_temp"],
+        ),
+        (
+            "request_platform",
+            "read_platform_organizations",
+            "p_organization_id uuid, p_after uuid, p_limit integer",
             True,
             ["search_path=pg_catalog, request_engine, pg_temp"],
         ),
