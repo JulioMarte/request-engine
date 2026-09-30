@@ -4,6 +4,20 @@
      {% if result.error_code %}&middot; <code>{{ result.error_code }}</code>{% endif %}
      {% if result.retry_after %}&middot; retry after {{ result.retry_after }}s{% endif %}</p>
   {% if result.idempotency_key %}<p class="muted small">Idempotency-Key <code>{{ result.idempotency_key }}</code></p>{% endif %}
+  {% if result.reviewed_draft %}
+    <section class="card"><h3>Reviewed permission draft</h3>
+      <p>This Apply button is bound to the exact draft that produced the preview above. Editing the preview form requires a new preview.</p>
+      <form id="staff-authority-reviewed" method="post" action="{{ request.url.path.rsplit('/', 1)[0] }}/authority" hx-post="{{ request.url.path.rsplit('/', 1)[0] }}/authority" hx-target="#staff-authority-reviewed-result">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input type="hidden" name="_intent_id" data-form-intent value="{{ result.reviewed_draft._intent_id }}" />
+        <input type="hidden" name="desired_capabilities" value="{{ result.reviewed_draft.desired_capabilities }}" />
+        <input type="hidden" name="expected_authority_revision" value="{{ result.reviewed_draft.expected_authority_revision }}" />
+        <input type="hidden" name="provenance_reference" value="{{ result.reviewed_draft.provenance_reference }}" />
+        <button class="danger" type="submit">Apply reviewed draft</button>
+      </form>
+      <div id="staff-authority-reviewed-result"></div>
+    </section>
+  {% endif %}
   {% if result.needs_step_up %}
     <p class="alert error">A fresh passkey confirmation is required for this action.</p>
     <button type="button" class="secondary step-up-btn" data-retry-form="{{ form_id }}">Confirm with passkey and retry</button>
