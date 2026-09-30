@@ -35,10 +35,24 @@ if (-not (Test-Path -LiteralPath $python)) {
   throw "venv python not found at $python; run 'uv sync' first"
 }
 
+$escapedRoot = [regex]::Escape($Root)
 Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='cmd.exe'" |
-  Where-Object { $_.CommandLine -match 'uvicorn|mock_control_plane|platform_server|admin_console_server' } |
+  Where-Object {
+    $_.CommandLine -match $escapedRoot -and
+    $_.CommandLine -match 'uvicorn|mock_control_plane|platform_server|admin_console_server'
+  } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 2
+
+# Fail before role provisioning when the selected database is behind the repo.
+$expectedHead = (& $python -m alembic heads | Select-Object -First 1).Split(' ')[0].Trim()
+$actualHead = (
+  docker exec $Container psql -U $DbSuperuser -d $Database -t -A `
+    -c "SELECT version_num FROM alembic_version"
+).Trim()
+if (-not $expectedHead -or $actualHead -ne $expectedHead) {
+  throw "database migration mismatch: repository=$expectedHead database=$actualHead; run alembic upgrade head first"
+}
 
 # Idempotently create the three least-privilege runtime logins the control
 # plane verifies at startup. Dev-only throwaway passwords.
