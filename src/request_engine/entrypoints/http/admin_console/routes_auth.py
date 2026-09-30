@@ -95,13 +95,20 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def logout(request: Request) -> Response:
         session = state.session(request)
         redirect = RedirectResponse("/login", status_code=303)
-        if session is not None:
-            await state.control_request(
-                "DELETE",
-                "/auth/native/sessions/current",
-                bearer=session.access_token,
-            )
+        # Local logout is unconditional. An unavailable control plane must never
+        # leave a browser believing it is still signed in.
         state.clear_session(redirect)
+        if session is not None:
+            try:
+                await state.control_request(
+                    "DELETE",
+                    "/auth/native/sessions/current",
+                    bearer=session.access_token,
+                )
+            except Exception:
+                # Upstream revocation can be retried/reconciled independently;
+                # the browser credential is already cleared fail-safe.
+                pass
         return redirect
 
     async def webauthn_login_options(request: Request) -> Response:
