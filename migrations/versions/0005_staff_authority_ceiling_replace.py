@@ -381,7 +381,17 @@ _DOWNGRADE = r"""CREATE OR REPLACE FUNCTION request_engine.replace_staff_authori
 
 def upgrade() -> None:
     op.execute(_UPGRADE)
+    op.execute(
+        "GRANT EXECUTE ON FUNCTION "
+        "request_engine.principal_is_effective_tenant_controller(uuid, uuid) "
+        "TO request_engine_app"
+    )
 
 
 def downgrade() -> None:
+    op.execute(
+        "REVOKE EXECUTE ON FUNCTION "
+        "request_engine.principal_is_effective_tenant_controller(uuid, uuid) "
+        "FROM request_engine_app"
+    )
     op.execute(_DOWNGRADE)
