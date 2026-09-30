@@ -341,3 +341,42 @@ no carreras ejecutadas. A02/A04/A07/A08/A09/A13 tienen probes ejecutados en sus
 límites descritos. Las pruebas verdes de publicación no subsanan estos defectos.
 Cerrar cada hallazgo con cambio, prueba que fallaba antes y evidencia del entorno;
 no marcarlo cerrado por un mock permisivo, un botón visible o un resultado 200.
+
+### Adenda: fallos remotos observados después de publicar
+
+El commit `2be623c8c206899d1caebb456d2f40413d684f90` fue certificado localmente
+(`LOCAL_PUSH_CERT PASS`, 180 s) y publicado en origin. `git ls-remote` confirmó
+igualdad del SHA local/remoto. Sin embargo, **CI remoto de ese SHA falló**:
+
+- [CI 36627990168](https://github.com/JulioMarte/request-engine/actions/runs/36627990168):
+  Python/arquitectura aprobado. PostgreSQL current-product: `1 failed, 34 passed`
+  en el primer bloque. Falla `test_security_definers_are_closed_across_all_runtime_schemas`
+  (`tests/db/test_runtime_immutable_table_privileges.py:530`): inventario de owners
+  no admite las dos funciones nuevas; el primer elemento reportado es
+  `request_engine.adopt_platform_owner_v4(): owner=request_platform_control_definer`.
+  El aggregate V3 falla por ese prerrequisito, no por una prueba V3 independiente.
+- [P7 36627990377](https://github.com/JulioMarte/request-engine/actions/runs/36627990377):
+  `1 failed, 147 passed`. Falla
+  `test_private_runtime_rechecks_privileges_and_authority[membership]` por
+  `RuntimeError: Platform HTTP connection lacks its required command surface`
+  en `bootstrap/platform_server.py:190`. La fixture `tests/conftest.py` concede
+  lecturas anteriores, pero falta la nueva lectura de organizaciones requerida
+  por `_READ`. Corregir la composición de permisos, no eliminar verificación.
+- [Docker E2E 36627990148](https://github.com/JulioMarte/request-engine/actions/runs/36627990148):
+  control-plane sale con código 3 en smoke, f01-foundation, worker-restart,
+  recovery-delivery, platform-configuration y clone-fence. API sí llega a healthy.
+  Falta inspeccionar artefactos del contenedor para confirmar causa exacta;
+  posible misma desalineación de grants de instalación. No atribuirla como hecho
+  sin traceback del contenedor. Coolify contract y observability sí pasan.
+
+Prioridad inicial del siguiente agente: reproducir estos fallos de integración,
+revisar mínimos privilegios de ambas funciones y actualizar inventarios exactos
+con justificación de owner/ACL/search_path; nunca ampliar globalmente owners
+permitidos para silenciar el test. Registrar la lectura nueva en las composiciones
+de despliegue/fixtures pertinentes; volver a correr current-product completo,
+P7 y E2E. Luego continuar A01–A15. No mezclar errores SQL esperados de pruebas
+negativas con fallos de suite: usar resumen pytest y exit status.
+
+Esta adenda solo documenta resultados y remediación. No corrige los fallos remotos.
+La rama publicada sigue sin estar lista para merge. La certificación local no
+incluye PostgreSQL/E2E y por tanto su PASS no contradice esos resultados.
