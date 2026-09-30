@@ -26,6 +26,8 @@ class RecordingReader:
     def __init__(self) -> None:
         self.overview_calls = 0
         self.plan_queries: list[PlanStaffAuthorityQuery] = []
+        self.list_queries: list[ListStaffMembershipsQuery] = []
+        self.members: tuple[StaffMembershipSummary, ...] = ()
 
     async def read_overview(self, actor: ActorContext) -> StaffOverview:
         del actor
@@ -43,8 +45,16 @@ class RecordingReader:
     async def list_memberships(
         self, actor: ActorContext, query: ListStaffMembershipsQuery
     ) -> tuple[StaffMembershipSummary, ...]:
-        del actor, query
-        return ()
+        del actor
+        self.list_queries.append(query)
+        start = 0
+        if query.after is not None:
+            start = next(
+                (index + 1 for index, item in enumerate(self.members)
+                 if item.membership_id == query.after),
+                len(self.members),
+            )
+        return self.members[start : start + query.limit]
 
     async def read_membership(
         self, actor: ActorContext, membership_id: UUID
@@ -198,3 +208,39 @@ async def test_new_reads_require_their_existing_capabilities() -> None:
     assert plan.status_code == 403
     assert reader.overview_calls == 0
     assert reader.plan_queries == []
+
+
+@pytest.mark.asyncio
+async def test_staff_list_pages_through_more_than_fifty_members_without_loss() -> None:
+    app, reader = _app(_actor("staff.read"))
+    reader.members = tuple(
+        StaffMembershipSummary(
+            membership_id=UUID(int=index + 1),
+            principal_id=UUID(int=1000 + index),
+            status="active",
+            membership_revision=1,
+            authority_revision=1,
+            principal_active=True,
+            authority_anchor_party_id=None,
+            standing_grants=(),
+        )
+        for index in range(51)
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        first = await http.get("/v1/staff/members?limit=50")
+        first_body = first.json()
+        second = await http.get(
+            "/v1/staff/members",
+            params={"limit": 50, "after": first_body["next_cursor"]},
+        )
+        second_body = second.json()
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(first_body["items"]) == 50
+    assert len(second_body["items"]) == 1
+    assert first_body["next_cursor"] == str(UUID(int=50))
+    assert second_body["next_cursor"] is None
+    seen = [item["membership_id"] for item in first_body["items"] + second_body["items"]]
+    assert len(seen) == len(set(seen)) == 51
