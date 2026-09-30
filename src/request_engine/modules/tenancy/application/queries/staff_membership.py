@@ -49,6 +49,8 @@ class StaffAuthorityPlan:
     removed: tuple[str, ...]
     assignable: bool
     blocked_capabilities: tuple[str, ...]
+    can_apply: bool
+    blockers: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
