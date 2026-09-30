@@ -1,5 +1,6 @@
 """Tenant staff workspace projected from the canonical runtime API."""
 
+from secrets import token_urlsafe
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -74,6 +75,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 if overview_response.ok and list_response.ok
                 else "Staff data is unavailable or access was denied.",
                 invite_inputs=build_inputs(invite_op),
+                invite_intent_id=token_urlsafe(24),
             ),
         )
 
@@ -106,6 +108,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     },
                 ),
                 "url": f"/tenants/{organization_id}/staff/{membership_id}/{key}",
+                "intent_id": token_urlsafe(24),
             }
         return state.templates.TemplateResponse(
             request,
