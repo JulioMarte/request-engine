@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from psycopg import Connection, Error
+from native_authority_gate_support import session_token_params
 
 from request_engine.modules.tenancy.adapters.db.staff_membership_reader import (
     PostgresStaffMembershipReader,
@@ -219,6 +220,69 @@ def _invite_and_activate(
     finally:
         conn.execute("RESET ROLE")
     return membership_id, principal_id, binding_id
+
+
+def test_suspending_staff_revokes_native_sessions_globally_across_tenants(
+    admin_conn: PgConnection,
+) -> None:
+    # Tenant A owns the native identity. The same identity is then invited into
+    # tenant B. Suspending only B's membership intentionally revokes the
+    # identity's native sessions globally; A's membership itself remains active.
+    org_a, _party_a, root_a, binding_a, _provisioner_a = _provision_root(admin_conn)
+    row = admin_conn.execute(
+        "SELECT identity_authority_id, subject_id "
+        "FROM request_engine.identity_bindings WHERE id = %s",
+        (binding_a,),
+    ).fetchone()
+    assert row is not None
+    authority_id = cast(UUID, row[0])
+    native_identity_id = UUID(str(row[1]))
+    credential_row = admin_conn.execute(
+        "SELECT id FROM request_engine.native_credentials "
+        "WHERE native_identity_id = %s AND status = 'active' ORDER BY id LIMIT 1",
+        (native_identity_id,),
+    ).fetchone()
+    assert credential_row is not None
+    credential_id = cast(UUID, credential_row[0])
+
+    org_b, party_b, root_b, _binding_b, _provisioner_b = _provision_root(admin_conn)
+    membership_b, _principal_b, _staff_binding_b = _invite_and_activate(
+        admin_conn,
+        organization_id=org_b,
+        root_id=root_b,
+        party_id=party_b,
+        authority_id=authority_id,
+        native_identity_id=native_identity_id,
+    )
+
+    session = session_token_params(native_identity_id, credential_id)
+    created = admin_conn.execute(
+        "SELECT request_auth.create_native_session("
+        "%(native_identity_id)s, %(credential_id)s, %(session_id)s, "
+        "%(token_digest)s, %(token_fingerprint)s, %(expires_at)s)",
+        session,
+    ).fetchone()
+    assert created == (True,)
+
+    _set_tenant_actor(admin_conn, organization_id=org_b, principal_id=root_b)
+    try:
+        suspended = admin_conn.execute(
+            "SELECT request_engine.transition_staff_membership(%s, 2, 'suspended', %s)",
+            (membership_b, f"staff-suspend:{uuid4().hex}"),
+        ).fetchone()
+        assert suspended == (3,)
+    finally:
+        admin_conn.execute("RESET ROLE")
+
+    assert admin_conn.execute(
+        "SELECT status, revocation_reason FROM request_engine.native_sessions WHERE id = %s",
+        (session["session_id"],),
+    ).fetchone() == ("revoked", "staff_suspended")
+    assert admin_conn.execute(
+        "SELECT status FROM request_engine.staff_memberships "
+        "WHERE organization_id = %s AND principal_id = %s",
+        (org_a, root_a),
+    ).fetchone() == ("active",)
 
 
 def test_root_bootstrap_materializes_active_staff_with_delegable_control(
