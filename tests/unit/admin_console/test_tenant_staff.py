@@ -502,3 +502,27 @@ async def test_staff_workspace_rejects_forged_pagination_trail() -> None:
         )
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_staff_workspace_catalog_failure_is_503_not_500() -> None:
+    class BrokenCatalog(FakeApi):
+        async def openapi(self) -> dict[str, Any]:
+            raise RuntimeError("catalog unavailable")
+
+    control, runtime = FakeApi(), BrokenCatalog(runtime=True)
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get(f"/tenants/{ORG}/staff")
+
+    assert response.status_code == 503
+    assert "catalog unavailable" in response.text.lower()
