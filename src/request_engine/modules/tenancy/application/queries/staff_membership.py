@@ -30,6 +30,8 @@ class StaffOverview:
     invited: int
     suspended: int
     revoked: int
+    effective_capabilities: tuple[str, ...] = ()
+    delegable_ceiling: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
