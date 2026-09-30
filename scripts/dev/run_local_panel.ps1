@@ -76,7 +76,9 @@ function Start-Detached([string]$CommandLine) {
   } | Out-Null
 }
 
-$secret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 40 | ForEach-Object { [char]$_ })
+$optionSigningSecret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 40 | ForEach-Object { [char]$_ })
+$fingerprintSecret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 40 | ForEach-Object { [char]$_ })
+$consoleSessionSecret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 40 | ForEach-Object { [char]$_ })
 $decoy = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
 $controlLog = Join-Path $log 'control-plane.log'
 $runtimeLog = Join-Path $log 'runtime.log'
@@ -104,14 +106,14 @@ $runtimeCmd = ('cmd.exe /c "cd /d "{0}" && ' +
   'set REQUEST_ENGINE_DATABASE_URL={1}&& ' +
   'set REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID={2}&& ' +
   'set REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY={3}&& ' +
-  'set REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY={3}&& ' +
-  'set REQUEST_ENGINE_WEBAUTHN_DECOY_KEY={4}&& ' +
+  'set REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY={4}&& ' +
+  'set REQUEST_ENGINE_WEBAUTHN_DECOY_KEY={5}&& ' +
   'set REQUEST_ENGINE_WEBAUTHN_RP_ID=localhost&& ' +
   'set REQUEST_ENGINE_WEBAUTHN_RP_NAME=Request Engine&& ' +
-  'set REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS=http://localhost:{5}&& ' +
-  '"{6}" -m uvicorn request_engine.bootstrap.server:create_app --factory ' +
-  '--host 127.0.0.1 --port {7} > "{8}" 2>&1"') -f `
-  $Root, $appUrl, $authority, $secret, $decoy, $ConsolePort, $python, $RuntimePort, $runtimeLog
+  'set REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS=http://localhost:{6}&& ' +
+  '"{7}" -m uvicorn request_engine.bootstrap.server:create_app --factory ' +
+  '--host 127.0.0.1 --port {8} > "{9}" 2>&1"') -f `
+  $Root, $appUrl, $authority, $optionSigningSecret, $fingerprintSecret, $decoy, $ConsolePort, $python, $RuntimePort, $runtimeLog
 Start-Detached $runtimeCmd
 
 $consoleCmd = ('cmd.exe /c "cd /d "{0}" && set REQUEST_ENGINE_ADMIN_CONSOLE_CONTROL_API_BASE_URL=http://127.0.0.1:{1}&& ' +
@@ -120,7 +122,7 @@ $consoleCmd = ('cmd.exe /c "cd /d "{0}" && set REQUEST_ENGINE_ADMIN_CONSOLE_CONT
   'set REQUEST_ENGINE_ADMIN_CONSOLE_COOKIE_SECURE=false&& ' +
   'set REQUEST_ENGINE_ADMIN_CONSOLE_DEBUG=true&& ' +
   '"{3}" -m uvicorn request_engine.bootstrap.admin_console_server:create_app --factory --host 127.0.0.1 --port {4} > "{5}" 2>&1"') -f `
-  $Root, $ControlPort, $secret, $python, $ConsolePort, $consoleLog, $RuntimePort
+  $Root, $ControlPort, $consoleSessionSecret, $python, $ConsolePort, $consoleLog, $RuntimePort
 Start-Detached $consoleCmd
 
 function Wait-Http([string]$Url, [int]$Seconds) {
