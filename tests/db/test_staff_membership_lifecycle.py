@@ -654,15 +654,12 @@ async def test_authority_plan_reports_last_controller_blocker(
     # non-delegable, so make that test precondition explicit.
     admin_conn.execute(
         """
-        INSERT INTO request_engine.principal_authority_grants (
-            id, principal_id, capability_key, delegable,
-            provenance_kind, provenance_reference
-        )
-        VALUES (%s, %s, 'staff.manage_authority', TRUE, 'trust_bootstrap', %s)
-        ON CONFLICT (principal_id, capability_key)
-        DO UPDATE SET delegable = EXCLUDED.delegable
+        UPDATE request_engine.principal_authority_grants
+           SET delegable = TRUE
+         WHERE principal_id = %s
+           AND capability_key = 'staff.manage_authority'
         """,
-        (uuid4(), manager_id, f"test-delegable:{uuid4().hex}"),
+        (manager_id,),
     )
 
     actor = ActorContext(
