@@ -91,9 +91,12 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         session = session_or_redirect(request)
         if isinstance(session, RedirectResponse):
             return session
+        if state.runtime is None:
+            return Response("Runtime API unavailable", status_code=503)
         catalog = await state.runtime_catalog()
         get_op = resolve_operation(catalog, _OPS["get"])
-        assert get_op
+        if get_op is None:
+            return Response("Staff operation unavailable", status_code=503)
         response = await state.runtime_request(
             get_op.method,
             get_op.path_template.replace("{membership_id}", membership_id),
@@ -151,7 +154,8 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             return session
         if state.runtime is None:
             return Response("Runtime API unavailable", status_code=503)
-        if action not in {"invite", "plan", "authority", "status"}:
+        allowed_actions = {"invite"} if membership_id is None else {"plan", "authority", "status"}
+        if action not in allowed_actions:
             return Response("Unknown staff action", status_code=404)
         form = {key: str(value) for key, value in (await request.form()).items()}
         if not state.csrf_matches(form.get("csrf_token"), session.csrf_token):
@@ -169,8 +173,12 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             surface="runtime",
             organization_id=organization_id,
         )
-        if outcome.ok and action in {"authority", "status"} and membership_id is not None:
-            location = f"/tenants/{organization_id}/staff/{membership_id}"
+        if outcome.ok and action in {"invite", "authority", "status"}:
+            location = (
+                f"/tenants/{organization_id}/staff/{membership_id}"
+                if membership_id is not None
+                else f"/tenants/{organization_id}/staff"
+            )
             if request.headers.get("HX-Request", "").lower() == "true":
                 return Response(status_code=204, headers={"HX-Redirect": location})
             return RedirectResponse(location, status_code=303)
