@@ -437,6 +437,8 @@ async def test_staff_overview_and_authority_plan_are_read_only_and_ceiling_bound
     assert overview.total == 2
     assert overview.active == 2
     assert (overview.invited, overview.suspended, overview.revoked) == (0, 0, 0)
+    assert set(overview.effective_capabilities) == _CONTROL_CAPABILITIES
+    assert set(overview.delegable_ceiling) == _CONTROL_CAPABILITIES
     # appointments.read belongs to the target but is outside this actor's
     # delegable ceiling, so planning must not turn it into a disclosure oracle.
     assert plan.current == ()
