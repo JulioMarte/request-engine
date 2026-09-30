@@ -12,7 +12,7 @@ down_revision: str | None = "0004_platform_control_org_read"
 branch_labels: str | None = None
 depends_on: str | None = None
 
-_UPGRADE = r'''CREATE OR REPLACE FUNCTION request_engine.replace_staff_authority(
+_UPGRADE = r"""CREATE OR REPLACE FUNCTION request_engine.replace_staff_authority(
     p_membership_id uuid,
     p_expected_authority_revision bigint,
     p_desired_capabilities text[],
@@ -199,8 +199,8 @@ _UPGRADE = r'''CREATE OR REPLACE FUNCTION request_engine.replace_staff_authority
             RETURN v_current_revision;
         END
         $$;
-'''
-_DOWNGRADE = r'''CREATE OR REPLACE FUNCTION request_engine.replace_staff_authority(
+"""
+_DOWNGRADE = r"""CREATE OR REPLACE FUNCTION request_engine.replace_staff_authority(
     p_membership_id uuid,
     p_expected_authority_revision bigint,
     p_desired_capabilities text[],
@@ -376,7 +376,7 @@ _DOWNGRADE = r'''CREATE OR REPLACE FUNCTION request_engine.replace_staff_authori
             RETURN v_current_revision;
         END
         $$;
-'''
+"""
 
 
 def upgrade() -> None:
