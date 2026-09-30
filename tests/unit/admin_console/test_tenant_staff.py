@@ -50,7 +50,7 @@ class FakeApi:
         for path, method, operation_id, capability in (
             ("/v1/staff/overview", "get", "staff_overview_get", "staff.read"),
             ("/v1/staff/members", "get", "staff_list", "staff.read"),
-            ("/v1/staff/members", "post", "staff_invite", "staff.invite"),
+            ("/v1/staff/members/native", "post", "staff_invite", "staff.invite"),
             ("/v1/staff/members/{membership_id}", "get", "staff_get", "staff.read"),
             (
                 "/v1/staff/members/{membership_id}/authority:plan",
@@ -118,3 +118,37 @@ async def test_staff_workspace_forwards_tenant_selector_only_to_runtime() -> Non
     assert runtime.headers[-1]["X-RE-Organization-ID"] == ORG
     assert all("X-RE-Organization-ID" not in headers for headers in control.headers)
     assert re.search(r"Add an existing native identity", page.text)
+
+
+@pytest.mark.asyncio
+async def test_staff_workspace_forwards_cursor_and_renders_next_page() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    original_request = runtime.request
+
+    async def paged_request(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        response = await original_request(method, path, **kwargs)
+        if path == "/v1/staff/members" and response.status_code == 200:
+            return ControlResponse(
+                200,
+                {**response.payload, "next_cursor": MEMBER},
+                response.headers,
+            )
+        return response
+
+    runtime.request = paged_request  # type: ignore[method-assign]
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff?after={MEMBER}&limit=1")
+
+    assert page.status_code == 200
+    assert f"after={MEMBER}" in page.text
+    assert "limit=1" in page.text
