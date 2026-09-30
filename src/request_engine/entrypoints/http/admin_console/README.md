@@ -9,13 +9,16 @@ the single source of truth.
 ## Design
 
 ```text
-browser  --(same-origin, signed HttpOnly session cookie)-->  admin console
+browser  --(same-origin, HttpOnly console cookie)-->  admin console
 admin console  --(server-to-server Authorization: Bearer)-->  control plane
 control plane  -->  PostgreSQL / OpenBao / providers
 ```
 
-- The control-plane bearer token is stored only inside the console's signed
-  session cookie and is never exposed to browser JavaScript.
+- The current cookie is signed and HttpOnly, so JavaScript cannot read it, but
+  its payload still contains the upstream bearer. Signing provides integrity,
+  not confidentiality or server-side storage. This is an acknowledged security
+  gap: the target design is an opaque browser handle backed by a shared
+  server-side store without giving the console direct business-database access.
 - The browser talks only to the console origin, so no CORS and no ambient
   cross-site credential are introduced.
 - Mutating forms get an intent-scoped `Idempotency-Key` automatically. The key
