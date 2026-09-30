@@ -152,3 +152,49 @@ async def test_staff_workspace_forwards_cursor_and_renders_next_page() -> None:
     assert page.status_code == 200
     assert f"after={MEMBER}" in page.text
     assert "limit=1" in page.text
+
+
+@pytest.mark.asyncio
+async def test_staff_member_route_rejects_invite_action() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        session_cookie = client.cookies.get(settings.session_cookie_name)
+        assert session_cookie is not None
+        # Read the rendered page to obtain the CSRF value rather than forging it.
+        page = await client.get(f"/tenants/{ORG}/staff")
+        match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+        assert match is not None
+        response = await client.post(
+            f"/tenants/{ORG}/staff/{MEMBER}/invite",
+            data={"csrf_token": match.group(1)},
+        )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_staff_detail_without_runtime_fails_closed() -> None:
+    control = FakeApi()
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
+
+    assert response.status_code == 503
