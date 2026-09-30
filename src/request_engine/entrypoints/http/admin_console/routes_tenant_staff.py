@@ -61,7 +61,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             organization_id=str(organization_id),
             bearer=session.access_token,
         )
-        params: dict[str, str | int] = {"limit": limit}
+        params: dict[str, str] = {"limit": str(limit)}
         if after is not None:
             params["after"] = str(after)
         list_response = await state.runtime_request(
