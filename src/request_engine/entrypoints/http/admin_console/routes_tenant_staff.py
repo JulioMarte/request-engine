@@ -101,22 +101,23 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         )
         item = as_mapping(response.payload)
         operations: dict[str, Any] = {}
-        for key in ("plan", "authority", "status"):
-            operation = resolve_operation(catalog, _OPS[key])
-            assert operation is not None
-            operations[key] = {
-                "operation": operation,
-                "inputs": build_inputs(
-                    operation,
-                    values={
-                        "membership_id": membership_id,
-                        "expected_authority_revision": str(item.get("authority_revision", "")),
-                        "expected_revision": str(item.get("membership_revision", "")),
-                    },
-                ),
-                "url": f"/tenants/{organization_id}/staff/{membership_id}/{key}",
-                "intent_id": token_urlsafe(24),
-            }
+        if response.ok:
+            for key in ("plan", "authority", "status"):
+                operation = resolve_operation(catalog, _OPS[key])
+                assert operation is not None
+                operations[key] = {
+                    "operation": operation,
+                    "inputs": build_inputs(
+                        operation,
+                        values={
+                            "membership_id": membership_id,
+                            "expected_authority_revision": str(item.get("authority_revision", "")),
+                            "expected_revision": str(item.get("membership_revision", "")),
+                        },
+                    ),
+                    "url": f"/tenants/{organization_id}/staff/{membership_id}/{key}",
+                    "intent_id": token_urlsafe(24),
+                }
         return state.templates.TemplateResponse(
             request,
             "resources/staff_detail.html",
@@ -128,6 +129,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 error="" if response.ok else "Membership unavailable or access denied.",
                 operations=operations,
             ),
+            status_code=200 if response.ok else response.status_code,
         )
 
     async def run(
@@ -139,11 +141,16 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         session = session_or_redirect(request)
         if isinstance(session, RedirectResponse):
             return session
+        if state.runtime is None:
+            return Response("Runtime API unavailable", status_code=503)
+        if action not in {"invite", "plan", "authority", "status"}:
+            return Response("Unknown staff action", status_code=404)
         form = {key: str(value) for key, value in (await request.form()).items()}
         if not state.csrf_matches(form.get("csrf_token"), session.csrf_token):
             return Response("CSRF token missing or invalid", status_code=403)
         operation = resolve_operation(await state.runtime_catalog(), _OPS[action])
-        assert operation
+        if operation is None:
+            return Response("Staff operation unavailable", status_code=503)
         if membership_id:
             form["membership_id"] = membership_id
         outcome = await execute_operation(
