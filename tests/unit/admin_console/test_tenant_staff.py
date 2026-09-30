@@ -167,6 +167,7 @@ async def test_staff_workspace_forwards_cursor_and_renders_next_page() -> None:
     assert page.status_code == 200
     assert f"after={MEMBER}" in page.text
     assert "limit=1" in page.text
+    assert "trail=" in page.text
     list_requests = [entry for entry in runtime.requests if entry[1] == "/v1/staff/members"]
     assert list_requests[-1][2]["params"] == {"after": MEMBER, "limit": "1"}
 
@@ -444,3 +445,47 @@ async def test_blocked_staff_authority_preview_never_offers_apply() -> None:
     assert preview.status_code == 200
     assert "last_controller" in preview.text
     assert "Apply reviewed draft" not in preview.text
+
+
+@pytest.mark.asyncio
+async def test_staff_workspace_renders_previous_page_from_validated_trail() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        page = await client.get(
+            f"/tenants/{ORG}/staff?after={MEMBER}&limit=1&trail=root"
+        )
+
+    assert page.status_code == 200
+    assert "← Previous page" in page.text
+    assert f'href="/tenants/{ORG}/staff?limit=1"' in page.text
+
+
+@pytest.mark.asyncio
+async def test_staff_workspace_rejects_forged_pagination_trail() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get(
+            f"/tenants/{ORG}/staff?after={MEMBER}&trail=not-a-cursor"
+        )
+
+    assert response.status_code == 422
