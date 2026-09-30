@@ -3,6 +3,7 @@
 import json
 from secrets import token_urlsafe
 from typing import Any
+from uuid import UUID
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, Response
@@ -29,7 +30,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         session = state.session(request)
         return session if session is not None else RedirectResponse("/login", status_code=303)
 
-    async def workspace(request: Request, organization_id: str) -> Response:
+    async def workspace(request: Request, organization_id: UUID) -> Response:
         session = session_or_redirect(request)
         if isinstance(session, RedirectResponse):
             return session
@@ -52,7 +53,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         overview_response = await state.runtime_request(
             overview_op.method,
             overview_op.path_template,
-            organization_id=organization_id,
+            organization_id=str(organization_id),
             bearer=session.access_token,
         )
         limit = request.query_params.get("limit", "50")
@@ -63,7 +64,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         list_response = await state.runtime_request(
             list_op.method,
             list_op.path_template,
-            organization_id=organization_id,
+            organization_id=str(organization_id),
             bearer=session.access_token,
             params=params,
         )
@@ -74,7 +75,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             "resources/staff.html",
             state.context(
                 request,
-                organization_id=organization_id,
+                organization_id=str(organization_id),
                 overview=as_mapping(overview_response.payload),
                 members=items,
                 next_cursor=body.get("next_cursor"),
@@ -87,7 +88,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             ),
         )
 
-    async def detail(request: Request, organization_id: str, membership_id: str) -> Response:
+    async def detail(request: Request, organization_id: UUID, membership_id: UUID) -> Response:
         session = session_or_redirect(request)
         if isinstance(session, RedirectResponse):
             return session
@@ -99,8 +100,8 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             return Response("Staff operation unavailable", status_code=503)
         response = await state.runtime_request(
             get_op.method,
-            get_op.path_template.replace("{membership_id}", membership_id),
-            organization_id=organization_id,
+            get_op.path_template.replace("{membership_id}", str(membership_id)),
+            organization_id=str(organization_id),
             bearer=session.access_token,
         )
         item = as_mapping(response.payload)
@@ -120,7 +121,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     "inputs": build_inputs(
                         operation,
                         values={
-                            "membership_id": membership_id,
+                            "membership_id": str(membership_id),
                             "expected_authority_revision": str(item.get("authority_revision", "")),
                             "expected_revision": str(item.get("membership_revision", "")),
                             "desired_capabilities": authority_draft,
@@ -134,7 +135,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             "resources/staff_detail.html",
             state.context(
                 request,
-                organization_id=organization_id,
+                organization_id=str(organization_id),
                 membership_id=membership_id,
                 member=item,
                 error="" if response.ok else "Membership unavailable or access denied.",
@@ -145,8 +146,8 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def run(
         request: Request,
-        organization_id: str,
-        membership_id: str | None = None,
+        organization_id: UUID,
+        membership_id: UUID | None = None,
         action: str = "invite",
     ) -> Response:
         session = session_or_redirect(request)
@@ -164,14 +165,14 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         if operation is None:
             return Response("Staff operation unavailable", status_code=503)
         if membership_id:
-            form["membership_id"] = membership_id
+            form["membership_id"] = str(membership_id)
         outcome = await execute_operation(
             state,
             operation,
             bearer=session.access_token,
             form=form,
             surface="runtime",
-            organization_id=organization_id,
+            organization_id=str(organization_id),
         )
         if outcome.ok and action == "plan":
             view = outcome.to_view()
