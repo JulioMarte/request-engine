@@ -42,9 +42,10 @@ _HUMAN_ERRORS = {
     ),
     "forbidden": "You do not have permission to perform this action.",
     "not_found": "This item is unavailable or you no longer have access to it.",
-    "control_unreachable": (
-        "The control plane could not be reached. Nothing was changed; try again when service "
-        "returns."
+    "control_unreachable": "The control plane could not be reached.",
+    "outcome_unknown": (
+        "The connection was lost before the result was confirmed. The action may have completed. "
+        "Retry this unchanged action to safely reconcile the result."
     ),
 }
 
@@ -88,7 +89,13 @@ def form_error(message: str) -> ExecutionOutcome:
     )
 
 
-def local_error(status: int, code: str, message: str) -> ExecutionOutcome:
+def local_error(
+    status: int,
+    code: str,
+    message: str,
+    *,
+    idempotency_key: str | None = None,
+) -> ExecutionOutcome:
     return ExecutionOutcome(
         status=status,
         ok=False,
@@ -97,7 +104,7 @@ def local_error(status: int, code: str, message: str) -> ExecutionOutcome:
         error_code=code,
         needs_step_up=False,
         retry_after=None,
-        idempotency_key=None,
+        idempotency_key=idempotency_key,
     )
 
 
@@ -166,8 +173,23 @@ async def execute_operation(
             extra_headers=extra_headers,
             **request_kwargs,
         )
+    except httpx.TimeoutException as exc:
+        # A timeout is ambiguous: the upstream may have committed before the
+        # response was lost. Preserve the stable intent key so an unchanged
+        # replay can recover the canonical idempotent result.
+        return local_error(
+            504,
+            "outcome_unknown",
+            str(exc),
+            idempotency_key=idempotency_key,
+        )
     except httpx.HTTPError as exc:
-        return local_error(502, "control_unreachable", str(exc))
+        return local_error(
+            502,
+            "control_unreachable",
+            str(exc),
+            idempotency_key=idempotency_key,
+        )
     return _from_response(response, idempotency_key)
 
 
