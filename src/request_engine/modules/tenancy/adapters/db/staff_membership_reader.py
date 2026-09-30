@@ -131,6 +131,7 @@ class PostgresStaffMembershipReader:
                         ) AS permitted
                     ), target AS (
                         SELECT m.id AS membership_id, m.principal_id,
+                               m.status AS membership_status, p.active AS principal_active,
                                p.authority_revision
                           FROM request_engine.staff_memberships m
                           JOIN request_engine.principals p
@@ -138,7 +139,7 @@ class PostgresStaffMembershipReader:
                            AND p.id = m.principal_id
                          WHERE (SELECT permitted FROM access)
                            AND m.organization_id = :organization_id
-                           AND m.id = :membership_id AND m.status = 'active'
+                           AND m.id = :membership_id
                     ), ceiling AS (
                         SELECT g.capability_key
                           FROM request_engine.principal_authority_grants g
@@ -149,6 +150,7 @@ class PostgresStaffMembershipReader:
                     )
                     SELECT (SELECT permitted FROM access) AS permitted,
                            target.membership_id, target.principal_id,
+                           target.membership_status, target.principal_active,
                            target.authority_revision,
                            COALESCE(ARRAY(
                                SELECT grant_row.capability_key
@@ -218,14 +220,19 @@ class PostgresStaffMembershipReader:
             raise StaffMembershipForbidden("staff authority planning was denied")
         if row["membership_id"] is None:
             raise StaffMembershipNotFound("staff membership is not visible in this tenant")
-        if row["principal_id"] == actor.principal_id:
-            raise StaffMembershipForbidden("staff authority self-replacement is forbidden")
         authority_revision = int(row["authority_revision"])
         if authority_revision != query.expected_authority_revision:
             raise StaffMembershipRevisionConflict("staff authority revision is stale")
         current = tuple(row["current_capabilities"])
         blocked = tuple(row["blocked_capabilities"])
-        blockers = ("last_controller",) if bool(row["last_controller_blocked"]) else ()
+        blockers_list: list[str] = []
+        if row["principal_id"] == actor.principal_id:
+            blockers_list.append("self_change")
+        if row["membership_status"] != "active" or not bool(row["principal_active"]):
+            blockers_list.append("lifecycle_state")
+        if bool(row["last_controller_blocked"]):
+            blockers_list.append("last_controller")
+        blockers = tuple(blockers_list)
         current_set = set(current)
         desired_set = set(desired)
         return StaffAuthorityPlan(
