@@ -329,3 +329,118 @@ async def test_staff_detail_not_found_renders_no_mutation_forms() -> None:
     assert "was not found" in response.text
     assert 'id="staff-plan"' not in response.text
     assert 'id="staff-status"' not in response.text
+
+
+@pytest.mark.asyncio
+async def test_staff_authority_apply_exists_only_after_successful_review() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    original_request = runtime.request
+
+    async def planned_request(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path == f"/v1/staff/members/{MEMBER}/authority:plan":
+            return ControlResponse(
+                200,
+                {
+                    "membership_id": MEMBER,
+                    "authority_revision": 1,
+                    "current": [],
+                    "desired": ["staff.read"],
+                    "added": ["staff.read"],
+                    "removed": [],
+                    "assignable": True,
+                    "blocked_capabilities": [],
+                    "can_apply": True,
+                    "blockers": [],
+                },
+                {},
+            )
+        return await original_request(method, path, **kwargs)
+
+    runtime.request = planned_request  # type: ignore[method-assign]
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        detail = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
+        assert "Apply reviewed draft" not in detail.text
+        csrf = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)
+        assert csrf is not None
+        preview = await client.post(
+            f"/tenants/{ORG}/staff/{MEMBER}/plan",
+            data={
+                "csrf_token": csrf.group(1),
+                "_intent_id": "review-intent",
+                "desired_capabilities": '["staff.read"]',
+                "expected_authority_revision": "1",
+                "provenance_reference": "review:test",
+            },
+        )
+
+    assert preview.status_code == 200
+    assert "Apply reviewed draft" in preview.text
+    assert 'value='["staff.read"]'' in preview.text or 'value="[&quot;staff.read&quot;]"' in preview.text
+    assert 'value="1"' in preview.text
+    assert 'value="review:test"' in preview.text
+
+
+@pytest.mark.asyncio
+async def test_blocked_staff_authority_preview_never_offers_apply() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    original_request = runtime.request
+
+    async def blocked_request(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path == f"/v1/staff/members/{MEMBER}/authority:plan":
+            return ControlResponse(
+                200,
+                {
+                    "membership_id": MEMBER,
+                    "authority_revision": 1,
+                    "current": ["staff.manage_authority"],
+                    "desired": [],
+                    "added": [],
+                    "removed": ["staff.manage_authority"],
+                    "assignable": True,
+                    "blocked_capabilities": [],
+                    "can_apply": False,
+                    "blockers": ["last_controller"],
+                },
+                {},
+            )
+        return await original_request(method, path, **kwargs)
+
+    runtime.request = blocked_request  # type: ignore[method-assign]
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        detail = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
+        csrf = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)
+        assert csrf is not None
+        preview = await client.post(
+            f"/tenants/{ORG}/staff/{MEMBER}/plan",
+            data={
+                "csrf_token": csrf.group(1),
+                "_intent_id": "review-intent",
+                "desired_capabilities": "[]",
+                "expected_authority_revision": "1",
+                "provenance_reference": "review:blocked",
+            },
+        )
+
+    assert preview.status_code == 200
+    assert "last_controller" in preview.text
+    assert "Apply reviewed draft" not in preview.text
