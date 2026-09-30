@@ -72,23 +72,6 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         invite_op = resolve_operation(catalog, _OPS["invite"])
         if overview_op is None or list_op is None or invite_op is None:
             return Response("Staff operation catalog incomplete", status_code=503)
-        overview_response = await state.runtime_request(
-            overview_op.method,
-            overview_op.path_template,
-            organization_id=str(organization_id),
-            bearer=session.access_token,
-        )
-        params: dict[str, str] = {"limit": str(limit)}
-        if after is not None:
-            params["after"] = str(after)
-        list_response = await state.runtime_request(
-            list_op.method,
-            list_op.path_template,
-            organization_id=str(organization_id),
-            bearer=session.access_token,
-            params=params,
-        )
-        reads_ok = overview_response.ok and list_response.ok
         trail_parts = [part for part in trail.split(",") if part]
         if len(trail_parts) > 100:
             return Response("Pagination trail is too long", status_code=422)
@@ -107,9 +90,24 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 previous_url += f"&after={previous}"
             if previous_trail:
                 previous_url += f"&trail={previous_trail}"
-        next_trail = ",".join(
-            [*trail_parts, "root" if after is None else str(after)]
+        next_trail = ",".join([*trail_parts, "root" if after is None else str(after)])
+        overview_response = await state.runtime_request(
+            overview_op.method,
+            overview_op.path_template,
+            organization_id=str(organization_id),
+            bearer=session.access_token,
         )
+        params: dict[str, str] = {"limit": str(limit)}
+        if after is not None:
+            params["after"] = str(after)
+        list_response = await state.runtime_request(
+            list_op.method,
+            list_op.path_template,
+            organization_id=str(organization_id),
+            bearer=session.access_token,
+            params=params,
+        )
+        reads_ok = overview_response.ok and list_response.ok
         body = as_mapping(list_response.payload) if list_response.ok else {}
         items = (
             [as_mapping(item) for item in as_list(body.get("items"))]
