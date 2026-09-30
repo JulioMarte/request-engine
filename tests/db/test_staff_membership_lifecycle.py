@@ -381,6 +381,8 @@ async def test_staff_overview_and_authority_plan_are_read_only_and_ceiling_bound
     assert plan.removed == ()
     assert plan.assignable is False
     assert plan.blocked_capabilities == ("appointments.cancel",)
+    assert plan.can_apply is False
+    assert plan.blockers == ()
     assert _principal_revision(admin_conn, staff_id) == revision
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.principal_authority_grants "
@@ -540,6 +542,67 @@ def test_staff_suspension_disables_principal_and_revokes_native_session(
         "SELECT status, revocation_reason FROM request_engine.native_sessions WHERE id = %s",
         (session_id,),
     ).fetchone() == ("revoked", "staff_suspended")
+
+
+@pytest.mark.asyncio
+async def test_authority_plan_reports_last_controller_blocker(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    organization_id, _party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
+    membership_id, _membership_revision = _root_membership(admin_conn, root_id)
+
+    # Planning self-replacement is intentionally forbidden. Create a second
+    # manager whose own controller authority is not effective for continuity.
+    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
+    party_id = _uuid_row(
+        admin_conn,
+        "SELECT authority_anchor_party_id FROM request_engine.staff_memberships "
+        "WHERE principal_id = %s",
+        (root_id,),
+    )
+    manager_membership_id, manager_id, _manager_binding_id = _invite_and_activate(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        party_id=party_id,
+        authority_id=authority_id,
+        native_identity_id=native_identity_id,
+    )
+    manager_revision = _principal_revision(admin_conn, manager_id)
+    _set_tenant_actor(admin_conn, organization_id=organization_id, principal_id=root_id)
+    try:
+        admin_conn.execute(
+            """
+            SELECT request_engine.replace_staff_authority(
+                %s, %s,
+                ARRAY['staff.manage_authority']::text[],
+                %s
+            )
+            """,
+            (manager_membership_id, manager_revision, f"manager:{uuid4().hex}"),
+        )
+    finally:
+        admin_conn.execute("RESET ROLE")
+
+    actor = ActorContext(
+        organization_id=organization_id,
+        principal_id=manager_id,
+        capabilities=frozenset({"staff.manage_authority"}),
+        authority_revision=_principal_revision(admin_conn, manager_id),
+    )
+    reader = PostgresStaffMembershipReader(command_session_factory)
+    plan = await reader.plan_authority(
+        actor,
+        PlanStaffAuthorityQuery(
+            membership_id=membership_id,
+            expected_authority_revision=_principal_revision(admin_conn, root_id),
+            desired_capabilities=(),
+        ),
+    )
+    assert plan.assignable is True
+    assert plan.can_apply is False
+    assert plan.blockers == ("last_controller",)
 
 
 def test_last_recovery_capable_controller_cannot_be_removed(
