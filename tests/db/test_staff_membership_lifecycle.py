@@ -653,10 +653,16 @@ async def test_authority_plan_reports_last_controller_blocker(
     # controller capability being removed. Production grants default to
     # non-delegable, so make that test precondition explicit.
     admin_conn.execute(
-        "UPDATE request_engine.principal_authority_grants "
-        "SET delegable = TRUE "
-        "WHERE principal_id = %s AND capability_key = 'staff.manage_authority'",
-        (manager_id,),
+        """
+        INSERT INTO request_engine.principal_authority_grants (
+            id, principal_id, capability_key, delegable,
+            provenance_kind, provenance_reference
+        )
+        VALUES (%s, %s, 'staff.manage_authority', TRUE, 'trust_bootstrap', %s)
+        ON CONFLICT (principal_id, capability_key)
+        DO UPDATE SET delegable = EXCLUDED.delegable
+        """,
+        (uuid4(), manager_id, f"test-delegable:{uuid4().hex}"),
     )
 
     actor = ActorContext(
