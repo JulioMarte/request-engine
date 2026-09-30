@@ -393,3 +393,22 @@ async def test_dashboard_does_not_claim_health_from_incomplete_success_payload()
         response = await client.get("/")
     assert "Operational status is incomplete" in response.text
     assert "Core operational checks are healthy" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_logout_clears_browser_session_when_upstream_revocation_fails() -> None:
+    class BrokenLogout(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if method == "DELETE" and path == "/auth/native/sessions/current":
+                raise httpx.ConnectError("control unavailable during logout")
+            return await super().request(method, path, **kwargs)
+
+    app = create_admin_console_app(_settings(), client=BrokenLogout())
+    async with _client(app) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        assert "re_admin_console" in client.cookies
+        response = await client.post("/logout")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+    assert "re_admin_console" not in client.cookies
