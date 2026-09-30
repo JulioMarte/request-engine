@@ -46,10 +46,12 @@ Start-Sleep -Seconds 2
 
 # Fail before role provisioning when the selected database is behind the repo.
 $expectedHead = (& $python -m alembic heads | Select-Object -First 1).Split(' ')[0].Trim()
-$actualHead = (
-  docker exec $Container psql -U $DbSuperuser -d $Database -t -A `
-    -c "SELECT version_num FROM alembic_version"
-).Trim()
+$actualHeadOutput = docker exec $Container psql -U $DbSuperuser -d $Database -t -A `
+  -c "SELECT version_num FROM alembic_version"
+if ($LASTEXITCODE -ne 0) {
+  throw "cannot read alembic_version from $Database; initialize and migrate the database first"
+}
+$actualHead = ($actualHeadOutput | Out-String).Trim()
 if (-not $expectedHead -or $actualHead -ne $expectedHead) {
   throw "database migration mismatch: repository=$expectedHead database=$actualHead; run alembic upgrade head first"
 }
