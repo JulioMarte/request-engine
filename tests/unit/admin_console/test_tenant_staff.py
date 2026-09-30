@@ -26,7 +26,17 @@ class FakeApi:
             return ControlResponse(200, {"access_token": "token"}, {})
         if path == "/v1/staff/overview":
             return ControlResponse(
-                200, {"total": 1, "active": 1, "invited": 0, "suspended": 0, "revoked": 0}, {}
+                200,
+                {
+                    "total": 1,
+                    "active": 1,
+                    "invited": 0,
+                    "suspended": 0,
+                    "revoked": 0,
+                    "effective_capabilities": ["staff.read", "staff.manage_authority"],
+                    "delegable_ceiling": ["staff.read"],
+                },
+                {}
             )
         if path == "/v1/staff/members":
             return ControlResponse(
@@ -133,6 +143,9 @@ async def test_staff_workspace_forwards_tenant_selector_only_to_runtime() -> Non
     assert runtime.headers[-1]["X-RE-Organization-ID"] == ORG
     assert all("X-RE-Organization-ID" not in headers for headers in control.headers)
     assert re.search(r"Add an existing native identity", page.text)
+    assert "Can do" in page.text
+    assert "Can grant" in page.text
+    assert "staff.manage_authority" in page.text
 
 
 @pytest.mark.asyncio
