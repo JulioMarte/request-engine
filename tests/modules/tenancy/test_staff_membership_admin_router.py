@@ -30,7 +30,15 @@ class RecordingReader:
     async def read_overview(self, actor: ActorContext) -> StaffOverview:
         del actor
         self.overview_calls += 1
-        return StaffOverview(total=7, active=3, invited=1, suspended=2, revoked=1)
+        return StaffOverview(
+            total=7,
+            active=3,
+            invited=1,
+            suspended=2,
+            revoked=1,
+            effective_capabilities=("staff.read", "staff.manage_authority"),
+            delegable_ceiling=("staff.read",),
+        )
 
     async def list_memberships(
         self, actor: ActorContext, query: ListStaffMembershipsQuery
@@ -102,6 +110,8 @@ async def test_overview_is_tenant_reader_projection_with_no_store() -> None:
         "invited": 1,
         "suspended": 2,
         "revoked": 1,
+        "effective_capabilities": ["staff.read", "staff.manage_authority"],
+        "delegable_ceiling": ["staff.read"],
     }
     assert reader.overview_calls == 1
 
