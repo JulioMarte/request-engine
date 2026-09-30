@@ -168,7 +168,7 @@ async def test_staff_workspace_forwards_cursor_and_renders_next_page() -> None:
     assert f"after={MEMBER}" in page.text
     assert "limit=1" in page.text
     list_requests = [entry for entry in runtime.requests if entry[1] == "/v1/staff/members"]
-    assert list_requests[-1][2]["params"] == {"after": MEMBER, "limit": 1}
+    assert list_requests[-1][2]["params"] == {"after": MEMBER, "limit": "1"}
 
 
 @pytest.mark.asyncio
