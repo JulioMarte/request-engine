@@ -1,8 +1,8 @@
-"""Signed, HttpOnly cookie sessions for the admin console.
+"""Signed, HttpOnly cookie transport for the admin console.
 
-The browser only ever holds an opaque signed value. The control-plane bearer
-token is transported inside the signed payload, so it is never exposed to
-JavaScript and never persisted in browser storage.
+The signed value is integrity-protected but not opaque or confidential: its
+base64url payload contains upstream credential material. HttpOnly prevents
+JavaScript access, but this codec is not a server-side session store.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ class SessionEncodingError(RuntimeError):
 
 @dataclass(frozen=True)
 class AdminSession:
-    """Server-side session material for one authenticated operator."""
+    """Authenticated operator material currently serialized into the signed cookie."""
 
     access_token: str
     csrf_token: str
