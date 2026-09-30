@@ -1,7 +1,8 @@
 """Runtime settings for the private admin console entrypoint.
 
-The console holds a control-plane bearer token only on the server side. The
-browser receives a signed session cookie that never contains the bearer.
+The current signed-cookie transport provides integrity but is not a server-side
+session store. Credential material must not be described as server-only until
+the opaque-handle session-store boundary is installed.
 """
 
 from pydantic import Field, SecretStr, field_validator
