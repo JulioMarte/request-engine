@@ -6,7 +6,7 @@ from request_engine.entrypoints.http.admin_console.execution import execute_oper
 
 
 class _TimeoutState:
-    async def control_request(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+    async def control_request(self, *args: object, **kwargs: object):  # noqa: ANN202
         request = httpx.Request("POST", "https://control.test/v1/example")
         raise httpx.ReadTimeout("response lost", request=request)
 
@@ -52,13 +52,13 @@ async def test_timeout_is_ambiguous_and_preserves_stable_intent_key() -> None:
 
 
 class _ReadErrorState:
-    async def control_request(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+    async def control_request(self, *args: object, **kwargs: object):  # noqa: ANN202
         request = httpx.Request("POST", "https://control.test/v1/example")
         raise httpx.ReadError("connection reset after send", request=request)
 
 
 class _ConnectErrorState:
-    async def control_request(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+    async def control_request(self, *args: object, **kwargs: object):  # noqa: ANN202
         request = httpx.Request("POST", "https://control.test/v1/example")
         raise httpx.ConnectError("connection refused", request=request)
 
