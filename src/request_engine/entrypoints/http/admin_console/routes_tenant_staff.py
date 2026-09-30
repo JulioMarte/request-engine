@@ -14,6 +14,18 @@ from request_engine.entrypoints.http.admin_console.json_types import as_list, as
 from request_engine.entrypoints.http.admin_console.resources import resolve_operation
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
+def _read_error(status_code: int) -> str:
+    if status_code == 401:
+        return "Your session is no longer authorized. Sign in again."
+    if status_code == 403:
+        return "You do not have permission to view this staff resource."
+    if status_code == 404:
+        return "The requested staff resource was not found."
+    if status_code == 503:
+        return "The staff service is temporarily unavailable."
+    return "Staff data is unavailable."
+
+
 _OPS = {
     "overview": "staff_overview_get",
     "list": "staff_list",
@@ -75,8 +87,16 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             bearer=session.access_token,
             params=params,
         )
-        body = as_mapping(list_response.payload)
-        items = [as_mapping(item) for item in as_list(body.get("items"))]
+        reads_ok = overview_response.ok and list_response.ok
+        body = as_mapping(list_response.payload) if list_response.ok else {}
+        items = (
+            [as_mapping(item) for item in as_list(body.get("items"))]
+            if reads_ok
+            else []
+        )
+        failed_status = (
+            overview_response.status_code if not overview_response.ok else list_response.status_code
+        )
         return state.templates.TemplateResponse(
             request,
             "resources/staff.html",
@@ -87,12 +107,12 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 members=items,
                 next_cursor=body.get("next_cursor"),
                 page_limit=str(limit),
-                error=""
-                if overview_response.ok and list_response.ok
-                else "Staff data is unavailable or access was denied.",
-                invite_inputs=build_inputs(invite_op),
-                invite_intent_id=token_urlsafe(24),
+                error="" if reads_ok else _read_error(failed_status),
+                can_mutate=reads_ok,
+                invite_inputs=build_inputs(invite_op) if reads_ok else [],
+                invite_intent_id=token_urlsafe(24) if reads_ok else "",
             ),
+            status_code=200 if reads_ok else failed_status,
         )
 
     async def detail(request: Request, organization_id: UUID, membership_id: UUID) -> Response:
@@ -149,7 +169,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 organization_id=str(organization_id),
                 membership_id=membership_id,
                 member=item,
-                error="" if response.ok else "Membership unavailable or access denied.",
+                error="" if response.ok else _read_error(response.status_code),
                 operations=operations,
             ),
             status_code=200 if response.ok else response.status_code,
