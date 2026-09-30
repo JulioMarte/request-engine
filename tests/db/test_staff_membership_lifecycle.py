@@ -399,6 +399,79 @@ async def test_staff_overview_and_authority_plan_are_read_only_and_ceiling_bound
         )
 
 
+@pytest.mark.asyncio
+async def test_staff_authority_plan_apply_preserves_grants_outside_actor_ceiling(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
+    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
+    membership_id, staff_id, _staff_binding_id = _invite_and_activate(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        party_id=party_id,
+        authority_id=authority_id,
+        native_identity_id=native_identity_id,
+    )
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.principal_authority_grants (
+            organization_id, principal_id, principal_plane, authority_plane,
+            capability_key, delegable, granted_by_principal_id,
+            provenance_kind, provenance_reference
+        ) VALUES (%s, %s, 'tenant', 'operational', 'appointments.read', false,
+                  %s, 'authority_management', %s)
+        """,
+        (organization_id, staff_id, root_id, f"foreign-grant:{uuid4().hex}"),
+    )
+    revision = _principal_revision(admin_conn, staff_id)
+    actor = ActorContext(
+        organization_id=organization_id,
+        principal_id=root_id,
+        capabilities=frozenset({"staff.read", "staff.manage_authority"}),
+        authority_revision=_principal_revision(admin_conn, root_id),
+    )
+    reader = PostgresStaffMembershipReader(command_session_factory)
+    plan = await reader.plan_authority(
+        actor,
+        PlanStaffAuthorityQuery(
+            membership_id=membership_id,
+            expected_authority_revision=revision,
+            desired_capabilities=(),
+        ),
+    )
+    assert plan.current == ()
+    assert plan.removed == ()
+    assert plan.assignable is True
+
+    _set_tenant_actor(admin_conn, organization_id=organization_id, principal_id=root_id)
+    try:
+        applied = admin_conn.execute(
+            """
+            SELECT request_engine.replace_staff_authority(
+                %s, %s, ARRAY[]::text[], %s
+            )
+            """,
+            (membership_id, revision, f"staff-authority:{uuid4().hex}"),
+        ).fetchone()
+        assert applied is not None
+    finally:
+        admin_conn.execute("RESET ROLE")
+
+    assert admin_conn.execute(
+        """
+        SELECT capability_key
+          FROM request_engine.principal_authority_grants
+         WHERE organization_id = %s
+           AND principal_id = %s
+           AND status = 'active'
+         ORDER BY capability_key
+        """,
+        (organization_id, staff_id),
+    ).fetchall() == [("appointments.read",)]
+
+
 def test_staff_suspension_disables_principal_and_revokes_native_session(
     admin_conn: PgConnection,
 ) -> None:
