@@ -58,6 +58,8 @@ class RecordingReader:
             removed=("appointments.book",),
             assignable=False,
             blocked_capabilities=("queue.staff_read",),
+            can_apply=False,
+            blockers=(),
         )
 
 
@@ -128,6 +130,8 @@ async def test_authority_plan_maps_read_only_diff_without_idempotency_key() -> N
         "removed": ["appointments.book"],
         "assignable": False,
         "blocked_capabilities": ["queue.staff_read"],
+        "can_apply": False,
+        "blockers": [],
     }
     assert reader.plan_queries == [
         PlanStaffAuthorityQuery(
