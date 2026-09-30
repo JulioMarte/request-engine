@@ -49,6 +49,8 @@ class StaffOverviewView(BaseModel):
     invited: int
     suspended: int
     revoked: int
+    effective_capabilities: list[str]
+    delegable_ceiling: list[str]
 
 
 class StaffAuthorityPlanBody(BaseModel):
@@ -99,6 +101,8 @@ def _overview_view(overview: StaffOverview) -> StaffOverviewView:
         invited=overview.invited,
         suspended=overview.suspended,
         revoked=overview.revoked,
+        effective_capabilities=list(overview.effective_capabilities),
+        delegable_ceiling=list(overview.delegable_ceiling),
     )
 
 
