@@ -1,13 +1,13 @@
 """Preserve target authority outside the actor's delegable ceiling.
 
-Revision ID: 0005_staff_authority_ceiling_replace
+Revision ID: 0005_staff_authority_ceiling
 Revises: 0004_platform_control_org_read
 Create Date: 2026-09-30
 """
 
 from alembic import op
 
-revision: str = "0005_staff_authority_ceiling_replace"
+revision: str = "0005_staff_authority_ceiling"
 down_revision: str | None = "0004_platform_control_org_read"
 branch_labels: str | None = None
 depends_on: str | None = None
