@@ -171,25 +171,22 @@ class PostgresStaffMembershipReader:
                            ), ARRAY[]::text[]) AS blocked_capabilities,
                            CASE
                                WHEN target.principal_id IS NULL THEN false
-                               WHEN (
-                                   SELECT count(DISTINCT grant_row.capability_key) = 3
-                                     FROM request_engine.principal_authority_grants grant_row
-                                    WHERE grant_row.principal_id = target.principal_id
-                                      AND grant_row.status = 'active'
-                                      AND grant_row.capability_key IN (
-                                          'staff.manage_membership',
-                                          'staff.manage_authority',
-                                          'identity.bind'
-                                      )
+                               WHEN request_engine.principal_is_effective_tenant_controller(
+                                   :organization_id, target.principal_id
                                )
-                               AND NOT (
-                                   SELECT count(DISTINCT requested) = 3
-                                     FROM unnest(CAST(:desired AS text[])) requested
-                                    WHERE requested IN (
+                               AND EXISTS (
+                                   SELECT 1
+                                     FROM ceiling controller_ceiling
+                                    WHERE controller_ceiling.capability_key IN (
                                         'staff.manage_membership',
                                         'staff.manage_authority',
                                         'identity.bind'
                                     )
+                                      AND NOT (
+                                          controller_ceiling.capability_key = ANY(
+                                              CAST(:desired AS text[])
+                                          )
+                                      )
                                )
                                AND NOT EXISTS (
                                    SELECT 1
