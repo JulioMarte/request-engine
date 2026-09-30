@@ -49,3 +49,39 @@ async def test_timeout_is_ambiguous_and_preserves_stable_intent_key() -> None:
     assert outcome.idempotency_key == intent
     assert "may have completed" in outcome.message.lower()
     assert "nothing was changed" not in outcome.message.lower()
+
+
+class _ReadErrorState:
+    async def control_request(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        request = httpx.Request("POST", "https://control.test/v1/example")
+        raise httpx.ReadError("connection reset after send", request=request)
+
+
+class _ConnectErrorState:
+    async def control_request(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        request = httpx.Request("POST", "https://control.test/v1/example")
+        raise httpx.ConnectError("connection refused", request=request)
+
+
+@pytest.mark.asyncio
+async def test_post_connect_transport_error_is_ambiguous_and_preserves_intent() -> None:
+    outcome = await execute_operation(
+        _ReadErrorState(),
+        _operation(),
+        bearer="synthetic-token",
+        form={"_intent_id": "stable-intent-read"},
+    )
+    assert outcome.error_code == "outcome_unknown"
+    assert outcome.idempotency_key == "stable-intent-read"
+
+
+@pytest.mark.asyncio
+async def test_connect_error_does_not_claim_command_completed() -> None:
+    outcome = await execute_operation(
+        _ConnectErrorState(),
+        _operation(),
+        bearer="synthetic-token",
+        form={"_intent_id": "stable-intent-connect"},
+    )
+    assert outcome.error_code == "control_unreachable"
+    assert outcome.idempotency_key == "stable-intent-connect"
