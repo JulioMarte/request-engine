@@ -183,6 +183,27 @@ async def test_staff_member_route_rejects_invite_action() -> None:
 
 
 @pytest.mark.asyncio
+async def test_staff_detail_warns_that_native_session_revocation_is_global() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
+
+    assert response.status_code == 200
+    assert "sessions globally" in response.text
+    assert "other tenant contexts" in response.text
+
+
+@pytest.mark.asyncio
 async def test_staff_detail_without_runtime_fails_closed() -> None:
     control = FakeApi()
     settings = AdminConsoleSettings(
