@@ -103,6 +103,7 @@ uv run pytest \
   tests/db/test_identity_binding_reads.py \
   tests/db/test_identity_binding_lifecycle.py \
   tests/db/test_platform_control_read_boundary.py \
+  tests/db/test_platform_organization_directory.py \
   tests/db/test_platform_definer_topology.py \
   tests/db/test_platform_root_bootstrap_intents.py \
   tests/db/test_platform_root_bootstrap_consume.py \
