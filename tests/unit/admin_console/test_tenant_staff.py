@@ -41,6 +41,19 @@ class FakeApi:
                 },
                 {},
             )
+        if path == f"/v1/staff/members/{MEMBER}":
+            return ControlResponse(
+                200,
+                {
+                    "membership_id": MEMBER,
+                    "principal_id": ORG,
+                    "status": "active",
+                    "revision": 1,
+                    "authority_revision": 1,
+                    "standing_grants": [],
+                },
+                {},
+            )
         return ControlResponse(404, {"error": {"code": "not_found"}}, {})
 
     async def openapi(self) -> dict[str, Any]:
