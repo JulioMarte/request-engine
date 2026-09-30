@@ -183,10 +183,21 @@ async def execute_operation(
             str(exc),
             idempotency_key=idempotency_key,
         )
-    except httpx.HTTPError as exc:
+    except httpx.ConnectError as exc:
+        # Connect failures occur before an HTTP exchange is established. Keep
+        # the intent key for a later retry, but do not claim the command ran.
         return local_error(
             502,
             "control_unreachable",
+            str(exc),
+            idempotency_key=idempotency_key,
+        )
+    except httpx.HTTPError as exc:
+        # Once a connection existed, transport failures such as a reset while
+        # reading the response cannot prove rollback. Treat them like timeouts.
+        return local_error(
+            502,
+            "outcome_unknown",
             str(exc),
             idempotency_key=idempotency_key,
         )
