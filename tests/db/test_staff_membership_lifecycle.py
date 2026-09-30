@@ -616,8 +616,7 @@ async def test_authority_plan_reports_last_controller_blocker(
     organization_id, _party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
     membership_id, _membership_revision = _root_membership(admin_conn, root_id)
 
-    # Planning self-replacement is intentionally forbidden. Create a second
-    # manager whose own controller authority is not effective for continuity.
+    # Use a second manager so the preview can evaluate the root as a distinct target.
     authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
     party_id = _uuid_row(
         admin_conn,
@@ -1216,3 +1215,70 @@ def test_suspended_staff_competing_transitions_reject_stale_loser(
         winner_status == "active",
         int(before[1]) + int(winner_status == "revoked"),
     )
+
+
+@pytest.mark.asyncio
+async def test_authority_plan_reports_self_change_blocker(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    organization_id, _party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
+    membership_id, _membership_revision = _root_membership(admin_conn, root_id)
+    actor = ActorContext(
+        organization_id=organization_id,
+        principal_id=root_id,
+        capabilities=frozenset({"staff.manage_authority"}),
+        authority_revision=_principal_revision(admin_conn, root_id),
+    )
+    plan = await PostgresStaffMembershipReader(command_session_factory).plan_authority(
+        actor,
+        PlanStaffAuthorityQuery(
+            membership_id=membership_id,
+            expected_authority_revision=_principal_revision(admin_conn, root_id),
+            desired_capabilities=tuple(sorted(_CONTROL_CAPABILITIES)),
+        ),
+    )
+    assert plan.can_apply is False
+    assert "self_change" in plan.blockers
+
+
+@pytest.mark.asyncio
+async def test_authority_plan_reports_inactive_lifecycle_blocker(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
+    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
+    membership_id, staff_id, _staff_binding_id = _invite_and_activate(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        party_id=party_id,
+        authority_id=authority_id,
+        native_identity_id=native_identity_id,
+    )
+    _set_tenant_actor(admin_conn, organization_id=organization_id, principal_id=root_id)
+    try:
+        assert admin_conn.execute(
+            "SELECT request_engine.transition_staff_membership(%s, 2, 'suspended', %s)",
+            (membership_id, f"staff-suspend:{uuid4().hex}"),
+        ).fetchone() == (3,)
+    finally:
+        admin_conn.execute("RESET ROLE")
+
+    actor = ActorContext(
+        organization_id=organization_id,
+        principal_id=root_id,
+        capabilities=frozenset({"staff.manage_authority"}),
+        authority_revision=_principal_revision(admin_conn, root_id),
+    )
+    plan = await PostgresStaffMembershipReader(command_session_factory).plan_authority(
+        actor,
+        PlanStaffAuthorityQuery(
+            membership_id=membership_id,
+            expected_authority_revision=_principal_revision(admin_conn, staff_id),
+            desired_capabilities=(),
+        ),
+    )
+    assert plan.can_apply is False
+    assert "lifecycle_state" in plan.blockers
