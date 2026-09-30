@@ -5,8 +5,8 @@ from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import pytest
-from psycopg import Connection, Error
 from native_authority_gate_support import session_token_params
+from psycopg import Connection, Error
 
 from request_engine.modules.tenancy.adapters.db.staff_membership_reader import (
     PostgresStaffMembershipReader,
