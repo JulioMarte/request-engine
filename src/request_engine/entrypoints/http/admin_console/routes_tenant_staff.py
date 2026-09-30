@@ -54,12 +54,17 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             organization_id=organization_id,
             bearer=session.access_token,
         )
+        limit = request.query_params.get("limit", "50")
+        after = request.query_params.get("after")
+        params = {"limit": limit}
+        if after:
+            params["after"] = after
         list_response = await state.runtime_request(
             list_op.method,
             list_op.path_template,
             organization_id=organization_id,
             bearer=session.access_token,
-            params={"limit": request.query_params.get("limit", "50")},
+            params=params,
         )
         body = as_mapping(list_response.payload)
         items = [as_mapping(item) for item in as_list(body.get("items"))]
@@ -71,6 +76,8 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 organization_id=organization_id,
                 overview=as_mapping(overview_response.payload),
                 members=items,
+                next_cursor=body.get("next_cursor"),
+                page_limit=limit,
                 error=""
                 if overview_response.ok and list_response.ok
                 else "Staff data is unavailable or access was denied.",
