@@ -667,10 +667,13 @@ async def test_authority_plan_reports_last_controller_blocker(
     admin_conn.execute(
         """
         UPDATE request_engine.principal_authority_grants
-           SET status = 'revoked', revoked_at = clock_timestamp()
+           SET status = 'revoked',
+               revision = revision + 1,
+               revoked_at = clock_timestamp(),
+               revoked_by_principal_id = %s
          WHERE id = %s
         """,
-        (manager_grant[0],),
+        (root_id, manager_grant[0]),
     )
     admin_conn.execute(
         """
