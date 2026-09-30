@@ -650,16 +650,39 @@ async def test_authority_plan_reports_last_controller_blocker(
         admin_conn.execute("RESET ROLE")
 
     # The blocker is only relevant when the actor can actually delegate the
-    # controller capability being removed. Production grants default to
-    # non-delegable, so make that test precondition explicit.
+    # controller capability being removed. Ordinary grants are intentionally
+    # non-delegable, so establish that test precondition as bootstrap fixture
+    # data rather than mutating an immutable grant in place.
+    manager_grant = admin_conn.execute(
+        """
+        SELECT id
+          FROM request_engine.principal_authority_grants
+         WHERE principal_id = %s
+           AND capability_key = 'staff.manage_authority'
+           AND status = 'active'
+        """,
+        (manager_id,),
+    ).fetchone()
+    assert manager_grant is not None
     admin_conn.execute(
         """
         UPDATE request_engine.principal_authority_grants
-           SET delegable = TRUE
-         WHERE principal_id = %s
-           AND capability_key = 'staff.manage_authority'
+           SET status = 'revoked', revoked_at = clock_timestamp()
+         WHERE id = %s
         """,
-        (manager_id,),
+        (manager_grant[0],),
+    )
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.principal_authority_grants (
+            principal_id, principal_plane, authority_plane, capability_key,
+            delegable, provenance_kind, provenance_reference
+        ) VALUES (
+            %s, 'tenant', 'tenant_control', 'staff.manage_authority', TRUE,
+            'trust_bootstrap', %s
+        )
+        """,
+        (manager_id, f"test-delegable:{uuid4().hex}"),
     )
 
     actor = ActorContext(
