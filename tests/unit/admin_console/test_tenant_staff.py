@@ -17,9 +17,11 @@ class FakeApi:
     def __init__(self, *, runtime: bool = False) -> None:
         self.runtime = runtime
         self.headers: list[dict[str, str]] = []
+        self.requests: list[tuple[str, str, dict[str, Any]]] = []
 
     async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
         self.headers.append(kwargs.get("extra_headers") or {})
+        self.requests.append((method, path, kwargs))
         if not self.runtime and path == "/auth/native/sessions":
             return ControlResponse(200, {"access_token": "token"}, {})
         if path == "/v1/staff/overview":
@@ -165,6 +167,30 @@ async def test_staff_workspace_forwards_cursor_and_renders_next_page() -> None:
     assert page.status_code == 200
     assert f"after={MEMBER}" in page.text
     assert "limit=1" in page.text
+    list_requests = [entry for entry in runtime.requests if entry[1] == "/v1/staff/members"]
+    assert list_requests[-1][2]["params"] == {"after": MEMBER, "limit": 1}
+
+
+@pytest.mark.asyncio
+async def test_staff_workspace_rejects_invalid_pagination_before_runtime() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        bad_cursor = await client.get(f"/tenants/{ORG}/staff?after=not-a-uuid")
+        bad_limit = await client.get(f"/tenants/{ORG}/staff?limit=101")
+
+    assert bad_cursor.status_code == 422
+    assert bad_limit.status_code == 422
+    assert not [entry for entry in runtime.requests if entry[1] == "/v1/staff/members"]
 
 
 @pytest.mark.asyncio
