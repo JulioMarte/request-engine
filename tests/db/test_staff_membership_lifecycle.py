@@ -649,6 +649,16 @@ async def test_authority_plan_reports_last_controller_blocker(
     finally:
         admin_conn.execute("RESET ROLE")
 
+    # The blocker is only relevant when the actor can actually delegate the
+    # controller capability being removed. Production grants default to
+    # non-delegable, so make that test precondition explicit.
+    admin_conn.execute(
+        "UPDATE request_engine.principal_authority_grants "
+        "SET delegable = TRUE "
+        "WHERE principal_id = %s AND capability_key = 'staff.manage_authority'",
+        (manager_id,),
+    )
+
     actor = ActorContext(
         organization_id=organization_id,
         principal_id=manager_id,
