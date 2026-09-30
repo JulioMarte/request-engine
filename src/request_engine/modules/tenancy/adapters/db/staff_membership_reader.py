@@ -41,7 +41,23 @@ class PostgresStaffMembershipReader:
                            count(m.id) FILTER (WHERE m.status = 'active') AS active,
                            count(m.id) FILTER (WHERE m.status = 'invited') AS invited,
                            count(m.id) FILTER (WHERE m.status = 'suspended') AS suspended,
-                           count(m.id) FILTER (WHERE m.status = 'revoked') AS revoked
+                           count(m.id) FILTER (WHERE m.status = 'revoked') AS revoked,
+                           ARRAY(
+                               SELECT g.capability_key
+                                 FROM request_engine.principal_authority_grants g
+                                WHERE g.organization_id = :organization_id
+                                  AND g.principal_id = :actor_id
+                                  AND g.status = 'active'
+                                ORDER BY g.capability_key
+                           ) AS effective_capabilities,
+                           ARRAY(
+                               SELECT g.capability_key
+                                 FROM request_engine.principal_authority_grants g
+                                WHERE g.organization_id = :organization_id
+                                  AND g.principal_id = :actor_id
+                                  AND g.status = 'active' AND g.delegable
+                                ORDER BY g.capability_key
+                           ) AS delegable_ceiling
                       FROM (SELECT EXISTS (
                           SELECT 1 FROM request_engine.principals actor
                           JOIN request_engine.staff_memberships membership
@@ -79,6 +95,8 @@ class PostgresStaffMembershipReader:
                 invited=int(row["invited"]),
                 suspended=int(row["suspended"]),
                 revoked=int(row["revoked"]),
+                effective_capabilities=tuple(row["effective_capabilities"]),
+                delegable_ceiling=tuple(row["delegable_ceiling"]),
             )
 
     async def list_memberships(
