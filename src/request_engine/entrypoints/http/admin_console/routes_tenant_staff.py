@@ -173,6 +173,21 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             surface="runtime",
             organization_id=organization_id,
         )
+        if outcome.ok and action == "plan":
+            view = outcome.to_view()
+            payload = as_mapping(view.get("payload"))
+            if payload.get("can_apply") is True:
+                view["reviewed_draft"] = {
+                    "desired_capabilities": form.get("desired_capabilities", ""),
+                    "expected_authority_revision": form.get("expected_authority_revision", ""),
+                    "provenance_reference": form.get("provenance_reference", ""),
+                    "_intent_id": token_urlsafe(24),
+                }
+            return state.templates.TemplateResponse(
+                request,
+                "partials/result.html",
+                state.context(request, result=view, form_id="staff-plan"),
+            )
         if outcome.ok and action in {"invite", "authority", "status"}:
             location = (
                 f"/tenants/{organization_id}/staff/{membership_id}"
