@@ -146,3 +146,8 @@ caller's current delegable ceiling, reports requested capabilities outside that
 ceiling as blocked, and never writes authority, audit, or idempotency state. The
 authoritative `PUT .../authority` command independently revalidates its revision,
 ceiling, controller continuity, and tenant state while holding its normal locks.
+Replacement preserves target grants outside the caller's ceiling. Its controller
+guard evaluates the actual post-replacement authority, including those preserved
+grants. `assignable` describes ceiling compliance only; `can_apply` also requires
+current apply authority and no revealable lifecycle/self/controller blocker.
+Planning permission alone never implies permission to execute the command.

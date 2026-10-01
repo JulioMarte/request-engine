@@ -1,4 +1,7 @@
+import os
 import re
+from html import unescape
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -8,6 +11,12 @@ from pydantic import SecretStr
 from request_engine.entrypoints.http.admin_console.app import create_admin_console_app
 from request_engine.entrypoints.http.admin_console.client import ControlResponse
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
+from request_engine.modules.tenancy.api.staff_membership_reads import StaffAuthorityPlanBody
+from request_engine.modules.tenancy.api.staff_membership_routes import (
+    NativeStaffInviteBody,
+    StaffAuthorityReplaceBody,
+    StaffMembershipTransitionBody,
+)
 
 ORG = "11111111-1111-4111-8111-111111111111"
 MEMBER = "22222222-2222-4222-8222-222222222222"
@@ -36,7 +45,7 @@ class FakeApi:
                     "effective_capabilities": ["staff.read", "staff.manage_authority"],
                     "delegable_ceiling": ["staff.read"],
                 },
-                {}
+                {},
             )
         if path == "/v1/staff/members":
             return ControlResponse(
@@ -60,7 +69,7 @@ class FakeApi:
                     "membership_id": MEMBER,
                     "principal_id": ORG,
                     "status": "active",
-                    "revision": 1,
+                    "membership_revision": 1,
                     "authority_revision": 1,
                     "standing_grants": [],
                 },
@@ -116,6 +125,20 @@ class FakeApi:
                 if "{membership_id}" in path
                 else [],
             }
+        bodies = {
+            "staff_invite": NativeStaffInviteBody,
+            "staff_authority_plan": StaffAuthorityPlanBody,
+            "staff_manage_authority": StaffAuthorityReplaceBody,
+            "staff_manage_membership": StaffMembershipTransitionBody,
+        }
+        for methods in paths.values():
+            for operation in methods.values():
+                model = bodies.get(operation["operationId"])
+                if model is not None:
+                    operation["requestBody"] = {
+                        "required": True,
+                        "content": {"application/json": {"schema": model.model_json_schema()}},
+                    }
         return {"paths": paths}
 
     async def aclose(self) -> None:
@@ -126,6 +149,9 @@ class FakeApi:
 async def test_staff_workspace_forwards_tenant_selector_only_to_runtime() -> None:
     control, runtime = FakeApi(), FakeApi(runtime=True)
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -165,6 +191,9 @@ async def test_staff_workspace_forwards_cursor_and_renders_next_page() -> None:
 
     runtime.request = paged_request  # type: ignore[method-assign]
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -189,6 +218,9 @@ async def test_staff_workspace_forwards_cursor_and_renders_next_page() -> None:
 async def test_staff_workspace_rejects_invalid_pagination_before_runtime() -> None:
     control, runtime = FakeApi(), FakeApi(runtime=True)
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -211,6 +243,9 @@ async def test_staff_workspace_rejects_invalid_pagination_before_runtime() -> No
 async def test_staff_member_route_rejects_invite_action() -> None:
     control, runtime = FakeApi(), FakeApi(runtime=True)
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -239,6 +274,9 @@ async def test_staff_member_route_rejects_invite_action() -> None:
 async def test_staff_detail_warns_that_native_session_revocation_is_global() -> None:
     control, runtime = FakeApi(), FakeApi(runtime=True)
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -260,6 +298,9 @@ async def test_staff_detail_warns_that_native_session_revocation_is_global() -> 
 async def test_staff_detail_without_runtime_fails_closed() -> None:
     control = FakeApi()
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
         cookie_secure=False,
@@ -297,6 +338,9 @@ async def test_staff_workspace_failed_read_hides_mutations(
 
     runtime.request = failed_read  # type: ignore[method-assign]
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -327,6 +371,9 @@ async def test_staff_detail_not_found_renders_no_mutation_forms() -> None:
 
     runtime.request = missing_detail  # type: ignore[method-assign]
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -349,9 +396,11 @@ async def test_staff_detail_not_found_renders_no_mutation_forms() -> None:
 async def test_staff_authority_apply_exists_only_after_successful_review() -> None:
     control, runtime = FakeApi(), FakeApi(runtime=True)
     original_request = runtime.request
+    bodies: list[object] = []
 
     async def planned_request(method: str, path: str, **kwargs: Any) -> ControlResponse:
         if path == f"/v1/staff/members/{MEMBER}/authority:plan":
+            bodies.append(kwargs.get("json_body"))
             return ControlResponse(
                 200,
                 {
@@ -368,10 +417,16 @@ async def test_staff_authority_apply_exists_only_after_successful_review() -> No
                 },
                 {},
             )
+        if path == f"/v1/staff/members/{MEMBER}/authority":
+            bodies.append(kwargs.get("json_body"))
+            return ControlResponse(200, {"authority_revision": 2}, {})
         return await original_request(method, path, **kwargs)
 
     runtime.request = planned_request  # type: ignore[method-assign]
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -384,6 +439,8 @@ async def test_staff_authority_apply_exists_only_after_successful_review() -> No
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         detail = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
         assert "Apply reviewed draft" not in detail.text
+        assert 'name="selected_capabilities" value="staff.read"' in detail.text
+        assert 'name="desired_capabilities"' not in detail.text
         csrf = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)
         assert csrf is not None
         preview = await client.post(
@@ -391,15 +448,31 @@ async def test_staff_authority_apply_exists_only_after_successful_review() -> No
             data={
                 "csrf_token": csrf.group(1),
                 "_intent_id": "review-intent",
-                "desired_capabilities": '["staff.read"]',
+                "_permission_picker": "1",
+                "selected_capabilities": "staff.read",
                 "expected_authority_revision": "1",
                 "provenance_reference": "review:test",
             },
         )
+        reviewed = {
+            name: unescape(value)
+            for name, value in re.findall(r'name="([^"]+)"[^>]*value="([^"]*)"', preview.text)
+        }
+        applied = await client.post(f"/tenants/{ORG}/staff/{MEMBER}/authority", data=reviewed)
 
     assert preview.status_code == 200
+    assert applied.status_code == 303
+    assert applied.headers["location"] == f"/tenants/{ORG}/staff/{MEMBER}"
+    assert bodies == [
+        {"expected_authority_revision": 1, "desired_capabilities": ["staff.read"]},
+        {
+            "expected_authority_revision": 1,
+            "desired_capabilities": ["staff.read"],
+            "provenance_reference": "review:test",
+        },
+    ]
     assert "Apply reviewed draft" in preview.text
-    assert 'value='["staff.read"]'' in preview.text or 'value="[&quot;staff.read&quot;]"' in preview.text
+    assert 'value="[&#34;staff.read&#34;]"' in preview.text
     assert 'value="1"' in preview.text
     assert 'value="review:test"' in preview.text
 
@@ -431,6 +504,9 @@ async def test_blocked_staff_authority_preview_never_offers_apply() -> None:
 
     runtime.request = blocked_request  # type: ignore[method-assign]
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -464,6 +540,9 @@ async def test_blocked_staff_authority_preview_never_offers_apply() -> None:
 async def test_staff_workspace_renders_previous_page_from_validated_trail() -> None:
     control, runtime = FakeApi(), FakeApi(runtime=True)
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -474,9 +553,7 @@ async def test_staff_workspace_renders_previous_page_from_validated_trail() -> N
         transport=httpx.ASGITransport(app=app), base_url="http://console"
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
-        page = await client.get(
-            f"/tenants/{ORG}/staff?after={MEMBER}&limit=1&trail=root"
-        )
+        page = await client.get(f"/tenants/{ORG}/staff?after={MEMBER}&limit=1&trail=root")
 
     assert page.status_code == 200
     assert "← Previous page" in page.text
@@ -487,6 +564,9 @@ async def test_staff_workspace_renders_previous_page_from_validated_trail() -> N
 async def test_staff_workspace_rejects_forged_pagination_trail() -> None:
     control, runtime = FakeApi(), FakeApi(runtime=True)
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
@@ -497,9 +577,7 @@ async def test_staff_workspace_rejects_forged_pagination_trail() -> None:
         transport=httpx.ASGITransport(app=app), base_url="http://console"
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
-        response = await client.get(
-            f"/tenants/{ORG}/staff?after={MEMBER}&trail=not-a-cursor"
-        )
+        response = await client.get(f"/tenants/{ORG}/staff?after={MEMBER}&trail=not-a-cursor")
 
     assert response.status_code == 422
 
@@ -512,6 +590,9 @@ async def test_staff_workspace_catalog_failure_is_503_not_500() -> None:
 
     control, runtime = FakeApi(), BrokenCatalog(runtime=True)
     settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control",
         runtime_api_base_url="http://runtime",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),

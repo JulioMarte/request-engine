@@ -779,12 +779,22 @@ The command retains the existing required idempotency key, expected Principal
 authority revision and provenance reference. Inside the actor transaction,
 PostgreSQL locks/revalidates the active HUMAN manager, target membership and
 Principal and requires every desired capability to be in the manager's current
-active **delegable** ceiling. Newly created grants are non-delegable. Self-replacement,
+active **delegable** ceiling. Replacement applies only inside that ceiling:
+omitted target grants outside it are preserved, not revoked. Controller continuity
+is evaluated against that resulting authority (requested grants plus preserved
+grants), never against the partial requested list alone. Newly created grants
+are non-delegable. Self-replacement,
 foreign membership access and removal of the last controller remain prohibited.
 Capability assignment does not create Party Representations or widen their scopes;
 each business operation still enforces its owner-specific relationship rules.
-No provider calls, new database grants, tool projection or schema migration are
-introduced by this transport/application correction.
+The read-only `staff_authority_plan` preview reports ceiling compliance separately
+from `can_apply`: the latter also excludes self-change, inactive lifecycle,
+last-controller removal and missing current `staff.manage_authority` authority.
+A caller holding only `staff.plan_authority` may inspect a plan but cannot apply
+it. These are advisory snapshot facts; the command revalidates them under its
+existing identity-topology gate and tenant-staff lock root. The ceiling and
+continuity corrections are forward migrations; no historical revision is changed.
+No provider calls or new tool projection are introduced.
 
 Evidence: `tests/e2e/test_platform_provisioning_journey.py` assigns the employee's
 operational authority through HTTP, verifies durable non-delegable grants and

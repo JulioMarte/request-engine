@@ -25,10 +25,7 @@ from request_engine.entrypoints.http.admin_console.observability import (
 )
 from request_engine.entrypoints.http.admin_console.session import (
     AdminSession,
-    decode_session,
-    decode_value,
-    encode_session,
-    encode_value,
+    FileSessionStore,
     new_csrf_token,
 )
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
@@ -38,7 +35,7 @@ _SameSite = Literal["lax", "strict", "none"]
 
 @dataclass(frozen=True)
 class SetupState:
-    """Short-lived first-run setup bearer, held only in a signed cookie."""
+    """Short-lived first-run setup bearer, held only on the server."""
 
     token: str
     csrf: str
@@ -64,6 +61,7 @@ class AdminConsoleState:
         self.errors = ErrorTracker()
         self.metrics = ConsoleMetrics()
         self._secret = settings.session_secret.get_secret_value().encode("utf-8")
+        self._sessions = FileSessionStore(settings.session_store_directory, self._secret)
         self._catalog: AdminCatalog | None = None
         self._catalog_at = 0.0
         self._runtime_catalog: AdminCatalog | None = None
@@ -77,30 +75,21 @@ class AdminConsoleState:
         raw = request.cookies.get(self.settings.session_cookie_name)
         if raw is None:
             return None
-        return decode_session(self._secret, raw)
+        return self._sessions.read(raw, "login")
 
     def setup(self, request: Request) -> SetupState | None:
         raw = request.cookies.get(self.settings.setup_cookie_name)
         if raw is None:
             return None
-        payload = decode_value(self._secret, raw)
-        if payload is None:
+        stored = self._sessions.read(raw, "setup")
+        if stored is None:
             return None
-        token = payload.get("t")
-        csrf = payload.get("c")
-        expires_at = payload.get("e")
-        if not isinstance(token, str) or not isinstance(csrf, str):
-            return None
-        if not isinstance(expires_at, int):
-            return None
-        if expires_at <= int(time.time()):
-            return None
-        return SetupState(token=token, csrf=csrf, expires_at=expires_at)
+        return SetupState(stored.access_token, stored.csrf_token, stored.expires_at)
 
     def attach_session(self, response: Response, session: AdminSession) -> None:
         response.set_cookie(
             self.settings.session_cookie_name,
-            encode_session(self._secret, session),
+            self._sessions.create(session, "login"),
             max_age=self.settings.session_ttl_seconds,
             httponly=True,
             secure=self.settings.cookie_secure,
@@ -108,7 +97,8 @@ class AdminConsoleState:
             path="/",
         )
 
-    def clear_session(self, response: Response) -> None:
+    def clear_session(self, response: Response, request: Request) -> None:
+        self._sessions.revoke(request.cookies.get(self.settings.session_cookie_name, ""), "login")
         response.delete_cookie(self.settings.session_cookie_name, path="/")
 
     def attach_setup(self, response: Response, token: str) -> str:
@@ -120,10 +110,7 @@ class AdminConsoleState:
         )
         response.set_cookie(
             self.settings.setup_cookie_name,
-            encode_value(
-                self._secret,
-                {"t": setup.token, "c": setup.csrf, "e": setup.expires_at},
-            ),
+            self._sessions.create(AdminSession(setup.token, setup.csrf, setup.expires_at), "setup"),
             max_age=self.settings.setup_ttl_seconds,
             httponly=True,
             secure=self.settings.cookie_secure,
@@ -132,7 +119,8 @@ class AdminConsoleState:
         )
         return csrf
 
-    def clear_setup(self, response: Response) -> None:
+    def clear_setup(self, response: Response, request: Request) -> None:
+        self._sessions.revoke(request.cookies.get(self.settings.setup_cookie_name, ""), "setup")
         response.delete_cookie(self.settings.setup_cookie_name, path="/")
 
     def csrf_matches(self, submitted: str | None, expected: str | None) -> bool:

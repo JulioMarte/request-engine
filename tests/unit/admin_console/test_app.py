@@ -1,4 +1,6 @@
+import os
 import re
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -98,6 +100,9 @@ class FakeControl:
 
 def _settings() -> AdminConsoleSettings:
     return AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control:8001",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
         cookie_secure=False,
@@ -407,8 +412,12 @@ async def test_logout_clears_browser_session_when_upstream_revocation_fails() ->
     async with _client(app) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         assert "re_admin_console" in client.cookies
+        old_cookie = client.cookies.get("re_admin_console")
         response = await client.post("/logout")
+        replay = await client.get("/", headers={"Cookie": f"re_admin_console={old_cookie}"})
 
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
     assert "re_admin_console" not in client.cookies
+    assert replay.status_code == 303
+    assert replay.headers["location"] == "/login"

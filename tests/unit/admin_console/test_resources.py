@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -444,6 +446,9 @@ class FakeControl:
 
 def _settings() -> AdminConsoleSettings:
     return AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
         control_api_base_url="http://control:8001",
         session_secret=SecretStr("unit-test-session-secret-40-characters"),
         cookie_secure=False,

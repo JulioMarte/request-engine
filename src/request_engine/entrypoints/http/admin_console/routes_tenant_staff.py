@@ -5,14 +5,15 @@ from secrets import token_urlsafe
 from typing import Any
 from uuid import UUID
 
+import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import RedirectResponse, Response
 
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
-from request_engine.entrypoints.http.admin_console.resources import resolve_operation
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
+
 
 def _read_error(status_code: int) -> str:
     if status_code == 401:
@@ -67,9 +68,9 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             catalog = await state.runtime_catalog()
         except Exception:
             return Response("Staff operation catalog unavailable", status_code=503)
-        overview_op = resolve_operation(catalog, _OPS["overview"])
-        list_op = resolve_operation(catalog, _OPS["list"])
-        invite_op = resolve_operation(catalog, _OPS["invite"])
+        overview_op = catalog.by_id().get(_OPS["overview"])
+        list_op = catalog.by_id().get(_OPS["list"])
+        invite_op = catalog.by_id().get(_OPS["invite"])
         if overview_op is None or list_op is None or invite_op is None:
             return Response("Staff operation catalog incomplete", status_code=503)
         trail_parts = [part for part in trail.split(",") if part]
@@ -91,29 +92,28 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             if previous_trail:
                 previous_url += f"&trail={previous_trail}"
         next_trail = ",".join([*trail_parts, "root" if after is None else str(after)])
-        overview_response = await state.runtime_request(
-            overview_op.method,
-            overview_op.path_template,
-            organization_id=str(organization_id),
-            bearer=session.access_token,
-        )
         params: dict[str, str] = {"limit": str(limit)}
         if after is not None:
             params["after"] = str(after)
-        list_response = await state.runtime_request(
-            list_op.method,
-            list_op.path_template,
-            organization_id=str(organization_id),
-            bearer=session.access_token,
-            params=params,
-        )
+        try:
+            overview_response = await state.runtime_request(
+                overview_op.method,
+                overview_op.path_template,
+                organization_id=str(organization_id),
+                bearer=session.access_token,
+            )
+            list_response = await state.runtime_request(
+                list_op.method,
+                list_op.path_template,
+                organization_id=str(organization_id),
+                bearer=session.access_token,
+                params=params,
+            )
+        except httpx.HTTPError:
+            return Response("Staff service temporarily unavailable", status_code=503)
         reads_ok = overview_response.ok and list_response.ok
         body = as_mapping(list_response.payload) if list_response.ok else {}
-        items = (
-            [as_mapping(item) for item in as_list(body.get("items"))]
-            if reads_ok
-            else []
-        )
+        items = [as_mapping(item) for item in as_list(body.get("items"))] if reads_ok else []
         failed_status = (
             overview_response.status_code if not overview_response.ok else list_response.status_code
         )
@@ -147,32 +147,58 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             catalog = await state.runtime_catalog()
         except Exception:
             return Response("Staff operation catalog unavailable", status_code=503)
-        get_op = resolve_operation(catalog, _OPS["get"])
+        get_op = catalog.by_id().get(_OPS["get"])
         if get_op is None:
             return Response("Staff operation unavailable", status_code=503)
-        response = await state.runtime_request(
-            get_op.method,
-            get_op.path_template.replace("{membership_id}", str(membership_id)),
-            organization_id=str(organization_id),
-            bearer=session.access_token,
-        )
+        try:
+            response = await state.runtime_request(
+                get_op.method,
+                get_op.path_template.replace("{membership_id}", str(membership_id)),
+                organization_id=str(organization_id),
+                bearer=session.access_token,
+            )
+        except httpx.HTTPError:
+            return Response("Staff service temporarily unavailable", status_code=503)
         item = as_mapping(response.payload)
         operations: dict[str, Any] = {}
+        permission_choices: list[str] = []
+        selected_permissions: list[str] = []
         if response.ok:
+            overview_op = catalog.by_id().get(_OPS["overview"])
+            if overview_op is None:
+                return Response("Staff operation catalog incomplete", status_code=503)
+            try:
+                overview = await state.runtime_request(
+                    overview_op.method,
+                    overview_op.path_template,
+                    organization_id=str(organization_id),
+                    bearer=session.access_token,
+                )
+            except httpx.HTTPError:
+                return Response("Staff service temporarily unavailable", status_code=503)
+            if not overview.ok:
+                return Response(_read_error(overview.status_code), status_code=overview.status_code)
+            permission_choices = sorted(
+                str(value)
+                for value in as_list(as_mapping(overview.payload).get("delegable_ceiling"))
+            )
             visible_capabilities = [
                 str(grant.get("capability"))
                 for grant in (as_mapping(value) for value in as_list(item.get("standing_grants")))
                 if grant.get("capability")
             ]
-            authority_draft = json.dumps(sorted(visible_capabilities))
+            selected_permissions = sorted(set(visible_capabilities) & set(permission_choices))
+            authority_draft = json.dumps(selected_permissions)
             for key in ("plan", "authority", "status"):
-                operation = resolve_operation(catalog, _OPS[key])
+                operation = catalog.by_id().get(_OPS[key])
                 if operation is None:
                     return Response("Staff operation catalog incomplete", status_code=503)
                 operations[key] = {
                     "operation": operation,
                     "inputs": build_inputs(
-                        operation,
+                        catalog.by_id().get(_OPS["authority"], operation)
+                        if key == "plan"
+                        else operation,
                         values={
                             "membership_id": str(membership_id),
                             "expected_authority_revision": str(item.get("authority_revision", "")),
@@ -193,6 +219,8 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 member=item,
                 error="" if response.ok else _read_error(response.status_code),
                 operations=operations,
+                permission_choices=permission_choices,
+                selected_permissions=selected_permissions,
             ),
             status_code=200 if response.ok else response.status_code,
         )
@@ -211,14 +239,19 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         allowed_actions = {"invite"} if membership_id is None else {"plan", "authority", "status"}
         if action not in allowed_actions:
             return Response("Unknown staff action", status_code=404)
-        form = {key: str(value) for key, value in (await request.form()).items()}
+        submitted = await request.form()
+        form = {key: str(value) for key, value in submitted.items()}
+        if action == "plan" and form.get("_permission_picker") == "1":
+            form["desired_capabilities"] = json.dumps(
+                sorted({str(value) for value in submitted.getlist("selected_capabilities")})
+            )
         if not state.csrf_matches(form.get("csrf_token"), session.csrf_token):
             return Response("CSRF token missing or invalid", status_code=403)
         try:
             catalog = await state.runtime_catalog()
         except Exception:
             return Response("Staff operation catalog unavailable", status_code=503)
-        operation = resolve_operation(catalog, _OPS[action])
+        operation = catalog.by_id().get(_OPS[action])
         if operation is None:
             return Response("Staff operation unavailable", status_code=503)
         if membership_id:
@@ -233,7 +266,8 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         )
         if outcome.ok and action == "plan":
             view = outcome.to_view()
-            payload = as_mapping(view.get("payload"))
+            payload = as_mapping(json.loads(outcome.payload_json))
+            view["authority_plan"] = payload
             if payload.get("can_apply") is True:
                 view["reviewed_draft"] = {
                     "desired_capabilities": form.get("desired_capabilities", ""),
@@ -258,7 +292,11 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         return state.templates.TemplateResponse(
             request,
             "partials/result.html",
-            state.context(request, result=outcome.to_view(), form_id=f"staff-{action}"),
+            state.context(
+                request,
+                result=outcome.to_view(),
+                form_id="staff-authority-reviewed" if action == "authority" else f"staff-{action}",
+            ),
         )
 
     app.add_api_route("/tenants/{organization_id}/staff", workspace, methods=["GET"])

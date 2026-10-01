@@ -167,6 +167,15 @@ class PostgresStaffMembershipReader:
                            AND g.authority_plane IN ('tenant_control', 'operational')
                     )
                     SELECT (SELECT permitted FROM access) AS permitted,
+                           EXISTS (
+                               SELECT 1
+                                 FROM request_engine.principal_authority_grants manager_grant
+                                WHERE manager_grant.organization_id = :organization_id
+                                  AND manager_grant.principal_id = :actor_id
+                                  AND manager_grant.capability_key = 'staff.manage_authority'
+                                  AND manager_grant.authority_plane = 'tenant_control'
+                                  AND manager_grant.status = 'active'
+                           ) AS may_apply,
                            target.membership_id, target.principal_id,
                            target.membership_status, target.principal_active,
                            target.authority_revision,
@@ -244,6 +253,8 @@ class PostgresStaffMembershipReader:
         current = tuple(row["current_capabilities"])
         blocked = tuple(row["blocked_capabilities"])
         blockers_list: list[str] = []
+        if not row["may_apply"]:
+            blockers_list.append("missing_apply_authority")
         if row["principal_id"] == actor.principal_id:
             blockers_list.append("self_change")
         if row["membership_status"] != "active" or not bool(row["principal_active"]):

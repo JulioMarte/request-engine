@@ -14,11 +14,13 @@ admin console  --(server-to-server Authorization: Bearer)-->  control plane
 control plane  -->  PostgreSQL / OpenBao / providers
 ```
 
-- The current cookie is signed and HttpOnly, so JavaScript cannot read it, but
-  its payload still contains the upstream bearer. Signing provides integrity,
-  not confidentiality or server-side storage. This is an acknowledged security
-  gap: the target design is an opaque browser handle backed by a shared
-  server-side store without giving the console direct business-database access.
+- Browser cookies contain only random opaque handles. Login and setup bearers
+  live in encrypted immutable records in a private persistent directory. Logout
+  deletes the server record even when upstream revocation fails. All workers and
+  replicas must share that directory and encryption secret. Unix permissions
+  must be 0700; on Windows restrict the directory ACL to the service identity.
+  There is no ephemeral or credential-in-cookie fallback. Rotating the secret
+  invalidates existing sessions. This store grants no business-database access.
 - The browser talks only to the console origin, so no CORS and no ambient
   cross-site credential are introduced.
 - Mutating forms get an intent-scoped `Idempotency-Key` automatically. The key
@@ -37,6 +39,7 @@ Environment variables use the `REQUEST_ENGINE_ADMIN_CONSOLE_` prefix:
 ```text
 control_api_base_url   # e.g. http://127.0.0.1:8001
 session_secret         # >= 32 bytes
+session_store_directory # REQUIRED persistent private volume shared by console replicas
 session_cookie_name    # default re_admin_console
 setup_cookie_name      # default re_admin_setup
 session_ttl_seconds    # default 1800
@@ -202,7 +205,7 @@ the UI labels this limitation explicitly.
 uv run pytest tests/unit/admin_console -q
 ```
 
-They cover the signed-session codec, the OpenAPI catalog and `$ref` resolution,
+They cover opaque server sessions, the OpenAPI catalog and `$ref` resolution,
 schema-driven form parsing, cookie/session flow, security headers, disabled
 operator docs, request-id propagation, redaction, the bounded error tracker and
 the diagnostics surface.

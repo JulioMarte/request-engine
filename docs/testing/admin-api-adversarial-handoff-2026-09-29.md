@@ -1,5 +1,8 @@
 # Handoff adversarial: administración de organizaciones, personas y permisos
 
+Seguimiento posterior: [verificación y pendientes del 30 de septiembre](admin-api-verification-2026-09-30.md).
+Este documento conserva los hallazgos históricos; no asumir que todos siguen abiertos.
+
 Fecha: 2026-09-29. Rama: `feature/admin-console`. Estado: revisión y plan de
 remediación, **no aprobación de producción ni contrato nuevo aceptado**.
 Auditoría del trabajo local publicado en `e38b7e5d`, reconciliado con los cuatro

@@ -213,7 +213,7 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 claim=as_mapping(response.payload),
             ),
         )
-        state.clear_setup(result)
+        state.clear_setup(result, request)
         return result
 
     app.add_api_route("/setup", setup_page, methods=["GET"], response_class=HTMLResponse)

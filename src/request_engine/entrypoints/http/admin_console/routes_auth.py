@@ -1,20 +1,24 @@
 """Console authentication routes: password login, passkey login and step-up.
 
-The console stores the control-plane bearer only inside its signed server cookie;
+The console stores the control-plane bearer only in its private session store;
 these routes exchange credentials with the control plane and never hand the
 bearer to the browser.
 """
 
 from __future__ import annotations
 
-import time
+from contextlib import suppress
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from request_engine.entrypoints.http.admin_console.json_types import as_mapping
-from request_engine.entrypoints.http.admin_console.session import AdminSession, new_csrf_token
+from request_engine.entrypoints.http.admin_console.session import (
+    AdminSession,
+    new_csrf_token,
+    session_expiry,
+)
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 
@@ -39,18 +43,20 @@ def _login_error(response: Any) -> str:
     return f"Control plane rejected the login ({response.status_code})"
 
 
-def _new_session(state: AdminConsoleState, access_token: str) -> AdminSession:
+def _new_session(
+    state: AdminConsoleState, access_token: str, upstream_expiry: object = None
+) -> AdminSession:
     return AdminSession(
         access_token=access_token,
         csrf_token=new_csrf_token(),
-        expires_at=int(time.time()) + state.settings.session_ttl_seconds,
+        expires_at=session_expiry(state.settings.session_ttl_seconds, upstream_expiry),
     )
 
 
 def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def login_page(request: Request) -> Response:
-        if state.session(request) is not None:
-            return RedirectResponse("/", status_code=303)
+        # An unexpired local handle is not proof that its upstream bearer remains
+        # valid. Always allow explicit reauthentication, including after revocation.
         return state.templates.TemplateResponse(
             request, "login.html", state.context(request, error=None, notice=None)
         )
@@ -89,7 +95,10 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 status_code=502,
             )
         redirect = RedirectResponse("/", status_code=303)
-        state.attach_session(redirect, _new_session(state, access_token))
+        state.attach_session(
+            redirect,
+            _new_session(state, access_token, as_mapping(response.payload).get("expires_at")),
+        )
         return redirect
 
     async def logout(request: Request) -> Response:
@@ -97,18 +106,14 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
         redirect = RedirectResponse("/login", status_code=303)
         # Local logout is unconditional. An unavailable control plane must never
         # leave a browser believing it is still signed in.
-        state.clear_session(redirect)
+        state.clear_session(redirect, request)
         if session is not None:
-            try:
+            with suppress(Exception):
                 await state.control_request(
                     "DELETE",
                     "/auth/native/sessions/current",
                     bearer=session.access_token,
                 )
-            except Exception:
-                # Upstream revocation can be retried/reconciled independently;
-                # the browser credential is already cleared fail-safe.
-                pass
         return redirect
 
     async def webauthn_login_options(request: Request) -> Response:
@@ -146,7 +151,10 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 {"error": "control plane returned no session token"}, status_code=502
             )
         result = JSONResponse({"ok": True})
-        state.attach_session(result, _new_session(state, access_token))
+        state.attach_session(
+            result,
+            _new_session(state, access_token, as_mapping(response.payload).get("expires_at")),
+        )
         return result
 
     async def step_up_options(request: Request) -> Response:

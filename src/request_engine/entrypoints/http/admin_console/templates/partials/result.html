@@ -1,9 +1,13 @@
 <div class="result {{ 'ok' if result.ok else 'fail' }}" {% if result.ok %}role="status" aria-live="polite"{% else %}role="alert"{% endif %}>
-  <div class="result-summary"><span aria-hidden="true">{% if result.ok %}✓{% else %}!{% endif %}</span><div><strong>{% if result.ok %}Action completed{% else %}Action not completed{% endif %}</strong><p>{{ result.message }}</p></div></div>
+  <div class="result-summary"><span aria-hidden="true">{% if result.ok %}✓{% else %}!{% endif %}</span><div><strong>{% if result.authority_plan %}Preview ready — no permissions changed{% elif result.ok %}Action completed{% elif result.error_code == 'outcome_unknown' %}Outcome not confirmed{% else %}Action not completed{% endif %}</strong><p>{{ result.message }}</p></div></div>
   <p class="result-meta">Status <span class="badge">{{ result.status }}</span>
      {% if result.error_code %}&middot; <code>{{ result.error_code }}</code>{% endif %}
      {% if result.retry_after %}&middot; retry after {{ result.retry_after }}s{% endif %}</p>
   {% if result.idempotency_key %}<p class="muted small">Idempotency-Key <code>{{ result.idempotency_key }}</code></p>{% endif %}
+  {% if result.authority_plan %}
+    <dl><dt>Will add</dt><dd>{{ result.authority_plan.added | join(', ') or 'None' }}</dd><dt>Will remove</dt><dd>{{ result.authority_plan.removed | join(', ') or 'None' }}</dd></dl>
+    {% if result.authority_plan.blockers %}<p class="alert warning">Cannot apply: {{ result.authority_plan.blockers | join(', ') }}. Review the draft and current authority.</p>{% endif %}
+  {% endif %}
   {% if result.reviewed_draft %}
     <section class="card"><h3>Reviewed permission draft</h3>
       <p>This Apply button is bound to the exact draft that produced the preview above. Editing the preview form requires a new preview.</p>

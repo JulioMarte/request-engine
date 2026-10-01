@@ -1,9 +1,9 @@
 """Runtime settings for the private admin console entrypoint.
 
-The current signed-cookie transport provides integrity but is not a server-side
-session store. Credential material must not be described as server-only until
-the opaque-handle session-store boundary is installed.
+Credential material lives in an explicitly configured private persistent store.
 """
+
+from pathlib import Path
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,6 +23,7 @@ class AdminConsoleSettings(BaseSettings):
     control_api_base_url: str
     runtime_api_base_url: str | None = None
     session_secret: SecretStr
+    session_store_directory: Path
     session_cookie_name: str = "re_admin_console"
     setup_cookie_name: str = "re_admin_setup"
     session_ttl_seconds: int = Field(default=1800, ge=60, le=43200)

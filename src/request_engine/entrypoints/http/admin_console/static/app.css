@@ -344,3 +344,19 @@ table.ops th, table.ops td { padding: .72rem .8rem; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+/* Tenant permissions: selectable API-provided grants, not a hand-maintained policy. */
+.permission-choice {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .75rem;
+  border-bottom: 1px solid var(--border, #dce4ee);
+  cursor: pointer;
+}
+.permission-choice input[type="checkbox"] { width: 1.1rem; height: 1.1rem; flex: none; }
+.permission-choice span { flex: 1; }
+.permission-choice code { font-size: .75rem; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .permission-choice { flex-wrap: wrap; }
+  .permission-choice code { flex-basis: 100%; margin-left: 1.85rem; }
+}

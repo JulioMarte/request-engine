@@ -679,14 +679,14 @@ async def test_authority_plan_reports_last_controller_blocker(
     admin_conn.execute(
         """
         INSERT INTO request_engine.principal_authority_grants (
-            principal_id, principal_plane, authority_plane, capability_key,
-            delegable, provenance_kind, provenance_reference
+            organization_id, principal_id, principal_plane, authority_plane, capability_key,
+            delegable, provenance_kind, provenance_reference, granted_by_principal_id
         ) VALUES (
-            %s, 'tenant', 'tenant_control', 'staff.manage_authority', TRUE,
-            'trust_bootstrap', %s
+            %s, %s, 'tenant', 'tenant_control', 'staff.manage_authority', TRUE,
+            'authority_management', %s, %s
         )
         """,
-        (manager_id, f"test-delegable:{uuid4().hex}"),
+        (organization_id, manager_id, f"test-delegable:{uuid4().hex}", root_id),
     )
 
     actor = ActorContext(
@@ -707,6 +707,120 @@ async def test_authority_plan_reports_last_controller_blocker(
     assert plan.assignable is True
     assert plan.can_apply is False
     assert plan.blockers == ("last_controller",)
+    revision = _principal_revision(admin_conn, root_id)
+    _set_tenant_actor(admin_conn, organization_id=organization_id, principal_id=manager_id)
+    try:
+        with pytest.raises(Error) as blocked:
+            admin_conn.execute(
+                "SELECT request_engine.replace_staff_authority(%s, %s, ARRAY[]::text[], %s)",
+                (membership_id, revision, f"last-controller:{uuid4().hex}"),
+            )
+        assert blocked.value.sqlstate == "23514"
+    finally:
+        admin_conn.execute("RESET ROLE")
+    assert _principal_revision(admin_conn, root_id) == revision
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.principal_authority_grants "
+        "WHERE principal_id = %s AND status = 'active' AND capability_key IN "
+        "('staff.manage_authority', 'staff.manage_membership', 'identity.bind')",
+        (root_id,),
+    ).fetchone() == (3,)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("delegable", "desired", "manager_capability"),
+    [
+        (False, (), "staff.manage_authority"),
+        (True, ("staff.manage_authority",), "staff.manage_authority"),
+        (False, (), "staff.plan_authority"),
+    ],
+)
+async def test_last_controller_plan_apply_preserves_outside_ceiling_control(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+    delegable: bool,
+    desired: tuple[str, ...],
+    manager_capability: str,
+) -> None:
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
+    membership_id, _membership_revision = _root_membership(admin_conn, root_id)
+    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
+    _manager_membership_id, manager_id, _manager_binding_id = _invite_and_activate(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        party_id=party_id,
+        authority_id=authority_id,
+        native_identity_id=native_identity_id,
+    )
+    # A valid second manager is not a controller. Give only the capability
+    # necessary to administer another member, with an explicit fixture ceiling.
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.principal_authority_grants (
+            organization_id, principal_id, principal_plane, authority_plane, capability_key,
+            delegable, provenance_kind, provenance_reference, granted_by_principal_id
+        ) VALUES (%s, %s, 'tenant', 'tenant_control', %s,
+                  %s, 'authority_management', %s, %s)
+        """,
+        (
+            organization_id,
+            manager_id,
+            manager_capability,
+            delegable,
+            f"test-manager:{uuid4().hex}",
+            root_id,
+        ),
+    )
+    revision = _principal_revision(admin_conn, root_id)
+    before = admin_conn.execute(
+        "SELECT id, capability_key, status, revision "
+        "FROM request_engine.principal_authority_grants "
+        "WHERE principal_id = %s ORDER BY id",
+        (root_id,),
+    ).fetchall()
+    actor = ActorContext(
+        organization_id=organization_id,
+        principal_id=manager_id,
+        capabilities=frozenset({manager_capability}),
+        authority_revision=_principal_revision(admin_conn, manager_id),
+    )
+    plan = await PostgresStaffMembershipReader(command_session_factory).plan_authority(
+        actor,
+        PlanStaffAuthorityQuery(membership_id, revision, desired),
+    )
+    may_apply = manager_capability == "staff.manage_authority"
+    assert plan.can_apply is may_apply
+    assert plan.blockers == (() if may_apply else ("missing_apply_authority",))
+    assert plan.added == plan.removed == ()
+    _set_tenant_actor(admin_conn, organization_id=organization_id, principal_id=manager_id)
+    try:
+        params = (membership_id, revision, list(desired), f"preserve-controller:{uuid4().hex}")
+        if may_apply:
+            applied = admin_conn.execute(
+                "SELECT request_engine.replace_staff_authority(%s, %s, %s::text[], %s)",
+                params,
+            ).fetchone()
+            assert applied == (revision,)
+        else:
+            with pytest.raises(Error) as denied:
+                admin_conn.execute(
+                    "SELECT request_engine.replace_staff_authority(%s, %s, %s::text[], %s)",
+                    params,
+                )
+            assert denied.value.sqlstate == "42501"
+    finally:
+        admin_conn.execute("RESET ROLE")
+    assert (
+        admin_conn.execute(
+            "SELECT id, capability_key, status, revision "
+            "FROM request_engine.principal_authority_grants "
+            "WHERE principal_id = %s ORDER BY id",
+            (root_id,),
+        ).fetchall()
+        == before
+    )
 
 
 def test_last_recovery_capable_controller_cannot_be_removed(

@@ -50,8 +50,11 @@ class RecordingReader:
         start = 0
         if query.after is not None:
             start = next(
-                (index + 1 for index, item in enumerate(self.members)
-                 if item.membership_id == query.after),
+                (
+                    index + 1
+                    for index, item in enumerate(self.members)
+                    if item.membership_id == query.after
+                ),
                 len(self.members),
             )
         return self.members[start : start + query.limit]

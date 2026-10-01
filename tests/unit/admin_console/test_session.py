@@ -1,48 +1,42 @@
 import time
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from request_engine.entrypoints.http.admin_console.session import (
     AdminSession,
-    decode_session,
-    decode_value,
-    encode_session,
-    encode_value,
-    new_csrf_token,
+    FileSessionStore,
+    session_expiry,
 )
 
-_SECRET = b"unit-test-session-secret-32-bytes!!"
+
+def test_opaque_session_survives_worker_restart_and_revokes(tmp_path: Path) -> None:
+    directory = tmp_path / "sessions"
+    secret = b"test-session-encryption-secret-32-bytes"
+    first = FileSessionStore(directory, secret)
+    session = AdminSession("private-upstream-bearer", "csrf", int(time.time()) + 600)
+    handle = first.create(session, "login")
+    assert len(handle) == 43
+    assert session.access_token not in handle
+    assert session.access_token.encode() not in next(directory.iterdir()).read_bytes()
+    second = FileSessionStore(directory, secret)
+    assert second.read(handle, "login") == session
+    assert second.read(handle, "setup") is None
+    assert second.read("../" + handle, "login") is None
+    second.revoke(handle, "login")
+    assert first.read(handle, "login") is None
 
 
-def _session(expires_at: int) -> AdminSession:
-    return AdminSession(access_token="tok-123", csrf_token=new_csrf_token(), expires_at=expires_at)
+def test_expired_tampered_and_wrong_key_sessions_fail_closed(tmp_path: Path) -> None:
+    directory = tmp_path / "sessions"
+    store = FileSessionStore(directory, b"first-secret")
+    expired = store.create(AdminSession("bearer", "csrf", int(time.time()) - 1), "setup")
+    assert store.read(expired, "setup") is None
+    valid = store.create(AdminSession("bearer", "csrf", int(time.time()) + 600), "login")
+    assert FileSessionStore(directory, b"other-secret").read(valid, "login") is None
+    assert store.read(valid[:-1] + ("A" if valid[-1] != "A" else "B"), "login") is None
 
 
-def test_session_roundtrip() -> None:
-    session = _session(int(time.time()) + 600)
-    decoded = decode_session(_SECRET, encode_session(_SECRET, session))
-    assert decoded == session
-
-
-def test_session_rejects_tampering() -> None:
-    encoded = encode_session(_SECRET, _session(int(time.time()) + 600))
-    body, _, signature = encoded.partition(".")
-    tampered = body[:-1] + ("A" if body[-1] != "A" else "B") + "." + signature
-    assert decode_session(_SECRET, tampered) is None
-
-
-def test_session_rejects_expiry() -> None:
-    expired = encode_session(_SECRET, _session(int(time.time()) - 1))
-    assert decode_session(_SECRET, expired) is None
-
-
-def test_session_rejects_wrong_secret() -> None:
-    encoded = encode_session(_SECRET, _session(int(time.time()) + 600))
-    assert decode_session(b"a-different-secret-of-32-bytes!!!", encoded) is None
-
-
-def test_generic_value_roundtrip() -> None:
-    encoded = encode_value(_SECRET, {"t": "setup-token", "c": "csrf", "e": 123})
-    assert decode_value(_SECRET, encoded) == {"t": "setup-token", "c": "csrf", "e": 123}
-
-
-def test_generic_value_rejects_malformed() -> None:
-    assert decode_value(_SECRET, "not-a-signed-value") is None
+def test_local_session_cannot_outlive_reported_upstream_expiry() -> None:
+    deadline = datetime.now(UTC) + timedelta(seconds=20)
+    assert session_expiry(600, deadline.isoformat()) == int(deadline.timestamp())
+    assert session_expiry(600, "not-a-timestamp") == 0

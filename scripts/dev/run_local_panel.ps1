@@ -35,17 +35,11 @@ if (-not (Test-Path -LiteralPath $python)) {
   throw "venv python not found at $python; run 'uv sync' first"
 }
 
-$escapedRoot = [regex]::Escape($Root)
-Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='cmd.exe'" |
-  Where-Object {
-    $_.CommandLine -match $escapedRoot -and
-    $_.CommandLine -match 'uvicorn|mock_control_plane|platform_server|admin_console_server'
-  } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-Start-Sleep -Seconds 2
-
 # Fail before role provisioning when the selected database is behind the repo.
-$expectedHead = (& $python -m alembic heads | Select-Object -First 1).Split(' ')[0].Trim()
+$headOutput = @(& $python -m alembic -c (Join-Path $Root 'alembic.ini') heads)
+if ($LASTEXITCODE -ne 0) { throw 'cannot resolve repository Alembic head' }
+if ($headOutput.Count -ne 1) { throw 'expected exactly one repository Alembic head' }
+$expectedHead = $headOutput[0].Split(' ')[0].Trim()
 $actualHeadOutput = docker exec $Container psql -U $DbSuperuser -d $Database -t -A `
   -c "SELECT version_num FROM alembic_version"
 if ($LASTEXITCODE -ne 0) {
@@ -55,6 +49,16 @@ $actualHead = ($actualHeadOutput | Out-String).Trim()
 if (-not $expectedHead -or $actualHead -ne $expectedHead) {
   throw "database migration mismatch: repository=$expectedHead database=$actualHead; run alembic upgrade head first"
 }
+
+# A failed preflight must not take down the user's already-running panel.
+$escapedRoot = [regex]::Escape($Root)
+Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='cmd.exe'" |
+  Where-Object {
+    $_.CommandLine -match $escapedRoot -and
+    $_.CommandLine -match 'uvicorn|mock_control_plane|platform_server|admin_console_server'
+  } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 2
 
 # Idempotently create the three least-privilege runtime logins the control
 # plane verifies at startup. Dev-only throwaway passwords.
@@ -78,10 +82,18 @@ function Start-Detached([string]$CommandLine) {
   } | Out-Null
 }
 
-$optionSigningSecret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 40 | ForEach-Object { [char]$_ })
-$fingerprintSecret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 40 | ForEach-Object { [char]$_ })
-$consoleSessionSecret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 40 | ForEach-Object { [char]$_ })
-$decoy = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
+function New-DevelopmentSecret {
+  $bytes = New-Object byte[] 48
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+  return [Convert]::ToBase64String($bytes)
+}
+$optionSigningSecret = New-DevelopmentSecret
+$fingerprintSecret = New-DevelopmentSecret
+$consoleSessionSecret = New-DevelopmentSecret
+$decoy = New-DevelopmentSecret
+$sessionDirectory = Join-Path $Root '.local-ci/admin-console-sessions'
+New-Item -ItemType Directory -Force -Path $sessionDirectory | Out-Null
 $controlLog = Join-Path $log 'control-plane.log'
 $runtimeLog = Join-Path $log 'runtime.log'
 $consoleLog = Join-Path $log 'console.log'
@@ -121,10 +133,11 @@ Start-Detached $runtimeCmd
 $consoleCmd = ('cmd.exe /c "cd /d "{0}" && set REQUEST_ENGINE_ADMIN_CONSOLE_CONTROL_API_BASE_URL=http://127.0.0.1:{1}&& ' +
   'set REQUEST_ENGINE_ADMIN_CONSOLE_RUNTIME_API_BASE_URL=http://127.0.0.1:{6}&& ' +
   'set REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_SECRET={2}&& ' +
+  'set "REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY={7}"&& ' +
   'set REQUEST_ENGINE_ADMIN_CONSOLE_COOKIE_SECURE=false&& ' +
   'set REQUEST_ENGINE_ADMIN_CONSOLE_DEBUG=true&& ' +
   '"{3}" -m uvicorn request_engine.bootstrap.admin_console_server:create_app --factory --host 127.0.0.1 --port {4} > "{5}" 2>&1"') -f `
-  $Root, $ControlPort, $consoleSessionSecret, $python, $ConsolePort, $consoleLog, $RuntimePort
+  $Root, $ControlPort, $consoleSessionSecret, $python, $ConsolePort, $consoleLog, $RuntimePort, $sessionDirectory
 Start-Detached $consoleCmd
 
 function Wait-Http([string]$Url, [int]$Seconds) {
@@ -140,6 +153,8 @@ $controlReady = Wait-Http "http://127.0.0.1:$ControlPort/health/ready" 60
 $runtimeReady = Wait-Http "http://127.0.0.1:$RuntimePort/health/ready" 60
 $consoleReady = Wait-Http "http://127.0.0.1:$ConsolePort/health/live" 60
 if ($runtimeReady -ne 200) { throw "runtime did not become ready; see $runtimeLog" }
+if ($controlReady -ne 200) { throw "control plane did not become ready; see $controlLog" }
+if ($consoleReady -ne 200) { throw "admin console did not become ready; see $consoleLog" }
 
 Write-Output "real control plane : http://127.0.0.1:$ControlPort  (health/ready = $controlReady)"
 Write-Output "tenant runtime     : http://127.0.0.1:$RuntimePort  (health/ready = $runtimeReady)"
