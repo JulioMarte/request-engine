@@ -173,6 +173,37 @@ def _set_tenant_actor(
     conn.execute("SET ROLE request_engine_app")
 
 
+def test_controller_read_is_tenant_bound_and_private_predicate_is_not_callable(
+    admin_conn: PgConnection,
+) -> None:
+    organization_id, _, controller_id, _, _ = _provision_root(admin_conn)
+    foreign_organization_id, _, foreign_controller_id, _, _ = _provision_root(admin_conn)
+    _set_tenant_actor(admin_conn, organization_id=organization_id, principal_id=controller_id)
+    try:
+        assert admin_conn.execute(
+            "SELECT request_read.staff_controller_is_effective(%s), "
+            "request_read.staff_controller_is_effective(%s), "
+            "request_read.staff_controller_is_effective(%s)",
+            (controller_id, foreign_controller_id, uuid4()),
+        ).fetchone() == (True, False, False)
+        with pytest.raises(Error) as denied:
+            admin_conn.execute(
+                "SELECT request_engine.principal_is_effective_tenant_controller(%s, %s)",
+                (foreign_organization_id, foreign_controller_id),
+            )
+        assert denied.value.sqlstate == "42501"
+        # Even a real controller of another tenant is not this tenant's planner.
+        admin_conn.execute(
+            "SELECT set_config('request_engine.authenticated_principal_id', %s, false)",
+            (str(foreign_controller_id),),
+        )
+        assert admin_conn.execute(
+            "SELECT request_read.staff_controller_is_effective(%s)", (controller_id,)
+        ).fetchone() == (False,)
+    finally:
+        admin_conn.execute("RESET ROLE")
+
+
 def _invite_and_activate(
     conn: PgConnection,
     *,

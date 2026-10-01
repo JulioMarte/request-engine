@@ -151,3 +151,9 @@ guard evaluates the actual post-replacement authority, including those preserved
 grants. `assignable` describes ceiling compliance only; `can_apply` also requires
 current apply authority and no revealable lifecycle/self/controller blocker.
 Planning permission alone never implies permission to execute the command.
+
+The planner's controller projection uses
+`request_read.staff_controller_is_effective(principal_id)`. It derives the tenant
+and HUMAN planner from trusted transaction context, rechecks active membership
+and planning/managing authority, and reveals no foreign controller. The internal
+two-argument controller predicate is not executable by the application role.

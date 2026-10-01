@@ -5,6 +5,8 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0007: current-tenant planner projection, not the private cross-tenant predicate.
+    "request_read.staff_controller_is_effective(p_principal_id uuid)",
     # 0030: current HUMAN manager revalidation, bounded credential replacement,
     # and tenant-local inspection. Private state mutators remain owner-only.
     "request_cmd.assert_integration_manager(p_capability text)",

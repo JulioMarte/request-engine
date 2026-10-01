@@ -161,6 +161,7 @@ class SmtpRecoveryDeliveryChannel:
         return message
 
     def _deliver_blocking(self, message: EmailMessage) -> DeliveryOutcome:
+        transmission_started = False
         try:
             # smtplib's built-in defaults for SMTP_SSL/starttls do not verify the
             # server certificate or hostname; always pass a verifying context so
@@ -180,6 +181,7 @@ class SmtpRecoveryDeliveryChannel:
                     client.starttls(context=ssl.create_default_context())
                 if self._username is not None:
                     client.login(self._username, self._password or "")
+                transmission_started = True
                 client.send_message(message)
         except (
             smtplib.SMTPRecipientsRefused,
@@ -196,5 +198,7 @@ class SmtpRecoveryDeliveryChannel:
         except smtplib.SMTPException:
             return DeliveryOutcome.UNKNOWN
         except OSError as exc:
+            if transmission_started:
+                return DeliveryOutcome.UNKNOWN
             raise RecoveryDeliveryRetryable("smtp connection failed before transmission") from exc
         return DeliveryOutcome.DELIVERED

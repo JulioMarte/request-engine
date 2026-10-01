@@ -200,8 +200,8 @@ class PostgresStaffMembershipReader:
                            ), ARRAY[]::text[]) AS blocked_capabilities,
                            CASE
                                WHEN target.principal_id IS NULL THEN false
-                               WHEN request_engine.principal_is_effective_tenant_controller(
-                                   :organization_id, target.principal_id
+                               WHEN request_read.staff_controller_is_effective(
+                                   target.principal_id
                                )
                                AND EXISTS (
                                    SELECT 1
@@ -223,8 +223,8 @@ class PostgresStaffMembershipReader:
                                     WHERE other_membership.organization_id = :organization_id
                                       AND other_membership.status = 'active'
                                       AND other_membership.principal_id <> target.principal_id
-                                      AND request_engine.principal_is_effective_tenant_controller(
-                                          :organization_id, other_membership.principal_id
+                                      AND request_read.staff_controller_is_effective(
+                                          other_membership.principal_id
                                       )
                                )
                                THEN true

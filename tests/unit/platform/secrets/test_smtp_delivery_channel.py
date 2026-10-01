@@ -227,6 +227,23 @@ async def test_post_connect_disconnect_is_unknown() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [ConnectionResetError(), BrokenPipeError(), OSError()])
+async def test_socket_failure_during_transmission_is_not_blindly_retryable(
+    failure: OSError,
+) -> None:
+    transport = _SmtpTransportDouble()
+    transport.send_error = failure
+
+    outcome = await _channel(transport).send(
+        secret=_SECRET, destination_reference=_DESTINATION, idempotency_key=_KEY
+    )
+
+    assert outcome is DeliveryOutcome.UNKNOWN
+    assert transport.instances[0].calls.count("send_message") == 1
+    assert await _channel(transport).reconcile(idempotency_key=_KEY) is None
+
+
+@pytest.mark.asyncio
 async def test_reconcile_has_no_smtp_query_surface() -> None:
     assert await _channel(_SmtpTransportDouble()).reconcile(idempotency_key=_KEY) is None
 

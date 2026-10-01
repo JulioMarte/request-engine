@@ -47,6 +47,113 @@ organization/grantor provenance; async regressions require the asyncio marker.
 
 ## Still unfinished — do not mark closed
 
+### Follow-up verification, 2026-10-01
+
+GitHub current-product for `ec00a063` failed the exact application function
+privilege inventory: migration 0005 had granted the internal two-argument
+controller predicate without a reviewed application read boundary. Python,
+Docker E2E and P7 checks passed for that commit; those successes did not make
+the failed current-product lane acceptable.
+
+Migration `0007_controller_read_scope` replaces that application grant with
+`request_read.staff_controller_is_effective(principal_id)`. Tenancy's reader
+uses the new projection. It derives organization/actor from transaction context,
+requires an active HUMAN staff planner or authority manager, and checks only the
+current tenant. Internal owner commands retain the original predicate. No
+persisted facts, command locks or controller semantics change. Coordinated
+application deployment is required: an old reader fails closed after upgrade.
+Downgrading deliberately restores the previous broader executable surface.
+
+Falsification evidence on isolated PostgreSQL 18, port 55433, database
+`request_engine_admin_verify`, upgraded through Alembic to 0007:
+
+```text
+uv run pytest tests/db/test_staff_membership_lifecycle.py
+  tests/db/test_v3_app_function_privilege_inventory.py
+  tests/db/test_runtime_immutable_table_privileges.py -q --tb=short
+31 passed
+```
+
+The new regression proves a visible local controller, indistinguishable
+foreign/missing targets, denial without a local planner, and SQLSTATE 42501
+for direct application execution of the internal predicate. The exact reviewed
+application inventory now includes only the tenant-bound projection.
+
+The developer PostgreSQL instance on port 5432 (`request_engine_current`) was
+also upgraded to 0007 without resetting its data. The canonical local launcher
+restarted runtime 8010, control 8011 and console 8012; all reported readiness
+200. This health check does not prove an authenticated browser journey.
+
+`uv run python scripts/ci/ci_jobs.py python-quality` passed after this follow-up:
+lint, format, type checks, secret/static security scans, dependency audit,
+architecture, unit and module tests. Exact-head remote current-product evidence
+is still required; the full canonical PostgreSQL runner was not run locally.
+
+Changed-unit semantic disposition: `HEALTHY_AS_IS` (model review, no human
+approval inferred). The staff reader remains one owner-local read adapter; its
+two changed calls introduce a real privilege boundary, not metric-driven
+forwarding. SMTP transport owns transmission-phase outcome classification, so
+keeping the new state flag beside the send and exception handling preserves
+reasoning locality. Counterargument: the existing planner SQL and transport
+branching deserve ongoing review, but extracting them solely for size would not
+remove policy or state complexity. Evidence is the diff, complete affected
+production units, owner contract, PostgreSQL regressions and passing quality
+command; this is not a claim of repository-wide semantic review.
+
+SMTP transmission also had a concrete retry defect: a generic `OSError` during
+`send_message` was classified as safe to retry even though the provider might
+already have accepted the message. It now returns `UNKNOWN` after transmission
+starts; pre-transmission connection refusal remains retryable. This is not
+SMTP idempotency or proof of recipient delivery. The transport boundary suite
+(`tests/unit/platform/secrets/test_smtp_delivery_channel.py`) passed 14 tests,
+including connection reset, broken pipe and generic socket errors during send.
+
+Unwired invitation/discovery stubs from interrupted agents were removed rather
+than represented as implemented APIs. Their design is preserved below. No
+previously supported API was removed; A03 and A14 remain open.
+
+#### Next implementation boundaries (not implemented)
+
+- A14 owner: Tenancy. `GET /v1/me/organizations`, proposed operation ID
+  `self_organization_list`, is a self-only, read-only subject-authenticated query
+  before tenant materialization, not `staff.read` or platform-owner authority.
+  Accept only `after` UUID and bounded `limit`; never accept authority/subject
+  identifiers from query/body or a tenant-selection header. Authenticate with
+  the existing `HttpSubjectResolver`, require HUMAN, reject recovery-restricted
+  sessions. Return only organization id/name and the caller's principal and
+  active staff membership identifiers, plus keyset continuation and an explicit
+  advisory/owner-revalidation flag. Set `Cache-Control: no-store`.
+- Its database projection must join active exact-subject bindings, active
+  identity authorities, active HUMAN principals and active memberships, and
+  account for native identity/recovery status and organization lifecycle.
+  Do not reuse the unrestricted platform organization directory. FORCE RLS
+  means a cross-tenant self projection needs an explicitly reviewed definer
+  and minimum column grants; do not silently broaden the app role. Test two
+  memberships for one subject, foreign subjects, revoked/suspended state,
+  pagination, workload/recovery rejection and no implicit authority on selection.
+- Mount the subject query through Tenancy's supported API installer. Expose the
+  already-built subject resolver from `NativeAuthRuntime` and pass it through
+  the canonical HTTP composition; do not invent a second authenticator in the
+  BFF. A picker must consume that API and each selected-tenant request must still
+  materialize/revalidate its current ActorContext.
+- A03 acceptance must authenticate before membership exists and prove possession
+  of a single-use invitation token. Native enrollment/login remains canonical.
+  Do not equate an email-shaped login handle with verified destination ownership,
+  fabricate inviter ActorContext, or fabricate patient Party/contact rows for
+  delivery. Plan token-bound CAS/replay and concurrent revoke/resend explicitly.
+- Stage the token through the existing governed secret-delivery boundary outside
+  DB locks. Persist a digest and opaque secret reference, not plaintext. A
+  Communications-owned address-delivery intent must participate in the same
+  transaction as invitation creation, with worker fencing and ambiguous-outcome
+  reconciliation. A proposed port would record/cancel an intent using tenant,
+  invitation id, generation, destination, secret reference/digest and expiry;
+  it is not yet an accepted or implemented cross-module contract.
+- Acceptance should activate membership without automatic standing grants;
+  authority assignment remains the existing preview/apply journey. Revalidate
+  inviter authority and identity topology under canonical lock order. Test
+  new/existing identities, changed inviter authority, duplicate destination,
+  stale revision, token expiry and contested acceptance against PostgreSQL 18.
+
 ### A03: email invitations
 
 `staff_invite` still uses an existing native identity UUID. It is **not** an email
