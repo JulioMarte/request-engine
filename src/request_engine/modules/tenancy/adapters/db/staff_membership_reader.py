@@ -12,6 +12,7 @@ from request_engine.modules.tenancy.application.queries.staff_membership import 
     PlanStaffAuthorityQuery,
     StaffAuthorityGrant,
     StaffAuthorityPlan,
+    StaffMembershipStatus,
     StaffMembershipSummary,
     StaffOverview,
 )
@@ -104,7 +105,14 @@ class PostgresStaffMembershipReader:
     ) -> tuple[StaffMembershipSummary, ...]:
         if not 1 <= query.limit <= 100:
             raise ValueError("limit must be between 1 and 100")
-        return await self._read(actor, membership_id=None, after=query.after, limit=query.limit)
+        return await self._read(
+            actor,
+            membership_id=None,
+            after=query.after,
+            limit=query.limit,
+            status=query.status,
+            search=query.search.strip() if query.search is not None else None,
+        )
 
     async def read_membership(
         self, actor: ActorContext, membership_id: UUID
@@ -278,7 +286,14 @@ class PostgresStaffMembershipReader:
         )
 
     async def _read(
-        self, actor: ActorContext, *, membership_id: UUID | None, after: UUID | None, limit: int
+        self,
+        actor: ActorContext,
+        *,
+        membership_id: UUID | None,
+        after: UUID | None,
+        limit: int,
+        status: StaffMembershipStatus | None = None,
+        search: str | None = None,
     ) -> tuple[StaffMembershipSummary, ...]:
         if actor.principal_kind is not PrincipalKind.HUMAN:
             raise StaffMembershipForbidden("staff inspection requires a HUMAN actor")
@@ -308,6 +323,7 @@ class PostgresStaffMembershipReader:
                       SELECT m.id AS membership_id, m.principal_id, m.status,
                              m.revision AS membership_revision, p.authority_revision,
                              p.active AS principal_active, m.authority_anchor_party_id,
+                             profile.display_name, COALESCE(profile.revision,0) AS profile_revision,
                              ARRAY(SELECT g.capability_key
                                FROM request_engine.principal_authority_grants g
                               WHERE g.organization_id = m.organization_id
@@ -321,9 +337,17 @@ class PostgresStaffMembershipReader:
                         FROM request_engine.staff_memberships m
                         JOIN request_engine.principals p
                           ON p.organization_id = m.organization_id AND p.id = m.principal_id
+                        LEFT JOIN request_engine.staff_member_profiles profile
+                          ON profile.organization_id=m.organization_id
+                         AND profile.membership_id=m.id
                        WHERE access.permitted AND m.organization_id = :organization_id
                          AND (CAST(:membership_id AS uuid) IS NULL OR m.id = :membership_id)
                          AND (CAST(:after AS uuid) IS NULL OR m.id > :after)
+                         AND (CAST(:status AS text) IS NULL OR m.status = :status)
+                         AND (CAST(:search AS text) IS NULL OR
+                              strpos(lower(profile.display_name COLLATE pg_catalog.pg_unicode_fast),
+                                     lower(CAST(:search AS text)
+                                         COLLATE pg_catalog.pg_unicode_fast)) > 0)
                        ORDER BY m.id LIMIT :limit
                   ) member ON true
                  ORDER BY member.membership_id
@@ -334,6 +358,8 @@ class PostgresStaffMembershipReader:
                             "membership_id": membership_id,
                             "after": after,
                             "limit": limit,
+                            "status": status,
+                            "search": search,
                         },
                     )
                 )
@@ -355,6 +381,8 @@ class PostgresStaffMembershipReader:
                         StaffAuthorityGrant(key, key in row["delegable_capabilities"])
                         for key in row["capabilities"]
                     ),
+                    display_name=row["display_name"],
+                    profile_revision=int(row["profile_revision"]),
                 )
                 for row in rows
                 if row["membership_id"] is not None

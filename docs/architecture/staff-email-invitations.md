@@ -29,8 +29,9 @@ destination is not copied into an identity profile or verified recovery address.
 | POST `/v1/staff/invitations/{invitation_id}:resend` | `staff_invitation_resend` | `staff.invite`, HUMAN | Revisioned, idempotent new proof generation |
 | POST `/v1/staff/invitations/{invitation_id}:revoke` | `staff_invitation_revoke` | `staff.invite`, HUMAN | Revisioned, idempotent terminal revoke |
 | POST `/v1/staff/invitations/{invitation_id}:accept` | `staff_invitation_accept` | Native subject + proof | Subject/result-bound replay; rejects tenant selector |
+| POST `/v1/staff/invitations/{invitation_id}:preview` | `staff_invitation_preview` | Native subject + proof | Advisory recipient query; no durable effects |
 
-Owner is Tenancy for all six operations. Reads require no idempotency/revision.
+Owner is Tenancy for all seven operations. Reads require no idempotency/revision.
 Create takes email, bounded lifetime and provenance. Resend/revoke take current
 revision and provenance. Acceptance takes only the proof envelope. Tools are not
 projected: these are human identity and secret-possession operations. Input schemas
@@ -114,6 +115,21 @@ roundtrip and submits it via same-origin CSRF-protected POST. Runtime acceptance
 receives the session bearer without an organization header. The BFF never writes
 membership or delivery state directly. Pending/delivery failures are explicit;
 UUID-based existing-identity addition remains a distinct advanced operation.
+
+Recipient preview accepts proof only in a POST JSON body with the existing native
+HUMAN bearer; it rejects tenant headers, all query parameters and extra identity
+fields. It reveals only the invitation and organization IDs, organization display
+name, lifecycle status and expiry, plus `requires_acceptance_validation: true`.
+It never reveals recipient email, token digest/reference, inviter identity or
+membership/authority facts. Responses are `Cache-Control: no-store`.
+
+The query reuses the existing proof/session validation lock boundary for a short
+transaction and reads organization name through the application role's existing
+tenant-RLS-bound SELECT grant. No new privilege or migration is required. This
+does not materialize staff, stage secrets or write audit/idempotency/delivery facts.
+Invalid/absent/superseded proofs remain opaque; revoked or expired invitations and
+revoked/restricted sessions fail closed. A preview is advisory: acceptance repeats
+all checks independently, so it must not be used as a cached authorization ticket.
 
 One normalized ASCII mailbox is supported, not recipient lists, display names,
 quoted local parts or internationalized addresses. Existing identity-link conflicts

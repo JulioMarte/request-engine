@@ -98,6 +98,40 @@ class FakeControl:
         return None
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("upstream_status", [200, 503])
+async def test_dashboard_reports_api_counters_without_fabricated_time_window(
+    upstream_status: int,
+) -> None:
+    class MetricsControl(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if path == "/v1/platform/observability":
+                self.calls.append(f"{method} {path}")
+                return ControlResponse(
+                    upstream_status,
+                    {
+                        "validation_success_total": 1234567,
+                        "validation_failure_total": -1,
+                        "provider_test_failures_total": True,
+                        "alerts": [],
+                    },
+                    {},
+                )
+            return await super().request(method, path, **kwargs)
+
+    api = MetricsControl()
+    async with _client(create_admin_console_app(_settings(), client=api)) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get("/")
+    assert page.status_code == 200
+    assert "since its last restart" in page.text
+    assert "Not 24-hour totals" in page.text
+    assert ("1234567" in page.text) is (upstream_status == 200)
+    assert "<strong>-1</strong>" not in page.text
+    assert "<strong>True</strong>" not in page.text
+    assert "<strong>—</strong>" in page.text
+
+
 def _settings() -> AdminConsoleSettings:
     return AdminConsoleSettings(
         session_store_directory=Path(
@@ -149,6 +183,25 @@ async def test_password_login_sets_cookie_and_opens_dashboard() -> None:
         dashboard = await client.get("/")
         assert dashboard.status_code == 200
         assert "Dashboard" in dashboard.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_people_shortcut_selects_own_context_without_tenant_calls() -> None:
+    upstream = FakeControl()
+    app = create_admin_console_app(_settings(), client=upstream)
+    async with _client(app) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        upstream.calls.clear()
+        dashboard = await client.get("/")
+    assert dashboard.status_code == 200
+    assert re.search(
+        r'<a href="/my-organizations">(?:(?!</a>).)*?<strong>People &amp; permissions</strong>',
+        dashboard.text,
+        re.DOTALL,
+    )
+    assert "Choose your organization, invite people, and review access" in dashboard.text
+    assert all("/v1/staff" not in call for call in upstream.calls)
+    assert all(not call.startswith(("POST ", "PUT ", "DELETE ")) for call in upstream.calls)
 
 
 @pytest.mark.asyncio

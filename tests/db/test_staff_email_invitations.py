@@ -48,6 +48,129 @@ from request_engine.platform.security.subject_http import AuthenticatedHttpSubje
 pytestmark = [pytest.mark.postgres, pytest.mark.security, pytest.mark.adversarial]
 
 
+@pytest.mark.asyncio
+async def test_recipient_preview_discloses_only_proven_tenant_and_has_no_durable_effects(
+    admin_conn: Connection[Any],
+    command_session_factory: SessionFactory,
+) -> None:
+    actor, authority = _world(admin_conn)
+    store = InvitationSecretStore()
+    commands = _commands(command_session_factory, store)
+    invitation = await commands.create(
+        actor,
+        CreateStaffInvitationCommand(
+            "recipient@example.test",
+            "onboarding",
+            "preview-create",
+        ),
+    )
+    bearer, _identity = await _recipient(command_session_factory, authority)
+    authenticated = await _authenticate_bearer(command_session_factory, bearer)
+    token = store.secrets[invitation.invitation_id, 1]
+    name_row = admin_conn.execute(
+        "SELECT display_name FROM request_engine.organizations WHERE id=%s",
+        (actor.organization_id,),
+    ).fetchone()
+    assert name_row is not None
+    snapshot_sql = """
+        SELECT
+            (SELECT count(*) FROM request_engine.principals WHERE organization_id=%s),
+            (SELECT count(*) FROM request_engine.identity_bindings WHERE organization_id=%s),
+            (SELECT count(*) FROM request_engine.staff_memberships WHERE organization_id=%s),
+            (SELECT count(*) FROM request_engine.principal_authority_grants
+                WHERE organization_id=%s),
+            (SELECT count(*) FROM request_engine.audit_records WHERE organization_id=%s),
+            (SELECT count(*) FROM request_engine.idempotency_records WHERE organization_id=%s),
+            (SELECT count(*) FROM request_engine.staff_invitation_deliveries
+                WHERE organization_id=%s)
+    """
+    before = admin_conn.execute(snapshot_sql, (actor.organization_id,) * 7).fetchone()
+    async with AsyncClient(
+        transport=ASGITransport(app=_app(command_session_factory, commands, actor)),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            f"/v1/staff/invitations/{invitation.invitation_id}:preview",
+            headers={"Authorization": f"Bearer {bearer}"},
+            json={"token": token},
+        )
+    assert response.status_code == 200
+    assert response.json() == {
+        "invitation_id": str(invitation.invitation_id),
+        "organization_id": str(actor.organization_id),
+        "organization_display_name": name_row[0],
+        "status": "pending",
+        "expires_at": invitation.expires_at.isoformat().replace("+00:00", "Z"),
+        "requires_acceptance_validation": True,
+    }
+    assert token not in response.text and "email" not in response.json()
+    assert response.headers["cache-control"] == "no-store"
+    assert admin_conn.execute(snapshot_sql, (actor.organization_id,) * 7).fetchone() == before
+    assert await commands.get(actor, invitation.invitation_id) == invitation
+    with pytest.raises(StaffMembershipNotFound):
+        await commands.preview(authenticated, invitation.invitation_id, token[:-1] + "!")
+    with pytest.raises(StaffMembershipNotFound):
+        await commands.preview(authenticated, uuid4(), token)
+    changed = await commands.resend(
+        actor,
+        ChangeStaffInvitationCommand(
+            invitation.invitation_id,
+            invitation.revision,
+            "rotate proof",
+            "preview-resend",
+        ),
+    )
+    with pytest.raises(StaffMembershipNotFound):
+        await commands.preview(authenticated, invitation.invitation_id, token)
+    current_token = store.secrets[invitation.invitation_id, changed.generation]
+    await commands.revoke(
+        actor,
+        ChangeStaffInvitationCommand(
+            invitation.invitation_id,
+            changed.revision,
+            "cancel onboarding",
+            "preview-revoke",
+        ),
+    )
+    with pytest.raises(StaffMembershipConflict):
+        await commands.preview(authenticated, invitation.invitation_id, current_token)
+
+
+@pytest.mark.asyncio
+async def test_preview_revalidates_native_session_after_authentication(
+    admin_conn: Connection[Any],
+    command_session_factory: SessionFactory,
+) -> None:
+    actor, authority = _world(admin_conn)
+    store = InvitationSecretStore()
+    commands = _commands(command_session_factory, store)
+    invitation = await commands.create(
+        actor,
+        CreateStaffInvitationCommand(
+            "recipient@example.test",
+            "onboarding",
+            "preview-session",
+        ),
+    )
+    bearer, identity = await _recipient(command_session_factory, authority)
+    authenticated = await _authenticate_bearer(command_session_factory, bearer)
+    assert authenticated.credential_id is not None
+    await NativeHumanAuthService(
+        store=PostgresNativeHumanAuthStore(command_session_factory)
+    ).revoke_session(
+        native_identity_id=identity,
+        session_id=UUID(authenticated.credential_id),
+    )
+    with pytest.raises(StaffMembershipForbidden):
+        await commands.preview(
+            authenticated, invitation.invitation_id, store.secrets[invitation.invitation_id, 1]
+        )
+    assert admin_conn.execute(
+        "SELECT status,membership_id FROM request_engine.staff_invitations WHERE id=%s",
+        (invitation.invitation_id,),
+    ).fetchone() == ("pending", None)
+
+
 class ShortLivedInvitationStore:
     """A retained provider candidate can expire earlier than the requested TTL."""
 

@@ -14,6 +14,9 @@ from request_engine.modules.tenancy.application.commands.staff_invitations impor
     CreateStaffInvitationCommand,
     StaffInvitation,
 )
+from request_engine.modules.tenancy.application.queries.staff_invitation import (
+    StaffInvitationPreview,
+)
 from request_engine.platform.security.authentication import (
     AuthenticatedSubject,
     AuthenticatedSubjectClass,
@@ -42,6 +45,7 @@ class _Resolver:
 class _Commands:
     def __init__(self) -> None:
         self.accept_calls: list[tuple[AuthenticatedHttpSubject, UUID, str]] = []
+        self.preview_calls: list[tuple[AuthenticatedHttpSubject, UUID, str]] = []
         self.row = StaffInvitation(
             uuid4(),
             uuid4(),
@@ -62,6 +66,18 @@ class _Commands:
     ) -> StaffInvitation:
         self.accept_calls.append((authenticated, invitation_id, token))
         return self.row
+
+    async def preview(
+        self, authenticated: AuthenticatedHttpSubject, invitation_id: UUID, token: str
+    ) -> StaffInvitationPreview:
+        self.preview_calls.append((authenticated, invitation_id, token))
+        return StaffInvitationPreview(
+            invitation_id,
+            self.row.organization_id,
+            "Engineering workspace",
+            "pending",
+            self.row.expires_at,
+        )
 
     async def list(
         self, actor: ActorContext, *, after: UUID | None, limit: int
@@ -89,7 +105,7 @@ class _Commands:
 
 def _app(commands: _Commands, resolver: _Resolver) -> FastAPI:
     async def actor(request: Request) -> ActorContext:
-        raise AssertionError("Acceptance must not manufacture a tenant actor")
+        raise AuthenticationRequired("Tenant actor unavailable to this recipient")
 
     app = FastAPI()
     add_global_error_handlers(app)
@@ -125,11 +141,14 @@ async def test_acceptance_uses_verified_subject_and_no_tenant_actor() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["accept", "preview"])
 @pytest.mark.parametrize(
     "case,status",
     [("anonymous", 401), ("tenant", 400), ("subject_selector", 422), ("short_token", 422)],
 )
-async def test_acceptance_rejects_untrusted_context_before_owner(case: str, status: int) -> None:
+async def test_acceptance_rejects_untrusted_context_before_owner(
+    case: str, status: int, action: str
+) -> None:
     commands, resolver = _Commands(), _Resolver()
     headers = {} if case == "anonymous" else {"Authorization": "Bearer verified-native-session"}
     body = {"token": f"{commands.row.invitation_id}." + "proof" * 8}
@@ -143,8 +162,51 @@ async def test_acceptance_rejects_untrusted_context_before_owner(case: str, stat
         transport=ASGITransport(app=_app(commands, resolver)), base_url="https://test"
     ) as client:
         response = await client.post(
-            f"/v1/staff/invitations/{commands.row.invitation_id}:accept", headers=headers, json=body
+            f"/v1/staff/invitations/{commands.row.invitation_id}:{action}",
+            headers=headers,
+            json=body,
         )
     assert response.status_code == status
     assert commands.accept_calls == []
+    assert commands.preview_calls == []
     assert body["token"] not in response.text
+
+
+@pytest.mark.asyncio
+async def test_preview_is_proof_bound_minimal_advisory_post_query() -> None:
+    commands, resolver = _Commands(), _Resolver()
+    app = _app(commands, resolver)
+    token = f"{commands.row.invitation_id}." + "proof" * 8
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as client:
+        path = f"/v1/staff/invitations/{commands.row.invitation_id}:preview"
+        response = await client.post(
+            path, headers={"Authorization": "Bearer verified-native-session"}, json={"token": token}
+        )
+        rejected_get = await client.get(path, params={"token": token})
+        rejected_query = await client.post(
+            path,
+            params={"token": token},
+            headers={"Authorization": "Bearer verified-native-session"},
+            json={"token": token},
+        )
+    assert response.status_code == 200
+    assert response.json() == {
+        "invitation_id": str(commands.row.invitation_id),
+        "organization_id": str(commands.row.organization_id),
+        "organization_display_name": "Engineering workspace",
+        "status": "pending",
+        "expires_at": commands.row.expires_at.isoformat().replace("+00:00", "Z"),
+        "requires_acceptance_validation": True,
+    }
+    assert token not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert rejected_get.status_code == 401
+    assert rejected_query.status_code == 400
+    assert commands.accept_calls == []
+    assert commands.preview_calls == [(resolver.verified, commands.row.invitation_id, token)]
+    operation = app.openapi()["paths"]["/v1/staff/invitations/{invitation_id}:preview"]["post"]
+    assert operation["operationId"] == "staff_invitation_preview"
+    assert operation["security"] == [{"SubjectBearer": []}]
+    assert operation["x-request-engine-kind"] == "query"
+    assert operation["x-request-engine-idempotency"] == "none"
+    assert "get" not in app.openapi()["paths"]["/v1/staff/invitations/{invitation_id}:preview"]

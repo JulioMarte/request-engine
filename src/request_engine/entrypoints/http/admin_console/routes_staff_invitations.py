@@ -287,6 +287,50 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
             status_code=result.status_code,
         )
 
+    async def preview(request: Request) -> Response:
+        session = state.session(request)
+        if session is None:
+            return JSONResponse({"error": "Sign in to review this invitation."}, status_code=401)
+        form = await request.form()
+        if not state.csrf_matches(str(form.get("csrf_token", "")), session.csrf_token):
+            return JSONResponse({"error": "CSRF token missing or invalid"}, status_code=403)
+        token = str(form.get("token", ""))
+        try:
+            invitation_id = str(UUID(token.split(".", 1)[0]))
+        except ValueError:
+            return JSONResponse({"error": "Invalid invitation link."}, status_code=422)
+        if not 40 <= len(token) <= 200 or "." not in token:
+            return JSONResponse({"error": "Invalid invitation link."}, status_code=422)
+        try:
+            operation = (await state.runtime_catalog()).by_id().get("staff_invitation_preview")
+            if state.runtime is None or operation is None or operation.method.upper() != "POST":
+                return JSONResponse({"error": "Invitation preview unavailable."}, status_code=503)
+            result = await state.runtime.request(
+                "POST",
+                operation.path_template.replace("{invitation_id}", invitation_id),
+                bearer=session.access_token,
+                json_body={"token": token},
+            )
+        except (httpx.HTTPError, RuntimeError, ValueError):
+            return JSONResponse(
+                {"error": "Could not verify the invitation. Retry later."}, status_code=503
+            )
+        body = as_mapping(result.payload)
+        if not result.ok:
+            return JSONResponse(
+                {"error": "Invitation unavailable. Sign in again or ask for a new link."},
+                status_code=result.status_code,
+            )
+        name = body.get("organization_display_name")
+        expiry = body.get("expires_at")
+        if not isinstance(name, str) or not name or not isinstance(expiry, str) or not expiry:
+            return JSONResponse({"error": "Invitation preview is incomplete."}, status_code=502)
+        # Only the supported recipient projection crosses back to the browser.
+        return JSONResponse(
+            {"ok": True, "organization_display_name": name, "expires_at": expiry},
+            headers={"Cache-Control": "no-store"},
+        )
+
     app.add_api_route("/tenants/{organization_id}/staff-invitations", workspace, methods=["GET"])
     app.add_api_route("/tenants/{organization_id}/staff-invitations", mutate, methods=["POST"])
     app.add_api_route(
@@ -296,6 +340,7 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
     )
     app.add_api_route("/staff-invitations/accept", accept_page, methods=["GET"])
     app.add_api_route("/staff-invitations/accept", accept, methods=["POST"])
+    app.add_api_route("/staff-invitations/preview", preview, methods=["POST"])
     app.add_api_route("/staff-invitations/{invitation_id}/accept", accept_page, methods=["GET"])
     app.add_api_route("/staff-invitations/enroll", enroll_page, methods=["GET"])
     app.add_api_route("/staff-invitations/enroll", enroll, methods=["POST"])

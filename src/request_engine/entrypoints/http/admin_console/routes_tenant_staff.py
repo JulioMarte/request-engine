@@ -2,7 +2,8 @@
 
 import json
 from secrets import token_urlsafe
-from typing import Any
+from typing import Any, Literal
+from urllib.parse import quote
 from uuid import UUID
 
 import httpx
@@ -35,6 +36,7 @@ _OPS = {
     "plan": "staff_authority_plan",
     "authority": "staff_manage_authority",
     "status": "staff_manage_membership",
+    "profile": "staff_profile_update",
 }
 
 
@@ -49,7 +51,11 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         after: UUID | None = None,
         limit: int = Query(default=50, ge=1, le=100),
         trail: str = Query(default="", max_length=2048),
+        status: Literal["", "invited", "active", "suspended", "revoked"] | None = None,
+        search: str = Query(default="", max_length=100),
     ) -> Response:
+        status = status or None
+        search = search.strip()
         session = session_or_redirect(request)
         if isinstance(session, RedirectResponse):
             return session
@@ -87,6 +93,10 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             previous = trail_parts[-1]
             previous_trail = ",".join(trail_parts[:-1])
             previous_url = f"/tenants/{organization_id}/staff?limit={limit}"
+            if status is not None:
+                previous_url += f"&status={status}"
+            if search:
+                previous_url += f"&search={quote(search, safe='')}"
             if previous != "root":
                 previous_url += f"&after={previous}"
             if previous_trail:
@@ -95,6 +105,10 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         params: dict[str, str] = {"limit": str(limit)}
         if after is not None:
             params["after"] = str(after)
+        if status is not None:
+            params["status"] = status
+        if search:
+            params["search"] = search
         try:
             overview_response = await state.runtime_request(
                 overview_op.method,
@@ -127,6 +141,8 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 members=items,
                 next_cursor=body.get("next_cursor"),
                 page_limit=str(limit),
+                selected_status=status or "",
+                selected_search=search,
                 previous_url=previous_url,
                 next_trail=next_trail,
                 error="" if reads_ok else _read_error(failed_status),
@@ -209,6 +225,20 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     "url": f"/tenants/{organization_id}/staff/{membership_id}/{key}",
                     "intent_id": token_urlsafe(24),
                 }
+            profile_op = catalog.by_id().get(_OPS["profile"])
+            if profile_op is not None:
+                operations["profile"] = {
+                    "inputs": build_inputs(
+                        profile_op,
+                        values={
+                            "membership_id": str(membership_id),
+                            "expected_profile_revision": str(item.get("profile_revision", 0)),
+                            "display_name": str(item.get("display_name") or ""),
+                        },
+                    ),
+                    "url": f"/tenants/{organization_id}/staff/{membership_id}/profile",
+                    "intent_id": token_urlsafe(24),
+                }
         return state.templates.TemplateResponse(
             request,
             "resources/staff_detail.html",
@@ -236,7 +266,9 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             return session
         if state.runtime is None:
             return Response("Runtime API unavailable", status_code=503)
-        allowed_actions = {"invite"} if membership_id is None else {"plan", "authority", "status"}
+        allowed_actions = (
+            {"invite"} if membership_id is None else {"plan", "authority", "status", "profile"}
+        )
         if action not in allowed_actions:
             return Response("Unknown staff action", status_code=404)
         submitted = await request.form()
@@ -280,7 +312,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 "partials/result.html",
                 state.context(request, result=view, form_id="staff-plan"),
             )
-        if outcome.ok and action in {"invite", "authority", "status"}:
+        if outcome.ok and action in {"invite", "authority", "status", "profile"}:
             location = (
                 f"/tenants/{organization_id}/staff/{membership_id}"
                 if membership_id is not None

@@ -345,6 +345,29 @@ table.ops th, table.ops td { padding: .72rem .8rem; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
 /* Tenant permissions: selectable API-provided grants, not a hand-maintained policy. */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: .85rem;
+  margin: 1rem 0;
+}
+.metric {
+  min-width: 0;
+  padding: 1.15rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: 0 3px 12px rgba(16, 36, 66, .035);
+}
+.metric span { display: block; color: var(--muted); font-size: .8rem; }
+.metric strong { display: block; margin-top: .3rem; color: var(--ink); font-size: 1.8rem; font-variant-numeric: tabular-nums; }
+.split-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); gap: 1rem; align-items: start; }
+.table-wrap { max-width: 100%; overflow-x: auto; }
+.badge.active { background: #dcf8e9; color: #096842; }
+.badge.invited { background: #e4efff; color: #174d99; }
+.badge.suspended, .badge.revoked { background: #ffebed; color: #a62035; }
+@media (max-width: 1024px) { .split-layout { grid-template-columns: 1fr; } }
+#invitation-preview[hidden], #invitation-accept-form[hidden], #invitation-cancel[hidden] { display: none !important; }
 .permission-choice {
   display: flex;
   align-items: center;
@@ -360,3 +383,5 @@ table.ops th, table.ops td { padding: .72rem .8rem; }
   .permission-choice { flex-wrap: wrap; }
   .permission-choice code { flex-basis: 100%; margin-left: 1.85rem; }
 }
+.staff-directory { display: grid; gap: 1rem; }
+.card > summary { cursor: pointer; font-weight: 650; }

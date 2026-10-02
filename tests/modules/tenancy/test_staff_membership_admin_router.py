@@ -247,3 +247,70 @@ async def test_staff_list_pages_through_more_than_fifty_members_without_loss() -
     assert second_body["next_cursor"] is None
     seen = [item["membership_id"] for item in first_body["items"] + second_body["items"]]
     assert len(seen) == len(set(seen)) == 51
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["invited", "active", "suspended", "revoked"])
+async def test_staff_list_passes_status_to_owner_query(status: str) -> None:
+    app, reader = _app(_actor("staff.read"))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        response = await http.get("/v1/staff/members", params={"status": status, "limit": 2})
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert len(reader.list_queries) == 1
+    assert reader.list_queries[0].status == status
+    assert reader.list_queries[0].limit == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["disabled", "", "active' OR true--"])
+async def test_staff_list_rejects_unsupported_status_before_reader(status: str) -> None:
+    app, reader = _app(_actor("staff.read"))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        response = await http.get("/v1/staff/members", params={"status": status})
+
+    assert response.status_code == 422
+    assert reader.list_queries == []
+
+
+@pytest.mark.asyncio
+async def test_staff_status_filter_does_not_bypass_read_authority() -> None:
+    app, reader = _app(_actor())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        response = await http.get("/v1/staff/members?status=active")
+
+    assert response.status_code == 403
+    assert reader.list_queries == []
+
+
+@pytest.mark.asyncio
+async def test_staff_search_is_trimmed_and_profile_projection_is_typed() -> None:
+    app, reader = _app(_actor("staff.read"))
+    reader.members = (
+        StaffMembershipSummary(
+            membership_id=uuid4(),
+            principal_id=uuid4(),
+            status="active",
+            membership_revision=2,
+            authority_revision=7,
+            principal_active=True,
+            authority_anchor_party_id=None,
+            standing_grants=(),
+            display_name="María Chen",
+            profile_revision=3,
+        ),
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        response = await http.get("/v1/staff/members", params={"search": "  María  "})
+        invalid = await http.get("/v1/staff/members", params={"search": "   "})
+    assert response.status_code == 200
+    assert reader.list_queries[0].search == "María"
+    item = response.json()["items"][0]
+    assert (item["display_name"], item["profile_revision"], item["authority_revision"]) == (
+        "María Chen",
+        3,
+        7,
+    )
+    assert invalid.status_code == 422
+    assert len(reader.list_queries) == 1

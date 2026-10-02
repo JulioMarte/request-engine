@@ -16,10 +16,64 @@ from request_engine.modules.tenancy.api.staff_membership_routes import (
     NativeStaffInviteBody,
     StaffAuthorityReplaceBody,
     StaffMembershipTransitionBody,
+    StaffProfileUpdateBody,
 )
 
 ORG = "11111111-1111-4111-8111-111111111111"
 MEMBER = "22222222-2222-4222-8222-222222222222"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name, expected", [("Updated display name", "Updated display name"), ("", None)]
+)
+async def test_profile_edit_prefills_revision_and_forwards_name_or_explicit_clear(
+    name: str, expected: str | None
+) -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
+        csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+        assert csrf_match
+        assert 'name="expected_profile_revision"' in page.text
+        assert 'value="3"' in page.text
+        assert 'value="Jordan Example"' in page.text
+        response = await client.post(
+            f"/tenants/{ORG}/staff/{MEMBER}/profile",
+            data={
+                "csrf_token": csrf_match.group(1),
+                "_intent_id": "profile-intent",
+                "display_name": name,
+                "expected_profile_revision": "3",
+                "provenance_reference": "admin:correct-name",
+            },
+        )
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/tenants/{ORG}/staff/{MEMBER}"
+    call = runtime.requests[-1]
+    assert call[:2] == ("PATCH", f"/v1/staff/members/{MEMBER}/profile")
+    assert call[2]["json_body"] == {
+        "display_name": expected,
+        "expected_profile_revision": 3,
+        "provenance_reference": "admin:correct-name",
+    }
+    assert call[2]["extra_headers"] == {
+        "idempotency-key": "profile-intent",
+        "X-RE-Organization-ID": ORG,
+    }
 
 
 class FakeApi:
@@ -72,9 +126,13 @@ class FakeApi:
                     "membership_revision": 1,
                     "authority_revision": 1,
                     "standing_grants": [],
+                    "display_name": "Jordan Example",
+                    "profile_revision": 3,
                 },
                 {},
             )
+        if path == f"/v1/staff/members/{MEMBER}/profile" and method == "PATCH":
+            return ControlResponse(200, {"profile_revision": 4}, {})
         return ControlResponse(404, {"error": {"code": "not_found"}}, {})
 
     async def openapi(self) -> dict[str, Any]:
@@ -104,13 +162,19 @@ class FakeApi:
                 "staff_manage_membership",
                 "staff.manage_membership",
             ),
+            (
+                "/v1/staff/members/{membership_id}/profile",
+                "patch",
+                "staff_profile_update",
+                "staff.manage_membership",
+            ),
         ):
             paths.setdefault(path, {})[method] = {
                 "operationId": operation_id,
                 "x-request-engine-capability": capability,
                 "x-request-engine-kind": "query" if method == "get" else "command",
                 "x-request-engine-idempotency": "required"
-                if method in {"post", "put"} and operation_id != "staff_authority_plan"
+                if method in {"post", "put", "patch"} and operation_id != "staff_authority_plan"
                 else "none",
                 "x-request-engine-owner": "tenancy",
                 "x-request-engine-exposure": "admin",
@@ -130,6 +194,7 @@ class FakeApi:
             "staff_authority_plan": StaffAuthorityPlanBody,
             "staff_manage_authority": StaffAuthorityReplaceBody,
             "staff_manage_membership": StaffMembershipTransitionBody,
+            "staff_profile_update": StaffProfileUpdateBody,
         }
         for methods in paths.values():
             for operation in methods.values():
@@ -169,6 +234,9 @@ async def test_staff_workspace_forwards_tenant_selector_only_to_runtime() -> Non
     assert runtime.headers[-1]["X-RE-Organization-ID"] == ORG
     assert all("X-RE-Organization-ID" not in headers for headers in control.headers)
     assert re.search(r"Add an existing native identity", page.text)
+    assert '<details class="card"><summary>Add an existing native identity (advanced)' in page.text
+    assert '<div class="staff-directory">' in page.text
+    assert "Use Invite by email for the normal onboarding journey." in page.text
     assert "Can do" in page.text
     assert "Can grant" in page.text
     assert "staff.manage_authority" in page.text
@@ -212,6 +280,56 @@ async def test_staff_workspace_forwards_cursor_and_renders_next_page() -> None:
     assert "trail=" in page.text
     list_requests = [entry for entry in runtime.requests if entry[1] == "/v1/staff/members"]
     assert list_requests[-1][2]["params"] == {"after": MEMBER, "limit": "1"}
+
+
+@pytest.mark.asyncio
+async def test_name_search_is_forwarded_and_encoded_in_both_page_links() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    original = runtime.request
+
+    async def paged(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        response = await original(method, path, **kwargs)
+        if path == "/v1/staff/members":
+            return ControlResponse(200, {**response.payload, "next_cursor": MEMBER}, {})
+        return response
+
+    runtime.request = paged  # type: ignore[method-assign]
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(
+            f"/tenants/{ORG}/staff",
+            params={
+                "search": "  María & Chen  ",
+                "status": "active",
+                "after": MEMBER,
+                "trail": "root",
+                "limit": 1,
+            },
+        )
+        invalid = await client.get(f"/tenants/{ORG}/staff", params={"search": "a" * 101})
+    assert page.status_code == 200
+    assert "search=Mar%C3%ADa%20%26%20Chen" in unescape(page.text)
+    assert page.text.count("search=Mar%C3%ADa%20%26%20Chen") == 2
+    assert runtime.requests[-1][2]["params"] == {
+        "limit": "1",
+        "after": MEMBER,
+        "status": "active",
+        "search": "María & Chen",
+    }
+    assert 'value="María &amp; Chen"' in page.text
+    assert invalid.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -607,3 +725,53 @@ async def test_staff_workspace_catalog_failure_is_503_not_500() -> None:
 
     assert response.status_code == 503
     assert "catalog unavailable" in response.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_staff_status_filter_is_api_backed_and_survives_both_page_links() -> None:
+    control, runtime = FakeApi(), FakeApi(runtime=True)
+    original_request = runtime.request
+
+    async def paged_request(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        response = await original_request(method, path, **kwargs)
+        if path == "/v1/staff/members":
+            return ControlResponse(200, {**response.payload, "next_cursor": MEMBER}, {})
+        return response
+
+    runtime.request = paged_request  # type: ignore[method-assign]
+    settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        response = await client.get(
+            f"/tenants/{ORG}/staff?status=active&after={MEMBER}&limit=1&trail=root"
+        )
+        cleared = await client.get(f"/tenants/{ORG}/staff?status=&limit=1")
+        invalid = await client.get(f"/tenants/{ORG}/staff?status=disabled")
+
+    assert response.status_code == 200
+    assert '<option value="active" selected>Active</option>' in response.text
+    assert f'href="/tenants/{ORG}/staff?limit=1&amp;status=active"' in response.text
+    assert f"trail=root,{MEMBER}&amp;status=active" in response.text
+    assert "Counts above cover the whole organization" in response.text
+    # Changing the filter starts at page one: the GET form contains no cursor/trail.
+    filter_form = re.search(r'<form method="get".*?</form>', response.text, re.DOTALL)
+    assert filter_form is not None
+    assert 'name="after"' not in filter_form.group()
+    assert 'name="trail"' not in filter_form.group()
+    list_requests = [entry for entry in runtime.requests if entry[1] == "/v1/staff/members"]
+    assert list_requests[0][2]["params"] == {"limit": "1", "after": MEMBER, "status": "active"}
+    assert cleared.status_code == 200
+    assert list_requests[1][2]["params"] == {"limit": "1"}
+    assert invalid.status_code == 422
+    assert len(list_requests) == 2

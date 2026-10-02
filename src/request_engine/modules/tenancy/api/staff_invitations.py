@@ -3,7 +3,7 @@
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from datetime import datetime
-from typing import Annotated, Protocol
+from typing import Annotated, Literal, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, Security
@@ -15,6 +15,9 @@ from request_engine.modules.tenancy.application.commands.staff_invitations impor
     ChangeStaffInvitationCommand,
     CreateStaffInvitationCommand,
     StaffInvitation,
+)
+from request_engine.modules.tenancy.application.queries.staff_invitation import (
+    StaffInvitationPreview,
 )
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.secrets.delivery import RecoveryDeliveryError
@@ -28,6 +31,9 @@ from request_engine.platform.security.tenant_http import ORGANIZATION_HEADER, Te
 
 
 class StaffInvitationCommands(Protocol):
+    async def preview(
+        self, authenticated: AuthenticatedHttpSubject, invitation_id: UUID, token: str
+    ) -> StaffInvitationPreview: ...
     async def list(
         self, actor: ActorContext, *, after: UUID | None, limit: int
     ) -> tuple[StaffInvitation, ...]: ...
@@ -77,6 +83,15 @@ class StaffInvitationView(BaseModel):
     principal_id: UUID | None
     binding_id: UUID | None
     delivery_status: str | None
+
+
+class StaffInvitationPreviewView(BaseModel):
+    invitation_id: UUID
+    organization_id: UUID
+    organization_display_name: str
+    status: str
+    expires_at: datetime
+    requires_acceptance_validation: Literal[True] = True
 
 
 class StaffInvitationPageView(BaseModel):
@@ -195,6 +210,20 @@ def create_staff_invitation_router(
             **asdict(await commands.accept(authenticated, invitation_id, body.token))
         )
 
+    async def preview(
+        invitation_id: UUID,
+        request: Request,
+        body: StaffInvitationAcceptBody,
+        authenticated: Annotated[AuthenticatedHttpSubject, Depends(subject)],
+        response: Response,
+    ) -> StaffInvitationPreviewView:
+        if request.query_params:
+            raise TenantContextInvalid("Invitation preview does not accept query parameters")
+        response.headers["Cache-Control"] = "no-store"
+        return StaffInvitationPreviewView(
+            **asdict(await commands.preview(authenticated, invitation_id, body.token))
+        )
+
     add_capability_route(
         router,
         "",
@@ -242,6 +271,19 @@ def create_staff_invitation_router(
         response_model=StaffInvitationView,
     )
     if subject_resolver is not None:
+        router.add_api_route(
+            "/{invitation_id}:preview",
+            preview,
+            methods=["POST"],
+            operation_id="staff_invitation_preview",
+            response_model=StaffInvitationPreviewView,
+            openapi_extra={
+                "x-request-engine-owner": "tenancy",
+                "x-request-engine-kind": "query",
+                "x-request-engine-idempotency": "none",
+                "x-request-engine-authentication": "native-human-subject",
+            },
+        )
         router.add_api_route(
             "/{invitation_id}:accept",
             accept,

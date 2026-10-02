@@ -1,10 +1,11 @@
 # Admin console
 
-Private operator panel that projects the platform control-plane HTTP API. It is a
+Private operator panel that projects platform control-plane and tenant runtime HTTP APIs. It is a
 separate entrypoint and process; it owns no business logic, holds no database or
 OpenBao connection, and introduces no second execution path. Every action is an
-HTTP call to the control plane, which keeps capability and step-up authority as
-the single source of truth.
+HTTP call to the owning API, which keeps capability and step-up authority as
+the single source of truth. The panel neither creates authority nor accesses
+business persistence directly.
 
 Tenant staff administration uses the configured `runtime_api_base_url` and the
 same stored HUMAN bearer. **My organizations** (`/my-organizations`) consumes
@@ -17,7 +18,9 @@ tenant API's staff permissions. The console has no independent tenant grants.
 ```text
 browser  --(same-origin, HttpOnly console cookie)-->  admin console
 admin console  --(server-to-server Authorization: Bearer)-->  control plane
+admin console  --(same subject bearer + tenant selector)-->  tenant runtime API
 control plane  -->  PostgreSQL / OpenBao / providers
+tenant runtime API  -->  PostgreSQL / OpenBao / providers
 ```
 
 - Browser cookies contain only random opaque handles. Login and setup bearers
@@ -44,6 +47,7 @@ Environment variables use the `REQUEST_ENGINE_ADMIN_CONSOLE_` prefix:
 
 ```text
 control_api_base_url   # e.g. http://127.0.0.1:8001
+runtime_api_base_url   # e.g. http://127.0.0.1:8000; required for tenant workspaces
 session_secret         # >= 32 bytes
 session_store_directory # REQUIRED persistent private volume shared by console replicas
 session_cookie_name    # default re_admin_console
@@ -63,8 +67,8 @@ with a matching `REQUEST_ENGINE_WEBAUTHN_RP_ID`.
 ## Run locally (real control plane)
 
 One command starts the **real** control plane — `platform_server:create_app`
-against local PostgreSQL 18 with three least-privilege runtime logins — and the
-console, both detached:
+against local PostgreSQL 18 with three least-privilege runtime logins — the tenant
+runtime API (`server:create_app`), and the console, all detached:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/dev/run_local_panel.ps1
@@ -75,12 +79,17 @@ RP id `localhost` is a valid secure context) and complete `/setup` -> `/login`.
 While the instance is unclaimed, `/setup` drives the full first-run ceremony;
 afterwards `/login` and `/operations` expose the real platform surface.
 
-Prerequisites: the local PostgreSQL container is up and the database is migrated
-to head (`alembic upgrade head`), and `uv sync` has run. The launcher provisions
+Prerequisites: the local PostgreSQL container is up and the selected database is migrated
+to the current repository head (`alembic upgrade head`), and `uv sync` has run.
+Defaults: container `request-engine-postgres-1`, port `5432`, database
+`request_engine_current`. Override with `-Container` / `-Database` when needed.
+The launcher rejects a migration mismatch before stopping existing panel processes
+or provisioning roles. The launcher provisions
 the dev runtime logins from `scripts/dev/init_local_runtime_roles.sql` (throwaway
 passwords, dev only), reads `built_in_native_authority_id` from
 `request_engine.platform_instance`, starts the control plane on `:8001` and the
-console on `:8002`, and prints readiness.
+tenant runtime on `:8000`, console on `:8002`, and prints readiness. Ports are
+configurable through `-ControlPort`, `-RuntimePort`, and `-ConsolePort`.
 
 Ordering matters: the baseline role-topology guard rejects a cluster that already
 contains the runtime logins, so migrate **first**, then create the logins. To
@@ -137,12 +146,14 @@ operation, capability, idempotency and step-up rules as the API.
   mounted, so these pages state that explicitly and expose only the available
   commands rather than fabricating an empty table.
 
-Staff membership operations are deliberately not projected by this console yet.
-They belong to the tenant-scoped operational API (`/v1/staff`) and require an
-organization actor context, while this console authenticates to the platform
-control plane. Adding a second upstream and reusing the platform bearer would be
-an authority-boundary bug; Staff needs an explicit tenant-selection and
-tenant-authentication design before it can be added safely.
+**People & permissions** uses `/my-organizations` for self-authorized organization
+selection, then `/tenants/{organization_id}/staff` for members, counts, permission
+preview/apply and membership lifecycle. `/tenants/{organization_id}/staff-invitations`
+projects email creation, delivery status, acceptance, resend and revocation.
+The same authenticated HUMAN subject may have platform and tenant bindings;
+the runtime API must materialize and revalidate the tenant actor independently.
+Selecting a tenant or holding platform-owner authority never grants tenant access.
+Permission assignment remains separate from invitation acceptance.
 
 Both the workspaces and the generic `/operations` browser execute through a
 single `execution.execute_operation` path, so there is no second execution path.
@@ -201,9 +212,24 @@ runtime API and forwards `X-RE-Organization-ID` only as a tenant selector; the
 runtime still resolves the bearer binding and rechecks every staff capability.
 If the runtime URL is absent, the staff workspace fails closed with `503`.
 
-The current `staff_invite` operation binds an already-provisioned native
-identity. It is not an email invitation or an atomic create-and-invite workflow;
-the UI labels this limitation explicitly.
+The advanced `staff_invite` operation binds an already-provisioned native
+identity. The ordinary email journey uses the separate canonical
+`staff_invitation_create/list/get/resend/revoke/accept` operations. Acceptance
+requires native authentication and invitation proof, and creates membership
+with zero standing grants. Creation queues delivery; SMTP acceptance does not
+prove inbox receipt. See
+[`staff-email-invitations.md`](../../../../../docs/architecture/staff-email-invitations.md).
+
+Tenant-local display names, literal name search and membership status filters
+are projected through `staff_profile_update`, `staff_list` and `staff_get`;
+profile revisions are independent of membership and authority revisions. Invitation
+recipients can review the organization and expiry through `staff_invitation_preview`
+before submitting acceptance; the preview itself never grants authority.
+
+The console is not complete against every dashboard reference: broader/contact
+and cross-tenant search, activity projections, permission descriptions and real-browser/provider
+evidence remain tracked in
+[`admin-completion-checkpoint-2026-10-02.md`](../../../../../docs/testing/admin-completion-checkpoint-2026-10-02.md).
 
 ## Tests
 

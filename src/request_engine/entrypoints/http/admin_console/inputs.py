@@ -36,7 +36,7 @@ def build_inputs(
                 "name": field.name,
                 "label": field.label,
                 "kind": field.kind,
-                "required": field.required,
+                "required": field.required and not field.nullable,
                 "enum": field.enum,
                 "value": value,
                 "default": field.default,

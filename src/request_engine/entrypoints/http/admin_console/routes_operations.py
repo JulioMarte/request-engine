@@ -269,6 +269,22 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             if all(service["tone"] == "ok" for service in services)
             else "incomplete"
         )
+        configuration_counters: list[dict[str, str | int]] = []
+        for field, label in (
+            ("validation_success_total", "Successful validations"),
+            ("validation_failure_total", "Failed validations"),
+            ("provider_test_failures_total", "Failed provider tests"),
+            ("secret_backend_failures_total", "Secret backend failures"),
+        ):
+            value = observability.get(field) if 200 <= observability_status < 300 else None
+            configuration_counters.append(
+                {
+                    "label": label,
+                    "value": value
+                    if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                    else "—",
+                }
+            )
         return state.templates.TemplateResponse(
             request,
             "dashboard.html",
@@ -278,6 +294,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 services=services,
                 attention=attention,
                 overall_state=overall_state,
+                configuration_counters=configuration_counters,
                 readiness_status=readiness_status,
                 readiness_detail=summarize_payload(readiness) if readiness else ([], []),
                 readiness_error=readiness_error,

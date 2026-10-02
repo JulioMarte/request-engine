@@ -33,6 +33,8 @@ PRIVATE_GLOBAL_TABLES = {
 # registered/adjusted by the app but read through definer lookups; the
 # authority-event ledger and handoffs are fully definer-mediated.
 EXPECTED_TABLE_EXCEPTIONS = {
+    # 0011: only four reviewed column SELECTs; profile writes are definer-mediated.
+    "staff_member_profiles": (False,) * 7,
     "discovery_booking_handoffs": (False,) * 7,
     "service_classification_authority_events": (False,) * 7,
     "service_classifications": (False,) * 7,

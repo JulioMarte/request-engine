@@ -1200,6 +1200,61 @@ async def test_staff_reads_recheck_revoked_authority_with_a_previously_valid_act
     ).fetchone() == ("active", 1)
 
 
+@pytest.mark.asyncio
+async def test_staff_status_filter_precedes_limit_and_preserves_tenant_opacity(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    organization_id, party_id, root_id, _, _ = provision_staff_root(admin_conn)
+    foreign_org, foreign_party, foreign_root, _, _ = provision_staff_root(admin_conn)
+    expected_ids = [UUID(int=(2**128) - 3), UUID(int=(2**128) - 2)]
+    for tenant, party, manager, membership_id in (
+        (organization_id, party_id, root_id, expected_ids[0]),
+        (organization_id, party_id, root_id, expected_ids[1]),
+        (foreign_org, foreign_party, foreign_root, UUID(int=(2**128) - 1)),
+    ):
+        authority_id, identity_id, _ = new_staff_native_identity(admin_conn)
+        _set_tenant_actor(admin_conn, organization_id=tenant, principal_id=manager)
+        try:
+            admin_conn.execute(
+                "SELECT request_engine.invite_native_staff(%s, %s, %s, %s, %s, %s, %s)",
+                (membership_id, uuid4(), uuid4(), authority_id, identity_id, party, "status:test"),
+            )
+        finally:
+            admin_conn.execute("RESET ROLE")
+    # The active root sorts before invited members; filtering after LIMIT would
+    # yield an empty first page and silently lose both valid matches.
+    root_member, _ = _root_membership(admin_conn, root_id)
+    assert root_member < expected_ids[0]
+    before = admin_conn.execute("SELECT count(*) FROM request_engine.audit_records").fetchone()
+    actor = ActorContext(
+        organization_id=organization_id,
+        principal_id=root_id,
+        capabilities=frozenset({"staff.read"}),
+    )
+    reader = PostgresStaffMembershipReader(command_session_factory)
+    first = await reader.list_memberships(
+        actor, ListStaffMembershipsQuery(limit=1, status="invited")
+    )
+    assert [member.membership_id for member in first] == expected_ids[:1]
+    second = await reader.list_memberships(
+        actor, ListStaffMembershipsQuery(after=first[0].membership_id, limit=1, status="invited")
+    )
+    assert [member.membership_id for member in second] == expected_ids[1:]
+    assert (
+        await reader.list_memberships(
+            actor, ListStaffMembershipsQuery(after=second[0].membership_id, status="invited")
+        )
+        == ()
+    )
+    assert await reader.list_memberships(actor, ListStaffMembershipsQuery(status="suspended")) == ()
+    overview = await reader.read_overview(actor)
+    assert (overview.total, overview.active, overview.invited) == (3, 1, 2)
+    assert (
+        admin_conn.execute("SELECT count(*) FROM request_engine.audit_records").fetchone() == before
+    )
+
+
 def test_suspended_staff_can_be_revoked_without_temporary_reactivation(
     admin_conn: PgConnection,
 ) -> None:

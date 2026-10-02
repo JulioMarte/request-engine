@@ -1,8 +1,10 @@
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
 from request_engine.platform.security.context import ActorContext
+
+StaffMembershipStatus = Literal["invited", "active", "suspended", "revoked"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +23,8 @@ class StaffMembershipSummary:
     principal_active: bool
     authority_anchor_party_id: UUID | None
     standing_grants: tuple[StaffAuthorityGrant, ...]
+    display_name: str | None = None
+    profile_revision: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +63,19 @@ class StaffAuthorityPlan:
 class ListStaffMembershipsQuery:
     after: UUID | None = None
     limit: int = 50
+    status: StaffMembershipStatus | None = None
+    search: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status is not None and self.status not in (
+            "invited",
+            "active",
+            "suspended",
+            "revoked",
+        ):
+            raise ValueError("unsupported staff membership status")
+        if self.search is not None and not 1 <= len(self.search.strip()) <= 100:
+            raise ValueError("search must contain between 1 and 100 characters")
 
 
 class StaffMembershipReader(Protocol):

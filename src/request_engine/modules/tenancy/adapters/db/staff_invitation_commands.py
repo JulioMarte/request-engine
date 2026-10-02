@@ -24,6 +24,9 @@ from request_engine.modules.tenancy.application.errors import (
     StaffMembershipNotFound,
     StaffMembershipRevisionConflict,
 )
+from request_engine.modules.tenancy.application.queries.staff_invitation import (
+    StaffInvitationPreview,
+)
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, actor_transaction
 from request_engine.platform.idempotency.errors import IdempotencyConflict
@@ -523,6 +526,64 @@ class PostgresStaffInvitationCommands:
                 return await self._view(session, invitation_id)
         except DBAPIError as exc:
             _db_error(exc, acceptance=True)
+            raise
+
+    async def preview(
+        self, authenticated: AuthenticatedHttpSubject, invitation_id: UUID, token: str
+    ) -> StaffInvitationPreview:
+        subject = authenticated.subject
+        if (
+            authenticated.authentication_method != "native_session"
+            or subject.subject_class is not AuthenticatedSubjectClass.HUMAN
+            or subject.metadata.get("recovery_restricted") == "true"
+        ):
+            raise StaffMembershipForbidden("Normal native HUMAN authentication required")
+        if (
+            not token.startswith(f"{invitation_id}.")
+            or not 40 <= len(token) <= 200
+            or not authenticated.credential_id
+        ):
+            raise StaffMembershipNotFound("Invitation unavailable")
+        try:
+            async with self._sessions() as session, session.begin():
+                # Reuse the existing proof/session consistency boundary. It derives
+                # the tenant and holds its normal locks only for this short query;
+                # it does not establish membership or emit a durable fact.
+                row = (
+                    (
+                        await session.execute(
+                            text(
+                                "SELECT * FROM request_cmd.lock_staff_invitation_acceptance("
+                                ":id,:digest,:authority,:identity,:session)"
+                            ),
+                            {
+                                "id": invitation_id,
+                                "digest": hashlib.sha256(token.encode()).hexdigest(),
+                                "authority": UUID(subject.authority_id),
+                                "identity": UUID(subject.subject_id),
+                                "session": UUID(authenticated.credential_id),
+                            },
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                # The application role's existing SELECT remains tenant-RLS-bound.
+                name = (
+                    await session.execute(
+                        text("SELECT display_name FROM request_engine.organizations WHERE id=:org"),
+                        {"org": row["organization_id"]},
+                    )
+                ).scalar_one()
+                return StaffInvitationPreview(
+                    invitation_id=row["id"],
+                    organization_id=row["organization_id"],
+                    organization_display_name=str(name),
+                    status=str(row["status"]),
+                    expires_at=row["expires_at"],
+                )
+        except DBAPIError as exc:
+            _db_error(exc)
             raise
 
     async def _audit(

@@ -34,6 +34,7 @@ class FormField:
     default: str
     description: str
     multiline: bool
+    nullable: bool = False
 
 
 def _field_from_schema(
@@ -44,7 +45,15 @@ def _field_from_schema(
     required: bool,
     description: str = "",
 ) -> FormField:
-    kind = schema.get("type")
+    alternatives = [as_mapping(value) for value in as_list(schema.get("anyOf"))]
+    nullable = (
+        schema.get("nullable") is True
+        or schema.get("type") == "null"
+        or any(value.get("type") == "null" for value in alternatives)
+    )
+    typed_alternatives = [value for value in alternatives if value.get("type") != "null"]
+    effective = typed_alternatives[0] if len(typed_alternatives) == 1 else schema
+    kind = effective.get("type")
     if not isinstance(kind, str):
         kind = "object" if "properties" in schema else "string"
     enum = tuple(
@@ -62,6 +71,7 @@ def _field_from_schema(
         default=default,
         description=description or _schema_description(schema),
         multiline=kind in _JSON_KINDS or default.startswith("{") or default.startswith("["),
+        nullable=nullable,
     )
 
 
@@ -151,6 +161,9 @@ def parse_submission(
                 raise FormSubmissionError(f"{field.label} is required")
             continue
         has_body_field = True
+        if raw == "" and field.required and field.nullable and field.name in form:
+            body[field.name] = None
+            continue
         if raw == "" and not field.required:
             continue
         if raw == "" and field.required:

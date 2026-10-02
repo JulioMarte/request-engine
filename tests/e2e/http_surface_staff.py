@@ -8,6 +8,23 @@ from .http_surface import (
 
 STAFF_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     PublicHttpOperation(
+        "staff.profile.update",
+        "PATCH",
+        "/v1/staff/members/{membership_id}/profile",
+        "staff.manage_membership",
+        True,
+        True,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(
+            f"/v1/staff/members/{PROBE_UUID}/profile",
+            body={
+                "display_name": "Surface probe member",
+                "expected_profile_revision": 0,
+                "provenance_reference": "surface-probe",
+            },
+        ),
+    ),
+    PublicHttpOperation(
         "staff.invitation.create",
         "POST",
         "/v1/staff/invitations",

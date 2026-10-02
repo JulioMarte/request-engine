@@ -1,1 +1,27 @@
-{% extends "base.html" %}{% block content %}<section class="card" id="invitation-accept" data-authenticated="{{ 'true' if authenticated else 'false' }}"><p class="eyebrow">Organization invitation</p><h1>Accept your invitation</h1><p>Use your own account. Accepting adds you to the organization without granting permissions. An administrator reviews permissions afterward.</p><p id="invitation-message" role="status">Reading invitation link…</p>{% if authenticated %}<form id="invitation-accept-form" method="post" action="/staff-invitations/accept"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="token" value=""><button type="submit" class="primary" disabled>Accept invitation with this account</button></form>{% else %}<a href="/login?next=/staff-invitations/accept" class="button primary">Sign in to accept</a><a href="/staff-invitations/enroll" class="button secondary">Create your account</a>{% endif %}<button type="button" class="secondary" id="invitation-cancel">Forget this invitation</button><noscript>JavaScript is required to keep the invitation secret out of URLs sent to the server.</noscript></section><script defer src="/static/invitation.js"></script>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<section class="card narrow" id="invitation-accept" data-authenticated="{{ 'true' if authenticated else 'false' }}">
+  <p class="eyebrow">Organization invitation</p>
+  <h1>Accept your invitation</h1>
+  <p>Use your own account. Accepting adds you to the organization without granting permissions. An administrator reviews permissions afterward.</p>
+  <p id="invitation-message" role="status">Reading invitation link…</p>
+  <div id="invitation-preview" class="alert info" hidden>
+    <strong>Organization: <span id="invitation-organization"></span></strong>
+    <p>Invitation expires: <time id="invitation-expiry"></time></p>
+    <p>This preview does not reserve access. Acceptance checks the current invitation and administrator authority again.</p>
+  </div>
+  {% if authenticated %}
+  <form id="invitation-accept-form" method="post" action="/staff-invitations/accept">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="token" value="">
+    <button type="submit" class="primary" disabled>Accept invitation with this account</button>
+  </form>
+  {% else %}
+  <a href="/login?next=/staff-invitations/accept" class="button primary">Sign in to accept</a>
+  <a href="/staff-invitations/enroll" class="button secondary">Create your account</a>
+  {% endif %}
+  <button type="button" class="secondary" id="invitation-cancel">Forget this invitation</button>
+  <noscript>JavaScript is required to keep the invitation secret out of URLs sent to the server.</noscript>
+</section>
+<script defer src="/static/invitation.js"></script>
+{% endblock %}

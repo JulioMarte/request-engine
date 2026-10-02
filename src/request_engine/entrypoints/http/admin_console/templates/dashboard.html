@@ -38,6 +38,7 @@
   <section class="panel" aria-labelledby="actions-title">
     <div class="panel-heading"><div><p class="eyebrow">Shortcuts</p><h2 id="actions-title">Common tasks</h2></div><a href="/resources">All workspaces →</a></div>
     <div class="quick-grid">
+      <a href="/my-organizations"><span aria-hidden="true">♧</span><span><strong>People &amp; permissions</strong><small>Choose your organization, invite people, and review access</small></span><b aria-hidden="true">→</b></a>
       <a href="/resources/native-identities"><span aria-hidden="true">◎</span><span><strong>Manage identities</strong><small>Provision and disable native identities</small></span><b aria-hidden="true">→</b></a>
       <a href="/resources/configurations"><span aria-hidden="true">◫</span><span><strong>Configure platform</strong><small>Stage, validate, test, and activate</small></span><b aria-hidden="true">→</b></a>
       <a href="/resources/secrets"><span aria-hidden="true">⌁</span><span><strong>Manage secrets</strong><small>Use governed bindings and keyrings</small></span><b aria-hidden="true">→</b></a>
@@ -47,5 +48,10 @@
     </div>
   </section>
 </div>
+
+<section class="panel" aria-labelledby="configuration-counters-title">
+  <div class="panel-heading"><div><h2 id="configuration-counters-title">Configuration activity</h2><p>Counters reported by this control-plane process since its last restart. Not 24-hour totals or installation-wide user activity. Missing data is shown as —.</p></div><a href="/diagnostics">Inspect diagnostics →</a></div>
+  <div class="metric-grid">{% for counter in configuration_counters %}<article class="metric"><span>{{ counter.label }}</span><strong>{{ counter.value }}</strong></article>{% endfor %}</div>
+</section>
 
 {% endblock %}

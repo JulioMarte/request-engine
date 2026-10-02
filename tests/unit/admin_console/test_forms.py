@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from request_engine.entrypoints.http.admin_console.catalog import load_catalog
@@ -8,7 +10,7 @@ from request_engine.entrypoints.http.admin_console.forms import (
     render_path,
 )
 
-_OPENAPI = {
+_OPENAPI: dict[str, Any] = {
     "paths": {
         "/v1/platform/things/{thing_id}": {
             "post": {
@@ -87,3 +89,18 @@ def test_render_path_substitutes_parameters() -> None:
     assert render_path("/v1/platform/things/{thing_id}", {"thing_id": "abc"}) == (
         "/v1/platform/things/abc"
     )
+
+
+def test_explicit_empty_nullable_field_is_null_not_omitted_or_literal_text() -> None:
+    from copy import deepcopy
+
+    schema = deepcopy(_OPENAPI)
+    body = schema["paths"]["/v1/platform/things/{thing_id}"]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["schema"]
+    body["properties"]["name"] = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    fields = build_fields(load_catalog(schema).by_id()["thing_update"])
+    assert parse_submission(fields, {"thing_id": "abc", "name": ""}).body == {"name": None}
+    assert parse_submission(fields, {"thing_id": "abc", "name": "null"}).body == {"name": "null"}
+    with pytest.raises(FormSubmissionError):
+        parse_submission(fields, {"thing_id": "abc"})

@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from request_engine.modules.tenancy.application.errors import (
     StaffMembershipForbidden,
@@ -14,6 +14,7 @@ from request_engine.modules.tenancy.application.queries.staff_membership import 
     PlanStaffAuthorityQuery,
     StaffAuthorityPlan,
     StaffMembershipReader,
+    StaffMembershipStatus,
     StaffMembershipSummary,
     StaffOverview,
 )
@@ -36,6 +37,8 @@ class StaffMembershipView(BaseModel):
     principal_active: bool
     authority_anchor_party_id: UUID | None
     standing_grants: list[StaffGrantView]
+    display_name: str | None = None
+    profile_revision: int = 0
 
 
 class StaffMembershipPageView(BaseModel):
@@ -76,6 +79,11 @@ class StaffMembershipListParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
     after: UUID | None = None
     limit: int = Field(default=50, ge=1, le=100)
+    status: StaffMembershipStatus | None = None
+    search: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+        | None
+    ) = None
 
 
 def _view(member: StaffMembershipSummary) -> StaffMembershipView:
@@ -91,6 +99,8 @@ def _view(member: StaffMembershipSummary) -> StaffMembershipView:
             StaffGrantView(capability=grant.capability, delegable=grant.delegable)
             for grant in member.standing_grants
         ],
+        display_name=member.display_name,
+        profile_revision=member.profile_revision,
     )
 
 
@@ -143,7 +153,8 @@ def add_staff_membership_reads(
         require_capability(actor, "staff.read")
         response.headers["Cache-Control"] = "no-store"
         rows = await reader.list_memberships(
-            actor, ListStaffMembershipsQuery(params.after, params.limit)
+            actor,
+            ListStaffMembershipsQuery(params.after, params.limit, params.status, params.search),
         )
         return StaffMembershipPageView(
             items=[_view(row) for row in rows],

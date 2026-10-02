@@ -5,6 +5,12 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0011: fixed-capability tenant-local profile locks/CAS; no authority writes.
+    "request_cmd.lock_staff_member_profile(p_membership uuid)",
+    (
+        "request_cmd.write_staff_member_profile(p_membership uuid, p_expected bigint, "
+        "p_name text, p_provenance text)"
+    ),
     # 0009: current manager gate and subject-proof-bound staff materialization.
     "request_cmd.assert_staff_invitation_manager()",
     "request_cmd.lock_staff_invitation_admin(p_id uuid)",

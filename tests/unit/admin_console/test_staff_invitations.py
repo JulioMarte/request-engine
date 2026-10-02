@@ -28,6 +28,7 @@ class InvitationApi:
         self.list_status = 200
         self.accept_status = 200
         self.accept_error_code = ""
+        self.preview_status = 200
         self.delivery_status = "unknown"
 
     async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
@@ -59,6 +60,16 @@ class InvitationApi:
                 {"token": "must-never-be-echoed", "error": {"code": self.accept_error_code}},
                 {},
             )
+        if path.endswith(":preview"):
+            return ControlResponse(
+                self.preview_status,
+                {
+                    "organization_display_name": "Example organization",
+                    "expires_at": "2026-10-04T00:00:00Z",
+                    "token": "must-never-be-echoed",
+                },
+                {},
+            )
         return ControlResponse(201, {}, {})
 
     async def openapi(self) -> dict[str, Any]:
@@ -69,6 +80,7 @@ class InvitationApi:
             ("resend", "post", "/v1/staff/invitations/{invitation_id}:resend"),
             ("revoke", "post", "/v1/staff/invitations/{invitation_id}:revoke"),
             ("accept", "post", "/v1/staff/invitations/{invitation_id}:accept"),
+            ("preview", "post", "/v1/staff/invitations/{invitation_id}:preview"),
         ):
             op: dict[str, Any] = {
                 "operationId": f"staff_invitation_{action}",
@@ -121,6 +133,55 @@ def csrf(page: httpx.Response) -> str:
     match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
     assert match is not None
     return match.group(1)
+
+
+@pytest.mark.asyncio
+async def test_preview_requires_session_csrf_and_forwards_only_proof() -> None:
+    api = InvitationApi()
+    async with client_for(api) as client:
+        anonymous = await client.post("/staff-invitations/preview", data={"token": TOKEN})
+        await client.post("/login", data={"login_handle": "recipient", "password": "pw"})
+        page = await client.get("/staff-invitations/accept")
+        denied = await client.post("/staff-invitations/preview", data={"token": TOKEN})
+        preview = await client.post(
+            "/staff-invitations/preview",
+            data={"csrf_token": csrf(page), "token": TOKEN, "organization_id": ORG},
+        )
+    assert anonymous.status_code == 401
+    assert denied.status_code == 403
+    assert preview.json() == {
+        "ok": True,
+        "organization_display_name": "Example organization",
+        "expires_at": "2026-10-04T00:00:00Z",
+    }
+    assert preview.headers["cache-control"] == "no-store"
+    assert "must-never-be-echoed" not in preview.text
+    assert [call for call in api.calls if call[1].endswith(":preview")] == [
+        (
+            "POST",
+            f"/v1/staff/invitations/{INVITATION}:preview",
+            {"bearer": "real-upstream-token", "json_body": {"token": TOKEN}},
+        )
+    ]
+    assert not any(call[1].endswith(":accept") for call in api.calls)
+    assert 'id="invitation-preview"' in page.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 404, 409, 503])
+async def test_preview_failure_never_exposes_upstream_proof_or_organization(status: int) -> None:
+    api = InvitationApi()
+    api.preview_status = status
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "recipient", "password": "pw"})
+        page = await client.get("/staff-invitations/accept")
+        preview = await client.post(
+            "/staff-invitations/preview", data={"csrf_token": csrf(page), "token": TOKEN}
+        )
+    assert preview.status_code == status
+    assert "Example organization" not in preview.text
+    assert "must-never-be-echoed" not in preview.text
+    assert not any(call[1].endswith(":accept") for call in api.calls)
 
 
 @pytest.mark.asyncio
@@ -186,15 +247,19 @@ async def test_resend_forwards_exact_revision_and_stable_intent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_failed_list_hides_create_and_mutations() -> None:
+@pytest.mark.parametrize("status", [401, 403, 404, 503])
+async def test_failed_list_explains_failure_and_hides_create_and_mutations(status: int) -> None:
     api = InvitationApi()
-    api.list_status = 403
+    api.list_status = status
     async with client_for(api) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff-invitations")
-    assert page.status_code == 403
+    assert page.status_code == status
+    assert 'role="alert"' in page.text
+    assert "Invitations unavailable. Check your session and permissions, then reload." in page.text
     assert "Create invitation" not in page.text
     assert "recipient@example.org" not in page.text
+    assert all(method != "POST" or path == "/auth/native/sessions" for method, path, _ in api.calls)
 
 
 @pytest.mark.asyncio

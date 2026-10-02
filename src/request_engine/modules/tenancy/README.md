@@ -147,7 +147,33 @@ same transaction. No patient Party/contact or second authentication path is
 created. See `docs/architecture/staff-email-invitations.md` for lifecycle,
 replay, delivery ambiguity, lock and deployment contracts.
 
+`POST /v1/staff/invitations/{invitation_id}:preview` lets the authenticated native
+recipient review the organization display name and invitation expiry using the
+same proof, without creating membership or grants. It rejects tenant/query
+selectors and returns an advisory, no-store projection; acceptance independently
+revalidates current proof and authority.
+
 ## Staff administration reads
+
+Tenant-local staff display labels are updated through `staff_profile_update`
+(`PATCH /v1/staff/members/{membership_id}/profile`) and projected by the existing
+`staff_list` / `staff_get` reads. The profile revision is independent from
+membership and authority revisions; missing profiles remain unnamed. See
+`docs/architecture/staff-member-profiles.md` for the capability, privacy,
+literal-search, transaction, replay and narrow PostgreSQL privilege contract.
+
+`GET /v1/staff/members` (`staff_list`) accepts optional membership `status`
+(`invited`, `active`, `suspended`, `revoked`). Tenancy owns this resource Query
+under existing current HUMAN `staff.read` authority. The filter is applied in
+the same tenant-authorized SQL statement before UUID ordering and the bounded
+limit; it does not narrow the organization-wide `staff_overview_get` counts.
+No idempotency key, revision, authoritative lock, external connection, audit
+write or tool projection is introduced. Invalid transport statuses receive 422;
+revoked read authority still receives 403, and foreign rows remain invisible.
+The admin projection forwards the filter to this API, preserves it across page
+links and starts at page one when the selected filter changes. This additive
+Query evolution preserves tenant opacity, current-authority rechecks and the
+existing distinction between membership state and effective access.
 
 `GET /v1/me/organizations` (`self_organization_list`) discovers only the
 authenticated HUMAN subject's active organization memberships before tenant
