@@ -189,17 +189,21 @@ def create_admin_console_app(
         return {"status": "live"}
 
     async def ready() -> Response:
-        try:
-            response = await control.request("GET", "/health/live")
-        except httpx.HTTPError:
-            return JSONResponse(
-                {"status": "unready", "reason": "control_unreachable"}, status_code=503
-            )
-        if response.status_code != 200:
-            return JSONResponse(
-                {"status": "unready", "reason": f"control_{response.status_code}"},
-                status_code=503,
-            )
+        # Liveness of this process is separate from serving the configured APIs.
+        # Never report ready while a configured tenant runtime is unavailable.
+        for name, dependency in (("control", control), ("runtime", runtime)):
+            if dependency is None:
+                continue
+            try:
+                response = await dependency.request("GET", "/health/ready")
+            except httpx.HTTPError:
+                return JSONResponse(
+                    {"status": "unready", "reason": f"{name}_unreachable"}, status_code=503
+                )
+            if response.status_code != 200:
+                return JSONResponse(
+                    {"status": "unready", "reason": f"{name}_unready"}, status_code=503
+                )
         return JSONResponse({"status": "ready"})
 
     app.add_api_route("/health/live", live, methods=["GET"], include_in_schema=False)

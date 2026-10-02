@@ -8,6 +8,16 @@ from .http_surface import (
 
 STAFF_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     PublicHttpOperation(
+        "staff.history.list",
+        "GET",
+        "/v1/staff/members/{membership_id}/history",
+        "staff.read",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(f"/v1/staff/members/{PROBE_UUID}/history"),
+    ),
+    PublicHttpOperation(
         "staff.profile.update",
         "PATCH",
         "/v1/staff/members/{membership_id}/profile",

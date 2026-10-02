@@ -4,8 +4,9 @@ Credential material lives in an explicitly configured private persistent store.
 """
 
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ALLOWED_SAMESITE = frozenset({"lax", "strict", "none"})
@@ -41,9 +42,31 @@ class AdminConsoleSettings(BaseSettings):
         if value is None:
             return None
         trimmed = value.strip().rstrip("/")
-        if not trimmed.startswith(("http://", "https://")):
-            raise ValueError("control_api_base_url must be an absolute http(s) URL")
+        try:
+            parsed = urlsplit(trimmed)
+            port = parsed.port
+        except ValueError:
+            raise ValueError("API base URL is invalid") from None
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or any(character.isspace() or ord(character) < 32 for character in trimmed)
+            or port == 0
+        ):
+            raise ValueError(
+                "API base URL must use http(s), a host and no credentials/query/fragment"
+            )
         return trimmed
+
+    @model_validator(mode="after")
+    def validate_cookie_transport(self) -> "AdminConsoleSettings":
+        if self.cookie_samesite == "none" and not self.cookie_secure:
+            raise ValueError("SameSite=None requires secure cookies")
+        return self
 
     @field_validator("session_cookie_name", "setup_cookie_name")
     @classmethod

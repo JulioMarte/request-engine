@@ -75,6 +75,8 @@ class FakeControl:
             return ControlResponse(200, {"status": "ready"}, {})
         if method == "GET" and path == "/health/live":
             return ControlResponse(200, {"status": "live"}, {})
+        if method == "GET" and path == "/health/ready":
+            return ControlResponse(200, {"status": "ready"}, {})
         if method == "POST" and path == "/v1/setup/sessions":
             return ControlResponse(
                 201,

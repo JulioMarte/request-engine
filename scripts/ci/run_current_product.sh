@@ -131,6 +131,7 @@ uv run pytest \
   tests/db/test_v3_tenant_reference_integrity.py \
   tests/db/test_staff_membership_lifecycle.py \
   tests/db/test_staff_member_profiles.py \
+  tests/db/test_staff_membership_history.py \
   tests/db/test_staff_email_invitations.py \
   tests/db/test_staff_invitation_delivery.py \
   tests/db/test_identity_governance_audit.py \

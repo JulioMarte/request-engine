@@ -76,6 +76,70 @@ async def test_profile_edit_prefills_revision_and_forwards_name_or_explicit_clea
     }
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [200, 401, 403, 404, 422, 503])
+async def test_history_is_read_only_redacted_and_forwards_trusted_session(status: int) -> None:
+    class HistoryApi(FakeApi):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if path.endswith("/history"):
+                self.requests.append((method, path, kwargs))
+                return ControlResponse(
+                    status,
+                    {
+                        "items": [
+                            {
+                                "occurred_at": "2026-10-02T12:00:00Z",
+                                "command_name": "staff.profile.update",
+                                "actor_principal_id": ORG,
+                                "revision_kind": "profile",
+                                "revision_before": 0,
+                                "revision_after": 1,
+                                "payload": "private-secret-not-for-rendering",
+                            }
+                        ],
+                        "next_cursor": MEMBER,
+                        "error": {"detail": "private-error-not-for-rendering"},
+                    },
+                    {},
+                )
+            return await super().request(method, path, **kwargs)
+
+    control, runtime = FakeApi(), HistoryApi(runtime=True)
+    settings = AdminConsoleSettings(
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=control, runtime_client=runtime)
+    path = f"/tenants/{ORG}/staff/{MEMBER}/history"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as client:
+        assert (await client.get(path)).status_code == 303
+        assert not runtime.requests
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"{path}?after={ORG}&limit=2")
+    assert page.status_code == status
+    assert "private-secret" not in page.text
+    assert "private-error" not in page.text
+    content = page.text.split("<h1>Administrative history</h1>", 1)[1].split("</main>", 1)[0]
+    assert "<form" not in content
+    assert "Newest events" in page.text
+    assert ("Display name changed" in page.text) is (status == 200)
+    assert ("Older events" in page.text) is (status == 200)
+    assert len(runtime.requests) == 1
+    method, upstream_path, kwargs = runtime.requests[0]
+    assert (method, upstream_path) == ("GET", f"/v1/staff/members/{MEMBER}/history")
+    assert kwargs["params"] == {"after": ORG, "limit": "2"}
+    assert kwargs["bearer"] == "token"
+    assert kwargs["extra_headers"] == {"X-RE-Organization-ID": ORG}
+    assert all("X-RE-Organization-ID" not in headers for headers in control.headers)
+
+
 class FakeApi:
     def __init__(self, *, runtime: bool = False) -> None:
         self.runtime = runtime
@@ -144,6 +208,12 @@ class FakeApi:
             ("/v1/staff/members", "get", "staff_list", "staff.read"),
             ("/v1/staff/members/native", "post", "staff_invite", "staff.invite"),
             ("/v1/staff/members/{membership_id}", "get", "staff_get", "staff.read"),
+            (
+                "/v1/staff/members/{membership_id}/history",
+                "get",
+                "staff_history_list",
+                "staff.read",
+            ),
             (
                 "/v1/staff/members/{membership_id}/authority:plan",
                 "post",

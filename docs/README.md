@@ -46,6 +46,9 @@ are specified in `architecture/staff-email-invitations.md`.
 
 Tenant-local staff display labels, their independent revision, restricted update
 operation and literal name search are specified in `architecture/staff-member-profiles.md`.
+Redacted tenant staff administrative history is specified in
+`architecture/staff-membership-history.md`. Temporary proof expiry and the separate
+physical-destruction gap are documented in `architecture/temporary-proof-retention.md`.
 
 Native recovery consumption is specified in `architecture/http-runtime-deployment.md`; executed validation is tracked in `architecture/auth-implementation-status.md` and the proof matrix in `testing/native-recovery-http-validation-handoff.md`.
 

@@ -37,6 +37,7 @@ _OPS = {
     "authority": "staff_manage_authority",
     "status": "staff_manage_membership",
     "profile": "staff_profile_update",
+    "history": "staff_history_list",
 }
 
 
@@ -255,6 +256,61 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             status_code=200 if response.ok else response.status_code,
         )
 
+    async def history(
+        request: Request,
+        organization_id: UUID,
+        membership_id: UUID,
+        after: UUID | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+    ) -> Response:
+        session = session_or_redirect(request)
+        if isinstance(session, RedirectResponse):
+            return session
+        if state.runtime is None:
+            return Response("Runtime API unavailable", status_code=503)
+        try:
+            catalog = await state.runtime_catalog()
+        except Exception:
+            return Response("Staff operation catalog unavailable", status_code=503)
+        operation = catalog.by_id().get(_OPS["history"])
+        if operation is None:
+            return Response("Staff history operation unavailable", status_code=503)
+        params = {"limit": str(limit)}
+        if after is not None:
+            params["after"] = str(after)
+        try:
+            response = await state.runtime_request(
+                operation.method,
+                operation.path_template.replace("{membership_id}", str(membership_id)),
+                organization_id=str(organization_id),
+                bearer=session.access_token,
+                params=params,
+            )
+        except httpx.HTTPError:
+            return Response("Staff service temporarily unavailable", status_code=503)
+        body = as_mapping(response.payload) if response.ok else {}
+        return state.templates.TemplateResponse(
+            request,
+            "resources/staff_history.html",
+            state.context(
+                request,
+                organization_id=str(organization_id),
+                membership_id=str(membership_id),
+                entries=[as_mapping(item) for item in as_list(body.get("items"))],
+                next_cursor=body.get("next_cursor"),
+                page_limit=limit,
+                after=after,
+                error=(
+                    "History cursor is invalid. Return to the newest events."
+                    if response.status_code == 422
+                    else ""
+                    if response.ok
+                    else _read_error(response.status_code)
+                ),
+            ),
+            status_code=200 if response.ok else response.status_code,
+        )
+
     async def run(
         request: Request,
         organization_id: UUID,
@@ -334,6 +390,9 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
     app.add_api_route("/tenants/{organization_id}/staff", workspace, methods=["GET"])
     app.add_api_route("/tenants/{organization_id}/staff", run, methods=["POST"])
     app.add_api_route("/tenants/{organization_id}/staff/{membership_id}", detail, methods=["GET"])
+    app.add_api_route(
+        "/tenants/{organization_id}/staff/{membership_id}/history", history, methods=["GET"]
+    )
     app.add_api_route(
         "/tenants/{organization_id}/staff/{membership_id}/{action}", run, methods=["POST"]
     )

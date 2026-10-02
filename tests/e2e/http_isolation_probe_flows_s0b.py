@@ -114,6 +114,8 @@ def foreign_request(
             },
             403,
         )
+    if operation.name == "staff.history.list":
+        return (operation.probe.path, {}, None, 403)
     if operation.name == "staff.list":
         return ("/v1/staff/members", {}, None, 403)
     if operation.name == "staff.profile.update":

@@ -4,6 +4,7 @@ from request_engine.platform.security.capabilities import CapabilityDefinition
 
 _OPERATION_ID_OVERRIDES = {
     "staff.profile.update": "staff_profile_update",
+    "staff.history.list": "staff_history_list",
     "staff.invitation.create": "staff_invitation_create",
     "staff.invitation.list": "staff_invitation_list",
     "staff.invitation.get": "staff_invitation_get",

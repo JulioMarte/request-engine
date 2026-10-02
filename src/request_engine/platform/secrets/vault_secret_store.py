@@ -6,7 +6,6 @@ reference, its fingerprint and the expiry leave the store; the raw secret is
 read back solely by the delivery channel at publication time.
 """
 
-import contextlib
 import hashlib
 from datetime import UTC, datetime
 from typing import cast
@@ -18,6 +17,10 @@ from request_engine.platform.secrets.delivery import (
     RecoveryDeliveryPermanent,
     RecoveryDeliveryRetryable,
     StagedRecoverySecret,
+)
+from request_engine.platform.secrets.kv_v2_retention import (
+    configure_version_retention,
+    verify_version_retention,
 )
 
 
@@ -80,6 +83,7 @@ class VaultRecoverySecretStore:
         digest = hashlib.sha256(secret.encode("utf-8")).hexdigest()
         try:
             async with self._client() as client:
+                await self._set_delete_version_after(client, path, expires_at)
                 response = await client.post(
                     f"/v1/{self._mount}/data/{path}",
                     headers=self._headers(),
@@ -93,7 +97,11 @@ class VaultRecoverySecretStore:
                     },
                 )
                 if response.is_success:
-                    await self._set_delete_version_after(client, path, expires_at)
+                    try:
+                        metadata = response.json().get("data")
+                    except (ValueError, AttributeError):
+                        metadata = None
+                    verify_version_retention(metadata, expires_at=expires_at)
                     return StagedRecoverySecret(
                         reference=path,
                         digest=digest,
@@ -177,6 +185,11 @@ class VaultRecoverySecretStore:
             raise RecoveryDeliveryPermanent("vault returned a malformed staged secret")
         expires_at = _parse_expires_at(expires_at_raw)
         try:
+            metadata = response.json()["data"].get("metadata")
+        except (ValueError, TypeError, KeyError, AttributeError):
+            metadata = None
+        verify_version_retention(metadata, expires_at=expires_at)
+        try:
             return StagedRecoverySecret(
                 reference=path,
                 digest=digest,
@@ -192,13 +205,13 @@ class VaultRecoverySecretStore:
         path: str,
         expires_at: datetime,
     ) -> None:
-        with contextlib.suppress(Exception):
-            seconds = max(0, int((expires_at - datetime.now(UTC)).total_seconds()))
-            await client.post(
-                f"/v1/{self._mount}/metadata/{path}",
-                headers=self._headers(),
-                json={"delete_version_after": f"{seconds}s"},
-            )
+        await configure_version_retention(
+            client,
+            endpoint=f"/v1/{self._mount}/metadata/{path}",
+            headers=self._headers(),
+            expires_at=expires_at,
+            timeout_seconds=self._timeout_seconds,
+        )
 
 
 def _mentions_cas(body: str) -> bool:

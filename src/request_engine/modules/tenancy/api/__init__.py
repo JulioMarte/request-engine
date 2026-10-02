@@ -65,6 +65,9 @@ from request_engine.modules.tenancy.adapters.db.self_authority_reader import (
 from request_engine.modules.tenancy.adapters.db.self_organization_reader import (
     PostgresSelfOrganizationReader,
 )
+from request_engine.modules.tenancy.adapters.db.staff_history_reader import (
+    PostgresStaffHistoryReader,
+)
 from request_engine.modules.tenancy.adapters.db.staff_invitation_commands import (
     PostgresStaffInvitationCommands,
 )
@@ -123,6 +126,7 @@ from request_engine.modules.tenancy.api.self_authority import (
 from request_engine.modules.tenancy.api.self_organizations import create_self_organization_router
 from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
+from request_engine.modules.tenancy.api.staff_history_reads import add_staff_history_reads
 from request_engine.modules.tenancy.api.staff_invitations import create_staff_invitation_router
 from request_engine.modules.tenancy.api.staff_membership_errors import (
     add_staff_membership_error_handlers,
@@ -278,6 +282,11 @@ def install_http(
     add_staff_membership_reads(
         staff_router,
         reader=PostgresStaffMembershipReader(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    add_staff_history_reads(
+        staff_router,
+        reader=PostgresStaffHistoryReader(session_factory),
         authenticated_actor=authenticated_actor,
     )
     add_staff_contact_routes(

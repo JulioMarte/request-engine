@@ -5,6 +5,7 @@
 <header class="page-heading"><div><p class="eyebrow">Organization {{ organization_id }}</p><h1>{{ member.display_name or 'Staff membership' }}</h1>{% if not error %}<p><code>{{ member.principal_id }}</code> · <span class="badge {{ member.status }}">{{ member.status }}</span></p>{% endif %}</div></header>
 {% if error %}<div class="alert error" role="alert">{{ error }}</div>
 {% else %}
+<p><a href="/tenants/{{ organization_id }}/staff/{{ membership_id }}/history">View administrative history →</a></p>
 <section class="card"><h2>Current permissions</h2><p class="muted">Authority revision {{ member.authority_revision }} · Membership revision {{ member.membership_revision }}</p><ul>{% for grant in member.standing_grants %}<li><code>{{ grant.capability }}</code>{% if grant.delegable %} · can delegate{% endif %}</li>{% else %}<li>No visible permissions. This is not proof that no other permissions exist.</li>{% endfor %}</ul></section>
 {% if operations.profile %}
 <section class="card"><h2>Name in this organization</h2>

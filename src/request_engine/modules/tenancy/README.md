@@ -155,6 +155,13 @@ revalidates current proof and authority.
 
 ## Staff administration reads
 
+`GET /v1/staff/members/{membership_id}/history` (`staff_history_list`) exposes
+bounded administrative actor/time/command/revision history under current HUMAN
+`staff.read`, without arbitrary audit payload, reasons, credentials or contact
+data. It projects existing durable facts, creates no new event or privilege,
+and validates cursor ownership in the same tenant/member snapshot. See
+`docs/architecture/staff-membership-history.md` for pagination, privacy and proof.
+
 Tenant-local staff display labels are updated through `staff_profile_update`
 (`PATCH /v1/staff/members/{membership_id}/profile`) and projected by the existing
 `staff_list` / `staff_get` reads. The profile revision is independent from

@@ -137,8 +137,11 @@ return `staff_invitation_identity_already_linked` (409, not retryable): review t
 existing membership/permissions; resending does not restore suspended access.
 Failed or concurrent staging can leave a provider-side candidate until expiry.
 Do not discard by generation after a transaction failure: it could delete another
-transaction's retained winner. Provider TTL metadata is best-effort in the current
-store adapters; production retention/cleanup must be verified operationally.
+transaction's retained winner. Vault/OpenBao staging now configures metadata
+before CAS creation and verifies the effective version deletion deadline, failing
+closed on metadata errors or unverified retention. KV-v2 TTL is soft deletion,
+not physical destruction. See `temporary-proof-retention.md`; expired-version
+purge and production storage/backup retention remain operationally unfinished.
 
 ## Proof and limitations
 
