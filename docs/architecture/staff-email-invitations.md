@@ -57,6 +57,17 @@ again. WRITE/EMIT commits invitation plus delivery intent and scheduled action i
 one transaction. Acceptance binds its original result to the accepting identity;
 another identity cannot reuse that result. No inviter ActorContext is fabricated.
 
+Migration `0010_invitation_topology_gate` strengthens the materialization entry:
+its first statement directly acquires the existing shared identity-topology gate,
+before delegating to the proof/session lock function that also acquires that gate.
+The repeated acquisition is transaction-local; lock roots/order, grants and
+acceptance semantics do not change. This is an additive function replacement,
+not a data backfill or table rewrite. Published 0009 and the baseline are immutable.
+Downgrade restores 0009's delegated gate; rolling forward restores the stronger
+direct-entry contract. The complete topology writer inventory and independent
+connection blocking proof now include this eight-argument command. KEEP the
+first-statement/lock-order assertions; extend their scope, do not exempt the writer.
+
 PostgreSQL's narrow materialization backstop independently rechecks proof/session
 and atomically establishes the linked principal, binding, zero-grant membership,
 acceptance receipt and provenance. A mutable transaction GUC alone cannot invoke

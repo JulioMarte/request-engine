@@ -42,6 +42,7 @@ _GATE_EXCLUSIVE = "request_engine.acquire_identity_topology_exclusive()"
 # topology tables, plus the public integration wrappers that lock a Principal
 # before delegating to their gated ``*_state`` implementation.
 _GATED_DML_WRITERS: dict[tuple[str, str], str] = {
+    ("request_cmd", "materialize_invited_staff"): _GATE_SHARE,
     ("request_engine", "confirm_identity_link_intent"): _GATE_SHARE,
     ("request_engine", "confirm_identity_link_subject"): _GATE_SHARE,
     ("request_engine", "invite_native_staff"): _GATE_SHARE,
@@ -107,6 +108,7 @@ _DIRECT_DML = re.compile(
 _BEGIN_LINE = re.compile(r"^[ \t]*BEGIN[ \t]*$", re.MULTILINE)
 
 _WRITER_CALLS: tuple[tuple[str, int], ...] = (
+    ("request_cmd.materialize_invited_staff", 8),
     ("request_engine.confirm_identity_link_intent", 5),
     ("request_engine.confirm_identity_link_subject", 5),
     ("request_engine.invite_native_staff", 7),

@@ -332,3 +332,27 @@ is native-only, not OIDC. The email policy intentionally accepts one ASCII mailb
 not display names, lists, quoted local parts or internationalized addresses.
 Names/contact metrics and a localized permission/role catalogue remain separate
 privacy/product work; the reference screenshots are not fully implemented.
+
+### Exact-head CI follow-up: documentation and topology entry
+
+Published checkpoint `73993348` failed the normative worker-documentation change
+contract. `448e008f` added the ScheduledAction invitation runtime, provider
+ambiguity and credential-boundary documentation without disabling that contract.
+Python quality, Docker E2E, observability, configuration and recovery simulation
+passed remotely at `448e008f`. Current-product PostgreSQL stopped with **379 passed,
+1 failed**: the complete identity-topology writer inventory did not yet include
+`request_cmd.materialize_invited_staff`. Its first statement delegated to the
+proof/session lock function, which takes the shared topology gate; the stronger
+direct-entry contract requires acquiring that gate in the writer itself.
+
+The correction appends `0010_invitation_topology_gate`, rather than rewriting
+published 0009. It replaces only the function body, adding the direct gate as
+its first statement while preserving proof/session checks, owner, pinned search
+path, grants, atomic zero-grant materialization and provenance. No table data
+backfill or new execution privilege is introduced. The inventory now classifies
+this writer and the existing independent-connection proof executes its
+eight-argument entrypoint. No gate-order or lock-absence assertion was removed.
+The owner contract documents upgrade/downgrade and compatibility consequences.
+
+This follow-up is under re-proof. Neither the failed remote run nor its downstream
+prerequisite failure counts as a successful current-product/vertical lane.
