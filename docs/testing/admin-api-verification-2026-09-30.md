@@ -354,5 +354,24 @@ this writer and the existing independent-connection proof executes its
 eight-argument entrypoint. No gate-order or lock-absence assertion was removed.
 The owner contract documents upgrade/downgrade and compatibility consequences.
 
-This follow-up is under re-proof. Neither the failed remote run nor its downstream
-prerequisite failure counts as a successful current-product/vertical lane.
+Local re-proof on isolated PostgreSQL 18.6 at port 55433 passed:
+
+```text
+uv run pytest tests/db/test_identity_topology_gate.py
+  tests/db/test_staff_email_invitations.py -q -m postgres --tb=short
+50 passed in 329.14s
+```
+
+The forward migration was then downgraded to 0009 in that isolated database.
+The strengthened writer-inventory test failed as expected on the delegated
+first statement (1 failed, 5.46s). Upgrading back to 0010 succeeded. The same
+inventory, independent-connection entrypoint blocking, platform-definer topology,
+app-function privileges and invitation-delivery proofs then passed **16 tests in
+97.56s**. This verifies rollback/roll-forward plus a real falsifier, not only a
+changed inventory list. Developer port 5432 was not modified.
+
+The complete `python-quality` command passed against the clean exact commit
+`12e55a542fdcbb705641841d25681094822dc1e3`; baseline/diff generation and both
+quality-evidence/v2 packets were finalized and schema-validated at that SHA.
+Remote exact-head re-proof remains required. Neither the failed remote run nor
+its downstream prerequisite failure counts as a successful current-product lane.

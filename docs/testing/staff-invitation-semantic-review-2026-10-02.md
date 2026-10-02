@@ -177,3 +177,52 @@ no client-supplied tenant and no token in query strings. Native identity is the
 supported acceptance method; OIDC acceptance and internationalized mailbox
 policy are not implemented. Do not invent dashboard/profile metrics to fill
 reference-image cards. Link remaining work to owner APIs and real read facts.
+
+### Revisión adicional: entrada directa al bloqueo de topología
+
+La CI completa de `448e008f` encontró una omisión del inventario y una diferencia
+con el contrato de primera sentencia. Se corrigieron con `0010`, sin reescribir
+`0009` ni debilitar el test. Esta revisión adicional evalúa el árbol limpio
+`12e55a542fdcbb705641841d25681094822dc1e3`, contra `448e008f`, en modo
+`BRANCH_HEAD`. Los dos paquetes v2 comparten ese source/tested/baseline SHA,
+pasaron validación de esquema y registran arquitectura, lint, tipos, unit y
+module tests aprobados. El diff tiene cero nuevas conexiones/supresiones y una
+variación de forma de navegación. No cambia las conclusiones históricas de la
+tabla anterior, cuyo código de invitación sigue igual salvo esta entrada SQL.
+
+Contexto adicional leído: unidad completa de migración 0010, cuerpo original de
+materialización y su función de bloqueo en 0009, unidad completa del test de
+topología, contrato propietario de invitaciones y políticas de evolución,
+migraciones y pruebas. No se infirió seguridad a partir del tamaño del archivo.
+
+- `candidate_id: QR-b14901988a74`; `verdict: HEALTHY_AS_IS`;
+  `confidence: medium`; `human_verdict: null`. `facts_used`: tres funciones de
+  una llamada, sin módulo de re-exportación, medido por AST. `semantic_evidence`:
+  upgrade/downgrade son puntos de entrada de Alembic y `_install` conserva un
+  solo cuerpo SQL con dos valores constantes de primera sentencia. Propietario:
+  Tenancy; responsabilidad: evolución reversible de una función existente.
+  `metric_interpretation`: no es una nueva cadena de wrappers de negocio.
+  `counterargument`: repetir el SQL de 0009 añade mantenimiento, pero importar
+  una migración histórica para generar futuras revisiones acoplaría historia
+  inmutable y evolución. `recommended_action`: conservar el cuerpo explícito;
+  `do_not_do`: modificar 0009 o crear un repositorio genérico de SQL.
+  `verification_required`: instalación y downgrade/upgrade PG18, inventario de
+  privilegios, bloqueo antes de filas, aceptación y carreras reales.
+- `candidate_id: QR-7ce31b8ba060`; `verdict: HEALTHY_AS_IS`;
+  `confidence: medium`; `human_verdict: null`. `facts_used`: 560 líneas efectivas,
+  antes 558; incremento de dos filas de inventario. `semantic_evidence`: mantiene
+  inventario exhaustivo, primera sentencia y bloqueo observable con conexiones
+  independientes dentro de una responsabilidad de topología. `metric_interpretation`:
+  el tamaño no demuestra mezcla de políticas. `counterargument`: el inventario
+  puede quedar obsoleto, por eso el test descubre writers desde `pg_proc` y exige
+  igualdad, no solo inclusión. `recommended_action`: conservar la prueba completa;
+  `do_not_do`: exceptuar este writer, retirar assertions o separar setup/oráculo
+  para bajar LOC. `verification_required`: prueba roja sobre 0009, verde sobre
+  0010 y ausencia de locks de filas mientras espera en el gate.
+
+Evidencia ejecutada: 50 pruebas PG de topología/invitaciones aprobadas; downgrade
+a 0009 seguido del fallo esperado de primera sentencia; upgrade a 0010 y 16
+pruebas de bloqueo, privilegios y entrega aprobadas. La calidad Python completa
+pasó sobre el SHA limpio indicado. La nueva CI exact-head sigue pendiente de
+publicación; el fallo remoto anterior no se presenta como prueba aprobada.
+Continúan pendientes navegador, bandeja real y actualización de la base habitual.
