@@ -71,7 +71,9 @@ class JsonFormatter(logging.Formatter):
         if isinstance(extra, dict):
             payload.update(redact(extra))
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            # Exception text/tracebacks can contain credentials or provider bodies.
+            exception_type = record.exc_info[0]
+            payload["exception_type"] = exception_type.__name__ if exception_type else "Exception"
         return json.dumps(payload, default=str, sort_keys=True)
 
 

@@ -40,6 +40,19 @@ tenant runtime API  -->  PostgreSQL / OpenBao / providers
   `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a
   restrictive `Content-Security-Policy` (`script-src 'self'` only).
 - FastAPI's `/docs`, `/redoc` and `/openapi.json` are disabled on the console.
+- Every unsafe browser request (`POST`, `PUT`, `PATCH`, `DELETE`), including
+  anonymous login and setup, requires exactly one valid same-origin `Origin`
+  header. Missing, `null`, malformed and foreign origins fail before forwarding
+  or changing cookies. Existing per-form CSRF tokens remain required too.
+  This browser-only BFF boundary does not restrict the canonical bearer APIs.
+
+Behind HTTPS ingress, preserve the public Host and configure the ASGI server's
+trusted proxy addresses so its request scheme reflects the public HTTPS origin.
+Do not trust forwarded headers from arbitrary clients or expose an unrestricted
+proxy-header listener. The console compares the ASGI request origin and does not
+read `Forwarded` or `X-Forwarded-*` itself; incorrect ingress scheme/host fails
+closed with 403, rather than disabling this guard. Default HTTP/HTTPS ports are
+normalized, but a different explicit port is a different origin.
 
 ## Configuration
 

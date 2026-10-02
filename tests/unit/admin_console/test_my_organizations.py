@@ -81,7 +81,9 @@ async def test_self_context_page_uses_runtime_without_browser_tenant_or_identity
 ) -> None:
     app, control, runtime = console
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "user", "password": "password"})
         page = await client.get(
@@ -135,7 +137,9 @@ async def test_self_context_failures_never_render_membership_links(
     elif case == "drift":
         runtime.method = "post"
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         if case != "anonymous":
             await client.post("/login", data={"login_handle": "user", "password": "password"})
@@ -162,7 +166,9 @@ async def test_empty_self_context_page_explains_membership_without_claiming_admi
         {},
     )
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "user", "password": "password"})
         page = await client.get("/my-organizations")

@@ -140,7 +140,7 @@ class AdminConsoleState:
         except Exception as exc:
             self.logger.error(
                 "openapi fetch failed",
-                extra={"extra_fields": {"error_type": type(exc).__name__, "error": str(exc)}},
+                extra={"extra_fields": {"error_type": type(exc).__name__}},
             )
             raise
         self._catalog = load_catalog(document)
@@ -184,7 +184,6 @@ class AdminConsoleState:
                         "control_method": method,
                         "control_path": path,
                         "error_type": type(exc).__name__,
-                        "error": str(exc),
                     }
                 },
             )

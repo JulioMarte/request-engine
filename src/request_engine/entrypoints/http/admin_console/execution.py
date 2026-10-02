@@ -145,9 +145,9 @@ async def execute_operation(
     fields = build_fields(operation)
     try:
         submission = parse_submission(fields, form)
+        path = render_path(operation.path_template, submission.path_params)
     except FormSubmissionError as exc:
         return form_error(str(exc))
-    path = render_path(operation.path_template, submission.path_params)
     intent_id = form.get(_INTENT_FIELD, "").strip()
     if len(intent_id) > _MAX_INTENT_LENGTH or any(
         character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
@@ -173,32 +173,32 @@ async def execute_operation(
             extra_headers=extra_headers,
             **request_kwargs,
         )
-    except httpx.TimeoutException as exc:
+    except httpx.TimeoutException:
         # A timeout is ambiguous: the upstream may have committed before the
         # response was lost. Preserve the stable intent key so an unchanged
         # replay can recover the canonical idempotent result.
         return local_error(
             504,
             "outcome_unknown",
-            str(exc),
+            "The upstream response was not confirmed.",
             idempotency_key=idempotency_key,
         )
-    except httpx.ConnectError as exc:
+    except httpx.ConnectError:
         # Connect failures occur before an HTTP exchange is established. Keep
         # the intent key for a later retry, but do not claim the command ran.
         return local_error(
             502,
             "control_unreachable",
-            str(exc),
+            "The upstream connection could not be established.",
             idempotency_key=idempotency_key,
         )
-    except httpx.HTTPError as exc:
+    except httpx.HTTPError:
         # Once a connection existed, transport failures such as a reset while
         # reading the response cannot prove rollback. Treat them like timeouts.
         return local_error(
             502,
             "outcome_unknown",
-            str(exc),
+            "The upstream response was not confirmed.",
             idempotency_key=idempotency_key,
         )
     return _from_response(response, idempotency_key)

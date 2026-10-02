@@ -12,7 +12,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from time import monotonic
-from traceback import format_exc
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -59,6 +59,30 @@ _CONTENT_SECURITY_POLICY = (
     "frame-ancestors 'none'; "
     "base-uri 'self'"
 )
+
+
+def _origin_identity(value: str) -> tuple[str, str, int] | None:
+    """Parse a serialized HTTP origin, never a URL or client proxy assertion."""
+    if any(character.isspace() for character in value) or "\\" in value:
+        return None
+    try:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            return None
+        port = parsed.port
+    except ValueError:
+        return None
+    if port is not None and not 1 <= port <= 65535:
+        return None
+    return parsed.scheme, parsed.hostname.lower(), port or (443 if parsed.scheme == "https" else 80)
 
 
 def create_admin_console_app(
@@ -123,11 +147,11 @@ def create_admin_console_app(
             state.record_error(
                 request_id=request_id,
                 kind="unhandled_exception",
-                message=str(exc),
+                message="Unhandled request exception",
                 method=request.method,
                 path=request.url.path,
                 status=500,
-                detail=format_exc() if settings.debug else None,
+                detail=type(exc).__name__ if settings.debug else None,
             )
             state.logger.error(
                 "unhandled request exception",
@@ -147,7 +171,7 @@ def create_admin_console_app(
                 state.context(
                     request,
                     request_id=request_id,
-                    detail=format_exc() if settings.debug else None,
+                    detail=type(exc).__name__ if settings.debug else None,
                 ),
                 status_code=500,
             )
@@ -175,7 +199,18 @@ def create_admin_console_app(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        response = await call_next(request)
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            origins = request.headers.getlist("origin")
+            # The ASGI server supplies trusted scheme/host after its configured
+            # ingress boundary. Never read Forwarded/X-Forwarded-* here.
+            target = _origin_identity(f"{request.url.scheme}://{request.url.netloc}")
+            source = _origin_identity(origins[0]) if len(origins) == 1 else None
+            if source is None or target is None or source != target:
+                response = JSONResponse({"error": "Same-origin request required"}, status_code=403)
+            else:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"

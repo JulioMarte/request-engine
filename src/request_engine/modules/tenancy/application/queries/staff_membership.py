@@ -39,6 +39,12 @@ class StaffOverview:
 
 
 @dataclass(frozen=True, slots=True)
+class StaffMembershipPage:
+    items: tuple[StaffMembershipSummary, ...]
+    next_cursor: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
 class PlanStaffAuthorityQuery:
     membership_id: UUID
     expected_authority_revision: int
@@ -83,7 +89,7 @@ class StaffMembershipReader(Protocol):
 
     async def list_memberships(
         self, actor: ActorContext, query: ListStaffMembershipsQuery
-    ) -> tuple[StaffMembershipSummary, ...]: ...
+    ) -> StaffMembershipPage: ...
 
     async def read_membership(
         self, actor: ActorContext, membership_id: UUID

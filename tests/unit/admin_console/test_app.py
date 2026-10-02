@@ -149,6 +149,7 @@ def _client(app: Any) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://console",
+        headers={"Origin": "http://console"},
         follow_redirects=False,
     )
 
@@ -322,12 +323,16 @@ async def test_diagnostics_requires_session_then_renders() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unhandled_error_renders_error_page_and_is_tracked() -> None:
+@pytest.mark.parametrize("debug", [False, True])
+async def test_unhandled_error_renders_error_page_and_is_tracked(
+    debug: bool, capfd: pytest.CaptureFixture[str]
+) -> None:
     class BrokenCatalog(FakeControl):
         async def openapi(self) -> dict[str, Any]:
-            raise RuntimeError("openapi boom")
+            raise RuntimeError("private-password-canary")
 
-    app = create_admin_console_app(_settings(), client=BrokenCatalog())
+    settings = _settings().model_copy(update={"debug": debug})
+    app = create_admin_console_app(settings, client=BrokenCatalog())
     async with _client(app) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get("/operations/thing_create")
@@ -338,6 +343,8 @@ async def test_unhandled_error_renders_error_page_and_is_tracked() -> None:
         assert tracked.status_code == 200
         errors = tracked.json()["errors"]
         assert any(event["kind"] == "unhandled_exception" for event in errors)
+        assert "private-password-canary" not in response.text + tracked.text
+    assert "private-password-canary" not in capfd.readouterr().err
 
 
 @pytest.mark.asyncio

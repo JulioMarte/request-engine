@@ -15,6 +15,7 @@ from request_engine.modules.tenancy.application.queries.staff_membership import 
     ListStaffMembershipsQuery,
     PlanStaffAuthorityQuery,
     StaffAuthorityPlan,
+    StaffMembershipPage,
     StaffMembershipSummary,
     StaffOverview,
 )
@@ -44,7 +45,7 @@ class RecordingReader:
 
     async def list_memberships(
         self, actor: ActorContext, query: ListStaffMembershipsQuery
-    ) -> tuple[StaffMembershipSummary, ...]:
+    ) -> StaffMembershipPage:
         del actor
         self.list_queries.append(query)
         start = 0
@@ -57,7 +58,11 @@ class RecordingReader:
                 ),
                 len(self.members),
             )
-        return self.members[start : start + query.limit]
+        items = self.members[start : start + query.limit]
+        return StaffMembershipPage(
+            items,
+            items[-1].membership_id if start + query.limit < len(self.members) else None,
+        )
 
     async def read_membership(
         self, actor: ActorContext, membership_id: UUID
@@ -214,7 +219,8 @@ async def test_new_reads_require_their_existing_capabilities() -> None:
 
 
 @pytest.mark.asyncio
-async def test_staff_list_pages_through_more_than_fifty_members_without_loss() -> None:
+@pytest.mark.parametrize("total", [50, 51, 100])
+async def test_staff_list_pages_without_loss_or_false_continuation(total: int) -> None:
     app, reader = _app(_actor("staff.read"))
     reader.members = tuple(
         StaffMembershipSummary(
@@ -227,12 +233,16 @@ async def test_staff_list_pages_through_more_than_fifty_members_without_loss() -
             authority_anchor_party_id=None,
             standing_grants=(),
         )
-        for index in range(51)
+        for index in range(total)
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
         first = await http.get("/v1/staff/members?limit=50")
         first_body = first.json()
+        if first_body["next_cursor"] is None:
+            assert total == 50
+            assert len(first_body["items"]) == 50
+            return
         second = await http.get(
             "/v1/staff/members",
             params={"limit": 50, "after": first_body["next_cursor"]},
@@ -242,11 +252,11 @@ async def test_staff_list_pages_through_more_than_fifty_members_without_loss() -
     assert first.status_code == 200
     assert second.status_code == 200
     assert len(first_body["items"]) == 50
-    assert len(second_body["items"]) == 1
+    assert len(second_body["items"]) == total - 50
     assert first_body["next_cursor"] == str(UUID(int=50))
     assert second_body["next_cursor"] is None
     seen = [item["membership_id"] for item in first_body["items"] + second_body["items"]]
-    assert len(seen) == len(set(seen)) == 51
+    assert len(seen) == len(set(seen)) == total
 
 
 @pytest.mark.asyncio

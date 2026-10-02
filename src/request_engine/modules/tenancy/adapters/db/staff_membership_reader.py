@@ -12,6 +12,7 @@ from request_engine.modules.tenancy.application.queries.staff_membership import 
     PlanStaffAuthorityQuery,
     StaffAuthorityGrant,
     StaffAuthorityPlan,
+    StaffMembershipPage,
     StaffMembershipStatus,
     StaffMembershipSummary,
     StaffOverview,
@@ -102,16 +103,21 @@ class PostgresStaffMembershipReader:
 
     async def list_memberships(
         self, actor: ActorContext, query: ListStaffMembershipsQuery
-    ) -> tuple[StaffMembershipSummary, ...]:
+    ) -> StaffMembershipPage:
         if not 1 <= query.limit <= 100:
             raise ValueError("limit must be between 1 and 100")
-        return await self._read(
+        rows = await self._read(
             actor,
             membership_id=None,
             after=query.after,
-            limit=query.limit,
+            limit=query.limit + 1,
             status=query.status,
             search=query.search.strip() if query.search is not None else None,
+        )
+        items = rows[: query.limit]
+        return StaffMembershipPage(
+            items=items,
+            next_cursor=items[-1].membership_id if len(rows) > query.limit else None,
         )
 
     async def read_membership(

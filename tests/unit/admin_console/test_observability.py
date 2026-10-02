@@ -1,5 +1,6 @@
 import json
 import logging
+import sys
 
 from request_engine.entrypoints.http.admin_console.observability import (
     ConsoleMetrics,
@@ -57,6 +58,19 @@ def test_error_tracker_is_bounded_and_reversed() -> None:
     recent = tracker.recent()
     assert [event.request_id for event in recent] == ["r2", "r1"]
     assert tracker.total() == 2
+
+
+def test_exception_formatter_does_not_persist_exception_text_or_traceback() -> None:
+    try:
+        raise RuntimeError("private-password-canary")
+    except RuntimeError:
+        record = logging.LogRecord(
+            "t", logging.ERROR, __file__, 1, "safe error", (), sys.exc_info()
+        )
+    rendered = JsonFormatter().format(record)
+    assert "private-password-canary" not in rendered
+    assert json.loads(rendered)["exception_type"] == "RuntimeError"
+    assert "exception" not in json.loads(rendered)
 
 
 def test_console_metrics_counts() -> None:

@@ -1,14 +1,16 @@
+from dataclasses import replace
+
 import httpx
 import pytest
 
-from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
+from request_engine.entrypoints.http.admin_console.catalog import AdminOperation, AdminParameter
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
 
 
 class _TimeoutState:
     async def control_request(self, *args: object, **kwargs: object):  # noqa: ANN202
         request = httpx.Request("POST", "https://control.test/v1/example")
-        raise httpx.ReadTimeout("response lost", request=request)
+        raise httpx.ReadTimeout("private-password-canary", request=request)
 
 
 def _operation() -> AdminOperation:
@@ -49,6 +51,7 @@ async def test_timeout_is_ambiguous_and_preserves_stable_intent_key() -> None:
     assert outcome.idempotency_key == intent
     assert "may have completed" in outcome.message.lower()
     assert "nothing was changed" not in outcome.message.lower()
+    assert "private-password-canary" not in outcome.payload_json + outcome.message
 
 
 class _ReadErrorState:
@@ -61,6 +64,23 @@ class _ConnectErrorState:
     async def control_request(self, *args: object, **kwargs: object):  # noqa: ANN202
         request = httpx.Request("POST", "https://control.test/v1/example")
         raise httpx.ConnectError("connection refused", request=request)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", ["..", "../another", "a/b", "a\\b"])
+async def test_invalid_resource_segment_fails_before_any_api_call(value: str) -> None:
+    class NoCalls:
+        async def control_request(self, *args: object, **kwargs: object):  # noqa: ANN202
+            pytest.fail("Invalid path must not reach an upstream API")
+
+    operation = replace(
+        _operation(),
+        path_template="/v1/things/{thing_id}:run",
+        parameters=(AdminParameter("thing_id", "path", True, {"type": "string"}, ""),),
+    )
+    outcome = await execute_operation(NoCalls(), operation, bearer="test", form={"thing_id": value})
+    assert outcome.status == 422
+    assert outcome.error_code == "form_error"
 
 
 @pytest.mark.asyncio

@@ -68,3 +68,15 @@ authority revocation, foreign-row opacity, direct DML denial, literal search bef
 limit and independent contested updates. Module/unit tests cover typed transport,
 normalization and denial before DB access. Canonical lanes: Python quality and
 PostgreSQL current product proof. Browser and usability proof remain separate.
+
+## Membership list pagination
+
+`staff_list` remains a HUMAN `staff.read` Query with the same HTTP path, input
+limit 1..100, filters, failure semantics and tenant authority. No idempotency key
+or revision is introduced. The owner returns typed `StaffMembershipPage` rather
+than requiring the HTTP adapter to infer continuation from a full page.
+The SQL reader applies status/literal-name filters before fetching limit+1 rows,
+returns at most the requested limit, and publishes a cursor only when a further
+matching row exists. An exactly-full terminal page has no continuation; an empty
+page has neither items nor cursor. This uses the existing one-statement authority
+snapshot and does not introduce writes, providers, new ACLs or schema changes.

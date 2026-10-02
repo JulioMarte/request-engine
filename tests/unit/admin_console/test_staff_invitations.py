@@ -126,7 +126,11 @@ def client_for(api: InvitationApi) -> httpx.AsyncClient:
         cookie_secure=False,
     )
     app = create_admin_console_app(settings, client=api, runtime_client=api)
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://console")
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
+    )
 
 
 def csrf(page: httpx.Response) -> str:

@@ -91,6 +91,18 @@ def test_render_path_substitutes_parameters() -> None:
     )
 
 
+@pytest.mark.parametrize("value", [".", "..", "../other", "a/b", "a\\b"])
+def test_render_path_rejects_segment_traversal(value: str) -> None:
+    with pytest.raises(FormSubmissionError, match="single resource segment"):
+        render_path("/v1/things/{thing_id}:run", {"thing_id": value})
+
+
+def test_render_path_encodes_query_fragment_and_literal_percent_without_changing_method() -> None:
+    assert render_path("/v1/things/{thing_id}:run", {"thing_id": "name?x=1#frag%2F"}) == (
+        "/v1/things/name%3Fx%3D1%23frag%252F:run"
+    )
+
+
 def test_explicit_empty_nullable_field_is_null_not_omitted_or_literal_text() -> None:
     from copy import deepcopy
 

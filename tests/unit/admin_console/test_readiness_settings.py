@@ -52,7 +52,9 @@ async def test_console_readiness_rejects_unready_dependency_without_leaking_payl
         runtime_client=runtime,
     )
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         assert (await client.get("/health/live")).status_code == 200
         assert control.calls == runtime.calls == []
@@ -81,7 +83,9 @@ async def test_console_readiness_checks_only_enabled_apis(
         runtime_client=runtime if tenant_enabled else None,
     )
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         response = await client.get("/health/ready")
     assert response.status_code == 200

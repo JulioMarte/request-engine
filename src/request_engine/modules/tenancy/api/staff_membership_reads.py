@@ -152,13 +152,13 @@ def add_staff_membership_reads(
     ) -> StaffMembershipPageView:
         require_capability(actor, "staff.read")
         response.headers["Cache-Control"] = "no-store"
-        rows = await reader.list_memberships(
+        page = await reader.list_memberships(
             actor,
             ListStaffMembershipsQuery(params.after, params.limit, params.status, params.search),
         )
         return StaffMembershipPageView(
-            items=[_view(row) for row in rows],
-            next_cursor=rows[-1].membership_id if len(rows) == params.limit else None,
+            items=[_view(row) for row in page.items],
+            next_cursor=page.next_cursor,
         )
 
     async def read_membership(

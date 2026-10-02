@@ -130,3 +130,94 @@ pruebas deterministas ni autorizan excepciones a garantías.
    de merge en development; main permanece release-only.
 
 No baseline ni garantías HARD modificadas. No reset ni migración destructiva.
+
+## Continuación adversarial posterior a c696
+
+### Reporte simple (para humanos)
+
+Se cerraron otros fallos encontrados al revisar el branch: solicitudes de un sitio
+externo podían iniciar otra cuenta en el navegador, la lista ofrecía una página
+inexistente al terminar exactamente llena, y texto de excepciones podía contener
+secretos. Se protegen ahora los cambios del panel, la navegación y el diagnóstico.
+
+La herramienta de limpieza nueva es solo para aceptación en servidores de prueba.
+No se habilitó en producción: borrar y recrear una clave durante la limpieza
+puede hacer que el proveedor destruya una versión nueva. Hay una prueba que
+demuestra ese límite; que pase no significa que el algoritmo sea seguro para
+producción. Tampoco hay revisión semántica completa de todo el branch.
+
+### Reporte técnico (detallado)
+
+- `app.py::_origin_identity/security_headers`: POST/PUT/PATCH/DELETE exigen un
+  único Origin serializado con mismo scheme/host/puerto; normaliza puertos default,
+  rechaza ausente/null/malformado/externo antes de upstream o Set-Cookie. APIs
+  bearer canónicas no cambian. README del BFF documenta proxy confiable para HTTPS;
+  no se leen headers Forwarded de clientes arbitrarios para conceder acceso.
+  Clientes de tests declaran su Origin explícito, sin monkeypatch global.
+- `test_origin_boundary.py`: 84 casos negativos y flujo same-origin PASS. Prueba
+  contra app exacta c696 cargada solo en memoria falló como debe: el Origin atacante
+  provocaba 303 y llamada upstream, en vez de 403. No equivale a Chrome real.
+- `StaffMembershipPage` en aplicación, reader `limit+1` y DTO HTTP: paginación
+  correcta en límite exacto, máximo público 100 inalterado, filtros antes del LIMIT.
+  Reader/app Query siguen mismos owner/autoridad/snapshot; no migration/ACL.
+- `forms.py::render_path`: percent-encoding por segmento, rechazo de slash,
+  backslash y segmentos `.`/`..`; executor captura error antes del forwarding.
+  Conserva el suffix de método semántico y no recibe URLs completas.
+- `observability.py::JsonFormatter`, `app.py` y `state.py`: error tipo/código y
+  request ID en lugar de texto/traceback bruto; incluso debug no muestra texto de
+  excepciones. `execution.py` evita incluirlo en payloads de fallos de transporte.
+  Se pierde detalle libre deliberadamente; no se promete redacción mágica de todo
+  texto arbitrario ni se loguean credenciales para facilitar diagnóstico.
+- `temporary_proof_cleanup_acceptance.py` técnico y CLI, primitive
+  `probe_expired_temporary_proof_destruction`: recibos tipados, namespace cerrado,
+  versiones explícitas, expiry business y provider más grace, reinspection y
+  reconciliación. Opt-in, loopback y redirects deshabilitados; operador debe
+  garantizar servidor test real, no un túnel a producción. Sin scheduler.
+  Contraejemplo de recreación de versión 1 confirma bloqueo HARD; rediseñar
+  non-reuse/ACL/discard o conseguir destroy atómico antes de habilitar producción.
+
+Evidencia adicional:
+
+- PG18 aislado: `uv run pytest tests/db/test_staff_membership_lifecycle.py
+  tests/db/test_staff_member_profiles.py -q -m postgres --tb=short`: **34 passed**,
+  212.39s; cubre límite final, filtros, search, autoridad y lifecycle existentes.
+- `uv run pytest tests/modules/tenancy/test_staff_membership_admin_router.py
+  -q --tb=short`: **17 passed**, incluyendo totales 50/51/100.
+- `uv run pytest tests/unit/admin_console -q --tb=short`: **246 passed** antes
+  de añadir cuatro casos adicionales de rechazo de path en el executor.
+  Canary de excepción ausente en respuesta, diagnóstico y stderr con debug false/true.
+- Stores/cleanup: **123 unit passed**, Ruff/Pyright focal PASS. Probe real aislado
+  Vault1.21.0 y OpenBao2.6.1 confirma TTL, ganador CAS, versión destruida y retry
+  reconciliado. No certifica físico/backups, ACL producción ni carrera recreación.
+  Contenedores test removidos; DB local y datos del usuario preservados.
+- Primer bloque c696: certificado local PASS 215.562s; push origin realizado;
+  **nueve checks GitHub exact-head SUCCESS**. No se atribuye esa CI al árbol posterior.
+- Revisión exacta c696: 108 paquetes v2 validados; 20 relacionados con el primer
+  bloque revisados por root, 88 restantes: 16 HEALTHY_AS_IS, 8 REVIEW_CONCERN y
+  **64 INSUFFICIENT_CONTEXT**. No aprobación humana inferida ni completitud ficticia.
+  Falta lectura semántica completa de SQL/migraciones, WebAuthn/session y pruebas
+  asociadas. Las suites verdes no sustituyen esa revisión.
+
+Pendientes siguen siendo los seis enumerados arriba, con la limpieza productiva
+explícitamente bloqueada. Verificación agregada final y certificado del nuevo SHA
+se registran en los resultados de publicación; la CI del nuevo head es independiente.
+
+### Resultado de validación agregada
+
+`uv run python scripts/ci/ci_jobs.py python-quality --log-dir
+.ci/admin-production-final-quality --summary-output .ci/admin-production-final-quality.json`
+terminó con exit 0: **201 arquitectura, 908 unit y 645 módulos passed**;
+lint/formato/Pyright/secret scan/SAST/dependency audit PASS. Una advertencia
+preexistente del cliente de pruebas no constituye un fallo.
+
+Con procesos locales reiniciados sobre este árbol, POST `/login` con Origin externo
+devuelve **403 sin Set-Cookie**; `/health/ready` sigue ready. Es prueba HTTP local,
+no Chrome. Los resultados PostgreSQL focales arriba siguen siendo los ejecutados;
+no se declara una corrida local PostgreSQL completa de este segundo bloque.
+
+El informe de revisión parcial exacta c696, con los 88 IDs y disposiciones,
+está preservado en
+[`admin-production-branch-review-2026-10-02.md`](admin-production-branch-review-2026-10-02.md).
+Sus hallazgos describen ese SHA anterior; paginación, Origin, paths y excepciones
+fueron corregidos posteriormente como se detalla aquí. No modificar el informe
+histórico para fingir que esos fallos nunca existieron.

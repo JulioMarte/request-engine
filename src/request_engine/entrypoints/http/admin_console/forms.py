@@ -12,6 +12,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
@@ -179,7 +180,9 @@ def parse_submission(
 def render_path(path_template: str, path_params: Mapping[str, str]) -> str:
     rendered = path_template
     for name, value in path_params.items():
-        rendered = rendered.replace("{" + name + "}", value)
+        if value in {".", ".."} or "/" in value or "\\" in value:
+            raise FormSubmissionError("Path parameters must identify a single resource segment")
+        rendered = rendered.replace("{" + name + "}", quote(value, safe=""))
     return rendered
 
 

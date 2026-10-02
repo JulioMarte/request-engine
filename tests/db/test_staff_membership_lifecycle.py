@@ -1166,7 +1166,9 @@ async def test_staff_reads_recheck_revoked_authority_with_a_previously_valid_act
         authority_revision=_principal_revision(admin_conn, root_id),
     )
     reader = PostgresStaffMembershipReader(command_session_factory)
-    members = await reader.list_memberships(actor, ListStaffMembershipsQuery())
+    page = await reader.list_memberships(actor, ListStaffMembershipsQuery(limit=1))
+    members = page.items
+    assert page.next_cursor is None
     assert len(members) == 1
     assert members[0].principal_id == root_id
     assert await reader.read_membership(actor, members[0].membership_id) == members[0]
@@ -1236,18 +1238,19 @@ async def test_staff_status_filter_precedes_limit_and_preserves_tenant_opacity(
     first = await reader.list_memberships(
         actor, ListStaffMembershipsQuery(limit=1, status="invited")
     )
-    assert [member.membership_id for member in first] == expected_ids[:1]
+    assert [member.membership_id for member in first.items] == expected_ids[:1]
+    assert first.next_cursor == expected_ids[0]
     second = await reader.list_memberships(
-        actor, ListStaffMembershipsQuery(after=first[0].membership_id, limit=1, status="invited")
+        actor, ListStaffMembershipsQuery(after=first.next_cursor, limit=1, status="invited")
     )
-    assert [member.membership_id for member in second] == expected_ids[1:]
-    assert (
-        await reader.list_memberships(
-            actor, ListStaffMembershipsQuery(after=second[0].membership_id, status="invited")
-        )
-        == ()
+    assert [member.membership_id for member in second.items] == expected_ids[1:]
+    assert second.next_cursor is None
+    last = await reader.list_memberships(
+        actor, ListStaffMembershipsQuery(after=second.items[0].membership_id, status="invited")
     )
-    assert await reader.list_memberships(actor, ListStaffMembershipsQuery(status="suspended")) == ()
+    assert last.items == () and last.next_cursor is None
+    empty = await reader.list_memberships(actor, ListStaffMembershipsQuery(status="suspended"))
+    assert empty.items == () and empty.next_cursor is None
     overview = await reader.read_overview(actor)
     assert (overview.total, overview.active, overview.invited) == (3, 1, 2)
     assert (

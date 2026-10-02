@@ -42,7 +42,9 @@ async def test_profile_edit_prefills_revision_and_forwards_name_or_explicit_clea
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "manager", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
@@ -117,7 +119,9 @@ async def test_history_is_read_only_redacted_and_forwards_trusted_session(status
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     path = f"/tenants/{ORG}/staff/{MEMBER}/history"
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         assert (await client.get(path)).status_code == 303
         assert not runtime.requests
@@ -294,7 +298,9 @@ async def test_staff_workspace_forwards_tenant_selector_only_to_runtime() -> Non
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff")
@@ -339,7 +345,9 @@ async def test_staff_workspace_forwards_cursor_and_renders_next_page() -> None:
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff?after={MEMBER}&limit=1")
@@ -375,7 +383,9 @@ async def test_name_search_is_forwarded_and_encoded_in_both_page_links() -> None
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "manager", "password": "pw"})
         page = await client.get(
@@ -416,7 +426,9 @@ async def test_staff_workspace_rejects_invalid_pagination_before_runtime() -> No
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         bad_cursor = await client.get(f"/tenants/{ORG}/staff?after=not-a-uuid")
@@ -441,7 +453,9 @@ async def test_staff_member_route_rejects_invite_action() -> None:
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         session_cookie = client.cookies.get(settings.session_cookie_name)
@@ -472,7 +486,9 @@ async def test_staff_detail_warns_that_native_session_revocation_is_global() -> 
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
@@ -495,7 +511,9 @@ async def test_staff_detail_without_runtime_fails_closed() -> None:
     )
     app = create_admin_console_app(settings, client=control)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
@@ -536,7 +554,9 @@ async def test_staff_workspace_failed_read_hides_mutations(
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get(f"/tenants/{ORG}/staff")
@@ -569,7 +589,9 @@ async def test_staff_detail_not_found_renders_no_mutation_forms() -> None:
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
@@ -622,7 +644,9 @@ async def test_staff_authority_apply_exists_only_after_successful_review() -> No
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         detail = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
@@ -702,7 +726,9 @@ async def test_blocked_staff_authority_preview_never_offers_apply() -> None:
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         detail = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
@@ -738,7 +764,9 @@ async def test_staff_workspace_renders_previous_page_from_validated_trail() -> N
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff?after={MEMBER}&limit=1&trail=root")
@@ -762,7 +790,9 @@ async def test_staff_workspace_rejects_forged_pagination_trail() -> None:
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get(f"/tenants/{ORG}/staff?after={MEMBER}&trail=not-a-cursor")
@@ -788,7 +818,9 @@ async def test_staff_workspace_catalog_failure_is_503_not_500() -> None:
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get(f"/tenants/{ORG}/staff")
@@ -820,7 +852,9 @@ async def test_staff_status_filter_is_api_backed_and_survives_both_page_links() 
     )
     app = create_admin_console_app(settings, client=control, runtime_client=runtime)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://console"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get(

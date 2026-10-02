@@ -459,6 +459,7 @@ def _client(app: Any) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://console",
+        headers={"Origin": "http://console"},
         follow_redirects=False,
     )
 

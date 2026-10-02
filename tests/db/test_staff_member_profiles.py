@@ -162,8 +162,10 @@ async def test_profile_search_is_literal_tenant_scoped_and_applied_before_limit(
         rows = await reader.list_memberships(
             actor, ListStaffMembershipsQuery(limit=1, search=search)
         )
-        assert [row.membership_id for row in rows] == [member]
-    assert await reader.list_memberships(actor, ListStaffMembershipsQuery(search="%anything")) == ()
+        assert [row.membership_id for row in rows.items] == [member]
+        assert rows.next_cursor is None
+    empty = await reader.list_memberships(actor, ListStaffMembershipsQuery(search="%anything"))
+    assert empty.items == () and empty.next_cursor is None
 
 
 def test_profile_table_runtime_dml_denied_and_foreign_rows_are_hidden(
