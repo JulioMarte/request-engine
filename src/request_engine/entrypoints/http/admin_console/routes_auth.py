@@ -53,23 +53,37 @@ def _new_session(
     )
 
 
+def _login_next(value: object) -> str:
+    return "/staff-invitations/accept" if value == "/staff-invitations/accept" else "/"
+
+
 def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def login_page(request: Request) -> Response:
         # An unexpired local handle is not proof that its upstream bearer remains
         # valid. Always allow explicit reauthentication, including after revocation.
         return state.templates.TemplateResponse(
-            request, "login.html", state.context(request, error=None, notice=None)
+            request,
+            "login.html",
+            state.context(
+                request,
+                error=None,
+                notice=None,
+                next_url=_login_next(request.query_params.get("next")),
+            ),
         )
 
     async def login(request: Request) -> Response:
         form = await request.form()
+        next_url = _login_next(form.get("next"))
         login_handle = str(form.get("login_handle", "")).strip()
         password = str(form.get("password", ""))
         if not login_handle or not password:
             return state.templates.TemplateResponse(
                 request,
                 "login.html",
-                state.context(request, error="Login and password are required", notice=None),
+                state.context(
+                    request, error="Login and password are required", notice=None, next_url=next_url
+                ),
                 status_code=400,
             )
         response = await state.control_request(
@@ -81,7 +95,9 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
             return state.templates.TemplateResponse(
                 request,
                 "login.html",
-                state.context(request, error=_login_error(response), notice=None),
+                state.context(
+                    request, error=_login_error(response), notice=None, next_url=next_url
+                ),
                 status_code=401,
             )
         access_token = as_mapping(response.payload).get("access_token")
@@ -90,11 +106,14 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 request,
                 "login.html",
                 state.context(
-                    request, error="Control plane returned no session token", notice=None
+                    request,
+                    error="Control plane returned no session token",
+                    notice=None,
+                    next_url=next_url,
                 ),
                 status_code=502,
             )
-        redirect = RedirectResponse("/", status_code=303)
+        redirect = RedirectResponse(next_url, status_code=303)
         state.attach_session(
             redirect,
             _new_session(state, access_token, as_mapping(response.payload).get("expires_at")),

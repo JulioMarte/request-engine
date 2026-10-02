@@ -22,6 +22,73 @@ _DESTINATION = "recover@example.test"
 _KEY = "11111111-1111-1111-1111-111111111111:1"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "destination",
+    [
+        "recipient@example.test,other",
+        "Name <recipient@example.test>",
+        "recipient@example.test\nBcc: other@example.test",
+        "récepteur@example.test",
+    ],
+)
+async def test_destination_cannot_expand_to_other_recipients(destination: str) -> None:
+    transport = _SmtpTransportDouble()
+    with pytest.raises(RecoveryDeliveryPermanent):
+        await _channel(transport).send(
+            secret=_SECRET,
+            destination_reference=destination,
+            idempotency_key=_KEY,
+        )
+    assert transport.instances == []
+
+
+@pytest.mark.asyncio
+async def test_staff_invitation_message_uses_fragment_and_distinct_purpose() -> None:
+    transport = _SmtpTransportDouble()
+    proof = "11111111-1111-1111-1111-111111111111.secret-proof"
+    channel = SmtpRecoveryDeliveryChannel(
+        host="smtp.example.test",
+        port=587,
+        sender="noreply@example.test",
+        reset_url="https://console.example.test/staff-invitations",
+        purpose="staff_invitation",
+        transport=transport,
+    )
+    assert (
+        await channel.send(
+            secret=proof,
+            destination_reference=_DESTINATION,
+            idempotency_key=_KEY,
+        )
+        is DeliveryOutcome.DELIVERED
+    )
+    message = transport.instances[0].sent[0]
+    assert message["Subject"] == "You are invited to Request Engine"
+    assert proof not in str(message.items())
+    body = str(message.get_content())
+    assert f"/11111111-1111-1111-1111-111111111111/accept#token={proof}" in body
+    assert "not permission" in body
+
+
+@pytest.mark.asyncio
+async def test_invalid_invitation_envelope_never_opens_smtp() -> None:
+    transport = _SmtpTransportDouble()
+    channel = SmtpRecoveryDeliveryChannel(
+        host="smtp.example.test",
+        port=587,
+        sender="noreply@example.test",
+        reset_url="https://console.example.test/staff-invitations",
+        purpose="staff_invitation",
+        transport=transport,
+    )
+    with pytest.raises(RecoveryDeliveryPermanent):
+        await channel.send(
+            secret="bad-envelope", destination_reference=_DESTINATION, idempotency_key=_KEY
+        )
+    assert transport.instances == []
+
+
 class _RecordingSmtp(smtplib.SMTP):
     """Minimal SMTP double that records calls and never opens a socket."""
 

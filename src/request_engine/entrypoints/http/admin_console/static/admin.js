@@ -235,7 +235,8 @@
         });
       })
       .then(function () {
-        window.location.href = "/";
+        var nextInput = document.querySelector('input[name="next"]');
+        window.location.href = nextInput && nextInput.value === "/staff-invitations/accept" ? nextInput.value : "/";
       });
   }
 

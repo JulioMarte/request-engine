@@ -15,7 +15,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from request_engine.platform.secrets.composed_delivery import ComposedRecoverySecretDelivery
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
-from request_engine.platform.secrets.delivery_parts import RecoveryDeliveryChannel
+from request_engine.platform.secrets.delivery_parts import (
+    RecoveryDeliveryChannel,
+    RecoverySecretStore,
+)
 from request_engine.platform.secrets.openbao_recovery_secret_store import (
     OpenBaoRecoverySecretStore,
 )
@@ -34,6 +37,7 @@ class RecoveryDeliverySettings(BaseSettings):
     )
     recovery_delivery_factory: str | None = None
     recovery_reset_url: str | None = None
+    staff_invitation_accept_url: str | None = None
     openbao_addr: str | None = None
     openbao_token: SecretStr | None = None
     openbao_namespace: str | None = None
@@ -138,28 +142,8 @@ def build_recovery_secret_delivery(
             "missing: " + ", ".join(missing)
         )
 
-    if openbao_configured:
-        store = OpenBaoRecoverySecretStore(
-            address=_required_text("REQUEST_ENGINE_OPENBAO_ADDR", resolved.openbao_addr),
-            token=(
-                resolved.openbao_token.get_secret_value()
-                if resolved.openbao_token is not None
-                else None
-            ),
-            mount=resolved.openbao_mount,
-            path_prefix=resolved.openbao_path_prefix,
-            timeout_seconds=resolved.openbao_timeout_seconds,
-            namespace=resolved.openbao_namespace,
-        )
-    else:
-        store = VaultRecoverySecretStore(
-            address=_required_text("REQUEST_ENGINE_VAULT_ADDR", resolved.vault_addr),
-            token=_required_secret("REQUEST_ENGINE_VAULT_TOKEN", resolved.vault_token),
-            mount=resolved.vault_mount,
-            path_prefix=resolved.vault_path_prefix,
-            timeout_seconds=resolved.vault_timeout_seconds,
-            namespace=resolved.vault_namespace,
-        )
+    store = build_recovery_secret_store(resolved)
+    assert store is not None
     channel = channel_override
     if channel is None:
         channel = SmtpRecoveryDeliveryChannel(
@@ -178,6 +162,43 @@ def build_recovery_secret_delivery(
             reset_url=resolved.recovery_reset_url,
         )
     return ComposedRecoverySecretDelivery(store=store, channel=channel)
+
+
+def build_recovery_secret_store(
+    settings: RecoveryDeliverySettings,
+) -> RecoverySecretStore | None:
+    """Compose governed retention independently of optional SMTP transport.
+
+    This is the same store used by recovery delivery; no additional secret path
+    or provider mechanism exists for issuing an asynchronously delivered proof.
+    """
+    openbao_configured = _has_text(settings.openbao_addr) or _has_secret(settings.openbao_token)
+    vault_configured = _has_text(settings.vault_addr) or _has_secret(settings.vault_token)
+    if openbao_configured and vault_configured:
+        raise RuntimeError("configure exactly one recovery secret-store backend: OpenBao or Vault")
+    if not openbao_configured and not vault_configured:
+        return None
+    if openbao_configured:
+        return OpenBaoRecoverySecretStore(
+            address=_required_text("REQUEST_ENGINE_OPENBAO_ADDR", settings.openbao_addr),
+            token=(
+                None
+                if settings.openbao_token is None
+                else settings.openbao_token.get_secret_value()
+            ),
+            mount=settings.openbao_mount,
+            path_prefix=settings.openbao_path_prefix,
+            timeout_seconds=settings.openbao_timeout_seconds,
+            namespace=settings.openbao_namespace,
+        )
+    return VaultRecoverySecretStore(
+        address=_required_text("REQUEST_ENGINE_VAULT_ADDR", settings.vault_addr),
+        token=_required_secret("REQUEST_ENGINE_VAULT_TOKEN", settings.vault_token),
+        mount=settings.vault_mount,
+        path_prefix=settings.vault_path_prefix,
+        timeout_seconds=settings.vault_timeout_seconds,
+        namespace=settings.vault_namespace,
+    )
 
 
 def has_recovery_secret_store_configuration(

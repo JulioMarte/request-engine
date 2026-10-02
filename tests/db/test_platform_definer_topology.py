@@ -21,6 +21,10 @@ _APPLICATION_SCHEMAS = [
     "request_read",
 ]
 _EXPECTED_COLUMN_PRIVILEGES = {
+    # Proof-bound pre-tenant invitation target, no email or result metadata.
+    ("staff_invitations", "id", "SELECT"),
+    ("staff_invitations", "organization_id", "SELECT"),
+    ("staff_invitations", "token_digest", "SELECT"),
     ("identity_authorities", "id", "SELECT"),
     ("identity_authorities", "kind", "SELECT"),
     ("identity_authorities", "status", "SELECT"),
@@ -241,6 +245,13 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
             "request_auth",
             "read_self_organizations",
             "p_identity_authority_id uuid, p_subject_id text, p_after uuid, p_limit integer",
+            True,
+            ["search_path=pg_catalog, request_engine, pg_temp"],
+        ),
+        (
+            "request_auth",
+            "staff_invitation_target",
+            "p_id uuid, p_digest text",
             True,
             ["search_path=pg_catalog, request_engine, pg_temp"],
         ),

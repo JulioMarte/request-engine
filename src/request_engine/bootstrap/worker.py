@@ -25,6 +25,9 @@ from request_engine.modules.communications.adapters.db.reminder_occurrences impo
 from request_engine.modules.communications.adapters.worker.scheduled_delivery import (
     CommunicationDeliveryScheduledHandler,
 )
+from request_engine.modules.communications.adapters.worker.staff_invitation_delivery import (
+    StaffInvitationDeliveryScheduledHandler,
+)
 from request_engine.modules.communications.contracts.delivery import CommunicationDeliveryProvider
 from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
     SlotOfferExpiryScheduledHandler,
@@ -33,6 +36,7 @@ from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.events.provider_events import PostgresProviderEventWorker
 from request_engine.platform.outbox.worker import PostgresOutboxWorker
 from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
+from request_engine.platform.secrets.delivery import RecoverySecretDelivery
 from request_engine.platform.worker.runtime import FencedWorkerRuntime, WorkerRuntimeConfig
 
 NoShowHandlerFactory = Callable[[SessionFactory], NoShowScheduledHandler]
@@ -61,6 +65,7 @@ def build_worker_process(
     config: WorkerProcessConfig | None = None,
     identity_recovery_delivery: WorkerRuntime | None = None,
     native_recovery_delivery: WorkerRuntime | None = None,
+    staff_invitation_secret_delivery: RecoverySecretDelivery | None = None,
     platform_configuration_invalidation: WorkerRuntime | None = None,
 ) -> WorkerProcess:
     """Assemble production workers without crossing runtime credential boundaries."""
@@ -98,6 +103,9 @@ def build_worker_process(
         reminder_occurrences=reminder_occurrences,
         communication_delivery=communication_delivery,
         recovery_assessment=recovery_assessment,
+        staff_invitation_delivery=StaffInvitationDeliveryScheduledHandler(
+            domain_session_factory, scheduled_store, staff_invitation_secret_delivery
+        ),
     )
 
     fenced_internal_handlers: dict[str, FencedOutboxInternalHandler] = {}

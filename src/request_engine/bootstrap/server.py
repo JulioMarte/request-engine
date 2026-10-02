@@ -14,8 +14,12 @@ from request_engine.bootstrap.appointment_signing import (
     build_appointment_signing_secret_store,
 )
 from request_engine.bootstrap.outbound_fence import OutboundSideEffectFence
-from request_engine.bootstrap.recovery_delivery import build_native_recovery_messenger
+from request_engine.bootstrap.recovery_delivery import (
+    RecoveryDeliverySettings,
+    build_native_recovery_messenger,
+)
 from request_engine.bootstrap.settings import HttpSettings
+from request_engine.bootstrap.staff_invitation_delivery import build_staff_invitation_staging
 from request_engine.entrypoints.http.app import create_native_app
 from request_engine.entrypoints.http.native_runtime import build_identity_link_verifier
 from request_engine.modules.booking.adapters.appointment_options import (
@@ -54,6 +58,9 @@ def create_app() -> FastAPI:
     outbound_fence = OutboundSideEffectFence.from_environment()
     bootstrap_recovery_messenger = build_native_recovery_messenger()
     native_recovery_messenger = outbound_fence.recovery(bootstrap_recovery_messenger)
+    # HTTP only retains the proof. The least-privilege worker resolves SMTP;
+    # API-managed SMTP does not require bootstrap SMTP settings in this process.
+    staff_invitation_delivery = build_staff_invitation_staging(RecoveryDeliverySettings())
 
     bootstrap_signing_key = (
         None
@@ -81,6 +88,7 @@ def create_app() -> FastAPI:
     app = create_native_app(
         session_factory=sessions,
         native_identity_authority_id=settings.native_identity_authority_id,
+        staff_invitation_delivery=staff_invitation_delivery,
         appointment_option_codec=signing_codec,
         identity_exchange_fingerprint_key=(
             settings.identity_exchange_fingerprint_key.get_secret_value().encode()

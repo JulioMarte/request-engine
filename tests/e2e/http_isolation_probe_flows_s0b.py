@@ -116,6 +116,8 @@ def foreign_request(
         )
     if operation.name == "staff.list":
         return ("/v1/staff/members", {}, None, 403)
+    if operation.name.startswith("staff.invitation."):
+        return (operation.probe.path, {}, operation.probe.body, 403)
     if operation.name == "staff.overview":
         return ("/v1/staff/overview", {}, None, 403)
     if operation.name == "staff.authority.plan":

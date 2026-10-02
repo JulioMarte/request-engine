@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% import "partials/inputs.html" as inputs %}
+{% block title %}Email invitations · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div><p class="eyebrow">People &amp; permissions</p><h1>Email invitations</h1><p>Invite someone to this organization. Acceptance creates membership, not permissions.</p></div>
+  <a class="button secondary" href="/tenants/{{ organization_id }}/staff">Back to members</a>
+</header>
+{% if loaded %}
+<div class="split-layout">
+  <section class="card">
+    <h2>Invite by email</h2><p>1. Send an invitation. 2. The recipient signs in and accepts. 3. Review and grant permissions separately.</p>
+    <form method="post" action="/tenants/{{ organization_id }}/staff-invitations">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="_intent_id" value="{{ create_intent }}">
+      {{ inputs.render(create_inputs) }}<button type="submit" class="primary">Create invitation</button>
+    </form>
+    <p class="muted">Creation queues delivery. It does not prove that an email arrived.</p>
+  </section>
+  <section class="card">
+    <h2>Invitation history</h2><p>Membership status and email delivery are separate facts.</p>
+    <p class="muted">Revoke invalidates the link. An email already being submitted may still arrive. Resend replaces the old link.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Email</th><th>Invitation</th><th>Delivery</th><th>Expires</th><th>Actions</th></tr></thead>
+      <tbody>{% for item in invitations %}
+        <tr><td>{{ item.email }}</td><td><span class="badge">{{ item.status }}</span></td><td>{{ item.delivery_label }}</td><td>{{ item.expires_at }}</td>
+          <td>{% if item.status == 'pending' %}{% for action in ['resend', 'revoke'] %}
+            <form class="inline" method="post" action="/tenants/{{ organization_id }}/staff-invitations/{{ item.invitation_id }}/{{ action }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="_intent_id" value="{{ item.intent_id }}-{{ action }}">
+              <input type="hidden" name="expected_revision" value="{{ item.revision }}">
+              <label class="sr-only" for="reason-{{ item.invitation_id }}-{{ action }}">Reason for {{ action }}</label>
+              <input id="reason-{{ item.invitation_id }}-{{ action }}" name="provenance_reference" placeholder="Reason" required>
+              <button type="submit" class="{{ 'danger' if action == 'revoke' else 'secondary' }}">{{ 'Revoke' if action == 'revoke' else 'Resend · replaces old link' }}</button>
+            </form>
+          {% endfor %}{% elif item.status == 'accepted' and item.membership_id %}
+            <a href="/tenants/{{ organization_id }}/staff/{{ item.membership_id }}">Review permissions</a>
+          {% else %}No actions{% endif %}</td>
+        </tr>
+      {% else %}<tr><td colspan="5">No invitations on this page.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% if next_after %}<a href="/tenants/{{ organization_id }}/staff-invitations?after={{ next_after }}&amp;limit={{ page_limit }}">Next page →</a>{% endif %}
+  </section>
+</div>{% endif %}
+{% endblock %}

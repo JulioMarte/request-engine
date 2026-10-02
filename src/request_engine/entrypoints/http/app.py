@@ -31,6 +31,7 @@ from request_engine.platform.db.native_recovery_address_store import (
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
+from request_engine.platform.secrets.delivery import RecoverySecretStaging
 from request_engine.platform.security.acting_operator import (
     ActingOperatorActorResolver,
     OperatorActorResolver,
@@ -88,6 +89,7 @@ def create_app(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     subject_resolver: HttpSubjectResolver | None = None,
+    staff_invitation_delivery: RecoverySecretStaging | None = None,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
     appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
@@ -193,6 +195,7 @@ def create_app(
         session_factory=session_factory,
         actor_resolver=execution_actor_resolver,
         subject_resolver=subject_resolver,
+        staff_invitation_delivery=staff_invitation_delivery,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=signing_key,
         appointment_option_codec=appointment_option_codec,
@@ -212,6 +215,7 @@ def create_authenticated_app(
     *,
     session_factory: SessionFactory,
     subject_resolver: HttpSubjectResolver,
+    staff_invitation_delivery: RecoverySecretStaging | None = None,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
     appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
@@ -230,6 +234,7 @@ def create_authenticated_app(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         subject_resolver=subject_resolver,
+        staff_invitation_delivery=staff_invitation_delivery,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=appointment_option_signing_key,
         appointment_option_codec=appointment_option_codec,
@@ -244,6 +249,7 @@ def create_native_app(
     *,
     session_factory: SessionFactory,
     native_identity_authority_id: UUID,
+    staff_invitation_delivery: RecoverySecretStaging | None = None,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
     appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
@@ -299,6 +305,7 @@ def create_native_app(
     return create_app(
         session_factory=session_factory,
         subject_resolver=runtime.subject_resolver,
+        staff_invitation_delivery=staff_invitation_delivery,
         actor_resolver=AgentPolicyActorResolver(
             DelegatedAgentActorResolver(
                 runtime.actor_resolver,

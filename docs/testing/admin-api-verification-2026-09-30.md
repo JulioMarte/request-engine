@@ -116,7 +116,8 @@ previously supported API was removed; A03 and A14 were still open at that checkp
 
 The A14 design below is now implemented by 0008; see the current contract in
 [`self-organization-discovery.md`](../architecture/self-organization-discovery.md).
-The A03 invitation design remains unimplemented.
+The A03 design was unimplemented at that checkpoint. Implementation and current
+verification are recorded in the 2026-10-02 follow-up below.
 
 - A14 owner: Tenancy. `GET /v1/me/organizations`, proposed operation ID
   `self_organization_list`, is a self-only, read-only subject-authenticated query
@@ -158,7 +159,7 @@ The A03 invitation design remains unimplemented.
   new/existing identities, changed inviter authority, duplicate destination,
   stale revision, token expiry and contested acceptance against PostgreSQL 18.
 
-### A03: email invitations
+### A03: email invitations — original open checkpoint
 
 `staff_invite` still uses an existing native identity UUID. It is **not** an email
 invitation. No pretend Send button or email field was added to hide that gap.
@@ -243,3 +244,76 @@ login cleanup is not a complete production retention service.
 Session storage is a cohesive technical credential boundary; staff reader/routes
 retain existing ownership. No forwarding modules or SQL splitting just to reduce
 size metrics. No independent human approval or production certification is claimed.
+
+## Follow-up implementation, 2026-10-02 — A03
+
+The owner contract is now
+[`staff-email-invitations.md`](../architecture/staff-email-invitations.md).
+Migration `0009_staff_email_invitations` appends durable tenant invitations and
+Communications delivery intents. The immutable baseline is unchanged. Six owner
+operations create/list/read/resend/revoke/accept invitations; administrative
+commands use idempotency and revisions. Acceptance requires a real native session
+and the expiring proof, not a matching email handle or an impersonated inviter.
+It creates an active membership with **zero grants**. Existing identity links
+require administrator review rather than being revived by another invitation.
+
+The console projects those operations, including enrollment/login through native
+authentication, signed CSRF protection and a fragment-only proof cleared from the
+URL. Acceptance does not automatically redirect to an admin-only staff workspace:
+membership alone does not confer `staff.read`. API and worker use the same governed
+store. The API stages proofs without installation-wide SMTP-read privileges;
+the worker resolves managed SMTP or an explicit fallback and records its outcome.
+No patient/contact rows are fabricated. Uncertain submission is reconciled rather
+than blindly resent. SMTP acceptance is not inbox receipt. Revocation invalidates
+the proof but cannot recall a network send already in flight.
+
+Executed integration checkpoint:
+
+```text
+PGHOST=127.0.0.1 PGPORT=55433 PGDATABASE=request_engine_admin_verify
+PostgreSQL 18.6 (180006), UTC, btree_gist 1.8; Alembic head 0009
+uv run pytest tests/db/test_staff_email_invitations.py
+  tests/db/test_staff_invitation_delivery.py
+  tests/db/test_platform_definer_topology.py
+  tests/db/test_v3_app_function_privilege_inventory.py
+  tests/db/test_self_organization_discovery.py
+  tests/db/test_staff_membership_lifecycle.py -q -m postgres --tb=short
+66 passed in 402.04s
+```
+
+This checkpoint preceded the more specific existing-link error mapping and the
+staging-only API composition. After those changes, the invitation suite reran:
+**15 passed in 92.09s**, including the specific HTTP 409 code/action and absence of
+extra membership effects. The suite uses real native enrollment/password login
+and restricted application sessions; only the external secret provider is
+substituted. Independent connections synchronize acceptance against resend/revoke
+and observe actual lock waits. Proof/GUC forgery, direct accepted-state writes,
+withdrawn inviter authority and a revoked-session race are rejected. Delivery
+proof covers atomic rollback, generation replay, tenant opacity, cancellation,
+lost leases and unknown-outcome reconciliation without duplicate publication.
+
+The canonical `scripts/ci/run_current_product.sh` was attempted. Migration-head
+verification and schema catalog/analysis ran; the runner then failed at its
+Docker-backed clean-baseline installation because the local Docker engine pipe
+was unavailable. It did **not** complete. The isolated portable PG18 cluster is
+not the developer Docker database on port 5432; that database has not been updated
+to 0009 during this follow-up. No existing developer data was reset.
+
+Additional executed proof: the five invitation cases in
+`tests/e2e/test_http_tenant_isolation_matrix.py -k 'staff.invitation'` passed
+(`5 passed, 62 deselected`, 37.29s). This exposed and fixed an unmapped PostgreSQL
+authority denial during pre-staging replay checks: create/resend now return the
+typed 403 instead of an internal error. All five outcomes preserve durable state.
+The full `python-quality` command passed after this correction, including Ruff,
+Pyright, secret/static-security scans, dependency audit, architecture, unit and
+module tests. The subsequently added expiry regression received targeted type/lint
+checks and PostgreSQL execution; publication still requires exact-SHA certification.
+Panel/API/secret tests passed `103` cases, and `node --check` accepted the invitation
+script. None of these assertions is a browser execution claim.
+
+Still unfinished: complete canonical/Docker evidence and exact-head remote CI,
+authenticated browser/JavaScript journey and real provider/inbox proof. Acceptance
+is native-only, not OIDC. The email policy intentionally accepts one ASCII mailbox,
+not display names, lists, quoted local parts or internationalized addresses.
+Names/contact metrics and a localized permission/role catalogue remain separate
+privacy/product work; the reference screenshots are not fully implemented.

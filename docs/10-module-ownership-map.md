@@ -54,6 +54,13 @@ The table is an ownership map, not a mandate to retain today’s filesystem fore
 ### Tenancy
 Owns identity and authority truth. Caller-supplied tenant, principal, Party or Representation identifiers never manufacture authority. It publishes the minimal business-Party fact used by Onboarding; it does not own aggregate setup readiness.
 
+Staff email invitations and native-subject acceptance are Tenancy semantics.
+Communications records closed-purpose address-delivery intent through a typed
+caller-owned outbound port injected by composition. This connection creates no
+Python dependency cycle and no patient Party/contact; authoritative invitation
+and scheduled delivery intent commit together. See
+`architecture/staff-email-invitations.md`.
+
 Accepted target under ADR 0014: Tenancy also owns the business semantics of the
 installation-wide Request Engine Instance claim and Platform Owner lifecycle
 because those commands establish platform Principals/bindings/grants. Technical

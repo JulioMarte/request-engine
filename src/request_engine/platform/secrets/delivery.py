@@ -57,14 +57,14 @@ class StagedRecoverySecret:
             raise ValueError("staged secret digest must be 64 lowercase hex characters")
 
 
-class RecoverySecretDelivery(Protocol):
-    """Create-if-absent staging plus fenced, idempotent publication.
+class RecoverySecretStaging(Protocol):
+    """Create-if-absent proof retention without requiring transport authority.
 
     ``stage`` is keyed by ``(case_id, generation)`` and MUST return the secret
     that was actually retained: on replay or a concurrent candidate it returns
     the existing reference/digest and the caller discards its own candidate.
-    ``publish`` MUST NOT be retried blindly on an ambiguous outcome; callers
-    reconcile first with the same idempotency key.
+    Issuing processes can stage a durable delivery proof without holding SMTP
+    runtime-read privileges. Transport belongs to the separately composed worker.
     """
 
     async def stage(
@@ -77,6 +77,10 @@ class RecoverySecretDelivery(Protocol):
     ) -> StagedRecoverySecret: ...
 
     async def discard(self, *, case_id: UUID, generation: int) -> None: ...
+
+
+class RecoverySecretDelivery(RecoverySecretStaging, Protocol):
+    """Staging plus publication, which reconciles uncertainty before any retry."""
 
     async def publish(
         self,

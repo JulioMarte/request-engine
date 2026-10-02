@@ -65,6 +65,9 @@ from request_engine.modules.tenancy.adapters.db.self_authority_reader import (
 from request_engine.modules.tenancy.adapters.db.self_organization_reader import (
     PostgresSelfOrganizationReader,
 )
+from request_engine.modules.tenancy.adapters.db.staff_invitation_commands import (
+    PostgresStaffInvitationCommands,
+)
 from request_engine.modules.tenancy.adapters.db.staff_membership_commands import (
     PostgresStaffMembershipCommands,
 )
@@ -120,6 +123,7 @@ from request_engine.modules.tenancy.api.self_authority import (
 from request_engine.modules.tenancy.api.self_organizations import create_self_organization_router
 from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
+from request_engine.modules.tenancy.api.staff_invitations import create_staff_invitation_router
 from request_engine.modules.tenancy.api.staff_membership_errors import (
     add_staff_membership_error_handlers,
 )
@@ -127,6 +131,9 @@ from request_engine.modules.tenancy.api.staff_membership_reads import add_staff_
 from request_engine.modules.tenancy.api.staff_membership_routes import add_staff_membership_routes
 from request_engine.modules.tenancy.application.commands.native_platform_provisioning import (
     NATIVE_INITIAL_CONTROLLER_POLICY as NATIVE_INITIAL_CONTROLLER_POLICY,
+)
+from request_engine.modules.tenancy.application.commands.staff_invitations import (
+    InvitationDeliveryIntent,
 )
 from request_engine.modules.tenancy.application.commands.staff_membership import (
     StaffMembershipCommands,
@@ -146,6 +153,7 @@ from request_engine.modules.tenancy.contracts.onboarding_readiness import (
 from request_engine.modules.tenancy.contracts.resource_authority import ResourceAuthorityInspector
 from request_engine.platform.db.native_human_auth_store import PostgresNativeHumanAuthStore
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.secrets.delivery import RecoverySecretStaging
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 from request_engine.platform.security.oidc_link import OidcLinkVerifier
@@ -199,6 +207,8 @@ def install_http(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     subject_resolver: HttpSubjectResolver | None = None,
+    invitation_secret_delivery: RecoverySecretStaging | None = None,
+    invitation_delivery_recorder: InvitationDeliveryIntent | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
     resource_authority_inspectors: Sequence[ResourceAuthorityInspector] = (),
@@ -250,6 +260,18 @@ def install_http(
 
     async def authenticated_actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
+
+    app.include_router(
+        create_staff_invitation_router(
+            commands=PostgresStaffInvitationCommands(
+                session_factory,
+                secret_delivery=invitation_secret_delivery,
+                delivery_recorder=invitation_delivery_recorder,
+            ),
+            authenticated_actor=authenticated_actor,
+            subject_resolver=subject_resolver,
+        )
+    )
 
     contact_commands = PostgresPrincipalContactCommands(session_factory)
     staff_router = APIRouter(prefix="/v1/staff", tags=["staff"])

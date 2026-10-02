@@ -8,6 +8,74 @@ from .http_surface import (
 
 STAFF_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     PublicHttpOperation(
+        "staff.invitation.create",
+        "POST",
+        "/v1/staff/invitations",
+        "staff.invite",
+        True,
+        True,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(
+            "/v1/staff/invitations",
+            body={
+                "email": "invited@example.test",
+                "provenance_reference": "surface-probe",
+            },
+        ),
+    ),
+    PublicHttpOperation(
+        "staff.invitation.list",
+        "GET",
+        "/v1/staff/invitations",
+        "staff.read",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe("/v1/staff/invitations"),
+    ),
+    PublicHttpOperation(
+        "staff.invitation.get",
+        "GET",
+        "/v1/staff/invitations/{invitation_id}",
+        "staff.read",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(f"/v1/staff/invitations/{PROBE_UUID}"),
+    ),
+    PublicHttpOperation(
+        "staff.invitation.resend",
+        "POST",
+        "/v1/staff/invitations/{invitation_id}:resend",
+        "staff.invite",
+        True,
+        True,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(
+            f"/v1/staff/invitations/{PROBE_UUID}:resend",
+            body={
+                "expected_revision": 1,
+                "provenance_reference": "surface-probe",
+            },
+        ),
+    ),
+    PublicHttpOperation(
+        "staff.invitation.revoke",
+        "POST",
+        "/v1/staff/invitations/{invitation_id}:revoke",
+        "staff.invite",
+        True,
+        True,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(
+            f"/v1/staff/invitations/{PROBE_UUID}:revoke",
+            body={
+                "expected_revision": 1,
+                "provenance_reference": "surface-probe",
+            },
+        ),
+    ),
+    PublicHttpOperation(
         "staff.overview",
         "GET",
         "/v1/staff/overview",

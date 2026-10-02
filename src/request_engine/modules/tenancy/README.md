@@ -135,6 +135,18 @@ authenticated actor; integration/relay callers get a typed 403. Replay of the
 verification request never re-exposes a code, and the 0025 DB guard keeps
 `verified` monotone even against direct SQL.
 
+## Staff email invitations
+
+`POST/GET /v1/staff/invitations` and the invitation detail/resend/revoke APIs
+manage expiring invitations under current HUMAN `staff.invite` / `staff.read`.
+Acceptance is a pre-tenant native-session operation requiring proof possession,
+not email matching. It activates membership with no standing grants; authority
+uses the existing preview/apply commands afterward. Communications receives a
+closed-purpose delivery intent through an injected typed outbound port in the
+same transaction. No patient Party/contact or second authentication path is
+created. See `docs/architecture/staff-email-invitations.md` for lifecycle,
+replay, delivery ambiguity, lock and deployment contracts.
+
 ## Staff administration reads
 
 `GET /v1/me/organizations` (`self_organization_list`) discovers only the

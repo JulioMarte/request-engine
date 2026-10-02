@@ -21,7 +21,12 @@ from request_engine.modules.booking.api.copilot import build_copilot_booking_rea
 from request_engine.modules.booking.api.recovery import build_recovery_booking_port
 from request_engine.modules.catalog.api import install_http as install_catalog_http
 from request_engine.modules.catalog.api.copilot import build_copilot_catalog_reader
-from request_engine.modules.communications.api import install_http as install_communications_http
+from request_engine.modules.communications.api import (
+    build_staff_invitation_delivery_recorder,
+)
+from request_engine.modules.communications.api import (
+    install_http as install_communications_http,
+)
 from request_engine.modules.communications.api.recovery import build_recovery_communication_port
 from request_engine.modules.delivery.api import install_http as install_delivery_http
 from request_engine.modules.delivery.api.live_capacity import (
@@ -38,6 +43,7 @@ from request_engine.modules.queue.api.live_capacity import (
 )
 from request_engine.modules.requests.api import install_http as install_requests_http
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.secrets.delivery import RecoverySecretStaging
 from request_engine.platform.security.http import ActorResolver
 from request_engine.platform.security.oidc_link import OidcLinkVerifier
 from request_engine.platform.security.subject_http import HttpSubjectResolver
@@ -50,6 +56,7 @@ def install_business_modules(
     actor_resolver: ActorResolver,
     slot_offer_ports: queue_api.QueueSlotOfferHttpPorts | None,
     subject_resolver: HttpSubjectResolver | None = None,
+    staff_invitation_delivery: RecoverySecretStaging | None = None,
     appointment_option_signing_key: bytes | None = None,
     appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
@@ -60,6 +67,8 @@ def install_business_modules(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         subject_resolver=subject_resolver,
+        invitation_secret_delivery=staff_invitation_delivery,
+        invitation_delivery_recorder=build_staff_invitation_delivery_recorder(),
         identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
         identity_link_verifier=identity_link_verifier,
         resource_authority_inspectors=(build_resource_authority_inspector(session_factory),),

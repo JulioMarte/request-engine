@@ -17,6 +17,7 @@
   <details class="auth-block">
     <summary>Sign in with password instead</summary>
     <form method="post" action="/login" class="stack" autocomplete="off">
+      <input type="hidden" name="next" value="{{ next_url | default('/') }}" />
       <label>Login handle
         <input name="login_handle" type="text" required />
       </label>
