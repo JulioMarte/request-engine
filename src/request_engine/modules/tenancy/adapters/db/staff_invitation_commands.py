@@ -313,7 +313,7 @@ class PostgresStaffInvitationCommands:
                     secret_digest=staged.digest,
                     expires_at=staged.expires_at,
                 )
-                await self._audit(session, actor, invitation_id, idem, "create", 0, 1)
+                await self._audit(session, actor, invitation_id, idem, "create", 0, 1, provenance)
                 await complete_idempotency(session, idem, {"invitation_id": str(invitation_id)})
                 return await self._view(session, invitation_id)
         except DBAPIError as exc:
@@ -448,6 +448,7 @@ class PostgresStaffInvitationCommands:
                     action,
                     command.expected_revision,
                     command.expected_revision + 1,
+                    provenance,
                 )
                 await complete_idempotency(
                     session, idem, {"invitation_id": str(command.invitation_id)}
@@ -533,6 +534,7 @@ class PostgresStaffInvitationCommands:
         action: str,
         before: int,
         after: int,
+        provenance: str,
     ) -> None:
         await append_audit(
             session,
@@ -547,5 +549,6 @@ class PostgresStaffInvitationCommands:
                 "reason_code": f"staff_invitation_{action}",
                 "revision_before": before,
                 "revision_after": after,
+                "provenance_reference": provenance,
             },
         )

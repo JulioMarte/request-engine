@@ -311,6 +311,21 @@ checks and PostgreSQL execution; publication still requires exact-SHA certificat
 Panel/API/secret tests passed `103` cases, and `node --check` accepted the invitation
 script. None of these assertions is a browser execution claim.
 
+The final invitation suite expanded to **16 passed in 93.73s**, adding actual
+expiry, replacement of an expired destination, stale-revision rejection and
+conflicting idempotency. A subsequent provenance review found that resend/revoke
+reasons were validated but not retained in audit details. The corrected commands
+persist their supplied reason; acceptance retains the original invitation reason
+and the database rejects rewriting that original value. After reinstalling only
+the unpublished 0009 draft on the verified-empty isolated database, the invitation,
+delivery, platform-definer and app-function inventory suites passed **30 cases in
+136.58s**. The immutable 0001 payload and developer database were not modified.
+
+Next journey improvement: an invitation email currently describes the organization
+generically. Add a proof-bound recipient preview through a Tenancy-owned API to
+show the organization and expiry before acceptance; never put the proof in a GET
+query or infer identity from its email address. This is not implemented in A03.
+
 Still unfinished: complete canonical/Docker evidence and exact-head remote CI,
 authenticated browser/JavaScript journey and real provider/inbox proof. Acceptance
 is native-only, not OIDC. The email policy intentionally accepts one ASCII mailbox,

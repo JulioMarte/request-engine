@@ -80,10 +80,10 @@ def upgrade() -> None:
             ELSE
                 IF OLD.status <> 'pending' OR NEW.revision <> OLD.revision + 1
                     OR (NEW.id,NEW.organization_id,NEW.email,
-                        NEW.invited_by_principal_id,NEW.created_at)
+                        NEW.invited_by_principal_id,NEW.created_at,NEW.provenance_reference)
                         IS DISTINCT FROM
                 (OLD.id,OLD.organization_id,OLD.email,
-                    OLD.invited_by_principal_id,OLD.created_at) THEN
+                    OLD.invited_by_principal_id,OLD.created_at,OLD.provenance_reference) THEN
                     RAISE EXCEPTION 'Invalid invitation lifecycle' USING ERRCODE = '23514';
                 END IF;
                 IF NEW.status = 'accepted' THEN
@@ -327,7 +327,8 @@ def upgrade() -> None:
                 command_name,aggregate_kind,aggregate_id,details)
                 VALUES(v_invitation.organization_id,p_principal,'staff.invitation.accept','StaffInvitation',p_id,
                 jsonb_build_object('action','accept','reason_code','staff_invitation_accepted',
-                    'revision_before',v_invitation.revision,'revision_after',v_invitation.revision+1));
+                    'revision_before',v_invitation.revision,'revision_after',v_invitation.revision+1,
+                    'provenance_reference',v_invitation.provenance_reference));
         END $$;
         ALTER FUNCTION request_cmd.materialize_invited_staff(
             uuid,text,uuid,uuid,uuid,uuid,uuid,uuid)

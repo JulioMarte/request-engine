@@ -363,6 +363,16 @@ async def test_resend_rotates_token_and_replay_after_revoke_never_stages_again(
     replay = await commands.create(actor, create)
     assert replay.invitation_id == revoked.invitation_id and replay.status == "revoked"
     assert store.stage_count == stages
+    audit_rows = admin_conn.execute(
+        "SELECT details->>'action',details->>'provenance_reference' "
+        "FROM request_engine.audit_records WHERE aggregate_id=%s ORDER BY created_at,id",
+        (invitation.invitation_id,),
+    ).fetchall()
+    assert audit_rows == [
+        ("create", "onboarding"),
+        ("resend", "resend requested"),
+        ("revoke", "cancel onboarding"),
+    ]
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.staff_memberships WHERE organization_id=%s",
         (actor.organization_id,),
@@ -441,6 +451,17 @@ async def test_app_role_cannot_forge_acceptance_gucs_or_direct_terminal_transiti
             (invitation.invitation_id,),
         )
     assert forbidden.value.sqlstate == "42501"
+    with pytest.raises(Error) as rewritten, app_role_conn.transaction():
+        app_role_conn.execute(
+            "SELECT set_config('request_engine.organization_id',%s,true)",
+            (str(actor.organization_id),),
+        )
+        app_role_conn.execute(
+            "UPDATE request_engine.staff_invitations SET status='revoked',revision=revision+1,"
+            "provenance_reference='rewritten history' WHERE id=%s",
+            (invitation.invitation_id,),
+        )
+    assert rewritten.value.sqlstate == "23514"
     with app_role_conn.transaction():
         assert app_role_conn.execute(
             "SELECT request_auth.staff_invitation_target(%s,%s)",
