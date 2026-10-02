@@ -87,6 +87,7 @@ def create_app(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
+    subject_resolver: HttpSubjectResolver | None = None,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
     appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
@@ -191,6 +192,7 @@ def create_app(
         app,
         session_factory=session_factory,
         actor_resolver=execution_actor_resolver,
+        subject_resolver=subject_resolver,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=signing_key,
         appointment_option_codec=appointment_option_codec,
@@ -227,6 +229,7 @@ def create_authenticated_app(
     return create_app(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
+        subject_resolver=subject_resolver,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=appointment_option_signing_key,
         appointment_option_codec=appointment_option_codec,
@@ -295,6 +298,7 @@ def create_native_app(
 
     return create_app(
         session_factory=session_factory,
+        subject_resolver=runtime.subject_resolver,
         actor_resolver=AgentPolicyActorResolver(
             DelegatedAgentActorResolver(
                 runtime.actor_resolver,

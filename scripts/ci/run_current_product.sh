@@ -123,6 +123,7 @@ uv run pytest \
   tests/db/test_agent_governance.py \
   tests/db/test_agent_governance_reader.py \
   tests/db/test_self_authority_reader.py \
+  tests/db/test_self_organization_discovery.py \
   tests/db/test_resource_authority_inspection.py \
   tests/db/test_agent_policy.py \
   tests/db/test_delegation_concurrency.py \

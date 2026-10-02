@@ -137,6 +137,13 @@ verification request never re-exposes a code, and the 0025 DB guard keeps
 
 ## Staff administration reads
 
+`GET /v1/me/organizations` (`self_organization_list`) discovers only the
+authenticated HUMAN subject's active organization memberships before tenant
+selection. It rejects tenant/subject selectors and recovery-restricted sessions;
+it never grants tenant authority. See
+`docs/architecture/self-organization-discovery.md` for the authentication,
+pagination, database privilege and API-only admin projection contract.
+
 `GET /v1/staff/overview` summarizes membership lifecycle counts for the current
 tenant under `staff.read`. `POST /v1/staff/members/{membership_id}/authority:plan`
 is a revision-bound, read-only preview under query capability

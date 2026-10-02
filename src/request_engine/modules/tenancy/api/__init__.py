@@ -62,6 +62,9 @@ from request_engine.modules.tenancy.adapters.db.principal_contact_commands impor
 from request_engine.modules.tenancy.adapters.db.self_authority_reader import (
     PostgresSelfAuthorityReader,
 )
+from request_engine.modules.tenancy.adapters.db.self_organization_reader import (
+    PostgresSelfOrganizationReader,
+)
 from request_engine.modules.tenancy.adapters.db.staff_membership_commands import (
     PostgresStaffMembershipCommands,
 )
@@ -114,6 +117,7 @@ from request_engine.modules.tenancy.api.self_authority import (
     create_self_authority_router,
     self_authority_error_handler,
 )
+from request_engine.modules.tenancy.api.self_organizations import create_self_organization_router
 from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
 from request_engine.modules.tenancy.api.staff_membership_errors import (
@@ -146,6 +150,7 @@ from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 from request_engine.platform.security.oidc_link import OidcLinkVerifier
 from request_engine.platform.security.principal_authority import PrincipalAuthorityReader
+from request_engine.platform.security.subject_http import HttpSubjectResolver
 
 
 def build_party_authority_reader(session_factory: SessionFactory) -> PartyAuthorityReader:
@@ -193,11 +198,20 @@ def install_http(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
+    subject_resolver: HttpSubjectResolver | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
     resource_authority_inspectors: Sequence[ResourceAuthorityInspector] = (),
 ) -> None:
     """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
+
+    if subject_resolver is not None:
+        app.include_router(
+            create_self_organization_router(
+                reader=PostgresSelfOrganizationReader(session_factory),
+                subject_resolver=subject_resolver,
+            )
+        )
 
     app.add_exception_handler(BootstrapAuthorityPartyInvalid, bootstrap_authority_error_handler)
     app.add_exception_handler(AuthorityInspectionDenied, self_authority_error_handler)

@@ -40,6 +40,7 @@ from request_engine.modules.requests.api import install_http as install_requests
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 from request_engine.platform.security.oidc_link import OidcLinkVerifier
+from request_engine.platform.security.subject_http import HttpSubjectResolver
 
 
 def install_business_modules(
@@ -48,6 +49,7 @@ def install_business_modules(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     slot_offer_ports: queue_api.QueueSlotOfferHttpPorts | None,
+    subject_resolver: HttpSubjectResolver | None = None,
     appointment_option_signing_key: bytes | None = None,
     appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
@@ -57,6 +59,7 @@ def install_business_modules(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
+        subject_resolver=subject_resolver,
         identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
         identity_link_verifier=identity_link_verifier,
         resource_authority_inspectors=(build_resource_authority_inspector(session_factory),),

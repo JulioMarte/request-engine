@@ -52,7 +52,7 @@ def _uuid_row(
     return cast(UUID, row[0])
 
 
-def _native_identity(conn: PgConnection) -> tuple[UUID, UUID, UUID]:
+def new_staff_native_identity(conn: PgConnection) -> tuple[UUID, UUID, UUID]:
     authority_id = _uuid_row(
         conn,
         """
@@ -92,8 +92,10 @@ def _principal_revision(conn: PgConnection, principal_id: UUID) -> int:
     return int(row[0])
 
 
-def _provision_root(
+def provision_staff_root(
     conn: PgConnection,
+    *,
+    native_identity: tuple[UUID, UUID, UUID] | None = None,
 ) -> tuple[UUID, UUID, UUID, UUID, UUID]:
     provisioner_id = _uuid_row(
         conn,
@@ -116,7 +118,9 @@ def _provision_root(
         """,
         (provisioner_id, f"staff-root:{uuid4().hex}"),
     )
-    authority_id, native_identity_id, _credential_id = _native_identity(conn)
+    authority_id, native_identity_id, _credential_id = native_identity or new_staff_native_identity(
+        conn
+    )
     organization_id = uuid4()
     party_id = uuid4()
     controller_id = uuid4()
@@ -176,8 +180,8 @@ def _set_tenant_actor(
 def test_controller_read_is_tenant_bound_and_private_predicate_is_not_callable(
     admin_conn: PgConnection,
 ) -> None:
-    organization_id, _, controller_id, _, _ = _provision_root(admin_conn)
-    foreign_organization_id, _, foreign_controller_id, _, _ = _provision_root(admin_conn)
+    organization_id, _, controller_id, _, _ = provision_staff_root(admin_conn)
+    foreign_organization_id, _, foreign_controller_id, _, _ = provision_staff_root(admin_conn)
     _set_tenant_actor(admin_conn, organization_id=organization_id, principal_id=controller_id)
     try:
         assert admin_conn.execute(
@@ -204,7 +208,7 @@ def test_controller_read_is_tenant_bound_and_private_predicate_is_not_callable(
         admin_conn.execute("RESET ROLE")
 
 
-def _invite_and_activate(
+def invite_active_staff(
     conn: PgConnection,
     *,
     organization_id: UUID,
@@ -259,7 +263,7 @@ def test_suspending_staff_revokes_native_sessions_globally_across_tenants(
     # Tenant A owns the native identity. The same identity is then invited into
     # tenant B. Suspending only B's membership intentionally revokes the
     # identity's native sessions globally; A's membership itself remains active.
-    org_a, _party_a, root_a, binding_a, _provisioner_a = _provision_root(admin_conn)
+    org_a, _party_a, root_a, binding_a, _provisioner_a = provision_staff_root(admin_conn)
     row = admin_conn.execute(
         "SELECT identity_authority_id, subject_id "
         "FROM request_engine.identity_bindings WHERE id = %s",
@@ -276,8 +280,8 @@ def test_suspending_staff_revokes_native_sessions_globally_across_tenants(
     assert credential_row is not None
     credential_id = cast(UUID, credential_row[0])
 
-    org_b, party_b, root_b, _binding_b, _provisioner_b = _provision_root(admin_conn)
-    membership_b, _principal_b, _staff_binding_b = _invite_and_activate(
+    org_b, party_b, root_b, _binding_b, _provisioner_b = provision_staff_root(admin_conn)
+    membership_b, _principal_b, _staff_binding_b = invite_active_staff(
         admin_conn,
         organization_id=org_b,
         root_id=root_b,
@@ -319,7 +323,7 @@ def test_suspending_staff_revokes_native_sessions_globally_across_tenants(
 def test_root_bootstrap_materializes_active_staff_with_delegable_control(
     admin_conn: PgConnection,
 ) -> None:
-    organization_id, party_id, controller_id, binding_id, provisioner_id = _provision_root(
+    organization_id, party_id, controller_id, binding_id, provisioner_id = provision_staff_root(
         admin_conn
     )
     membership = admin_conn.execute(
@@ -358,9 +362,11 @@ def test_root_bootstrap_materializes_active_staff_with_delegable_control(
 def test_staff_authority_replace_is_bounded_by_delegable_ceiling(
     admin_conn: PgConnection,
 ) -> None:
-    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
-    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
-    membership_id, staff_id, _staff_binding_id = _invite_and_activate(
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = provision_staff_root(
+        admin_conn
+    )
+    authority_id, native_identity_id, _credential_id = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, _staff_binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -425,9 +431,11 @@ async def test_staff_overview_and_authority_plan_are_read_only_and_ceiling_bound
     admin_conn: PgConnection,
     command_session_factory: SessionFactory,
 ) -> None:
-    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
-    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
-    membership_id, staff_id, _staff_binding_id = _invite_and_activate(
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = provision_staff_root(
+        admin_conn
+    )
+    authority_id, native_identity_id, _credential_id = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, _staff_binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -503,9 +511,11 @@ async def test_staff_authority_plan_apply_preserves_grants_outside_actor_ceiling
     admin_conn: PgConnection,
     command_session_factory: SessionFactory,
 ) -> None:
-    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
-    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
-    membership_id, staff_id, _staff_binding_id = _invite_and_activate(
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = provision_staff_root(
+        admin_conn
+    )
+    authority_id, native_identity_id, _credential_id = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, _staff_binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -574,9 +584,11 @@ async def test_staff_authority_plan_apply_preserves_grants_outside_actor_ceiling
 def test_staff_suspension_disables_principal_and_revokes_native_session(
     admin_conn: PgConnection,
 ) -> None:
-    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
-    authority_id, native_identity_id, credential_id = _native_identity(admin_conn)
-    membership_id, staff_id, staff_binding_id = _invite_and_activate(
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = provision_staff_root(
+        admin_conn
+    )
+    authority_id, native_identity_id, credential_id = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, staff_binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -646,18 +658,20 @@ async def test_authority_plan_reports_last_controller_blocker(
     admin_conn: PgConnection,
     command_session_factory: SessionFactory,
 ) -> None:
-    organization_id, _party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
+    organization_id, _party_id, root_id, _binding_id, _provisioner_id = provision_staff_root(
+        admin_conn
+    )
     membership_id, _membership_revision = _root_membership(admin_conn, root_id)
 
     # Use a second manager so the preview can evaluate the root as a distinct target.
-    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
+    authority_id, native_identity_id, _credential_id = new_staff_native_identity(admin_conn)
     party_id = _uuid_row(
         admin_conn,
         "SELECT authority_anchor_party_id FROM request_engine.staff_memberships "
         "WHERE principal_id = %s",
         (root_id,),
     )
-    manager_membership_id, manager_id, _manager_binding_id = _invite_and_activate(
+    manager_membership_id, manager_id, _manager_binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -774,10 +788,12 @@ async def test_last_controller_plan_apply_preserves_outside_ceiling_control(
     desired: tuple[str, ...],
     manager_capability: str,
 ) -> None:
-    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = provision_staff_root(
+        admin_conn
+    )
     membership_id, _membership_revision = _root_membership(admin_conn, root_id)
-    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
-    _manager_membership_id, manager_id, _manager_binding_id = _invite_and_activate(
+    authority_id, native_identity_id, _credential_id = new_staff_native_identity(admin_conn)
+    _manager_membership_id, manager_id, _manager_binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -857,9 +873,11 @@ async def test_last_controller_plan_apply_preserves_outside_ceiling_control(
 def test_last_recovery_capable_controller_cannot_be_removed(
     admin_conn: PgConnection,
 ) -> None:
-    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
-    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
-    membership_id, staff_id, _staff_binding_id = _invite_and_activate(
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = provision_staff_root(
+        admin_conn
+    )
+    authority_id, native_identity_id, _credential_id = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, _staff_binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -1013,11 +1031,11 @@ def _suspend_membership_as(
 def test_grant_only_controller_does_not_preserve_continuity(
     admin_conn: PgConnection, path_break: str
 ) -> None:
-    organization_id, party_id, root_id, _root_binding_id, _provisioner_id = _provision_root(
+    organization_id, party_id, root_id, _root_binding_id, _provisioner_id = provision_staff_root(
         admin_conn
     )
-    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
-    membership_id, staff_id, staff_binding_id = _invite_and_activate(
+    authority_id, native_identity_id, _credential_id = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, staff_binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -1077,11 +1095,11 @@ def test_grant_only_controller_does_not_preserve_continuity(
 
 
 def test_configured_external_authority_preserves_continuity(admin_conn: PgConnection) -> None:
-    organization_id, party_id, root_id, _root_binding_id, _provisioner_id = _provision_root(
+    organization_id, party_id, root_id, _root_binding_id, _provisioner_id = provision_staff_root(
         admin_conn
     )
-    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
-    membership_id, staff_id, staff_binding_id = _invite_and_activate(
+    authority_id, native_identity_id, _credential_id = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, staff_binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -1140,7 +1158,7 @@ async def test_staff_reads_recheck_revoked_authority_with_a_previously_valid_act
     command_session_factory: SessionFactory,
 ) -> None:
     """A cached trusted actor must not preserve revoked directory visibility."""
-    organization_id, _, root_id, _, _ = _provision_root(admin_conn)
+    organization_id, _, root_id, _, _ = provision_staff_root(admin_conn)
     actor = ActorContext(
         organization_id=organization_id,
         principal_id=root_id,
@@ -1185,9 +1203,9 @@ async def test_staff_reads_recheck_revoked_authority_with_a_previously_valid_act
 def test_suspended_staff_can_be_revoked_without_temporary_reactivation(
     admin_conn: PgConnection,
 ) -> None:
-    organization_id, party_id, root_id, _, _ = _provision_root(admin_conn)
-    authority_id, native_id, _ = _native_identity(admin_conn)
-    membership_id, staff_id, binding_id = _invite_and_activate(
+    organization_id, party_id, root_id, _, _ = provision_staff_root(admin_conn)
+    authority_id, native_id, _ = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -1232,9 +1250,9 @@ def test_staff_transition_requires_revision_and_provenance_at_database_boundary(
     revision: int | None,
     reference: str | None,
 ) -> None:
-    organization_id, party_id, root_id, _, _ = _provision_root(admin_conn)
-    authority_id, native_id, _ = _native_identity(admin_conn)
-    membership_id, staff_id, binding_id = _invite_and_activate(
+    organization_id, party_id, root_id, _, _ = provision_staff_root(admin_conn)
+    authority_id, native_id, _ = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -1274,9 +1292,9 @@ def test_suspended_staff_competing_transitions_reject_stale_loser(
     winner_status: str,
 ) -> None:
     """A waiting operator cannot overwrite the committed lifecycle decision."""
-    organization_id, party_id, root_id, _, _ = _provision_root(admin_conn)
-    authority_id, native_id, _ = _native_identity(admin_conn)
-    membership_id, staff_id, binding_id = _invite_and_activate(
+    organization_id, party_id, root_id, _, _ = provision_staff_root(admin_conn)
+    authority_id, native_id, _ = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,
@@ -1369,7 +1387,9 @@ async def test_authority_plan_reports_self_change_blocker(
     admin_conn: PgConnection,
     command_session_factory: SessionFactory,
 ) -> None:
-    organization_id, _party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
+    organization_id, _party_id, root_id, _binding_id, _provisioner_id = provision_staff_root(
+        admin_conn
+    )
     membership_id, _membership_revision = _root_membership(admin_conn, root_id)
     actor = ActorContext(
         organization_id=organization_id,
@@ -1394,9 +1414,11 @@ async def test_authority_plan_reports_inactive_lifecycle_blocker(
     admin_conn: PgConnection,
     command_session_factory: SessionFactory,
 ) -> None:
-    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
-    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
-    membership_id, staff_id, _staff_binding_id = _invite_and_activate(
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = provision_staff_root(
+        admin_conn
+    )
+    authority_id, native_identity_id, _credential_id = new_staff_native_identity(admin_conn)
+    membership_id, staff_id, _staff_binding_id = invite_active_staff(
         admin_conn,
         organization_id=organization_id,
         root_id=root_id,

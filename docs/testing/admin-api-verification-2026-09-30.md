@@ -108,11 +108,15 @@ SMTP idempotency or proof of recipient delivery. The transport boundary suite
 (`tests/unit/platform/secrets/test_smtp_delivery_channel.py`) passed 14 tests,
 including connection reset, broken pipe and generic socket errors during send.
 
-Unwired invitation/discovery stubs from interrupted agents were removed rather
+At the 0007 checkpoint, unwired invitation/discovery stubs from interrupted agents were removed rather
 than represented as implemented APIs. Their design is preserved below. No
-previously supported API was removed; A03 and A14 remain open.
+previously supported API was removed; A03 and A14 were still open at that checkpoint.
 
-#### Next implementation boundaries (not implemented)
+#### Design checkpoint before implementing A14
+
+The A14 design below is now implemented by 0008; see the current contract in
+[`self-organization-discovery.md`](../architecture/self-organization-discovery.md).
+The A03 invitation design remains unimplemented.
 
 - A14 owner: Tenancy. `GET /v1/me/organizations`, proposed operation ID
   `self_organization_list`, is a self-only, read-only subject-authenticated query
@@ -182,8 +186,42 @@ Required coherent next slice:
 ### A14 and product UX
 
 - Platform owner does not imply tenant administrator. Organization directory is
-  not self-authorized context discovery. Add the subject-bound query before an
-  unrestricted tenant picker.
+  not self-authorized context discovery. `0008_self_org_discovery` now supplies
+  `GET /v1/me/organizations` from a verified HUMAN subject before tenant selection.
+  `/my-organizations` projects that API and links to the existing staff workspace;
+  it never supplies a tenant header during discovery or grants authority on selection.
+- PostgreSQL evidence covers exact subject, active lifecycle boundaries, two
+  memberships, foreign/missing identities, alternative active bindings and HTTP
+  composition through a real application LOGIN. HTTP tests also deny caller-supplied
+  subject/authority/tenant input, workload and recovery-restricted sessions. BFF
+  tests verify read-only runtime forwarding, pagination, malformed/error/empty
+  responses and no membership links after failed reads. No authenticated browser
+  or actual provider-email proof is claimed.
+- Exact-head CI on `aef7dbb4` exposed missing isolation probes for `staff.overview`
+  and `staff.authority.plan`, plus the old 23-grant Instance Claim expectation.
+  The probes now exercise those endpoints with unchanged durable-state assertions.
+  Claim evidence expects the v4 policy's 24 grants and explicitly verifies active,
+  nondelegable `platform.organization.read`. The two isolation probes passed, and
+  the full HTTP setup/claim case passed locally on isolated PG18.
+- A14 integration evidence: `uv run pytest` over
+  `tests/db/test_self_organization_discovery.py`, `test_staff_membership_lifecycle.py`,
+  `test_platform_definer_topology.py`, `test_runtime_immutable_table_privileges.py`
+  and `test_v3_app_function_privilege_inventory.py`: **47 passed** on PG18,
+  port 55433, `request_engine_admin_verify`, revision 0008. The unusable-context
+  fixture now uses ordinary staff alongside a surviving controller, not an
+  impossible disabled last-controller world; it preserves revision/session-epoch
+  guards. Credential verification is substituted in the HTTP composition case,
+  but the owner reader executes through a real restricted app LOGIN.
+- `uv run python scripts/ci/ci_jobs.py python-quality` passed for the integrated
+  A14 work. The developer DB on port 5432 was upgraded to 0008 without resetting
+  data; the launcher reported all three services ready. Live runtime OpenAPI
+  advertises `self_organization_list` with bearer security; anonymous runtime
+  discovery returns 401 and console discovery redirects to login (303).
+- Final narrow rerun: `tests/db/test_self_organization_discovery.py`: **10 passed**;
+  `tests/unit/admin_console` plus `tests/unit/test_self_organizations_http.py`:
+  **100 passed**. The frontend-design review retained the existing restrained
+  admin layout and added explicit empty/error states, accessible navigation and
+  a return path to organization selection instead of a second permission model.
 - Staff remains identifier-oriented. Names/contact metadata require explicit
   privacy-reviewed API projections, not invented dashboard metrics.
 - Permission input now uses checkboxes projected from the API's delegable ceiling;

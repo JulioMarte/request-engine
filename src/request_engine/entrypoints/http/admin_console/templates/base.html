@@ -22,6 +22,7 @@
           <a href="/" class="{% if current_path == '/' %}active{% endif %}" {% if current_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true">⌂</span>Overview</a>
           <a href="/resources" class="{% if current_path == '/resources' %}active{% endif %}" {% if current_path == '/resources' %}aria-current="page"{% endif %}><span aria-hidden="true">▦</span>Workspaces</a>
           <p class="nav-label">People &amp; access</p>
+          <a href="/my-organizations" class="{% if current_path == '/my-organizations' or current_path.startswith('/tenants/') %}active{% endif %}" {% if current_path == '/my-organizations' %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>My organizations</a>
           <a href="/resources/native-identities" class="{% if current_path.startswith('/resources/native-identities') %}active{% endif %}" {% if current_path.startswith('/resources/native-identities') %}aria-current="page"{% endif %}><span aria-hidden="true">◎</span>Native identities</a>
           <a href="/resources/provisioners" class="{% if current_path.startswith('/resources/provisioners') %}active{% endif %}" {% if current_path.startswith('/resources/provisioners') %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>Provisioners</a>
           <a href="/resources/recovery-cases" class="{% if current_path.startswith('/resources/recovery-cases') %}active{% endif %}" {% if current_path.startswith('/resources/recovery-cases') %}aria-current="page"{% endif %}><span aria-hidden="true">↻</span>Recovery cases</a>

@@ -21,6 +21,14 @@ _APPLICATION_SCHEMAS = [
     "request_read",
 ]
 _EXPECTED_COLUMN_PRIVILEGES = {
+    ("identity_authorities", "id", "SELECT"),
+    ("identity_authorities", "kind", "SELECT"),
+    ("identity_authorities", "status", "SELECT"),
+    ("principals", "organization_id", "SELECT"),
+    ("staff_memberships", "id", "SELECT"),
+    ("staff_memberships", "organization_id", "SELECT"),
+    ("staff_memberships", "principal_id", "SELECT"),
+    ("staff_memberships", "status", "SELECT"),
     ("identity_bindings", "id", "SELECT"),
     ("identity_bindings", "identity_authority_id", "SELECT"),
     ("identity_bindings", "subject_id", "SELECT"),
@@ -226,6 +234,13 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
             "request_auth",
             "read_platform_identity_bindings",
             "p_identity_authority_id uuid, p_subject_id text",
+            True,
+            ["search_path=pg_catalog, request_engine, pg_temp"],
+        ),
+        (
+            "request_auth",
+            "read_self_organizations",
+            "p_identity_authority_id uuid, p_subject_id text, p_after uuid, p_limit integer",
             True,
             ["search_path=pg_catalog, request_engine, pg_temp"],
         ),

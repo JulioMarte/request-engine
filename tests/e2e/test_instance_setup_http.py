@@ -207,7 +207,13 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
         "WHERE principal_id = %s AND principal_plane = 'platform'",
         (owner_principal_id,),
     ).fetchone()
-    assert grants is not None and grants[0] == 23
+    # Platform owner v4 adds the explicit organization-directory read grant.
+    assert grants is not None and grants[0] == 24
+    assert e2e_admin_conn.execute(
+        "SELECT status, delegable FROM request_engine.principal_authority_grants "
+        "WHERE principal_id = %s AND capability_key = 'platform.organization.read'",
+        (owner_principal_id,),
+    ).fetchone() == ("active", False)
 
 
 @pytest.mark.asyncio

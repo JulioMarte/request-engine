@@ -6,6 +6,12 @@ OpenBao connection, and introduces no second execution path. Every action is an
 HTTP call to the control plane, which keeps capability and step-up authority as
 the single source of truth.
 
+Tenant staff administration uses the configured `runtime_api_base_url` and the
+same stored HUMAN bearer. **My organizations** (`/my-organizations`) consumes
+`GET /v1/me/organizations` without a tenant header; it does not use the platform
+directory as proof of access. Opening a listed workspace still requires the
+tenant API's staff permissions. The console has no independent tenant grants.
+
 ## Design
 
 ```text
