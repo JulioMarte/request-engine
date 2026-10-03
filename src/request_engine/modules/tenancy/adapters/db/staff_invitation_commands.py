@@ -3,6 +3,7 @@
 import hashlib
 import re
 import secrets
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
@@ -142,10 +143,21 @@ class PostgresStaffInvitationCommands:
                 .mappings()
                 .all()
             )
+            generations = tuple(
+                (UUID(str(row["invitation_id"])), int(str(row["generation"]))) for row in rows
+            )
+            statuses: Mapping[tuple[UUID, int], str] = (
+                await self._recorder.statuses(
+                    session, organization_id=actor.organization_id, generations=generations
+                )
+                if self._recorder is not None and generations
+                else {}
+            )
             invitations: list[StaffInvitation] = []
             for row in rows:
                 data = dict(row)
-                data["delivery_status"] = await self._delivery_status(session, data)
+                key = (UUID(str(data["invitation_id"])), int(str(data["generation"])))
+                data["delivery_status"] = statuses.get(key)
                 invitations.append(StaffInvitation(**data))
             return tuple(invitations)
 

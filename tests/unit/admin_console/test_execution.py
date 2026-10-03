@@ -96,6 +96,25 @@ async def test_post_connect_transport_error_is_ambiguous_and_preserves_intent() 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "raw"), [("boolean", "maybe"), ("number", "NaN"), ("object", '{"x": 1e999}')]
+)
+async def test_invalid_typed_value_fails_before_upstream(kind: str, raw: str) -> None:
+    class NoCalls:
+        async def control_request(self, *args: object, **kwargs: object):  # noqa: ANN202
+            pytest.fail("Invalid typed value must not reach an upstream API")
+
+    operation = replace(
+        _operation(),
+        body_schema={"type": "object", "properties": {"value": {"type": kind}}},
+    )
+    outcome = await execute_operation(NoCalls(), operation, bearer="test", form={"value": raw})
+    assert outcome.status == 422
+    assert outcome.error_code == "form_error"
+    assert outcome.idempotency_key is None
+
+
+@pytest.mark.asyncio
 async def test_connect_error_does_not_claim_command_completed() -> None:
     outcome = await execute_operation(
         _ConnectErrorState(),

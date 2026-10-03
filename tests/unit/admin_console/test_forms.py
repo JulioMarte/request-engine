@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -77,6 +78,35 @@ def test_parse_submission_rejects_bad_integer() -> None:
     fields = build_fields(_operation())
     with pytest.raises(FormSubmissionError):
         parse_submission(fields, {"thing_id": "abc", "name": "widget", "count": "not-a-number"})
+
+
+@pytest.mark.parametrize("raw", ["typo", "2", "maybe"])
+def test_boolean_typo_does_not_silently_disable_setting(raw: str) -> None:
+    with pytest.raises(FormSubmissionError, match="must be a boolean"):
+        parse_submission(
+            build_fields(_operation()), {"thing_id": "abc", "name": "x", "active": raw}
+        )
+
+
+@pytest.mark.parametrize("raw", ["false", "0", "off", "no"])
+def test_explicit_false_setting_remains_supported(raw: str) -> None:
+    result = parse_submission(
+        build_fields(_operation()), {"thing_id": "abc", "name": "x", "active": raw}
+    )
+    assert result.body == {"name": "x", "active": False}
+
+
+@pytest.mark.parametrize("raw", ["NaN", "Infinity", "-inf", "1e999"])
+def test_nonfinite_numbers_are_form_errors_not_transport_failures(raw: str) -> None:
+    count = next(field for field in build_fields(_operation()) if field.name == "count")
+    with pytest.raises(FormSubmissionError, match="finite number"):
+        parse_submission((replace(count, kind="number"),), {"count": raw})
+
+
+@pytest.mark.parametrize("raw", ['{"nested": [NaN]}', "[Infinity]", '{"value": 1e999}'])
+def test_nonfinite_nested_json_is_rejected(raw: str) -> None:
+    with pytest.raises(FormSubmissionError, match="valid JSON"):
+        parse_submission(build_fields(_operation()), {"thing_id": "abc", "name": "x", "meta": raw})
 
 
 def test_parse_submission_requires_required_field() -> None:

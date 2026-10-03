@@ -5,6 +5,8 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0012: closed staff capability gate, current actor locks, no business writes.
+    "request_cmd.lock_staff_command_authority(p_capability text)",
     # 0011: fixed-capability tenant-local profile locks/CAS; no authority writes.
     "request_cmd.lock_staff_member_profile(p_membership uuid)",
     (

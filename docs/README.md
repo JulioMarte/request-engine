@@ -46,6 +46,8 @@ are specified in `architecture/staff-email-invitations.md`.
 
 Tenant-local staff display labels, their independent revision, restricted update
 operation and literal name search are specified in `architecture/staff-member-profiles.md`.
+Current-authority validation of staff command receipts is specified in
+`architecture/staff-command-replay-authority.md`.
 Redacted tenant staff administrative history is specified in
 `architecture/staff-membership-history.md`. Temporary proof expiry and the separate
 physical-destruction gap are documented in `architecture/temporary-proof-retention.md`.

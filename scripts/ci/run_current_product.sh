@@ -132,6 +132,7 @@ uv run pytest \
   tests/db/test_staff_membership_lifecycle.py \
   tests/db/test_staff_member_profiles.py \
   tests/db/test_staff_membership_history.py \
+  tests/db/test_staff_replay_authority.py \
   tests/db/test_staff_email_invitations.py \
   tests/db/test_staff_invitation_delivery.py \
   tests/db/test_identity_governance_audit.py \
@@ -252,6 +253,7 @@ uv run pytest \
 # inventory on current HEAD so new grants cannot ship outside review.
 uv run pytest \
   tests/db/test_v3_app_function_privilege_inventory.py \
+  tests/db/test_v3_runtime_privilege_contract.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/app-function-inventory.xml"
 

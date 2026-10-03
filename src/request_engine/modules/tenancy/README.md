@@ -209,3 +209,9 @@ The planner's controller projection uses
 and HUMAN planner from trusted transaction context, rechecks active membership
 and planning/managing authority, and reveals no foreign controller. The internal
 two-argument controller predicate is not executable by the application role.
+
+Native staff invitation, authority replacement and membership transition commands
+also revalidate current manager authority before returning completed idempotency
+receipts. The original receipt does not grant continued access after withdrawal.
+See `docs/architecture/staff-command-replay-authority.md` for trusted actor ceilings,
+ordered locks, compatible migration and concurrent replay/revocation semantics.

@@ -50,6 +50,27 @@ INV-PRIVILEGE-001. Current controller continuity remains unchanged.
 
 ## Transactions and delivery
 
+The existing `staff_invitation_list` Query enriches its bounded invitation page
+through the caller-owned `InvitationDeliveryIntent.statuses` port, structurally
+implemented by Communications' supported `StaffInvitationDeliveryRecorder`
+contract. It passes the trusted actor's organization and at most 101 exact
+`(invitation_id, generation)` pairs, never arbitrary cross-module SQL. Communications
+deduplicates pairs and reads only id, generation and status in one tenant-RLS-bound
+query using zipped bound arrays. Empty pages require no delivery query; missing
+delivery rows remain null rather than falsely pending/delivered. Earlier generations
+cannot replace the listed generation's status. Detail/command receipts retain the
+existing single-generation reader. No HTTP path, capability, grants, schema,
+scheduled action, idempotency or tool projection changes.
+
+The query remains advisory under the existing transaction isolation; a whole-page
+repeatable snapshot is not promised. Current HUMAN `staff.read` is independently
+rechecked before page/status reads, and authoritative commands revalidate normally.
+The measured unit statement boundary for 100 invitations changed from 102 to 3
+(current-authority check, invitation page, grouped delivery states), excluding
+trust-context setup. This is round-trip evidence, not a latency or PostgreSQL
+authorization claim. Real PostgreSQL proof checks exact generation pairs, missing
+rows, duplicates and foreign-tenant opacity with the restricted application role.
+
 READ/PLAN validates normalized destination, expiry and trusted subject/actor.
 Secret staging occurs before authoritative locks. LOCK/VALIDATE uses the shared
 identity-topology gate, canonical ordered staff roots, invitation and native

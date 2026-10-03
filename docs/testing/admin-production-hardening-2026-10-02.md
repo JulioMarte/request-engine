@@ -221,3 +221,138 @@ está preservado en
 Sus hallazgos describen ese SHA anterior; paginación, Origin, paths y excepciones
 fueron corregidos posteriormente como se detalla aquí. No modificar el informe
 histórico para fingir que esos fallos nunca existieron.
+
+## Continuación posterior a 6d68 — validación de formularios
+
+### Reporte simple (para humanos)
+
+Un valor mal escrito ya no se convierte silenciosamente en «desactivar».
+Los números imposibles se rechazan antes de enviar la operación, también cuando
+aparecen dentro del contenido JSON. Esto evita errores internos y cambios que
+el operador no quiso pedir. La API propietaria sigue validando el negocio.
+
+### Reporte técnico (detallado)
+
+`admin_console/forms.py::_coerce` valida el vocabulario booleano explícito y
+rechaza números no finitos, incluidos exponentes desbordados y valores anidados.
+`parse_submission`/`execute_operation` devuelven el error de formulario 422 antes
+de forwarding o creación de una clave de idempotencia. No cambia HTTP/OpenAPI,
+capabilities, políticas de negocio ni migraciones.
+
+Prueba focal `uv run pytest tests/unit/admin_console/test_forms.py
+tests/unit/admin_console/test_execution.py -q --tb=short`: **37 passed**.
+Suite del panel `uv run pytest tests/unit/admin_console -q --tb=short`:
+**267 passed**, 18.54s. Ruff focal PASS después de aplicar formato.
+Defectos falsificados: booleano desconocido convertido a False; NaN/infinity o
+exponente desbordado enviado a serialización HTTP; llamada upstream para entradas
+inválidas. Estos resultados pertenecen al árbol de trabajo posterior a 6d68,
+no a su certificado ni a su CI remota.
+
+Publicación 6d68: certificado exact-SHA PASS **237.292s** y push origin realizado.
+Se finalizaron **112** paquetes quality-evidence/v2 con ese certificado y se
+validaron contra JSON Schema Draft 2020-12. Su validez estructural no transforma
+los candidatos pendientes en aprobaciones semánticas ni autoriza producción.
+
+## Continuación de autoridad y lectura agrupada — 2026-10-03
+
+### Reporte simple (para humanos)
+
+Una operación ya completada podía devolver su recibo después de retirar el permiso
+del administrador. No repetía el cambio, pero omitía revisar su permiso actual.
+Se corrigió esa comprobación sin perder la repetición segura de una operación
+autorizada. La lista de invitaciones agrupa ahora la lectura de sus estados para
+evitar una consulta adicional por cada fila. Ninguno de estos cambios crea una
+vía exclusiva del panel ni permite que este escriba directamente en la base.
+
+La primera ejecución real aprobó. La validación general encontró errores de
+tipado en la prueba nueva; fueron corregidos y se repite la validación ampliada.
+La revisión independiente de sesiones quedó interrumpida por el límite de uso
+de los agentes: no se declara terminada ni aprobada por inferencia.
+
+### Reporte técnico (detallado)
+
+- `0012_staff_replay_authority`, único nuevo head posterior a 0011: wrapper
+  SECURITY DEFINER `request_cmd.lock_staff_command_authority(text)`, allowlist
+  cerrada de tres capabilities, schema owner, PUBLIC revocado, EXECUTE app only.
+  Identidad/tenant desde contexto trusted; topology share y ordered tenant staff
+  root preceden manager SHARE locks. No tabla, backfill, baseline edit ni DML grant.
+- `PostgresStaffMembershipCommands.invite_native_staff/replace_staff_authority/
+  transition_staff_membership`: ActorContext ceiling antes de DB y autoridad
+  actual bloqueada después de adquirir idempotencia, antes de replay. Contrato
+  y evolución documentados en `staff-command-replay-authority.md`.
+- `InvitationDeliveryIntent.statuses` y supported Communications contract:
+  pares UUID/generation exactos, bounded101, arrays zipped y parámetros bound,
+  RLS tenant y columnas públicas mínimas; empty no I/O, missing null. List usa
+  esa única lectura, detail/replay singular permanece. READ COMMITTED advisory,
+  no promesa de snapshot repetible. Scope no cambia HTTP/OpenAPI/tool/ACL/schema.
+- Conteo unitario independiente: **102 → 3 statements para100**, excluyendo
+  contexto trusted. No se extrapola a latencia/throughput. Dos pruebas focales
+  batch PASS; no sustituyen el proof PostgreSQL.
+- Primera corrida: PG18.6 en **55433/request_engine_admin_verify**, aislado del
+  contenedor del usuario. `uv run pytest tests/db/test_staff_replay_authority.py
+  tests/db/test_staff_invitation_delivery.py -q -m postgres --tb=short`:
+  **14 passed**, 102.11s. Recibos creados por comandos reales, grants retirados
+  por owner real, replay válido con revision avanzada, no efectos duplicados,
+  ActorContext sin capability rechazado y dos ganadores sincronizados mediante
+  `pg_blocking_pids`/conexiones independientes. Batch prueba generación exacta,
+  duplicados, ausentes, estado anterior y organización extranjera bajo rol app.
+- Primer `python-quality` de este bloque falló en Pyright por el test nuevo
+  (private fixture import y unions command/callable). Reparado con prerequisites
+  públicos y dispatch tipado local al escenario; Pyright focal PASS. No se
+  suprimieron checks ni se convirtió ese intento en evidencia verde.
+
+La CI exacta del commit publicado **6d68be43** terminó con **nueve checks pass**.
+Esa CI no certifica estos cambios posteriores. Resultados agregados, sincronización
+del PostgreSQL local y publicación de este bloque se registran después de ejecutarlos.
+
+### Resultados agregados y revisión del autor
+
+Suite PG18 aislada ampliada: `test_staff_replay_authority.py`,
+`test_staff_membership_lifecycle.py`, `test_staff_member_profiles.py` y
+`test_staff_invitation_delivery.py`: **48 passed**, 398.59s. La prueba de carrera
+recupera un recibo real; nunca lo inserta como resultado esperado. El camino
+replay-winner prueba las mismas primitivas de idempotencia/autoridad bajo rol app;
+revocation-winner invoca además el comando Python real mientras contiende.
+
+`python-quality --log-dir .ci/admin-replay-batch-final-quality --summary-output
+.ci/admin-replay-batch-final-quality.json`: exit0, **201 arquitectura, 925 unit,
+647 módulos passed**; Ruff/format/Pyright/secret/SAST/dependency audit PASS.
+La única advertencia es del cliente FastAPI existente. Esta corrida precede la
+adaptación posterior de `runtime_table_contract.py`, que debe certificar el SHA
+publicado; no se atribuye a ese cambio una ejecución anterior.
+
+La verificación adicional del contrato de tablas mostró expectativa obsoleta
+para diez tablas privadas nativas de recuperación y de invitación/provisión de
+owners. ADAPT de la expectativa, no relajación de INV-PRIVILEGE: el baseline
+aceptado ya las mantiene privadas y utiliza request_auth/request_platform
+SECURITY DEFINER. Se agregan explícitamente al inventario de tablas sin privilegio
+app y se incluye el test en el runner actual. No grants concedidos, no cambios
+de baseline y no esperado calculado automáticamente desde la ACL real. Los
+intentos iniciales fallidos se conservan como defectos de cobertura descubiertos.
+
+PostgreSQL del usuario: Docker **5432/request_engine_current**, versión18.6,
+`alembic upgrade head` aplicado de0011 a0012, sin reset/backfill/deletion. Launcher
+local reiniciado; control/runtime ready200 y panel `GET /health/ready` ready.
+No prueba autenticada Chrome/Bitwarden ni aceptación SMTP productiva inferida.
+
+Revisión semántica del autor (SRP-1, human_verdict:null): contexto completo de los
+comandos de membresía, forms/executor, recorder, unidades list/batch y sus contratos;
+SQL0012 y lock roots/manager/idempotency; pruebas completas. Referencias de sensor
+estables del checkpoint6d68: QR-5bd9fba198ac (membership commands),
+QR-5cde0d167a45 (recorder), QR-63fc30cc8cf1 (executor), QR-8758e2eaf2e9 (forms),
+QR-b3cf1ae40f2c (delivery tests). HEALTHY_AS_IS, confianza alta para estas unidades:
+orquestación tipada por owner, locks ordenados y fases explícitas; sin extracción
+por LOC. Contraargumentos: raíz tenant amplia serializa administraciones y decoder
+JSON no sustituye límites transport/business; ninguna medición throughput validada.
+No cambiar raíces para reducir complejidad sin prueba de concurrencia.
+QR-d994de76754d (invitation commands): HEALTHY_AS_IS para la unidad list/batch,
+confianza media; el resto de SQL/carreras conserva la revisión parcial previa.
+No se convierte el estado de todo el archivo ni los demás 64 candidatos en aprobado.
+Estos IDs identifican sujetos del paquete anterior, no certifican hechos de un SHA
+nuevo. El certificado final y CI exact-head siguen siendo independientes.
+
+Después de ADAPT explícito, `uv run pytest
+tests/db/test_app_function_privilege_inventory.py
+tests/db/test_v3_runtime_privilege_contract.py -q -m postgres --tb=short`:
+**4 passed**, 23.82s, mismo PG18 aislado y login app real. No permisos productivos
+ampliados. `git diff --check` y Ruff focal PASS; hook gestionado pre-push instalado.

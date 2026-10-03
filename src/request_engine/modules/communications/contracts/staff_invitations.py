@@ -1,11 +1,22 @@
 """Closed-purpose delivery intent for a staff invitation, not a Party contact."""
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
 
 class StaffInvitationDeliveryRecorder(Protocol):
+    async def statuses(
+        self,
+        transaction: object,
+        *,
+        organization_id: UUID,
+        generations: tuple[tuple[UUID, int], ...],
+    ) -> Mapping[tuple[UUID, int], str]:
+        """Read at most 101 exact tenant/invitation/generation states; omit missing rows."""
+        ...
+
     async def status(
         self,
         transaction: object,

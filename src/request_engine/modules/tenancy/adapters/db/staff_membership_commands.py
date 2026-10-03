@@ -201,6 +201,8 @@ class PostgresStaffMembershipCommands:
         command: InviteNativeStaffCommand,
     ) -> InviteNativeStaffResult:
         _require_human_actor(actor)
+        if not actor.allows(_INVITE_CAPABILITY):
+            raise StaffMembershipForbidden("staff command capability is absent from actor context")
         provenance = _validate_provenance_reference(command.provenance_reference)
         idempotency_key = _validate_idempotency_key(command.idempotency_key)
         fingerprint = command_fingerprint(
@@ -220,6 +222,15 @@ class PostgresStaffMembershipCommands:
                 idempotency_key=idempotency_key,
                 fingerprint=fingerprint,
             )
+            try:
+                # Idempotency precedes ordered tenant/actor locks on every path.
+                # Completed receipts do not grant authority to a stale context.
+                await session.execute(
+                    text("SELECT request_cmd.lock_staff_command_authority(:capability)"),
+                    {"capability": _INVITE_CAPABILITY},
+                )
+            except DBAPIError as exc:
+                _raise_staff_db_error(exc)
             if replay is not None:
                 return _replay_invitation(replay)
 
@@ -288,6 +299,8 @@ class PostgresStaffMembershipCommands:
         command: ReplaceStaffAuthorityCommand,
     ) -> int:
         _require_human_actor(actor)
+        if not actor.allows(_AUTHORITY_CAPABILITY):
+            raise StaffMembershipForbidden("staff command capability is absent from actor context")
         if command.expected_authority_revision <= 0:
             raise ValueError("expected_authority_revision must be positive")
         desired = validate_staff_capabilities(command.desired_capabilities)
@@ -311,6 +324,15 @@ class PostgresStaffMembershipCommands:
                 idempotency_key=idempotency_key,
                 fingerprint=fingerprint,
             )
+            try:
+                # Idempotency precedes ordered tenant/actor locks on every path.
+                # Completed receipts do not grant authority to a stale context.
+                await session.execute(
+                    text("SELECT request_cmd.lock_staff_command_authority(:capability)"),
+                    {"capability": _AUTHORITY_CAPABILITY},
+                )
+            except DBAPIError as exc:
+                _raise_staff_db_error(exc)
             if replay is not None:
                 return _replay_revision(replay, "authority_revision")
             try:
@@ -362,6 +384,8 @@ class PostgresStaffMembershipCommands:
         command: TransitionStaffMembershipCommand,
     ) -> int:
         _require_human_actor(actor)
+        if not actor.allows(_MEMBERSHIP_CAPABILITY):
+            raise StaffMembershipForbidden("staff command capability is absent from actor context")
         if command.expected_revision <= 0:
             raise ValueError("expected_revision must be positive")
         provenance = _validate_provenance_reference(command.provenance_reference)
@@ -384,6 +408,15 @@ class PostgresStaffMembershipCommands:
                 idempotency_key=idempotency_key,
                 fingerprint=fingerprint,
             )
+            try:
+                # Idempotency precedes ordered tenant/actor locks on every path.
+                # Completed receipts do not grant authority to a stale context.
+                await session.execute(
+                    text("SELECT request_cmd.lock_staff_command_authority(:capability)"),
+                    {"capability": _MEMBERSHIP_CAPABILITY},
+                )
+            except DBAPIError as exc:
+                _raise_staff_db_error(exc)
             if replay is not None:
                 return _replay_revision(replay, "membership_revision")
             try:

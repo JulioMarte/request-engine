@@ -190,6 +190,67 @@ async def test_intent_replay_conflict_and_transaction_rollback(
 
 
 @pytest.mark.asyncio
+async def test_batch_status_exact_pairs_missing_foreign_and_old_generation(
+    admin_conn: Connection[Any],
+    command_session_factory: SessionFactory,
+) -> None:
+    org, first, expiry = invitation_prerequisite(admin_conn)
+    second = uuid4()
+    admin_conn.execute(
+        """INSERT INTO request_engine.staff_invitations (
+            id, organization_id, email, invited_by_principal_id,
+            provenance_reference, token_digest, expires_at
+        ) SELECT %s, organization_id, 'second@example.test', invited_by_principal_id,
+            'batch-query-input', %s, expires_at
+        FROM request_engine.staff_invitations WHERE id=%s""",
+        (second, "b" * 64, first),
+    )
+    recorder = PostgresStaffInvitationDeliveryRecorder()
+    await record_delivery(command_session_factory, org, first, expiry)
+    async with tenant_transaction(command_session_factory, org) as session:
+        await recorder.record(
+            session,
+            organization_id=org,
+            invitation_id=second,
+            generation=1,
+            destination_address="second@example.test",
+            secret_reference="second-invitation",
+            secret_digest="b" * 64,
+            expires_at=expiry,
+        )
+    async with tenant_transaction(command_session_factory, org) as session:
+        await recorder.cancel(session, organization_id=org, invitation_id=first)
+        await recorder.record(
+            session,
+            organization_id=org,
+            invitation_id=first,
+            generation=2,
+            destination_address="new-staff@example.test",
+            secret_reference="next-generation",
+            secret_digest="c" * 64,
+            expires_at=expiry,
+        )
+    foreign_org, foreign, foreign_expiry = invitation_prerequisite(admin_conn)
+    await record_delivery(command_session_factory, foreign_org, foreign, foreign_expiry)
+    pairs = ((first, 2), (second, 1), (second, 1), (second, 2), (foreign, 1), (uuid4(), 1))
+    async with tenant_transaction(command_session_factory, org) as session:
+        assert await recorder.statuses(session, organization_id=org, generations=pairs) == {
+            (first, 2): "pending",
+            (second, 1): "pending",
+        }
+        # Asking the supported adapter for another organization never bypasses RLS.
+        assert (
+            await recorder.statuses(
+                session, organization_id=foreign_org, generations=((foreign, 1),)
+            )
+            == {}
+        )
+        assert await recorder.statuses(session, organization_id=org, generations=((first, 1),)) == {
+            (first, 1): "cancelled",
+        }
+
+
+@pytest.mark.asyncio
 async def test_unknown_reconciles_without_resending(
     admin_conn: Connection[Any],
     command_session_factory: SessionFactory,

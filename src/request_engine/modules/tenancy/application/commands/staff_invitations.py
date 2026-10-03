@@ -1,5 +1,6 @@
 """Tenancy-owned email invitation intents and subject acceptance receipts."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -8,6 +9,14 @@ from uuid import UUID
 
 class InvitationDeliveryIntent(Protocol):
     """Caller-owned port; composition supplies Communications' transactional recorder."""
+
+    async def statuses(
+        self,
+        transaction: object,
+        *,
+        organization_id: UUID,
+        generations: tuple[tuple[UUID, int], ...],
+    ) -> Mapping[tuple[UUID, int], str]: ...
 
     async def record(
         self,

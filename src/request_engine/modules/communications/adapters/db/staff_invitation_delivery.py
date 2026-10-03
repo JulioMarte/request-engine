@@ -14,6 +14,46 @@ STAFF_INVITATION_MAX_ATTEMPTS = 8
 
 
 class PostgresStaffInvitationDeliveryRecorder:
+    async def statuses(
+        self,
+        transaction: object,
+        *,
+        organization_id: UUID,
+        generations: tuple[tuple[UUID, int], ...],
+    ) -> dict[tuple[UUID, int], str]:
+        session = _transaction(transaction)
+        if len(generations) > 101 or any(generation < 1 for _, generation in generations):
+            raise ValueError("invalid invitation delivery status batch")
+        if not generations:
+            return {}
+        pairs = tuple(dict.fromkeys(generations))
+        rows = (
+            (
+                await session.execute(
+                    text("""
+                    SELECT d.invitation_id, d.generation, d.status
+                    FROM request_engine.staff_invitation_deliveries d
+                    JOIN unnest(CAST(:invitation_ids AS uuid[]), CAST(:generations AS integer[]))
+                        AS requested(invitation_id, generation)
+                      ON requested.invitation_id = d.invitation_id
+                     AND requested.generation = d.generation
+                    WHERE d.organization_id = :organization_id
+                """),
+                    {
+                        "organization_id": organization_id,
+                        "invitation_ids": [invitation for invitation, _ in pairs],
+                        "generations": [generation for _, generation in pairs],
+                    },
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return {
+            (cast(UUID, row["invitation_id"]), cast(int, row["generation"])): str(row["status"])
+            for row in rows
+        }
+
     async def status(
         self,
         transaction: object,

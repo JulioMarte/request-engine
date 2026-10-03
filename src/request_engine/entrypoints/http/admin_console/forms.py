@@ -9,6 +9,7 @@ JSON text so no per-operation screen is required.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -115,7 +116,10 @@ def _coerce(field: FormField, raw: str) -> Any:
     if raw == "":
         return None
     if field.kind == "boolean":
-        return raw.strip().lower() in {"1", "true", "on", "yes"}
+        normalized = raw.strip().lower()
+        if normalized not in {"1", "true", "on", "yes", "0", "false", "off", "no"}:
+            raise FormSubmissionError(f"{field.label} must be a boolean")
+        return normalized in {"1", "true", "on", "yes"}
     if field.kind == "integer":
         try:
             return int(raw)
@@ -123,13 +127,20 @@ def _coerce(field: FormField, raw: str) -> Any:
             raise FormSubmissionError(f"{field.label} must be an integer") from exc
     if field.kind == "number":
         try:
-            return float(raw)
+            number = float(raw)
         except ValueError as exc:
             raise FormSubmissionError(f"{field.label} must be a number") from exc
+        if not math.isfinite(number):
+            raise FormSubmissionError(f"{field.label} must be a finite number")
+        return number
     if field.kind in _JSON_KINDS:
         try:
-            return json.loads(raw)
-        except json.JSONDecodeError as exc:
+            value = json.loads(raw)
+            # JSON's numeric grammar excludes NaN/infinity. Check nested values
+            # too, including overflowed exponents accepted by Python's decoder.
+            json.dumps(value, allow_nan=False)
+            return value
+        except ValueError as exc:
             raise FormSubmissionError(f"{field.label} must be valid JSON") from exc
     return raw
 
