@@ -45,7 +45,15 @@ async def test_agent_mode_stages_with_cas_and_no_static_token() -> None:
             seen["metadata"] = json.loads(request.content)
             return httpx.Response(200, json={})
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"data": {"version": 1}})
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "version": 1,
+                    "deletion_time": (datetime.now(UTC) + timedelta(minutes=20)).isoformat(),
+                }
+            },
+        )
 
     expires_at = datetime.now(UTC) + timedelta(minutes=30)
     staged = await _store(handler).stage(
@@ -73,17 +81,20 @@ async def test_cas_replay_reads_original_winner() -> None:
     expires_at = datetime.now(UTC) + timedelta(minutes=20)
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if "/metadata/" in request.url.path:
+            return httpx.Response(204)
         if request.method == "POST":
             return httpx.Response(400, json={"errors": ["cas mismatch"]})
         return httpx.Response(
             200,
             json={
                 "data": {
+                    "metadata": {"deletion_time": (expires_at - timedelta(seconds=1)).isoformat()},
                     "data": {
                         "secret": "winner",
                         "digest": "a" * 64,
                         "expires_at": expires_at.isoformat(),
-                    }
+                    },
                 }
             },
         )

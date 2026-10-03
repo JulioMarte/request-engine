@@ -690,6 +690,44 @@ async def test_authentication_options_do_not_reveal_unknown_handles(
 
 
 @pytest.mark.asyncio
+async def test_discoverable_usernameless_login_issues_session(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        authenticator = await _claim_owner(client)
+
+        # No login_handle at all: options must be discoverable (empty allow-list).
+        options_response = await client.post(
+            "/auth/native/webauthn/authentication-options", json={}
+        )
+        assert options_response.status_code == 200
+        public_key = options_response.json()["public_key"]
+        assert not public_key.get("allowCredentials")
+
+        credential = authenticator.authentication_credential(
+            challenge=websafe_decode(public_key["challenge"]), user_verified=True
+        )
+        created = await client.post(
+            "/auth/native/webauthn/sessions", json={"credential": credential}
+        )
+        assert created.status_code == 201
+        token = created.json()["access_token"]
+        assurance, verified, methods, recovery = _session_row(e2e_admin_conn, token)
+        assert assurance == "phishing_resistant"
+        assert verified is True
+        assert methods == ["webauthn"]
+        assert recovery is False
+
+
+@pytest.mark.asyncio
 async def test_offline_recovery_restricts_sensitive_authority_until_webauthn_completion(
     private_runtime_configuration: UUID,
     e2e_admin_conn: PgConnection,

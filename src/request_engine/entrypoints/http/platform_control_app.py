@@ -28,6 +28,9 @@ from request_engine.modules.tenancy.api.native_platform_provisioning import (
 from request_engine.modules.tenancy.api.platform_native_identity_management import (
     install_native_identity_management_http,
 )
+from request_engine.modules.tenancy.api.platform_organization_reads import (
+    install_platform_organization_reads_http,
+)
 from request_engine.modules.tenancy.api.platform_owner_management import (
     install_platform_owner_management_http,
 )
@@ -157,6 +160,11 @@ def create_platform_control_app(
         actor_resolver=runtime.platform_actor_resolver,
         native_auth_service=runtime.service,
         native_authority_id=native_authority_id,
+    )
+    install_platform_organization_reads_http(
+        app,
+        read_session_factory=platform_read_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
     )
     install_platform_configuration_http(
         app,

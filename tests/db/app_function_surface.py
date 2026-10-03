@@ -5,6 +5,27 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0012: closed staff capability gate, current actor locks, no business writes.
+    "request_cmd.lock_staff_command_authority(p_capability text)",
+    # 0011: fixed-capability tenant-local profile locks/CAS; no authority writes.
+    "request_cmd.lock_staff_member_profile(p_membership uuid)",
+    (
+        "request_cmd.write_staff_member_profile(p_membership uuid, p_expected bigint, "
+        "p_name text, p_provenance text)"
+    ),
+    # 0009: current manager gate and subject-proof-bound staff materialization.
+    "request_cmd.assert_staff_invitation_manager()",
+    "request_cmd.lock_staff_invitation_admin(p_id uuid)",
+    (
+        "request_cmd.lock_staff_invitation_acceptance(p_id uuid, p_digest text, "
+        "p_authority uuid, p_identity uuid, p_session uuid)"
+    ),
+    (
+        "request_cmd.materialize_invited_staff(p_id uuid, p_digest text, p_authority uuid, "
+        "p_identity uuid, p_session uuid, p_membership uuid, p_principal uuid, p_binding uuid)"
+    ),
+    # 0007: current-tenant planner projection, not the private cross-tenant predicate.
+    "request_read.staff_controller_is_effective(p_principal_id uuid)",
     # 0030: current HUMAN manager revalidation, bounded credential replacement,
     # and tenant-local inspection. Private state mutators remain owner-only.
     "request_cmd.assert_integration_manager(p_capability text)",

@@ -157,6 +157,10 @@ class StaffMembershipConflict(StaffMembershipError):
     """The requested Staff lifecycle mutation conflicts with current persisted state."""
 
 
+class StaffInvitationIdentityAlreadyLinked(StaffMembershipConflict):
+    """Invitation acceptance cannot duplicate or revive an existing tenant identity link."""
+
+
 class StaffMembershipInputInvalid(StaffMembershipError):
     """The requested Staff lifecycle mutation violates an input contract."""
 

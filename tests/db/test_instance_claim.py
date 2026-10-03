@@ -245,6 +245,7 @@ async def test_finalize_claims_instance_atomically(
         "platform.owner.read",
         "platform.owner.provision",
         "platform.owner.manage_lifecycle",
+        "platform.organization.read",
         "platform.provisioner.read",
         "platform.provisioner.manage_lifecycle",
     }

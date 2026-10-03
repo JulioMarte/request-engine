@@ -103,6 +103,7 @@ uv run pytest \
   tests/db/test_identity_binding_reads.py \
   tests/db/test_identity_binding_lifecycle.py \
   tests/db/test_platform_control_read_boundary.py \
+  tests/db/test_platform_organization_directory.py \
   tests/db/test_platform_definer_topology.py \
   tests/db/test_platform_root_bootstrap_intents.py \
   tests/db/test_platform_root_bootstrap_consume.py \
@@ -122,12 +123,18 @@ uv run pytest \
   tests/db/test_agent_governance.py \
   tests/db/test_agent_governance_reader.py \
   tests/db/test_self_authority_reader.py \
+  tests/db/test_self_organization_discovery.py \
   tests/db/test_resource_authority_inspection.py \
   tests/db/test_agent_policy.py \
   tests/db/test_delegation_concurrency.py \
   tests/db/test_integration_governance.py \
   tests/db/test_v3_tenant_reference_integrity.py \
   tests/db/test_staff_membership_lifecycle.py \
+  tests/db/test_staff_member_profiles.py \
+  tests/db/test_staff_membership_history.py \
+  tests/db/test_staff_replay_authority.py \
+  tests/db/test_staff_email_invitations.py \
+  tests/db/test_staff_invitation_delivery.py \
   tests/db/test_identity_governance_audit.py \
   tests/db/test_controller_policy_upgrade.py \
   tests/db/test_identity_onboarding_readiness.py \
@@ -246,6 +253,7 @@ uv run pytest \
 # inventory on current HEAD so new grants cannot ship outside review.
 uv run pytest \
   tests/db/test_v3_app_function_privilege_inventory.py \
+  tests/db/test_v3_runtime_privilege_contract.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/app-function-inventory.xml"
 

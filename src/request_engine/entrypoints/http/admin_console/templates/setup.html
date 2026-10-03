@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}First-run setup &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>First-run setup</h1>
+
+  {% if not initialized %}
+    <div class="alert error">The control plane is not initialized (no platform instance row).</div>
+    <p class="muted">{{ discovery_detail }}</p>
+
+  {% elif step == 'done' and claim %}
+    <div class="alert notice">Instance claimed successfully.</div>
+    <ul class="stats">
+      <li>Instance <code>{{ claim.instance_id }}</code></li>
+      <li>Owner principal <code>{{ claim.owner_principal_id }}</code></li>
+      <li>Native identity <code>{{ claim.native_identity_id }}</code></li>
+      <li>Policy <code>{{ claim.policy_key }}</code></li>
+    </ul>
+    <p><a class="button" href="/login">Proceed to sign in</a></p>
+
+  {% elif not setup_required and not has_setup_session %}
+    <div class="alert notice">This instance is already claimed; setup is permanently closed.</div>
+    <p><a class="button" href="/login">Sign in</a></p>
+
+  {% else %}
+    <ol class="steps">
+      <li class="{% if step == 'identity' %}active{% endif %}">Owner identity</li>
+      <li class="{% if step == 'passkey' %}active{% endif %}">Passkey</li>
+      <li class="{% if step == 'recovery' %}active{% endif %}">Recovery codes</li>
+      <li class="{% if step not in ('identity', 'passkey', 'recovery') %}active{% endif %}">Claim</li>
+    </ol>
+
+    {% if not has_setup_session %}
+      <p class="muted">Start a bounded one-time setup session. It expires in 30 minutes.</p>
+      <form method="post" action="/setup/session">
+        <button type="submit">Start setup session</button>
+      </form>
+
+    {% elif step in ('identity', 'start') %}
+      <h2>Owner identity</h2>
+      <form method="post" action="/setup/identity" class="stack" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ setup_csrf }}" />
+        <label>Owner login handle
+          <input name="login_handle" type="text" required autofocus />
+        </label>
+        <label>Owner password
+          <input name="password" type="password" required />
+        </label>
+        <button type="submit">Continue</button>
+      </form>
+
+    {% elif step == 'passkey' %}
+      <h2>Register the owner passkey</h2>
+      <p class="muted">The Platform Owner must enroll a user-verified passkey. Passkeys are required for privileged step-up.</p>
+      <button id="setup-passkey-btn" type="button">Register passkey</button>
+      <p id="setup-passkey-status" class="muted"></p>
+
+    {% elif step == 'recovery' and not codes %}
+      <h2>Issue recovery codes</h2>
+      <p class="muted">Recovery codes are shown once. Keep at least one offline.</p>
+      <form method="post" action="/setup/recovery-codes">
+        <button type="submit">Generate recovery codes</button>
+      </form>
+
+    {% elif step == 'recovery' and codes %}
+      <h2>Save these recovery codes</h2>
+      <div class="alert error">They are displayed once and never replayed. Store them offline now.</div>
+      <ul class="codes">
+        {% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}
+      </ul>
+      <h2>Claim the instance</h2>
+      <form method="post" action="/setup/finalize" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ setup_csrf }}" />
+        <label>Claim provenance
+          <input name="claim_provenance" type="text" required value="admin-console" />
+        </label>
+        <button type="submit">Finalize claim</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

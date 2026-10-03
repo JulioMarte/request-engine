@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfigurationError,
     ActivePlatformConfigurationResolver,
@@ -25,11 +27,13 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
         fallback: SmtpRecoveryDeliveryChannel | None = None,
         reset_url: str | None = None,
         operational_metrics: P7OperationalMetrics | None = None,
+        purpose: Literal["identity_recovery", "staff_invitation"] = "identity_recovery",
     ) -> None:
         self._resolver = resolver
         self._fallback = fallback
         self._reset_url = reset_url
         self._operational_metrics = operational_metrics
+        self._purpose: Literal["identity_recovery", "staff_invitation"] = purpose
 
     async def send(
         self,
@@ -119,6 +123,7 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
             use_ssl=smtp.security.value == "tls",
             timeout_seconds=smtp.timeout_seconds,
             reset_url=self._reset_url,
+            purpose=self._purpose,
         )
 
     async def reconcile(self, *, idempotency_key: str) -> DeliveryOutcome | None:

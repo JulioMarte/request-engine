@@ -21,6 +21,18 @@ _APPLICATION_SCHEMAS = [
     "request_read",
 ]
 _EXPECTED_COLUMN_PRIVILEGES = {
+    # Proof-bound pre-tenant invitation target, no email or result metadata.
+    ("staff_invitations", "id", "SELECT"),
+    ("staff_invitations", "organization_id", "SELECT"),
+    ("staff_invitations", "token_digest", "SELECT"),
+    ("identity_authorities", "id", "SELECT"),
+    ("identity_authorities", "kind", "SELECT"),
+    ("identity_authorities", "status", "SELECT"),
+    ("principals", "organization_id", "SELECT"),
+    ("staff_memberships", "id", "SELECT"),
+    ("staff_memberships", "organization_id", "SELECT"),
+    ("staff_memberships", "principal_id", "SELECT"),
+    ("staff_memberships", "status", "SELECT"),
     ("identity_bindings", "id", "SELECT"),
     ("identity_bindings", "identity_authority_id", "SELECT"),
     ("identity_bindings", "subject_id", "SELECT"),
@@ -88,6 +100,15 @@ _EXPECTED_COLUMN_PRIVILEGES = {
     ("platform_secret_bindings", "created_at", "SELECT"),
     ("platform_secret_bindings", "rotated_at", "SELECT"),
     ("platform_secret_bindings", "revoked_at", "SELECT"),
+    ("organizations", "id", "SELECT"),
+    ("organizations", "organization_key", "SELECT"),
+    ("organizations", "display_name", "SELECT"),
+    ("organizations", "operational_status", "SELECT"),
+    ("organizations", "default_timezone", "SELECT"),
+    ("organizations", "default_locale", "SELECT"),
+    ("organizations", "default_currency", "SELECT"),
+    ("organizations", "created_at", "SELECT"),
+    ("organizations", "updated_at", "SELECT"),
 }
 
 
@@ -221,6 +242,20 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
             ["search_path=pg_catalog, request_engine, pg_temp"],
         ),
         (
+            "request_auth",
+            "read_self_organizations",
+            "p_identity_authority_id uuid, p_subject_id text, p_after uuid, p_limit integer",
+            True,
+            ["search_path=pg_catalog, request_engine, pg_temp"],
+        ),
+        (
+            "request_auth",
+            "staff_invitation_target",
+            "p_id uuid, p_digest text",
+            True,
+            ["search_path=pg_catalog, request_engine, pg_temp"],
+        ),
+        (
             "request_platform",
             "read_active_appointment_option_signing_keyring",
             "",
@@ -252,6 +287,13 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
             "request_platform",
             "read_platform_configuration_revisions",
             "p_configuration_kind text",
+            True,
+            ["search_path=pg_catalog, request_engine, pg_temp"],
+        ),
+        (
+            "request_platform",
+            "read_platform_organizations",
+            "p_organization_id uuid, p_after uuid, p_limit integer",
             True,
             ["search_path=pg_catalog, request_engine, pg_temp"],
         ),

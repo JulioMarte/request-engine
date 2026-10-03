@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey
 from request_engine.modules.tenancy.application.commands.staff_membership import (
@@ -12,6 +12,7 @@ from request_engine.modules.tenancy.application.commands.staff_membership import
     StaffMembershipCommands,
     StaffMembershipTargetStatus,
     TransitionStaffMembershipCommand,
+    UpdateStaffProfileCommand,
 )
 from request_engine.modules.tenancy.application.errors import (
     StaffMembershipForbidden,
@@ -55,6 +56,17 @@ class StaffMembershipTransitionView(BaseModel):
     membership_revision: int
 
 
+class StaffProfileUpdateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    display_name: str | None = Field(min_length=1, max_length=200)
+    expected_profile_revision: int = Field(ge=0)
+    provenance_reference: str = Field(min_length=1, max_length=500)
+
+
+class StaffProfileUpdateView(BaseModel):
+    profile_revision: int
+
+
 def add_staff_membership_routes(
     router: APIRouter,
     *,
@@ -65,6 +77,38 @@ def add_staff_membership_routes(
         require_capability(actor, capability)
         if actor.principal_kind is not PrincipalKind.HUMAN:
             raise StaffMembershipForbidden("staff lifecycle commands require a HUMAN actor")
+
+    async def update_profile(
+        membership_id: UUID,
+        body: StaffProfileUpdateBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> StaffProfileUpdateView:
+        authorize(actor, "staff.manage_membership")
+        try:
+            revision = await commands.update_staff_profile(
+                actor,
+                UpdateStaffProfileCommand(
+                    membership_id=membership_id,
+                    display_name=body.display_name,
+                    expected_profile_revision=body.expected_profile_revision,
+                    provenance_reference=body.provenance_reference,
+                    idempotency_key=idempotency_key,
+                ),
+            )
+        except ValueError as exc:
+            raise StaffMembershipInputInvalid(str(exc)) from None
+        return StaffProfileUpdateView(profile_revision=revision)
+
+    add_capability_route(
+        router,
+        "/members/{membership_id}/profile",
+        update_profile,
+        methods=["PATCH"],
+        capability="staff.manage_membership",
+        operation_id="staff_profile_update",
+        response_model=StaffProfileUpdateView,
+    )
 
     async def invite_native_staff(
         body: NativeStaffInviteBody,

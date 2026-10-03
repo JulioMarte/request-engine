@@ -488,6 +488,16 @@ path = "tests/db/test_webauthn_persistence.py"
 evidence = ["invariant", "adversarial", "security"]
 
 [[proofs]]
+guarantee = "INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001"
+path = "tests/db/test_webauthn_persistence.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001"
+path = "tests/e2e/test_native_webauthn_login_http.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
 guarantee = "INV-PHISHING-RESISTANT-ASSURANCE-001"
 path = "tests/unit/platform/security/test_webauthn.py"
 evidence = ["invariant", "security"]

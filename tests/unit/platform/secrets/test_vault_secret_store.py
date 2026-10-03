@@ -47,7 +47,15 @@ async def test_stage_creates_if_absent_with_cas_zero() -> None:
             return httpx.Response(200, json={})
         seen["path"] = request.url.path
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"data": {"version": 1}})
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "version": 1,
+                    "deletion_time": (datetime.now(UTC) + timedelta(minutes=20)).isoformat(),
+                }
+            },
+        )
 
     expires_at = _expires_at()
     staged = await _store(handler).stage(
@@ -78,6 +86,8 @@ async def test_stage_cas_conflict_returns_existing_without_created() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(f"{request.method} {request.url.path}")
+        if "/metadata/" in request.url.path:
+            return httpx.Response(204)
         if request.method == "POST":
             return httpx.Response(
                 400,
@@ -87,11 +97,14 @@ async def test_stage_cas_conflict_returns_existing_without_created() -> None:
             200,
             json={
                 "data": {
+                    "metadata": {
+                        "deletion_time": (existing_expires_at - timedelta(seconds=1)).isoformat()
+                    },
                     "data": {
                         "secret": "winner-secret",
                         "digest": existing_digest,
                         "expires_at": existing_expires_at.isoformat(),
-                    }
+                    },
                 }
             },
         )
@@ -108,6 +121,7 @@ async def test_stage_cas_conflict_returns_existing_without_created() -> None:
     assert staged.digest == existing_digest
     assert staged.expires_at == existing_expires_at
     assert calls == [
+        f"POST /v1/secret/metadata/{_PATH}",
         f"POST /v1/secret/data/{_PATH}",
         f"GET /v1/secret/data/{_PATH}",
     ]
@@ -116,6 +130,8 @@ async def test_stage_cas_conflict_returns_existing_without_created() -> None:
 @pytest.mark.asyncio
 async def test_stage_cas_conflict_without_existing_is_retryable() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
+        if "/metadata/" in request.url.path:
+            return httpx.Response(204)
         if request.method == "POST":
             return httpx.Response(400, json={"errors": ["cas mismatch"]})
         return httpx.Response(404, json={"errors": []})

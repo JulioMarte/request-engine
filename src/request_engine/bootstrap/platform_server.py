@@ -53,6 +53,7 @@ _READ = (
     "request_platform.read_platform_provisioners(uuid,uuid,integer)",
     "request_platform.read_identity_recovery_cases(uuid,uuid,integer)",
     "request_platform.read_native_identities(uuid,uuid,integer)",
+    "request_platform.read_platform_organizations(uuid,uuid,integer)",
     "request_platform.read_platform_configuration_revisions(text)",
     "request_platform.read_platform_secret_binding(uuid)",
     "request_platform.read_platform_readiness()",

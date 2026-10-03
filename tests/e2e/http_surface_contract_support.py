@@ -3,10 +3,19 @@ from typing import cast
 from request_engine.platform.security.capabilities import CapabilityDefinition
 
 _OPERATION_ID_OVERRIDES = {
+    "staff.profile.update": "staff_profile_update",
+    "staff.history.list": "staff_history_list",
+    "staff.invitation.create": "staff_invitation_create",
+    "staff.invitation.list": "staff_invitation_list",
+    "staff.invitation.get": "staff_invitation_get",
+    "staff.invitation.resend": "staff_invitation_resend",
+    "staff.invitation.revoke": "staff_invitation_revoke",
     "agent.list": "agent_list",
     "agent.get": "agent_get",
     "staff.list": "staff_list",
     "staff.get": "staff_get",
+    "staff.overview": "staff_overview_get",
+    "staff.authority.plan": "staff_authority_plan",
     "identity_binding.list": "identity_binding_list",
     "identity_binding.get": "identity_binding_get",
     "identity_binding.suspend": "identity_binding_suspend",

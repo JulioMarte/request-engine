@@ -12,7 +12,10 @@ import smtplib
 import ssl
 from collections.abc import Callable
 from email.message import EmailMessage
+from email.utils import getaddresses
+from typing import Literal
 from urllib.parse import quote
+from uuid import UUID
 
 from request_engine.platform.secrets.delivery import (
     DeliveryOutcome,
@@ -22,6 +25,20 @@ from request_engine.platform.secrets.delivery import (
 
 _SUBJECT = "Request Engine identity recovery"
 _VERIFICATION_SUBJECT = "Verify your Request Engine recovery address"
+
+
+def _validate_destination(value: str) -> None:
+    # send_message derives its envelope from To. Never let a single destination
+    # expand into a recipient list, display-name/group syntax or header injection.
+    addresses = getaddresses([value])
+    if (
+        not value.isascii()
+        or any(character in value for character in "\r\n")
+        or "@" not in value
+        or len(addresses) != 1
+        or addresses[0] != ("", value)
+    ):
+        raise RecoveryDeliveryPermanent("delivery destination must be one ASCII mailbox")
 
 
 class SmtpRecoveryDeliveryChannel:
@@ -39,6 +56,7 @@ class SmtpRecoveryDeliveryChannel:
         use_ssl: bool = False,
         timeout_seconds: float = 10.0,
         reset_url: str | None = None,
+        purpose: Literal["identity_recovery", "staff_invitation"] = "identity_recovery",
         transport: Callable[..., smtplib.SMTP] | None = None,
     ) -> None:
         if not host.strip():
@@ -56,6 +74,9 @@ class SmtpRecoveryDeliveryChannel:
         self._use_ssl = use_ssl
         self._timeout_seconds = timeout_seconds
         self._reset_url = reset_url
+        if purpose == "staff_invitation" and not reset_url:
+            raise ValueError("staff invitation acceptance URL is required")
+        self._purpose = purpose
         self._transport: Callable[..., smtplib.SMTP] = transport or (
             smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
         )
@@ -67,8 +88,7 @@ class SmtpRecoveryDeliveryChannel:
         destination_reference: str,
         idempotency_key: str,
     ) -> DeliveryOutcome:
-        if not destination_reference.strip() or "@" not in destination_reference:
-            raise RecoveryDeliveryPermanent("recovery destination is not a deliverable address")
+        _validate_destination(destination_reference)
         message = self._build_message(
             secret=secret,
             destination_reference=destination_reference,
@@ -96,8 +116,7 @@ class SmtpRecoveryDeliveryChannel:
         destination_reference: str,
         idempotency_key: str,
     ) -> DeliveryOutcome:
-        if not destination_reference.strip() or "@" not in destination_reference:
-            raise RecoveryDeliveryPermanent("verification destination is not a deliverable address")
+        _validate_destination(destination_reference)
         message = self._build_verification_message(
             secret=secret,
             destination_reference=destination_reference,
@@ -126,10 +145,31 @@ class SmtpRecoveryDeliveryChannel:
         message = EmailMessage()
         message["From"] = self._sender
         message["To"] = destination_reference
-        message["Subject"] = _SUBJECT
+        message["Subject"] = (
+            "You are invited to Request Engine" if self._purpose == "staff_invitation" else _SUBJECT
+        )
         message_id = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
         message["Message-ID"] = f"<{message_id}@request-engine>"
-        if self._reset_url is not None:
+        if self._purpose == "staff_invitation":
+            invitation_id, separator, proof = secret.partition(".")
+            try:
+                UUID(invitation_id)
+            except ValueError as exc:
+                raise RecoveryDeliveryPermanent("invalid invitation proof envelope") from exc
+            if not separator or not proof:
+                raise RecoveryDeliveryPermanent("invalid invitation proof envelope")
+            assert self._reset_url is not None
+            link = (
+                f"{self._reset_url.rstrip('/')}/{invitation_id}/accept"
+                f"#token={quote(secret, safe='')}"
+            )
+            body = (
+                "You have been invited to join an organization in Request Engine.\n\n"
+                f"Sign in or create your identity, then accept here:\n{link}\n\n"
+                "Acceptance creates a membership, not permission to administer the organization.\n"
+                "If you did not expect this invitation, ignore this message.\n"
+            )
+        elif self._reset_url is not None:
             link = f"{self._reset_url}#token={quote(secret, safe='')}"
             body = (
                 "A recovery proof was requested for this address.\n\n"
@@ -161,6 +201,7 @@ class SmtpRecoveryDeliveryChannel:
         return message
 
     def _deliver_blocking(self, message: EmailMessage) -> DeliveryOutcome:
+        transmission_started = False
         try:
             # smtplib's built-in defaults for SMTP_SSL/starttls do not verify the
             # server certificate or hostname; always pass a verifying context so
@@ -180,6 +221,7 @@ class SmtpRecoveryDeliveryChannel:
                     client.starttls(context=ssl.create_default_context())
                 if self._username is not None:
                     client.login(self._username, self._password or "")
+                transmission_started = True
                 client.send_message(message)
         except (
             smtplib.SMTPRecipientsRefused,
@@ -196,5 +238,7 @@ class SmtpRecoveryDeliveryChannel:
         except smtplib.SMTPException:
             return DeliveryOutcome.UNKNOWN
         except OSError as exc:
+            if transmission_started:
+                return DeliveryOutcome.UNKNOWN
             raise RecoveryDeliveryRetryable("smtp connection failed before transmission") from exc
         return DeliveryOutcome.DELIVERED

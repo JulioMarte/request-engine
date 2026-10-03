@@ -404,9 +404,12 @@ secret manager; do not put real passwords in shell history or committed examples
 
 - `REQUEST_ENGINE_DATABASE_URL`: dedicated app-role login for native authentication.
 - `REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL`: separate login with only schema
-  USAGE and EXECUTE on `request_platform.read_principal_authority(uuid)`,
-  `request_platform.read_platform_provisioners(uuid, uuid, integer)` and
-  `request_platform.read_identity_recovery_cases(uuid, uuid, integer)`.
+  USAGE and EXECUTE on the reviewed `request_platform` read projections:
+  `read_principal_authority(uuid)`, `read_platform_provisioners(uuid, uuid, integer)`,
+  `read_identity_recovery_cases(uuid, uuid, integer)`,
+  `read_native_identities(uuid, uuid, integer)`,
+  `read_platform_configuration_revisions(text)`,
+  `read_platform_secret_binding(uuid)` and `read_platform_readiness()`.
 - `REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL`: separate login inheriting only
   `request_platform_control`, with no extra direct privileges.
 - `REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID`: active native authority UUID.
@@ -440,6 +443,14 @@ or replace ingress/network controls. Pool disposal runs on shutdown and failed
 startup. A real-TCP proof covers startup, OpenAPI, native enrollment and unauthenticated
 provisioning rejection; real-PostgreSQL cases cover extra role memberships, column
 grants, extra callable functions, auth/platform crossover and authority disablement.
+
+For local development the same three logins can be created from
+`scripts/dev/init_local_runtime_roles.sql` (dev-only throwaway passwords) and the
+private plane plus the private admin console started together with
+`scripts/dev/run_local_panel.ps1`. The baseline role-topology guard rejects a
+cluster that already contains those runtime logins, so migrate the database
+first and create the logins afterwards; rebuilding from the baseline requires
+dropping the logins before re-migrating.
 
 ## Native authority probe boundary
 

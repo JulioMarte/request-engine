@@ -122,6 +122,12 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         revision=RevisionPolicy.SERVER_SELECTED,
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
+    query_capability(
+        "platform.organization.read",
+        CapabilityExposure.OPERATOR,
+        "List and inspect platform organizations without crossing into tenant authority.",
+        authority_plane=AuthorityPlane.PLATFORM,
+    ),
     command_capability(
         "platform.identity.recover",
         CapabilityExposure.OPERATOR,
@@ -217,6 +223,12 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "staff.manage_authority",
         "Replace bounded operational and tenant-control authority for human staff.",
         revision=RevisionPolicy.REQUIRED,
+    ),
+    query_capability(
+        "staff.plan_authority",
+        CapabilityExposure.OPERATOR,
+        "Preview a bounded human staff authority replacement without mutating authority.",
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
     ),
     _agent_capability(
         "agent.provision",

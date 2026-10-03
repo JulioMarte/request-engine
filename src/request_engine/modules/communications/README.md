@@ -34,6 +34,29 @@ The originating business transaction commits before provider I/O occurs. Communi
 
 `ScheduledAction` lease/retry/fencing mechanics belong to `platform/scheduling`; this module owns why a communication/reminder exists, its policy, delivery semantics and business acknowledgement.
 
+## Staff invitation email
+
+Tenancy records closed-purpose staff invitation delivery through
+`contracts/staff_invitations.py` in its own authoritative transaction. An
+unregistered email recipient is not fabricated as a Party or a verified contact.
+`staff_invitation_deliveries` stores only destination, bounded expiry and an
+opaque governed-secret reference/digest. Its dispatch action contains only the
+delivery identifier; raw acceptance proofs never enter PostgreSQL or audit.
+
+`StaffInvitationDeliveryScheduledHandler` commits `attempting` under the
+ScheduledAction fence and delivery-row lock, releases the transaction, then
+publishes through `RecoverySecretDelivery`. It renews and revalidates the fence
+before finalization. Reclaimed `attempting` or `unknown` work reconciles the
+same deterministic provider key and never blindly sends again. Definitive
+pre-transmission failures permit bounded retries; exhaustion becomes `failed`.
+Unresolvable SMTP uncertainty remains explicitly `unknown`, not delivered.
+
+Resend, revoke and acceptance cancel unfinished generations through the same
+contract/transaction. Cancellation and prepare serialize on the delivery row;
+finalization cannot replace `cancelled`. A send already prepared before
+cancellation may finish transport, but Tenancy invalidates its old proof. No
+claim of retracting in-flight email or exactly-once SMTP delivery is made.
+
 ## Baseline execution semantics
 
 - `CommunicationTask` is durable intent. Creating a new task and its first `dispatch_task` ScheduledAction is one tenant-scoped transaction.

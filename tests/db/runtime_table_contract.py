@@ -6,6 +6,14 @@ PRIVATE_GLOBAL_TABLES = {
     "initial_controller_policies",
     "global_identities",
     "identity_recovery_issuance_reservations",
+    # Accepted 0001: private native authentication provenance, definer writes only.
+    "native_identity_recovery_facts",
+    "native_identity_recovery_state",
+    "native_recovery_address_facts",
+    "native_recovery_address_verifications",
+    "native_recovery_addresses",
+    "native_recovery_delivery_facts",
+    "native_recovery_delivery_requests",
     "platform_authority_lifecycle_facts",
     "platform_identity_disable_facts",
     "platform_configuration_facts",
@@ -13,6 +21,10 @@ PRIVATE_GLOBAL_TABLES = {
     "platform_installation_claim_facts",
     "platform_instance",
     "platform_owner_policies",
+    # Accepted 0001: platform control definer only, never tenant app CRUD.
+    "platform_owner_invitation_facts",
+    "platform_owner_invitations",
+    "platform_owner_provisioning_facts",
     "platform_recovery_code_facts",
     "platform_secret_bindings",
     "platform_secret_mutations",
@@ -33,6 +45,8 @@ PRIVATE_GLOBAL_TABLES = {
 # registered/adjusted by the app but read through definer lookups; the
 # authority-event ledger and handoffs are fully definer-mediated.
 EXPECTED_TABLE_EXCEPTIONS = {
+    # 0011: only four reviewed column SELECTs; profile writes are definer-mediated.
+    "staff_member_profiles": (False,) * 7,
     "discovery_booking_handoffs": (False,) * 7,
     "service_classification_authority_events": (False,) * 7,
     "service_classifications": (False,) * 7,

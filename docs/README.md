@@ -24,11 +24,33 @@ There is no planned blanket architecture freeze. A production release may make p
 
 ## 2. Current architecture map
 
+Admin organization/staff journey review and prioritized remediation are tracked in
+[`testing/admin-api-adversarial-handoff-2026-09-29.md`](testing/admin-api-adversarial-handoff-2026-09-29.md).
+
+Earlier verification checkpoint and explicitly unfinished admin journeys:
+[`testing/admin-api-verification-2026-09-30.md`](testing/admin-api-verification-2026-09-30.md).
+Latest additive implementation checkpoint:
+[`testing/admin-completion-checkpoint-2026-10-02.md`](testing/admin-completion-checkpoint-2026-10-02.md).
+These are non-normative checkpoints with open findings, not production acceptance.
+
 Native initial provisioning authority is specified in `architecture/initial-controller-policy.md`; executed validation and remaining production gaps are tracked in `architecture/auth-implementation-status.md`.
 
 Current agent lifecycle/revision inspection and its explicit read authority are specified in `architecture/agent-governance-inspection.md`.
 
 Self-only current Party relationship inspection and its explicit policy evolution are specified in `architecture/self-authority-inspection.md`.
+
+Pre-tenant discovery of the signed-in person's own organization memberships is specified in `architecture/self-organization-discovery.md`.
+
+Staff email invitation ownership, authenticated acceptance and governed delivery
+are specified in `architecture/staff-email-invitations.md`.
+
+Tenant-local staff display labels, their independent revision, restricted update
+operation and literal name search are specified in `architecture/staff-member-profiles.md`.
+Current-authority validation of staff command receipts is specified in
+`architecture/staff-command-replay-authority.md`.
+Redacted tenant staff administrative history is specified in
+`architecture/staff-membership-history.md`. Temporary proof expiry and the separate
+physical-destruction gap are documented in `architecture/temporary-proof-retention.md`.
 
 Native recovery consumption is specified in `architecture/http-runtime-deployment.md`; executed validation is tracked in `architecture/auth-implementation-status.md` and the proof matrix in `testing/native-recovery-http-validation-handoff.md`.
 

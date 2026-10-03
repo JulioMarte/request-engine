@@ -260,6 +260,13 @@ There is intentionally no human `platform.secret.read_plaintext` capability.
 High-risk mutation requires the existing recent
 `PHISHING_RESISTANT` authentication guard.
 
+`login_handle` is optional on the native WebAuthn login surface: omitted or
+blank runs a discoverable, usernameless ceremony resolved from the presented
+credential id, while a supplied handle preserves the decoy-protected
+handle-first flow. This does not change the `PHISHING_RESISTANT` requirement for
+high-risk mutation or the offline recovery hierarchy. Guarantee
+`INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001`.
+
 ## 10. Recovery hierarchy
 
 Normal access:

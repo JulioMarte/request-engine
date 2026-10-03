@@ -11,6 +11,12 @@ Other modules consume only public tenancy contracts; participant roles or extern
 `api/native_platform_provisioning.py` owns native provisioner and organization-root
 creation transport; `api/platform_provisioner_management.py` owns the provisioner
 read projection and lifecycle transport (`list`/`get`/`suspend`/`reactivate`/`revoke`).
+`api/platform_organization_reads.py` owns the private platform organization
+projection (`GET /v1/platform/organizations` and
+`GET /v1/platform/organizations/{organization_id}`) under the explicit
+`platform.organization.read` capability. The projection is read-only, keyset
+paginated, never exposes tenant-internal authority, and returns `404` for an
+absent organization without creating a second organization authority path.
 Their typed application commands and queries execute through the dedicated
 platform-control and platform-read DB connections. The separate HTTP entrypoint only
 composes that supported API. See `docs/architecture/http-runtime-deployment.md` for
@@ -128,3 +134,84 @@ which are verified by provenance. `principal_id` is forced from the
 authenticated actor; integration/relay callers get a typed 403. Replay of the
 verification request never re-exposes a code, and the 0025 DB guard keeps
 `verified` monotone even against direct SQL.
+
+## Staff email invitations
+
+`POST/GET /v1/staff/invitations` and the invitation detail/resend/revoke APIs
+manage expiring invitations under current HUMAN `staff.invite` / `staff.read`.
+Acceptance is a pre-tenant native-session operation requiring proof possession,
+not email matching. It activates membership with no standing grants; authority
+uses the existing preview/apply commands afterward. Communications receives a
+closed-purpose delivery intent through an injected typed outbound port in the
+same transaction. No patient Party/contact or second authentication path is
+created. See `docs/architecture/staff-email-invitations.md` for lifecycle,
+replay, delivery ambiguity, lock and deployment contracts.
+
+`POST /v1/staff/invitations/{invitation_id}:preview` lets the authenticated native
+recipient review the organization display name and invitation expiry using the
+same proof, without creating membership or grants. It rejects tenant/query
+selectors and returns an advisory, no-store projection; acceptance independently
+revalidates current proof and authority.
+
+## Staff administration reads
+
+`GET /v1/staff/members/{membership_id}/history` (`staff_history_list`) exposes
+bounded administrative actor/time/command/revision history under current HUMAN
+`staff.read`, without arbitrary audit payload, reasons, credentials or contact
+data. It projects existing durable facts, creates no new event or privilege,
+and validates cursor ownership in the same tenant/member snapshot. See
+`docs/architecture/staff-membership-history.md` for pagination, privacy and proof.
+
+Tenant-local staff display labels are updated through `staff_profile_update`
+(`PATCH /v1/staff/members/{membership_id}/profile`) and projected by the existing
+`staff_list` / `staff_get` reads. The profile revision is independent from
+membership and authority revisions; missing profiles remain unnamed. See
+`docs/architecture/staff-member-profiles.md` for the capability, privacy,
+literal-search, transaction, replay and narrow PostgreSQL privilege contract.
+
+`GET /v1/staff/members` (`staff_list`) accepts optional membership `status`
+(`invited`, `active`, `suspended`, `revoked`). Tenancy owns this resource Query
+under existing current HUMAN `staff.read` authority. The filter is applied in
+the same tenant-authorized SQL statement before UUID ordering and the bounded
+limit; it does not narrow the organization-wide `staff_overview_get` counts.
+No idempotency key, revision, authoritative lock, external connection, audit
+write or tool projection is introduced. Invalid transport statuses receive 422;
+revoked read authority still receives 403, and foreign rows remain invisible.
+The admin projection forwards the filter to this API, preserves it across page
+links and starts at page one when the selected filter changes. This additive
+Query evolution preserves tenant opacity, current-authority rechecks and the
+existing distinction between membership state and effective access.
+
+`GET /v1/me/organizations` (`self_organization_list`) discovers only the
+authenticated HUMAN subject's active organization memberships before tenant
+selection. It rejects tenant/subject selectors and recovery-restricted sessions;
+it never grants tenant authority. See
+`docs/architecture/self-organization-discovery.md` for the authentication,
+pagination, database privilege and API-only admin projection contract.
+
+`GET /v1/staff/overview` summarizes membership lifecycle counts for the current
+tenant under `staff.read`. `POST /v1/staff/members/{membership_id}/authority:plan`
+is a revision-bound, read-only preview under query capability
+`staff.plan_authority`; existing `staff.manage_authority` grants remain accepted
+for that narrower preview. The plan returns only target grants inside the
+caller's current delegable ceiling, reports requested capabilities outside that
+ceiling as blocked, and never writes authority, audit, or idempotency state. The
+authoritative `PUT .../authority` command independently revalidates its revision,
+ceiling, controller continuity, and tenant state while holding its normal locks.
+Replacement preserves target grants outside the caller's ceiling. Its controller
+guard evaluates the actual post-replacement authority, including those preserved
+grants. `assignable` describes ceiling compliance only; `can_apply` also requires
+current apply authority and no revealable lifecycle/self/controller blocker.
+Planning permission alone never implies permission to execute the command.
+
+The planner's controller projection uses
+`request_read.staff_controller_is_effective(principal_id)`. It derives the tenant
+and HUMAN planner from trusted transaction context, rechecks active membership
+and planning/managing authority, and reveals no foreign controller. The internal
+two-argument controller predicate is not executable by the application role.
+
+Native staff invitation, authority replacement and membership transition commands
+also revalidate current manager authority before returning completed idempotency
+receipts. The original receipt does not grant continued access after withdrawal.
+See `docs/architecture/staff-command-replay-authority.md` for trusted actor ceilings,
+ordered locks, compatible migration and concurrent replay/revocation semantics.
