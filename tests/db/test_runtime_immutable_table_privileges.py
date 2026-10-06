@@ -54,6 +54,22 @@ _EXACT_DEFINER_OWNERS = {
         "read_platform_organizations",
         "p_organization_id uuid, p_after uuid, p_limit integer",
     ): "request_platform_definer",
+    # 0027 dual-consent adoption uses only these exact reviewed definer owners.
+    (
+        "request_platform",
+        "apply_controller_policy_adoption",
+        "p_request_id uuid, p_expected_revision bigint, p_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "list_controller_policy_adoptions",
+        "p_after uuid, p_limit integer, p_request_id uuid",
+    ): "request_platform_definer",
+    (
+        "request_platform",
+        "review_controller_policy_adoption",
+        "p_request_id uuid",
+    ): "request_platform_control_definer",
     (
         "request_engine",
         "adopt_platform_owner_v4",
