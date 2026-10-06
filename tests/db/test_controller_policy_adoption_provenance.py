@@ -18,6 +18,36 @@ pytestmark = [
 ]
 
 
+def test_adoption_facts_have_tenant_bound_rls_without_direct_app_grant(
+    admin_conn: PgConnection,
+) -> None:
+    catalog = admin_conn.execute(
+        """
+        SELECT relation.relrowsecurity, relation.relforcerowsecurity,
+               policy.qual, policy.with_check, policy.roles
+          FROM pg_class relation
+          JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace
+          JOIN pg_policies policy
+            ON policy.schemaname=namespace.nspname
+           AND policy.tablename=relation.relname
+         WHERE namespace.nspname='request_engine'
+           AND relation.relname='controller_policy_adoption_facts'
+           AND policy.policyname='controller_policy_adoption_fact_tenant_isolation'
+        """
+    ).fetchone()
+    assert catalog is not None
+    rls_enabled, rls_forced, using, with_check, roles = catalog
+    assert rls_enabled is True
+    assert rls_forced is True
+    assert "current_organization_id()" in cast(str, using)
+    assert "current_organization_id()" in cast(str, with_check)
+    assert roles == ["request_engine_app"]
+    assert admin_conn.execute(
+        "SELECT has_table_privilege('request_engine_app', "
+        "'request_engine.controller_policy_adoption_facts', 'SELECT')"
+    ).fetchone() == (False,)
+
+
 def test_tenant_controller_cannot_be_recorded_as_platform_approver(
     admin_conn: PgConnection,
 ) -> None:

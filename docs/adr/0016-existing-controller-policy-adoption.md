@@ -41,11 +41,14 @@ delegation, or an automatic grant migration. The API and durable facts are
 implemented in migrations 0027/0029 and the Tenancy owner surface. Migrations
 0030–0032 add tenant-scoped identity/binding foreign keys, reject a tenant
 principal used as platform approver, and narrow SECURITY DEFINER functions to
-reviewed column-level access. Isolated PostgreSQL 18.6 evidence currently covers
-the HTTP/native-auth journeys, replay, RLS/least-privilege, revoked grants, tenant
-FK scope and the withdrawal-wins apply race. The inverse apply-wins race and
-races against platform capability revocation are not proven. Exact-head
-CI/publication evidence remains outstanding until recorded.
+reviewed column-level access. Migration 0033 adds a tenant-bound policy for
+adoption facts without granting direct app table access. Isolated PostgreSQL
+18.6 evidence currently covers the HTTP/native-auth journeys, replay,
+RLS/least-privilege, revoked grants, tenant FK scope and the withdrawal-wins
+apply race. Exact-head CI found and exposed the missing facts-table policy; the
+fix is now on the branch but has not yet completed exact-head CI. The inverse
+apply-wins race and races against platform capability revocation are also not
+proven.
 
 ### Recommended boundaries
 
@@ -92,9 +95,10 @@ nondelegable `platform.organization.adopt_initial_controller_policy` capability,
 changes the shared platform-owner provisioning selector so future provisioned
 owners (including invitation activation) receive v5, and evolves the provisioning-
 fact policy constraint to continue accepting historic v2 facts plus new v5 facts.
-Migrations 0027–0032 now implement the tenant-consent and platform-apply
-journeys, harden their tenant references and column ACLs, and add database
-proofs for those boundaries. These migrations do not rewrite existing facts.
+Migrations 0027–0033 now implement the tenant-consent and platform-apply
+journeys, harden their tenant references, RLS policy and column ACLs, and add
+database proofs for those boundaries. These migrations do not rewrite existing
+facts.
 
 The original first-claim owner remains `platform-owner-v1`; existing principals,
 grants, revisions and provisioning facts are not backfilled or rewritten. Thus the
