@@ -182,6 +182,7 @@ async def test_request_submit_holds_representation_authority_until_material_comm
                 client.post(
                     f"/v1/requests/definitions/authority_race_{suffix}/submit",
                     json={
+                        "definition_version": 1,
                         "payload": {"message": "authorized before concurrent revoke"},
                         "requester_party_id": str(requester_party_id),
                         "correlations": [
@@ -232,6 +233,7 @@ async def test_request_submit_holds_representation_authority_until_material_comm
             rejected_after_revoke = await client.post(
                 f"/v1/requests/definitions/authority_race_{suffix}/submit",
                 json={
+                    "definition_version": 1,
                     "payload": {"message": "must fail after revoke"},
                     "requester_party_id": str(requester_party_id),
                 },

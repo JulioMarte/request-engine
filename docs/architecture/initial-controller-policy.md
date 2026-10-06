@@ -1,28 +1,62 @@
 # Native initial controller policy
 
-> **Scope note (2026-09-18):** this document governs **tenant** initial-controller
+> **Current scope (2026-10-04):** this document governs **tenant** initial-controller
 > policy only. It does not define the new platform-owner policy from ADR 0014.
-> Current application code still selects `tenant-controller-v3` even though v4
-> and v5 catalog rows exist; that mismatch is an explicit implementation debt to
-> resolve during the accepted trust-root/onboarding work, not a reason to infer
-> that v5 is already the default.
+> Current application code selects `tenant-controller-v6` for new organizations.
+> Immutable v1–v5 remain historical authority manifests, not rewritten defaults.
 
-Status: revisions 0036/0037 validated; additive 0038 locally validated on
-PostgreSQL 18.6 with populated v2-to-v3 replay proof; additive 0053 (v4 plus the
-governed upgrade command) locally validated on PostgreSQL 18.6. Exact-head CI
-pending for 0053.
+Current migration: `0021_tenant_controller_v6` appends v6 after
+`0020_retention_recorder_role`. Historical 0036/0037/0038/0053 labels below are
+provenance from the pre-rebaseline design chain, not current Alembic revisions
+or current release certification. Exact-head CI remains authoritative.
 Owner: Tenancy. Scope: new native organizations created by the private owner command.
 This does not define a core administrator role or make platform authority tenant authority.
 
+## Current limitation: existing controller adoption
+
+The governed upgrade endpoint exists, but it does **not** let a sole existing v3
+controller obtain capabilities outside its current delegable ceiling. That
+controller also lacks `controller_policy_upgrade`, and the endpoint forbids
+self-upgrade. No implemented platform "policy ceremony" currently resolves this
+bootstrap gap. Creating staff or another tenant is not a legitimate workaround.
+Changing the default for future organizations never upgrades existing ones.
+
+Existing-root policy adoption therefore remains **pending governance**, not a
+completed administration journey. [ADR 0016](../adr/0016-existing-controller-policy-adoption.md)
+proposes a distinct bounded dual-consent design; it does not authorize new APIs,
+capabilities, automatic grants or exceptions to
+`INV-CONTROLLER-POLICY-UPGRADE-001`. Historical E1 validation below proves only
+the deliberately preauthorized ordinary upgrade contract, not reachability from
+an unmodified existing v3 root.
+
 ## Decision
 
-The application selects `tenant-controller-v3` only while creating a new native
+The application selects `tenant-controller-v6` only while creating a new native
 organization. A private transaction-local policy selection primitive validates
 that exact approved policy exists before the existing atomic root command runs.
 The root provisioning fact records the selected immutable policy key on INSERT;
 the database materializes its explicit grants in that same transaction. The
 policy's versioned manifest is durable data, not a query over the capability
 registry. New registry entries never become new controller permissions implicitly.
+
+v6 is an explicit reviewed manifest: immutable v5 plus thirteen delegable
+operational capabilities. The eight new administration/readback capabilities are
+`booking.read_supply`, `catalog.read_configuration`, `communications.read_configuration`,
+`requests.create_definition`, `requests.publish_definition_version`,
+`requests.set_definition_active`, `requests.read_definitions`, and `requests.read_inbox`.
+Five already-existing capabilities complete these selected public journeys:
+`communications.configure`, `requests.submit`, `requests.read`, `requests.cancel`,
+and `requests.party_override`. The last is an explicit tenant-bound operator
+authority override, not requester impersonation or a capacity/lifecycle bypass.
+No registry wildcard or all-operator grant is used. v6 has 42 policy grants;
+the existing root control grants produce 50 active grants on a fresh native root.
+
+This is a pre-production ADAPT of the creation default, not an authority backfill.
+No existing principal receives these grants from migration or provisioning replay.
+`requests.record_result`, `requests.complete`, and `requests.fail` are deliberately
+not added: they need a separately governed system/worker HTTP composition, not an
+ordinary operator grant or automatic exposure of internal processing endpoints.
+Existing organizations remain subject to the governance blocker above.
 
 Keep the existing eight tenant-control grants and four operational Representations.
 The original immutable v1 policy adds the following explicitly delegable grants:
@@ -80,8 +114,9 @@ staff Principal now has a separate governed command
 (`POST /v1/controller-policy-upgrades`, revision 0053) that adds only the target
 policy's missing capabilities within the actor's current delegable ceiling; it is
 never a silent authorization and it never restores a revoked grant. A root with no
-recorded policy selection must still be brought into the catalog by an explicit
-platform ceremony. Deploy the additive migration before the new application. The
+recorded policy selection needs a separately accepted governance operation; no
+implemented platform policy-adoption ceremony should be inferred. Deploy the
+additive migration before the new application. The
 private process must check the selection function is callable and the owner-selected
 version exists at startup and readiness, failing closed on an older schema. Roll
 forward; do not rewrite or downgrade applied history.

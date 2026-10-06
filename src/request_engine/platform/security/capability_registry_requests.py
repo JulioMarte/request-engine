@@ -9,6 +9,36 @@ from request_engine.platform.security.operation_risk import OperationRiskClass
 
 REQUEST_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     command_capability(
+        "requests.create_definition",
+        CapabilityExposure.OPERATOR,
+        "Create a tenant RequestDefinition and initial immutable input/result contract.",
+        risk_class=OperationRiskClass.REVERSIBLE_WRITE,
+    ),
+    command_capability(
+        "requests.publish_definition_version",
+        CapabilityExposure.OPERATOR,
+        "Append an immutable definition version with current definition revision.",
+        revision=RevisionPolicy.REQUIRED,
+        risk_class=OperationRiskClass.REVERSIBLE_WRITE,
+    ),
+    command_capability(
+        "requests.set_definition_active",
+        CapabilityExposure.OPERATOR,
+        "Activate or deactivate new intake without deleting historical definitions.",
+        revision=RevisionPolicy.REQUIRED,
+        risk_class=OperationRiskClass.REVERSIBLE_WRITE,
+    ),
+    query_capability(
+        "requests.read_definitions",
+        CapabilityExposure.PUBLIC,
+        "Discover typed versioned Request input/result contracts and current revision.",
+    ),
+    query_capability(
+        "requests.read_inbox",
+        CapabilityExposure.OPERATOR,
+        "Read bounded tenant processing inbox metadata without requester impersonation.",
+    ),
+    command_capability(
         "requests.submit",
         CapabilityExposure.PUBLIC,
         "Submit durable business demand.",

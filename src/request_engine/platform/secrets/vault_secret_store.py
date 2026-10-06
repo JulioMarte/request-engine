@@ -20,6 +20,9 @@ from request_engine.platform.secrets.delivery import (
 )
 from request_engine.platform.secrets.kv_v2_retention import (
     configure_version_retention,
+    retained_proof_version,
+    validate_temporary_namespace,
+    validate_temporary_reference,
     verify_version_retention,
 )
 
@@ -49,7 +52,8 @@ class VaultRecoverySecretStore:
         self._address = address.rstrip("/")
         self._token = token
         self._mount = mount.strip("/")
-        self._path_prefix = path_prefix.strip("/")
+        validate_temporary_namespace(path_prefix)
+        self._path_prefix = path_prefix
         self._timeout_seconds = timeout_seconds
         self._namespace = namespace
         self._transport = transport
@@ -69,6 +73,8 @@ class VaultRecoverySecretStore:
         )
 
     def _path(self, case_id: UUID, generation: int) -> str:
+        if isinstance(generation, bool) or generation < 1:
+            raise ValueError("temporary proof generation must be a positive integer")
         return f"{self._path_prefix}/{case_id}/{generation}"
 
     async def stage(
@@ -107,6 +113,7 @@ class VaultRecoverySecretStore:
                         digest=digest,
                         expires_at=expires_at,
                         created=True,
+                        retention_version=retained_proof_version(metadata),
                     )
                 if response.status_code == 400 and _mentions_cas(response.text):
                     return await self._read_staged(client, path)
@@ -117,22 +124,14 @@ class VaultRecoverySecretStore:
             raise RecoveryDeliveryRetryable("vault secret staging transport failure") from exc
 
     async def discard(self, *, case_id: UUID, generation: int) -> None:
-        path = self._path(case_id, generation)
-        try:
-            async with self._client() as client:
-                response = await client.delete(
-                    f"/v1/{self._mount}/metadata/{path}",
-                    headers=self._headers(),
-                )
-        except httpx.TransportError as exc:
-            raise RecoveryDeliveryRetryable("vault secret discard transport failure") from exc
-        if response.status_code == 404 or response.is_success:
-            return
-        if response.status_code >= 500:
-            raise RecoveryDeliveryRetryable("vault secret store is unavailable")
-        raise RecoveryDeliveryPermanent("vault rejected the recovery secret discard")
+        # Creation does not prove exclusive ownership: another issuer may have
+        # retained this same CAS winner while our database transaction failed.
+        # Keep the verified TTL and metadata tombstone; only an expiry janitor
+        # with retained-version evidence may destroy the bearer proof later.
+        self._path(case_id, generation)
 
     async def read(self, *, reference: str) -> str:
+        validate_temporary_reference(reference, prefix=self._path_prefix)
         try:
             async with self._client() as client:
                 response = await client.get(
@@ -195,6 +194,7 @@ class VaultRecoverySecretStore:
                 digest=digest,
                 expires_at=expires_at,
                 created=False,
+                retention_version=retained_proof_version(metadata),
             )
         except ValueError as exc:
             raise RecoveryDeliveryPermanent("vault returned a malformed staged secret") from exc

@@ -44,6 +44,7 @@ from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfigurationResolver,
 )
 from request_engine.modules.tenancy.api import NATIVE_INITIAL_CONTROLLER_POLICY
+from request_engine.platform.db.execution_budget import PostgresExecutionBudget
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
 from request_engine.platform.observability.p7_metrics import P7OperationalMetrics
 from request_engine.platform.security.webauthn import WebAuthnPolicy
@@ -51,6 +52,8 @@ from request_engine.platform.security.webauthn import WebAuthnPolicy
 _READ = (
     "request_platform.read_principal_authority(uuid)",
     "request_platform.read_platform_provisioners(uuid,uuid,integer)",
+    "request_platform.read_platform_owners(uuid,uuid,integer)",
+    "request_platform.read_platform_owner_invitations(uuid,uuid,integer)",
     "request_platform.read_identity_recovery_cases(uuid,uuid,integer)",
     "request_platform.read_native_identities(uuid,uuid,integer)",
     "request_platform.read_platform_organizations(uuid,uuid,integer)",
@@ -77,6 +80,7 @@ _RECOVERY = (
     "request_platform.revoke_identity_recovery_case(uuid,bigint,text,text,text)",
 )
 _OWNER = (
+    "request_platform.provision_native_identity(uuid,uuid,text,uuid,text,text,text)",
     "request_platform.transition_native_platform_owner(uuid,text,bigint,text,text,text,text)",
     "request_platform.create_platform_owner_invitation("
     "uuid,bytea,text,timestamp with time zone,text,text,text)",
@@ -245,7 +249,9 @@ def create_app() -> FastAPI:
         AppointmentSigningSecretStoreSettings()
     )
     engines = tuple(
-        create_postgres_engine(url.get_secret_value())
+        create_postgres_engine(
+            url.get_secret_value(), budget=PostgresExecutionBudget.http_from_environment()
+        )
         for url in (
             settings.database_url,
             settings.platform_read_database_url,

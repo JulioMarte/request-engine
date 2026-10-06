@@ -1,7 +1,6 @@
 """Revisioned invitation orchestration; provider staging never holds DB locks."""
 
 import hashlib
-import re
 import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -16,6 +15,7 @@ from request_engine.modules.tenancy.application.commands.staff_invitations impor
     CreateStaffInvitationCommand,
     InvitationDeliveryIntent,
     StaffInvitation,
+    normalize_invitation_email,
 )
 from request_engine.modules.tenancy.application.errors import (
     StaffInvitationIdentityAlreadyLinked,
@@ -61,13 +61,6 @@ def _require_actor(actor: ActorContext, capability: str) -> None:
         or actor.recovery_restricted
     ):
         raise StaffMembershipForbidden("Active HUMAN staff authority is required")
-
-
-_MAILBOX = re.compile(
-    r"[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@"
-    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
-    r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+"
-)
 
 
 def _provenance(value: str) -> str:
@@ -135,7 +128,8 @@ class PostgresStaffInvitationCommands:
                     await session.execute(
                         text(
                             _PROJECTION
-                            + " WHERE (:after IS NULL OR i.id > :after) ORDER BY i.id LIMIT :limit"
+                            + " WHERE (CAST(:after AS uuid) IS NULL OR i.id > CAST(:after AS uuid))"
+                            " ORDER BY i.id LIMIT :limit"
                         ),
                         {"after": after, "limit": limit},
                     )
@@ -257,13 +251,10 @@ class PostgresStaffInvitationCommands:
         self, actor: ActorContext, command: CreateStaffInvitationCommand
     ) -> StaffInvitation:
         _require_actor(actor, "staff.invite")
-        email = command.email.strip().lower()
-        if (
-            not 3 <= len(email) <= 254
-            or _MAILBOX.fullmatch(email) is None
-            or len(email.partition("@")[0]) > 64
-        ):
-            raise StaffMembershipInputInvalid("Invalid email address")
+        try:
+            email = normalize_invitation_email(command.email)
+        except ValueError as exc:
+            raise StaffMembershipInputInvalid("Invalid email address") from exc
         provenance = _provenance(command.provenance_reference)
         if not 1 <= command.expires_in_hours <= 168 or not command.idempotency_key.strip():
             raise StaffMembershipInputInvalid("Invalid expiry or idempotency key")

@@ -3,6 +3,13 @@
 # TRIGGER) privilege tuples; every entry tracks an accepted, reviewed migration.
 
 PRIVATE_GLOBAL_TABLES = {
+    # 0015: private immutable administrative enrollment receipt; no runtime CRUD.
+    "native_identity_provision_receipts",
+    # 0013: technical retained-version evidence, isolated recorder definer only.
+    "temporary_proof_retention_receipts",
+    # 0024: isolated cleanup lease/result primitives, no ordinary runtime CRUD.
+    "temporary_proof_cleanup_work",
+    "temporary_proof_cleanup_results",
     "initial_controller_policies",
     "global_identities",
     "identity_recovery_issuance_reservations",

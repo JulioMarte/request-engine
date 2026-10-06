@@ -38,6 +38,26 @@ projected: these are human identity and secret-possession operations. Input sche
 reject extra trusted identity fields. Admin DTOs expose lifecycle, revision,
 expiry, generation and delivery state, never plaintext proof or secret reference.
 
+Transport hardening (2026-10-03): recipient preview and acceptance reject every
+query parameter in the shared native-subject dependency, before owner execution.
+Proof remains JSON-body-only; no query/tenant selector manufactures authority.
+Legacy native staff invite, authority replacement and membership transition DTOs
+now reject unknown body properties (ADAPT preproduction contract hardening), just
+like the newer invitation/profile DTOs. Paths, operation IDs, capabilities,
+revisions and idempotency semantics remain unchanged; no schema/privilege changes.
+
+Secret-delivery failures have an owner-local typed503 ErrorEnvelope, never raw
+provider exception text. Only create/resend `RecoveryDeliveryRetryable` advertise
+`staff_invitation_delivery_temporarily_unavailable`, retryable=true,
+resolution=`retry_same_request`: preserve the same body, Idempotency-Key and
+expected revision, never automatically initiate another resend generation or
+retry ambiguous SMTP delivery. Unconfigured/permanent/unknown failures and all
+accept/revoke delivery failures return `staff_invitation_delivery_unavailable`,
+retryable=false, resolution=`operator_intervention`. Responses are no-store.
+No Retry-After duration is invented. Existing command rollback, proof retention
+and recipient-bound replay remain owner responsibilities. OpenAPI documents the
+typed errors and these retry/zero-grant/body-only constraints.
+
 Admin idempotent replay returns the same invitation identifier with its current
 representation, not a frozen historic status. After revoke, replaying create must
 not show a misleading pending invitation. The original command fingerprint and

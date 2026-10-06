@@ -62,12 +62,14 @@ uv run pytest \
 uv run pytest \
   tests/integration/f1_operational_profile/test_business_info.py \
   tests/integration/f1_operational_profile/test_catalog_contextual_discovery.py \
+  tests/integration/f1_operational_profile/test_catalog_readiness.py \
   tests/integration/f1_operational_profile/test_foreign_tenant_opacity.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/business-info.xml"
 
 uv run pytest \
   tests/integration/f1_operational_profile/test_operational_commands.py \
+  tests/integration/f1_operational_profile/test_catalog_schedule_admission.py \
   tests/integration/f1_operational_profile/test_operational_profile_commands.py \
   tests/integration/f1_operational_profile/test_contextual_config_commands.py \
   tests/integration/f1_operational_profile/test_contextual_supply_lifecycle_commands.py \
@@ -76,6 +78,10 @@ uv run pytest \
   tests/integration/f1_operational_profile/test_public_contact_normalization.py \
   tests/integration/f1_operational_profile/test_contextual_terms_supersession.py \
   tests/integration/f1_operational_profile/test_contextual_configuration_races.py \
+  tests/integration/f1_operational_profile/test_supply_configuration_reads.py \
+  tests/db/test_catalog_booking_policy_override.py \
+  tests/db/test_organization_channel_policies.py \
+  tests/db/test_channel_policy_creation_race.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/semantic-commands.xml"
 
@@ -110,6 +116,7 @@ uv run pytest \
   tests/db/test_platform_root_bootstrap_definer_topology.py \
   tests/db/test_platform_tenant_provisioner.py \
   tests/db/test_native_platform_provisioning.py \
+  tests/db/test_native_identity_admin_provision.py \
   tests/db/test_initial_controller_policy.py \
   tests/db/test_native_tenant_root_bootstrap.py \
   tests/db/test_native_identity_actor_runtime.py \
@@ -119,9 +126,11 @@ uv run pytest \
   tests/db/test_native_authority_suspension_locks.py \
   tests/db/test_native_enrollment_outcomes.py \
   tests/db/test_native_authority_probe.py \
+  tests/db/test_http_sql_execution_budget.py \
   tests/db/test_workload_authentication.py \
   tests/db/test_agent_governance.py \
   tests/db/test_agent_governance_reader.py \
+  tests/db/test_agent_credential_rotation.py \
   tests/db/test_self_authority_reader.py \
   tests/db/test_self_organization_discovery.py \
   tests/db/test_resource_authority_inspection.py \
@@ -133,6 +142,8 @@ uv run pytest \
   tests/db/test_staff_member_profiles.py \
   tests/db/test_staff_membership_history.py \
   tests/db/test_staff_replay_authority.py \
+  tests/db/test_temporary_proof_inventory.py \
+  tests/db/test_temporary_proof_cleanup_worker.py \
   tests/db/test_staff_email_invitations.py \
   tests/db/test_staff_invitation_delivery.py \
   tests/db/test_identity_governance_audit.py \
@@ -263,6 +274,7 @@ uv run pytest \
 uv run pytest \
   tests/integration/v3_first_vertical/test_http_idempotency_failure.py \
   tests/integration/v3_first_vertical/test_http_request_idempotency_failure.py \
+  tests/integration/v3_first_vertical/test_request_definition_administration.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/idempotency.xml"
 

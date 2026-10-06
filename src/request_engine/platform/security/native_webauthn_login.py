@@ -1,23 +1,17 @@
 """Post-claim native WebAuthn login orchestration (ADR 0014 §8).
 
 The cryptographic ceremony is owned by :class:`NativeWebAuthnAuthService`; this
-service only resolves a login handle to an active native identity and, when no
-such identity exists, returns an indistinguishable decoy. It never issues a
-second kind of challenge and never accepts caller-supplied assurance.
+service enforces an optional intended login handle at completion, before the
+authoritative session transaction. It never accepts caller-supplied assurance.
 
-Account-enumeration resistance: an unknown handle, a known handle without an
-active WebAuthn credential and a known handle with credentials all return a
-challenge plus a single credential allow-list entry. The decoy credential id is
-``HMAC(secret, normalized_handle)``; because the secret is deployment-owned, an
-attacker cannot precompute it to tell a decoy from a real credential id. A real
-ceremony persists its challenge bound to the identity, so a decoy challenge can
-never be completed.
+Every begin response uses one unbound discoverable challenge and an empty
+allow-list. Neither credential cardinality nor credential-id length can reveal
+whether a handle exists. Legacy non-discoverable credentials are retained but
+must be replaced through the supported password/recovery registration journey.
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 from collections.abc import Mapping
 from typing import Any, Protocol
 from uuid import UUID
@@ -53,7 +47,6 @@ class NativeWebAuthnLoginService:
             raise ValueError("decoy_key is required")
         self._webauthn = webauthn
         self._identities = identities
-        self._decoy_key = decoy_key
 
     async def begin_login(
         self, *, identity_authority_id: UUID, login_handle: str | None
@@ -63,12 +56,10 @@ class NativeWebAuthnLoginService:
             # needed. The ceremony is the same authentication primitive; only the
             # allow-list is empty and the identity is resolved at completion.
             return await self._webauthn.begin_authentication_discoverable()
-        identity_id = await self._resolve(identity_authority_id, login_handle)
-        if identity_id is None:
-            return await self._webauthn.begin_authentication_decoy(
-                allow_credential_ids=[self._decoy_credential_id(login_handle)]
-            )
-        return await self._webauthn.begin_authentication(native_identity_id=identity_id)
+        # Never expose stored credential ids/cardinality/length for a supplied
+        # handle. All login options use the same unbound discoverable ceremony.
+        # The intended handle is enforced at completion, before the transaction.
+        return await self._webauthn.begin_authentication_discoverable()
 
     async def complete_login(
         self,
@@ -84,8 +75,8 @@ class NativeWebAuthnLoginService:
             # Opaque: identical to a known identity whose assertion does not
             # verify. Never reveals that the handle is unknown.
             raise WebAuthnCeremonyError("webauthn_credential_unknown")
-        return await self._webauthn.complete_authentication(
-            native_identity_id=identity_id, credential=credential
+        return await self._webauthn.complete_discoverable_authentication(
+            expected_native_identity_id=identity_id, credential=credential
         )
 
     async def _resolve(self, identity_authority_id: UUID, login_handle: str) -> UUID | None:
@@ -93,10 +84,6 @@ class NativeWebAuthnLoginService:
             identity_authority_id=identity_authority_id,
             login_handle=normalize_login_handle(login_handle),
         )
-
-    def _decoy_credential_id(self, login_handle: str) -> bytes:
-        normalized = normalize_login_handle(login_handle)
-        return hmac.new(self._decoy_key, normalized.encode("utf-8"), hashlib.sha256).digest()
 
 
 __all__ = ["NativeWebAuthnIdentityReader", "NativeWebAuthnLoginService"]

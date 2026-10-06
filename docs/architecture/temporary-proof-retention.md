@@ -47,9 +47,14 @@ for metadata/version semantics and
 [KV-v2 lifecycle](https://developer.hashicorp.com/vault/docs/secrets/kv/kv-v2)
 for destroy versus delete.
 
-No automatic or production expired-proof destroy/purge worker exists.
-`discard` deletes all metadata for an explicitly named generation; it is not a
-safe substitute for a background retention policy or ambiguous-candidate cleanup.
+An explicit, admission-gated cleanup worker is implemented, but disabled by
+default. No production cleanup scheduler is enabled or deployment certified;
+see the [worker contract](temporary-proof-cleanup-worker.md) for the required
+protected evidence, isolated credentials and restore protocol.
+`discard` is non-destructive in the Vault/OpenBao stores. A creator can lose its
+database transaction after another issuer retained the same CAS winner. Creation
+does not prove exclusive ownership. Discard leaves the verified TTL and metadata
+identity intact; it is not an expired-proof cleanup mechanism.
 
 ## Closed-purpose isolated cleanup acceptance
 
@@ -74,7 +79,7 @@ Input is a trusted operator inventory of retained-version receipts, each contain
 `reference`, explicit `version`, aware `created_at`, `deletion_at` and business
 `expires_at`. The last value must come from the **retained** staging receipt,
 not a losing candidate, a guessed timeout or provider soft-deletion metadata.
-Current staging does not persist this cleanup inventory automatically. Metadata
+Without optional receipt collection configured, staging does not persist this cleanup inventory. Metadata
 must independently match receipt creation and deletion timestamps. Missing,
 malformed or unbounded deadlines are skipped, not repaired or guessed. Manual
 soft deletion cannot substitute for verified business expiry. Both business expiry
@@ -94,14 +99,15 @@ that is an acceptance-tool default, not a certified production retention policy.
 KV-v2 `destroy` has no compare-and-swap precondition. Between inspection and
 destruction, another actor could DELETE key metadata and recreate version 1.
 Reinspection detects mismatched creation time **after** the new winner has already
-been destroyed. Current recovery stores' `discard` can delete key metadata, so
-namespace/version non-reuse is not presently an enforceable system invariant.
+been destroyed. Recovery stores no longer delete metadata on `discard`, but a
+credential with metadata-delete authority can still recreate that identity.
+Namespace/version non-reuse is not certified merely by changing application code.
 The regression suite includes this counterexample; it does not claim that a
 green counterexample proves safety. Preserving a live newer version 2 is proven,
 but does not establish safety for recreated version 1.
 
 Production cleanup therefore remains blocked pending an explicit redesign:
-remove metadata DELETE/recreation from ordinary writers and `discard`, establish
+exclude metadata DELETE/recreation from every participating credential, establish
 non-reused generation/version identities, prove deny-delete ACLs for **all**
 participating writers (including operators), or provide an atomic provider surface.
 Then acquire trusted retained-version expiry inventory and add independently
@@ -140,3 +146,35 @@ proof, provider token or secret reference. Unit tests cover both adapters and
 failure/retained-winner cases. Isolated dev-server probes passed on Vault 1.21.0
 and OpenBao 2.6.1; these are focused KV-v2 acceptance results, not production ACL,
 administrative cleanup, recreation-race safety, backup policy or deployment certification.
+
+## Safe writer prerequisites and scoped ACL proof
+
+Vault/OpenBao temporary-proof adapters now accept only the canonical
+`request-engine/identity-recovery` prefix and an isolated probe prefix ending in
+a canonical UUID. Other configured prefixes fail closed at composition; deployments
+using custom prefixes must deliberately converge on this namespace before upgrade.
+Reads require a canonical UUID and positive decimal generation, without traversal,
+query parameters, fragments or extra segments. Managed/platform stores are unchanged.
+
+The control policy omits temporary metadata DELETE and explicitly denies destroy.
+The separate `request-engine-proof-cleanup` policy permits only metadata read and
+explicit-version destroy and denies plaintext reads. Do not union either credential
+with broader grants. KV-v2 parameter restrictions are unsupported and cannot enforce
+CAS payloads; policy omission alone cannot survive a broader grant of metadata delete.
+See [OpenBao KV-v2 ACLs](https://openbao.org/docs/secrets/kv/kv-v2/).
+
+`tests/integration/test_temporary_proof_policy_acceptance.py` is an opt-in component
+proof against an independently selected disposable provider. It loads the real
+policies, creates separate short-lived credentials and pauses cleanup after actual
+metadata inspection. Independent writer recreation attempts are denied before
+explicit-version destruction. It verifies retained expiry versus loser expiry,
+non-destructive discard, no metadata/version reuse and retry reconciliation.
+It does not certify all production operator credentials, policy changes or restore.
+Run with `REQUEST_ENGINE_ISOLATED_PROOF_PROVIDER` and
+`REQUEST_ENGINE_ISOLATED_PROOF_BOOTSTRAP_TOKEN`; never point it at production or a tunnel.
+
+The [durable inventory contract and remaining proposal](temporary-proof-cleanup-inventory-proposal.md)
+describes optional receipt collection and its provenance requirements. The
+[admitted worker](temporary-proof-cleanup-worker.md) consumes that inventory;
+production provider-policy acceptance and restore rehearsal remain pending.
+No production cleanup scheduler is enabled.

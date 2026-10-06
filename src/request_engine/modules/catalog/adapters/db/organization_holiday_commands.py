@@ -51,6 +51,13 @@ class PostgresOrganizationHolidayCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
+                )
                 idempotency_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -62,13 +69,6 @@ class PostgresOrganizationHolidayCommands:
                 if replay is not None:
                     return _state_from_json(cast(dict[str, object], replay["state"]))
 
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
-                )
                 locations = (
                     (
                         await session.execute(

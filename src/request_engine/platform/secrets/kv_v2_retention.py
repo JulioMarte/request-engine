@@ -5,15 +5,74 @@ import math
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import cast
+from uuid import UUID
 
 import httpx
 
 from request_engine.platform.secrets.delivery import (
     RecoveryDeliveryPermanent,
     RecoveryDeliveryRetryable,
+    RetainedProofVersion,
 )
 
 _LOGGER = logging.getLogger("request_engine.secrets.retention")
+
+
+def retained_proof_version(metadata: object) -> RetainedProofVersion | None:
+    """Older test/custom adapters can omit inventory; recorder mode fails closed."""
+    if not isinstance(metadata, dict):
+        return None
+    values = cast("dict[str, object]", metadata)
+    version, created, deletion = (
+        values.get("version"),
+        values.get("created_time"),
+        values.get("deletion_time"),
+    )
+    if (
+        not isinstance(version, int)
+        or not isinstance(created, str)
+        or not isinstance(deletion, str)
+    ):
+        return None
+    try:
+        return RetainedProofVersion(
+            version,
+            datetime.fromisoformat(created.replace("Z", "+00:00")),
+            datetime.fromisoformat(deletion.replace("Z", "+00:00")),
+        )
+    except ValueError:
+        return None
+
+
+def validate_temporary_namespace(prefix: str) -> None:
+    parts = prefix.split("/")
+    if prefix == "request-engine/identity-recovery":
+        return
+    if (
+        len(parts) == 3
+        and parts[:2] == ["request-engine", "temporary-proof-retention-probe"]
+        and str(UUID(parts[2])) == parts[2]
+    ):
+        return
+    raise ValueError("unsupported temporary proof namespace")
+
+
+def validate_temporary_reference(reference: str, *, prefix: str) -> None:
+    parts = reference.removeprefix(f"{prefix}/").split("/")
+    try:
+        valid = (
+            reference.startswith(f"{prefix}/")
+            and len(parts) == 2
+            and str(UUID(parts[0])) == parts[0]
+            and parts[1].isascii()
+            and parts[1].isdigit()
+            and str(int(parts[1])) == parts[1]
+            and int(parts[1]) > 0
+        )
+    except ValueError:
+        valid = False
+    if not valid:
+        raise RecoveryDeliveryPermanent("temporary secret reference is outside permitted scope")
 
 
 async def configure_version_retention(

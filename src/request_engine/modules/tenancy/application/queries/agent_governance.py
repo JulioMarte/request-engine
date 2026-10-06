@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -7,6 +8,14 @@ from request_engine.modules.tenancy.domain.agent_governance import (
     AgentProfileStatus,
 )
 from request_engine.platform.security.context import ActorContext
+
+
+@dataclass(frozen=True, slots=True)
+class AgentCredentialMetadata:
+    credential_id: UUID
+    status: str
+    revision: int
+    expires_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +30,7 @@ class AgentSummary:
     profile_revision: int
     authority_revision: int
     standing_capabilities: tuple[str, ...]
+    credentials: tuple[AgentCredentialMetadata, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

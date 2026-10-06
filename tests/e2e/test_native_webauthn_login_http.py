@@ -659,6 +659,26 @@ async def test_authentication_options_do_not_reveal_unknown_handles(
         ) as client,
     ):
         authenticator = await _claim_owner(client)
+        password_session = await client.post(
+            "/auth/native/sessions", json={"login_handle": LOGIN_HANDLE, "password": PASSWORD}
+        )
+        headers = {"Authorization": f"Bearer {password_session.json()['access_token']}"}
+        registration_options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/registration-options", headers=headers
+            )
+        ).json()["public_key"]
+        second_authenticator = SoftwareAuthenticator(rp_id="localhost", origin=ORIGIN)
+        registered = await client.post(
+            "/auth/native/sessions/current/webauthn/registrations",
+            headers=headers,
+            json={
+                "credential": second_authenticator.registration_credential(
+                    challenge=websafe_decode(registration_options["challenge"]), user_verified=True
+                )
+            },
+        )
+        assert registered.status_code == 201, registered.text
         known = (
             await client.post(
                 "/auth/native/webauthn/authentication-options",
@@ -672,11 +692,28 @@ async def test_authentication_options_do_not_reveal_unknown_handles(
         assert unknown_response.status_code == 200
         unknown = unknown_response.json()["public_key"]
         assert set(known) == set(unknown)
-        assert len(known["allowCredentials"]) == 1
-        assert len(unknown["allowCredentials"]) == 1
-        known_credential_id = known["allowCredentials"][0]["id"]
-        unknown_credential_id = unknown["allowCredentials"][0]["id"]
-        assert unknown_credential_id != known_credential_id
+        assert not known.get("allowCredentials")
+        assert not unknown.get("allowCredentials")
+        assert {key: value for key, value in known.items() if key != "challenge"} == {
+            key: value for key, value in unknown.items() if key != "challenge"
+        }
+        for key in (authenticator, second_authenticator):
+            options = (
+                await client.post(
+                    "/auth/native/webauthn/authentication-options",
+                    json={"login_handle": LOGIN_HANDLE},
+                )
+            ).json()["public_key"]
+            authenticated = await client.post(
+                "/auth/native/webauthn/sessions",
+                json={
+                    "login_handle": LOGIN_HANDLE,
+                    "credential": key.authentication_credential(
+                        challenge=websafe_decode(options["challenge"]), user_verified=True
+                    ),
+                },
+            )
+            assert authenticated.status_code == 201, authenticated.text
 
         # A real assertion under an unknown handle fails closed and opaquely.
         forged = authenticator.authentication_credential(

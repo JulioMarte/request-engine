@@ -1,10 +1,17 @@
 from fastapi import FastAPI
 
+from request_engine.modules.requests.adapters.db.admin_reader import (
+    PostgresRequestAdministrationReader,
+)
+from request_engine.modules.requests.adapters.db.definition_management import (
+    PostgresRequestDefinitionCommands,
+)
 from request_engine.modules.requests.adapters.db.request_commands import PostgresRequestCommands
 from request_engine.modules.requests.adapters.db.request_definition_reader import (
     PostgresRequestDefinitionResolver,
 )
 from request_engine.modules.requests.adapters.db.request_reader import PostgresRequestReader
+from request_engine.modules.requests.api.admin_router import create_administration_router
 from request_engine.modules.requests.api.errors import request_error_handler
 from request_engine.modules.requests.api.router import create_router
 from request_engine.modules.requests.application.errors import RequestError
@@ -22,6 +29,13 @@ def install_http(
 
     commands = PostgresRequestCommands(session_factory)
     app.add_exception_handler(RequestError, request_error_handler)
+    app.include_router(
+        create_administration_router(
+            PostgresRequestDefinitionCommands(session_factory),
+            PostgresRequestAdministrationReader(session_factory),
+            actor_resolver,
+        )
+    )
     app.include_router(
         create_router(
             create_handler=commands,

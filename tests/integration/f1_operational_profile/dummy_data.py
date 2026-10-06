@@ -46,6 +46,9 @@ def create_contextual_cardiology_scenario(
     conn: PgConnection,
     *,
     key_suffix: str | None = None,
+    requirement_quantity: int = 1,
+    capacity_model: str = "exclusive",
+    capacity_units: int = 1,
 ) -> F1ContextualScenario:
     """Seed one complete F1 cardiology world for PostgreSQL integration tests.
 
@@ -187,20 +190,20 @@ def create_contextual_cardiology_scenario(
         """
         INSERT INTO request_engine.offering_resource_requirements (
             organization_id, offering_version_id, capability_id, ordinal, quantity
-        ) VALUES (%s, %s, %s, 1, 1)
+        ) VALUES (%s, %s, %s, 1, %s)
         RETURNING id
         """,
-        (organization_id, offering_version_id, capability_id),
+        (organization_id, offering_version_id, capability_id, requirement_quantity),
     )
     resource_id = _uuid_row(
         conn,
         """
         INSERT INTO request_engine.resources (
             organization_id, resource_key, display_name, capacity_model, capacity_units
-        ) VALUES (%s, %s, 'Dr Context', 'exclusive', 1)
+        ) VALUES (%s, %s, 'Dr Context', %s, %s)
         RETURNING id
         """,
-        (organization_id, f"doctor-{suffix}"),
+        (organization_id, f"doctor-{suffix}", capacity_model, capacity_units),
     )
     conn.execute(
         """

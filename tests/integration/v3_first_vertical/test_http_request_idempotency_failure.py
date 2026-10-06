@@ -46,6 +46,7 @@ async def test_request_submit_replays_after_committed_response_loss(
     app = _app(app_session_factory, fixture)
     key = f"lost-submit-{uuid4().hex}"
     body = {
+        "definition_version": 2,
         "payload": {"message": "response may disappear"},
         "requester_party_id": str(fixture.requester_party_id),
     }
@@ -119,6 +120,7 @@ async def test_request_cancel_replays_original_revision_after_committed_response
         created = await client.post(
             submit_path,
             json={
+                "definition_version": 2,
                 "payload": {"message": "cancel me"},
                 "requester_party_id": str(fixture.requester_party_id),
             },

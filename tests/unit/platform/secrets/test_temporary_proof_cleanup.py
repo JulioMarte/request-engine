@@ -1,6 +1,8 @@
 """Independent provider metadata oracle protects live/legacy versions and retries."""
 
+import asyncio
 import json
+from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -213,3 +215,118 @@ async def test_same_version_recreation_counterexample_blocks_production_certific
         )
     assert result.outcome == "unverified"
     assert recreated["destroyed"] is True  # Detection is too late to prevent destruction.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("encoded", [False, True])
+async def test_metadata_body_expansion_is_rejected_before_destruction(encoded: bool) -> None:
+    closed = False
+
+    class OversizedMetadata(httpx.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            yield b" " * 32768
+            yield b" " * 32769
+            pytest.fail("response must stop at the closed byte budget")
+
+        async def aclose(self) -> None:
+            nonlocal closed
+            closed = True
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.headers["Accept-Encoding"] == "identity"
+        return httpx.Response(
+            200,
+            stream=OversizedMetadata(),
+            headers={"Content-Encoding": "gzip"} if encoded else {},
+        )
+
+    async with httpx.AsyncClient(
+        base_url="http://127.0.0.1:58200",
+        transport=httpx.MockTransport(provider),
+    ) as client:
+        result = await probe_expired_temporary_proof_destruction(
+            client,
+            headers={},
+            receipt=receipt(),
+            now=NOW,
+            grace=timedelta(seconds=1),
+            isolated_acceptance=True,
+        )
+    assert result.outcome == "unverified" and closed
+
+
+@pytest.mark.asyncio
+async def test_continuously_dripping_metadata_hits_total_deadline_without_destroy() -> None:
+    closed = False
+    chunks = 0
+
+    class DrippingMetadata(httpx.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            nonlocal chunks
+            while True:
+                chunks += 1
+                yield b" "  # Continuous progress cannot reset the total inspection deadline.
+                await asyncio.sleep(0.1)
+
+        async def aclose(self) -> None:
+            nonlocal closed
+            closed = True
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        return httpx.Response(200, stream=DrippingMetadata())
+
+    async with httpx.AsyncClient(
+        base_url="http://127.0.0.1:58200",
+        transport=httpx.MockTransport(provider),
+        timeout=5,
+    ) as client:
+        result = await asyncio.wait_for(
+            probe_expired_temporary_proof_destruction(
+                client,
+                headers={},
+                receipt=receipt(),
+                now=NOW,
+                grace=timedelta(seconds=1),
+                isolated_acceptance=True,
+            ),
+            timeout=8,
+        )
+    assert result.outcome == "unresolved" and closed and chunks > 2
+
+
+@pytest.mark.asyncio
+async def test_destroy_reply_body_is_never_consumed_and_metadata_remains_oracle() -> None:
+    target = receipt()
+    version = metadata(target)
+    closed = False
+
+    class UntrustedDestroyBody(httpx.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            pytest.fail("destroy response body is not evidence and must not be buffered")
+            yield b""
+
+        async def aclose(self) -> None:
+            nonlocal closed
+            closed = True
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            version["destroyed"] = True
+            return httpx.Response(503, stream=UntrustedDestroyBody())
+        return httpx.Response(200, json={"data": {"versions": {"1": version}}})
+
+    async with httpx.AsyncClient(
+        base_url="http://127.0.0.1:58200",
+        transport=httpx.MockTransport(provider),
+    ) as client:
+        result = await probe_expired_temporary_proof_destruction(
+            client,
+            headers={},
+            receipt=target,
+            now=NOW,
+            grace=timedelta(seconds=1),
+            isolated_acceptance=True,
+        )
+    assert result.outcome == "destroyed" and closed

@@ -1,6 +1,8 @@
 """Explicit-version cleanup from trusted expiry receipts, never namespace discovery."""
 
+import asyncio
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from urllib.parse import quote, urlsplit
@@ -49,6 +51,88 @@ class TemporaryProofCleanupResult:
     outcome: str
 
 
+async def inspect_expired_temporary_version(
+    client: httpx.AsyncClient,
+    *,
+    headers: dict[str, str],
+    receipt: TemporaryProofExpiryReceipt,
+    now: datetime,
+    grace: timedelta,
+    mount: str,
+) -> str:
+    """Metadata-only reconciliation, with a total five-second/64KiB response budget."""
+    path = quote(receipt.reference, safe="/")
+    try:
+        async with (
+            asyncio.timeout(5),
+            client.stream(
+                "GET",
+                f"/v1/{mount}/metadata/{path}",
+                headers={**headers, "Accept-Encoding": "identity"},
+            ) as response,
+        ):
+            if response.status_code == 404:
+                return "absent"
+            if response.status_code in (401, 403):
+                return "denied"
+            if not response.is_success:
+                return "unresolved"
+            if response.headers.get("content-encoding", "identity").lower() != "identity":
+                return "unverified"  # Do not decompress a provider-controlled expansion.
+            body = bytearray()
+            if response.is_stream_consumed:
+                # In-memory transport doubles can supply a pre-consumed response.
+                if len(response.content) > 65536:
+                    return "unverified"
+                body.extend(response.content)
+            else:
+                async for chunk in response.aiter_raw():
+                    if len(body) + len(chunk) > 65536:
+                        return "unverified"
+                    body.extend(chunk)
+    except (httpx.TransportError, TimeoutError):
+        return "unresolved"
+    try:
+        version = json.loads(body)["data"]["versions"][str(receipt.version)]
+        created = datetime.fromisoformat(version["created_time"].replace("Z", "+00:00"))
+        if created != receipt.created_at:
+            return "unverified"
+        if version.get("destroyed") is True:
+            return "destroyed"
+        deletion = datetime.fromisoformat(version["deletion_time"].replace("Z", "+00:00"))
+        if deletion != receipt.deletion_at:
+            return "unverified"
+        if version.get("destroyed") is not False or deletion + grace > now:
+            return "unverified"
+    except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
+        return "unverified"
+    return "eligible"
+
+
+async def submit_temporary_version_destruction(
+    client: httpx.AsyncClient,
+    *,
+    headers: dict[str, str],
+    receipt: TemporaryProofExpiryReceipt,
+    mount: str,
+) -> str:
+    """Ignore response bodies; a bounded submission is never completion evidence."""
+    path = quote(receipt.reference, safe="/")
+    try:
+        async with (
+            asyncio.timeout(5),
+            client.stream(
+                "POST",
+                f"/v1/{mount}/destroy/{path}",
+                headers=headers,
+                json={"versions": [receipt.version]},
+            ) as response,
+        ):
+            return "denied" if response.status_code in (401, 403) else "submitted"
+    except (httpx.TransportError, TimeoutError):
+        return "unresolved"  # Ambiguous outcome must be reconciled, not blindly retried.
+
+
 async def probe_expired_temporary_proof_destruction(
     client: httpx.AsyncClient,
     *,
@@ -91,47 +175,26 @@ async def probe_expired_temporary_proof_destruction(
 
     if now < receipt.expires_at + grace:
         return result("retained")
-    path = quote(receipt.reference, safe="/")
-    metadata_endpoint = f"/v1/{mount}/metadata/{path}"
 
     async def inspect() -> str:
-        try:
-            response = await client.get(metadata_endpoint, headers=headers)
-        except httpx.TransportError:
-            return "unresolved"
-        if response.status_code == 404:
-            return "absent"
-        if response.status_code in (401, 403):
+        outcome = await inspect_expired_temporary_version(
+            client, headers=headers, receipt=receipt, now=now, grace=grace, mount=mount
+        )
+        if outcome == "denied":
             raise RecoveryDeliveryPermanent("temporary proof cleanup access rejected")
-        if not response.is_success:
-            return "unresolved"
-        try:
-            version = response.json()["data"]["versions"][str(receipt.version)]
-            created = datetime.fromisoformat(version["created_time"].replace("Z", "+00:00"))
-            if created != receipt.created_at:
-                return "unverified"
-            if version.get("destroyed") is True:
-                return "destroyed"
-            deletion = datetime.fromisoformat(version["deletion_time"].replace("Z", "+00:00"))
-            if deletion != receipt.deletion_at:
-                return "unverified"
-            if version.get("destroyed") is not False or deletion + grace > now:
-                return "unverified"
-        except (ValueError, TypeError, KeyError, AttributeError):
-            return "unverified"
-        return "eligible"
+        return outcome
 
     initial = await inspect()
     if initial != "eligible":
         return result(initial)
-    try:
-        response = await client.post(
-            f"/v1/{mount}/destroy/{path}", headers=headers, json={"versions": [receipt.version]}
-        )
-        if response.status_code in (401, 403):
-            raise RecoveryDeliveryPermanent("temporary proof cleanup access rejected")
-    except httpx.TransportError:
-        pass
+    submitted = await submit_temporary_version_destruction(
+        client,
+        headers=headers,
+        receipt=receipt,
+        mount=mount,
+    )
+    if submitted == "denied":
+        raise RecoveryDeliveryPermanent("temporary proof cleanup access rejected")
     # Even a successful response is not proof until the exact version is inspected.
     final = await inspect()
     return result("unresolved" if final == "eligible" else final)

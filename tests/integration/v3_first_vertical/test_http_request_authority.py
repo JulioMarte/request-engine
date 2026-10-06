@@ -191,6 +191,7 @@ async def test_i03_material_http_mutation_revalidates_current_tenant_capability_
     )
     headers = {"Authorization": "Bearer actor"}
     body = {
+        "definition_version": 1,
         "payload": {"message": "policy-current"},
         "requester_party_id": str(fixture.requester_party_id),
     }
@@ -249,6 +250,7 @@ async def test_requester_is_the_only_party_authority_anchor_and_override_is_audi
     delegated = {"Authorization": "Bearer delegated"}
     operator = {"Authorization": "Bearer operator"}
     body = {
+        "definition_version": 1,
         "payload": {"message": "Please call me back"},
         "requester_party_id": str(fixture.requester_party_id),
         "recipient_party_id": str(fixture.recipient_party_id),
@@ -396,7 +398,7 @@ async def test_unattributed_request_can_be_submitted_but_is_operator_managed(
                 "Authorization": "Bearer submitter",
                 "Idempotency-Key": f"anonymous-{uuid4().hex}",
             },
-            json={"payload": {"message": "Anonymous demand"}},
+            json={"definition_version": 1, "payload": {"message": "Anonymous demand"}},
         )
         assert submitted.status_code == 201
         request_id = submitted.json()["request"]["id"]

@@ -24,6 +24,23 @@ There is no planned blanket architecture freeze. A production release may make p
 
 ## 2. Current architecture map
 
+API-only adversarial findings, remediation boundaries, production closure gates
+and executed evidence: [API closure plan](testing/api-production-closure-plan-2026-10-04.md).
+Client composition, authority discovery, reconstruction and safe retries:
+[API client journeys](architecture/api-client-journeys.md).
+Scoped transaction-time standing-grant validation:
+[administrative transaction authority](architecture/administrative-transaction-authority.md).
+
+Current broad API audit, prioritized defects, administrative reconstruction gaps
+and explicit adversarial evidence limits:
+[`testing/api-adversarial-coherence-audit-2026-10-03.md`](testing/api-adversarial-coherence-audit-2026-10-03.md).
+This is a diagnostic checkpoint, not complete endpoint certification or production acceptance.
+
+Follow-up implementation and executed proof status:
+[`testing/api-audit-remediation-2026-10-03.md`](testing/api-audit-remediation-2026-10-03.md).
+Current tenant configuration Query contracts:
+[`architecture/administrative-configuration-readback.md`](architecture/administrative-configuration-readback.md).
+
 Admin organization/staff journey review and prioritized remediation are tracked in
 [`testing/admin-api-adversarial-handoff-2026-09-29.md`](testing/admin-api-adversarial-handoff-2026-09-29.md).
 
@@ -32,6 +49,9 @@ Earlier verification checkpoint and explicitly unfinished admin journeys:
 Latest additive implementation checkpoint:
 [`testing/admin-completion-checkpoint-2026-10-02.md`](testing/admin-completion-checkpoint-2026-10-02.md).
 These are non-normative checkpoints with open findings, not production acceptance.
+
+Manual admin acceptance checklist, prerequisites and explicit blockers:
+[`testing/admin-manual-acceptance-2026-10-03.md`](testing/admin-manual-acceptance-2026-10-03.md).
 
 Native initial provisioning authority is specified in `architecture/initial-controller-policy.md`; executed validation and remaining production gaps are tracked in `architecture/auth-implementation-status.md`.
 

@@ -148,6 +148,33 @@ No mode may implement a second privileged SQL business path.
 Exact environment variable names and deployment UX are implementation details
 until the implementation plan is executed.
 
+### 9. Native login options never disclose credential metadata
+
+The current pre-production correction (2026-10-03) uses the same discoverable,
+unbound, TTL-bounded one-time challenge for supplied and omitted login handles.
+Options have an empty allow-list: unknown accounts and accounts with one or many
+keys expose neither credential count nor credential-id lengths. Completion
+resolves the presented credential; a supplied handle must resolve to that same
+active native identity **before** session finalization. The PostgreSQL finalizer
+still independently enforces credential/identity activity and single use.
+
+This deliberately replaces the earlier one-decoy-versus-all-real-keys shape,
+which disclosed accounts with multiple keys. Fixed-count padding alone is not a
+complete repair because real credential-id lengths can still disclose accounts;
+arbitrary truncation can exclude legitimate keys.
+
+Compatibility disposition: ADAPT the handle-first ceremony, not authority or
+recovery guarantees. All newly registered passkeys require resident/discoverable
+credentials and user verification. Existing non-discoverable credentials are
+not deleted, but cannot perform this login ceremony. A user with such a key must
+use supported password login, or offline/verified-channel/governed recovery to
+restore a password, then register a discoverable replacement with the current
+session. Existing authenticated-session step-up remains available. The accepted
+replacement-key recovery journey is preserved. Operators must communicate this
+pre-production compatibility change rather than promise all legacy keys still
+work for login. Timing resistance and provider/browser compatibility are separate
+claims requiring their own evidence.
+
 ## Relationship to ADR 0013
 
 ADR 0013 remains accepted except where this ADR narrows/supersedes its older

@@ -1,10 +1,26 @@
 """Tenancy-owned email invitation intents and subject acceptance receipts."""
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
+
+_MAILBOX = re.compile(
+    r"[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@"
+    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+"
+)
+
+
+def normalize_invitation_email(value: str) -> str:
+    email = value.strip().lower()
+    if not 3 <= len(email) <= 254 or _MAILBOX.fullmatch(email) is None:
+        raise ValueError("Invalid email address")
+    if len(email.partition("@")[0]) > 64:
+        raise ValueError("Invalid email address")
+    return email
 
 
 class InvitationDeliveryIntent(Protocol):

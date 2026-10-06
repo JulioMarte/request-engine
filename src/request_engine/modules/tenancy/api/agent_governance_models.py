@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from request_engine.modules.tenancy.domain.agent_governance import AgentOperatingMode
 
@@ -51,3 +51,20 @@ class AgentProfileTransitionBody(BaseModel):
 
 class AgentProfileTransitionView(BaseModel):
     profile_revision: int
+
+
+class AgentCredentialRotateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_authority_revision: int = Field(ge=1)
+    credential_expires_at: AwareDatetime
+    provenance_reference: str = Field(min_length=1, max_length=400)
+
+
+class AgentCredentialRotateView(BaseModel):
+    credential_id: UUID
+    authority_revision: int
+    workload_token: str | None = Field(
+        default=None,
+        repr=False,
+        description="Returned once; retries return null. Read agent metadata to reconcile.",
+    )

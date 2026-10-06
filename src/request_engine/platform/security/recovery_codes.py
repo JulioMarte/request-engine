@@ -13,7 +13,6 @@ is never recoverable.
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import hashlib
 import secrets
@@ -24,6 +23,7 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 from request_engine.platform.security.native_auth import hash_password
+from request_engine.platform.security.password_work import run_password_work
 
 _RECOVERY_CODE_BYTES = 16
 _DEFAULT_CODE_COUNT = 10
@@ -166,7 +166,7 @@ class NativeRecoveryCodeService:
 
         if len(normalize_recovery_code(code)) < 16:
             raise RecoveryCodeInvalid("recovery code is invalid")
-        verifier = await asyncio.to_thread(hash_password, new_password)
+        verifier = await run_password_work(hash_password, new_password)
         identity_id = await self._store.consume_and_rotate_password(
             code_digest=recovery_code_digest(code),
             new_credential_id=uuid4(),

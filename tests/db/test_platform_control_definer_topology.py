@@ -1,7 +1,8 @@
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 
 import pytest
-from psycopg import Connection
+from psycopg import Connection, sql
+from psycopg.errors import InsufficientPrivilege
 
 PgConnection = Connection[Any]
 pytestmark = [pytest.mark.postgres, pytest.mark.invariant, pytest.mark.security]
@@ -11,6 +12,9 @@ _DEFINER = "request_platform_control_definer"
 _PROVISIONER_FUNCTION = "request_platform.provision_tenant_provisioner(uuid, text, text)"
 _NATIVE_PROVISIONER_FUNCTION = (
     "request_platform.provision_native_tenant_provisioner(uuid, uuid, uuid, uuid, text)"
+)
+_NATIVE_IDENTITY_FUNCTION = (
+    "request_platform.provision_native_identity(uuid,uuid,text,uuid,text,text,text)"
 )
 _ROOT_FUNCTION = (
     "request_platform.provision_native_organization_root(uuid, text, text, uuid, uuid, "
@@ -25,6 +29,33 @@ _LIFECYCLE_FUNCTION = (
 )
 _CONTINUITY_ASSERT_FUNCTION = "request_platform.assert_other_platform_controller(uuid)"
 _CONTINUITY_PREDICATE_FUNCTION = "request_platform.principal_is_effective_platform_controller(uuid)"
+_NATIVE_RECEIPT_COLUMNS = {
+    ("native_identity_provision_receipts", column, privilege)
+    for privilege, columns in (
+        (
+            "SELECT",
+            (
+                "actor_principal_id",
+                "idempotency_key_digest",
+                "intent_digest",
+                "native_identity_id",
+                "login_handle",
+            ),
+        ),
+        (
+            "INSERT",
+            (
+                "actor_principal_id",
+                "idempotency_key_digest",
+                "intent_digest",
+                "native_identity_id",
+                "login_handle",
+                "correlation_id",
+            ),
+        ),
+    )
+    for column in columns
+}
 _EXPECTED_COLUMNS = {
     ("initial_controller_policies", "policy_key", "SELECT"),
     ("identity_bindings", "id", "SELECT"),
@@ -448,6 +479,12 @@ _EXPECTED_COLUMNS = {
     ("platform_owner_invitations", "idempotency_key_digest", "SELECT"),
     ("platform_owner_invitations", "intent_digest", "SELECT"),
     ("platform_owner_invitations", "expires_at", "SELECT"),
+    # 0016: the authorized 0014 invitation metadata projection needs these
+    # timestamps; no token or write permission is added by this read contract.
+    ("platform_owner_invitations", "created_at", "SELECT"),
+    ("platform_owner_invitations", "enrolled_at", "SELECT"),
+    ("platform_owner_invitations", "consumed_at", "SELECT"),
+    ("platform_owner_invitations", "revoked_at", "SELECT"),
     ("platform_owner_invitations", "id", "INSERT"),
     ("platform_owner_invitations", "token_digest", "INSERT"),
     ("platform_owner_invitations", "token_fingerprint", "INSERT"),
@@ -640,7 +677,7 @@ def test_platform_control_definer_has_only_reviewed_columns(
         (cast(str, table), cast(str, column), cast(str, privilege))
         for table, column, privilege in rows
     }
-    assert actual == _EXPECTED_COLUMNS | _P7_CONFIGURATION_COLUMNS
+    assert actual == _EXPECTED_COLUMNS | _P7_CONFIGURATION_COLUMNS | _NATIVE_RECEIPT_COLUMNS
     assert admin_conn.execute(
         """
             SELECT table_name, privilege_type
@@ -649,6 +686,52 @@ def test_platform_control_definer_has_only_reviewed_columns(
             """,
         (_DEFINER,),
     ).fetchall() == [("identity_recovery_issuance_reservations", "DELETE")]
+
+
+@pytest.mark.parametrize(
+    "role,statement",
+    [
+        (_DEFINER, "SELECT created_at FROM request_engine.native_identity_provision_receipts"),
+        (_DEFINER, "SELECT correlation_id FROM request_engine.native_identity_provision_receipts"),
+        (
+            _DEFINER,
+            "INSERT INTO request_engine.native_identity_provision_receipts"
+            "(created_at) VALUES(clock_timestamp())",
+        ),
+        (
+            _DEFINER,
+            "UPDATE request_engine.native_identity_provision_receipts "
+            "SET login_handle='forbidden' WHERE false",
+        ),
+        (_DEFINER, "DELETE FROM request_engine.native_identity_provision_receipts WHERE false"),
+        (
+            _RUNTIME,
+            "SELECT actor_principal_id FROM request_engine.native_identity_provision_receipts",
+        ),
+        (
+            _RUNTIME,
+            "INSERT INTO request_engine.native_identity_provision_receipts"
+            "(actor_principal_id) VALUES(NULL)",
+        ),
+        (
+            "request_engine_app",
+            "SELECT actor_principal_id FROM request_engine.native_identity_provision_receipts",
+        ),
+        (
+            "request_engine_app",
+            "INSERT INTO request_engine.native_identity_provision_receipts"
+            "(actor_principal_id) VALUES(NULL)",
+        ),
+    ],
+)
+def test_native_receipt_columns_deny_unnecessary_and_runtime_access(
+    admin_conn: PgConnection, role: str, statement: str
+) -> None:
+    # Real role checks precede constraints, so invalid placeholder rows cannot
+    # manufacture a passing denial through a NOT NULL or FK failure instead.
+    with pytest.raises(InsufficientPrivilege), admin_conn.transaction():
+        admin_conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(role)))
+        admin_conn.execute(cast(LiteralString, statement))
 
 
 def test_platform_control_definer_uses_native_auth_only_through_lock_boundary(
@@ -689,6 +772,7 @@ def test_only_platform_control_runtime_can_execute_commands(
     for function in (
         _PROVISIONER_FUNCTION,
         _NATIVE_PROVISIONER_FUNCTION,
+        _NATIVE_IDENTITY_FUNCTION,
         _ROOT_FUNCTION,
         _POLICY_FUNCTION,
         _LIFECYCLE_FUNCTION,

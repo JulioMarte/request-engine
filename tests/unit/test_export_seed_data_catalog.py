@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from contextlib import nullcontext
 from pathlib import Path
 from types import ModuleType
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "db" / "export_seed_data_catalog.py"
@@ -62,3 +65,22 @@ def test_unrelated_seed_rows_remain_exact() -> None:
     module = _load()
     raw = '{"policy_key":"platform-owner-v3","revision":3}'
     assert module._normalize_seed_row("request_engine", "platform_owner_policies", raw) == raw
+
+
+def test_cli_emits_canonical_lf_bytes_on_every_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load()
+    output = tmp_path / "seed.json"
+
+    def connect(_: str) -> nullcontext[object]:
+        return nullcontext(object())
+
+    def export(_: object) -> dict[str, int]:
+        return {"a": 1}
+
+    monkeypatch.setattr("sys.argv", [str(SCRIPT), "--output", str(output)])
+    monkeypatch.setattr(module.psycopg, "connect", connect)
+    monkeypatch.setattr(module, "export", export)
+    module.main()
+    assert output.read_bytes() == b'{\n  "a": 1\n}\n'

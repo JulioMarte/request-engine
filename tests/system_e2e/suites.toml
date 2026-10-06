@@ -91,8 +91,9 @@ manual = true
 enabled = true
 
 [suites.recovery-delivery]
-description = "Real OpenBao + Mailpit recovery proof delivery and one-time password recovery"
+description = "Real OpenBao + Mailpit recovery and staff invitation delivery, native acceptance and explicit bounded authority"
 selector = "recovery-delivery"
+environment = ["REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL=https://admin.example.test/staff-invitations"]
 profiles = ["worker", "secrets", "delivery"]
 services = ["api", "control-plane", "worker"]
 deferred_services = ["worker"]

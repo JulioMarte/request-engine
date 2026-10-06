@@ -14,6 +14,9 @@ from request_engine.modules.communications.application.errors import (
 from request_engine.modules.communications.domain.delivery_policy import parse_delivery_policy
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
+from request_engine.platform.db.tenant_principal_authority_reader import (
+    require_current_tenant_capability,
+)
 from request_engine.platform.idempotency.postgres import (
     acquire_idempotency,
     command_fingerprint,
@@ -21,7 +24,7 @@ from request_engine.platform.idempotency.postgres import (
 )
 from request_engine.platform.security.operational_authority import (
     MANAGE_OPERATIONAL_PROFILE_SCOPE,
-    require_operational_authority,
+    require_principal_serialized_operational_authority,
 )
 
 _CAPABILITY = "communications.set_channel_policy"
@@ -48,6 +51,19 @@ class PostgresOrganizationChannelPolicyCommands:
             },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            await require_current_tenant_capability(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                capability="communications.configure",
+            )
+            authority = await require_principal_serialized_operational_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                authority_party_id=command.authority_party_id,
+                scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
+            )
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -59,13 +75,6 @@ class PostgresOrganizationChannelPolicyCommands:
             if replay is not None:
                 return _state_from_json(cast(dict[str, object], replay["state"]))
 
-            authority = await require_operational_authority(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                authority_party_id=command.authority_party_id,
-                scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
-            )
             state = await _upsert_policy(
                 session,
                 organization_id=command.organization_id,
@@ -134,6 +143,7 @@ async def _upsert_policy(
                             :organization_id, :purpose, :enabled,
                             CAST(:channel_policy AS jsonb), 1
                         )
+                        ON CONFLICT (organization_id, purpose) DO NOTHING
                         RETURNING revision
                         """
                     ),
@@ -146,8 +156,24 @@ async def _upsert_policy(
                 )
             )
             .mappings()
-            .one()
+            .first()
         )
+        if updated is None:
+            # A missing row cannot be locked. The unique constraint chooses the
+            # first creator; a new READ COMMITTED statement observes its commit.
+            # Do not overwrite the winner or leak a technical unique-violation.
+            observed = (
+                await session.execute(
+                    text(
+                        "SELECT revision FROM request_engine.organization_channel_policies "
+                        "WHERE organization_id=:organization_id AND purpose=:purpose"
+                    ),
+                    {"organization_id": organization_id, "purpose": purpose},
+                )
+            ).scalar_one_or_none()
+            raise OrganizationChannelPolicyRevisionConflict(
+                purpose, expected_revision, int(observed) if observed is not None else 0
+            )
     else:
         current_revision = cast(int, row["revision"])
         if expected_revision != current_revision:

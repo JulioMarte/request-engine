@@ -1,11 +1,18 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from request_engine.modules.catalog.api.models import BusinessInfoView
-from request_engine.modules.catalog.api.offering_models import OfferingView
+from request_engine.modules.catalog.api.offering_models import OfferingPageView, OfferingView
+from request_engine.modules.catalog.api.offering_pagination import (
+    OfferingCursorParams,
+    decode_offering_cursor,
+    encode_offering_cursor,
+    offering_filter_key,
+)
+from request_engine.modules.catalog.application.errors import CatalogInvalidInput
 from request_engine.modules.catalog.application.queries.get_business_info import (
     BusinessInfoReader,
     get_business_info,
@@ -40,6 +47,7 @@ def create_router(
         return BusinessInfoView.from_contract(info)
 
     async def offerings(
+        request: Request,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         search_text: Annotated[str | None, Query(max_length=200)] = None,
         bookable: bool | None = None,
@@ -47,8 +55,37 @@ def create_router(
         location_id: UUID | None = None,
         effective_at: datetime | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    ) -> tuple[OfferingView, ...]:
+        cursor: Annotated[str | None, Query(max_length=2000)] = None,
+    ) -> OfferingPageView:
         require_capability(actor, "catalog.search_offerings")
+        if set(request.query_params) - {
+            "search_text",
+            "bookable",
+            "requestable",
+            "location_id",
+            "effective_at",
+            "limit",
+            "cursor",
+        }:
+            raise CatalogInvalidInput("unsupported offering filter")
+        if effective_at is not None and effective_at.utcoffset() is None:
+            raise CatalogInvalidInput("effective_at must be timezone-aware")
+        filter_key = offering_filter_key(
+            (
+                actor.organization_id,
+                search_text,
+                bookable,
+                requestable,
+                location_id,
+                effective_at,
+            )
+        )
+        position = decode_offering_cursor(cursor, filter_key) if cursor else None
+        observation = (
+            position.effective_at
+            if position is not None
+            else effective_at or (datetime.now(UTC) if location_id else None)
+        )
         result = await search_offerings(
             offering_reader,
             SearchOfferingsQuery(
@@ -57,11 +94,28 @@ def create_router(
                 bookable=bookable,
                 requestable=requestable,
                 location_id=location_id,
-                effective_at=effective_at,
+                effective_at=observation,
                 limit=limit,
+                after_display_name=position.display_name if position else None,
+                after_id=position.offering_id if position else None,
+                include_page_probe=True,
             ),
         )
-        return tuple(OfferingView.from_contract(item) for item in result)
+        items = result[:limit]
+        next_cursor = None
+        if len(result) > limit:
+            next_cursor = encode_offering_cursor(
+                OfferingCursorParams(
+                    filter_key=filter_key,
+                    display_name=items[-1].display_name,
+                    offering_id=items[-1].id,
+                    effective_at=observation,
+                )
+            )
+        return OfferingPageView(
+            items=tuple(OfferingView.from_contract(item) for item in items),
+            next_cursor=next_cursor,
+        )
 
     async def offering_details(
         offering_key: str,
@@ -91,8 +145,7 @@ def create_router(
         offerings,
         capability="catalog.search_offerings",
         methods=["GET"],
-        response_model=tuple[OfferingView, ...],
-        response_model_exclude_none=True,
+        response_model=OfferingPageView,
     )
     add_capability_route(
         router,

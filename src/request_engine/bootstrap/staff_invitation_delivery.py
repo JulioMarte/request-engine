@@ -21,7 +21,7 @@ from request_engine.platform.secrets.smtp_delivery_channel import SmtpRecoveryDe
 def _acceptance_url(settings: RecoveryDeliverySettings) -> str | None:
     """Deployment-owned URL; HTTPS or loopback development, never caller redirect."""
     url = settings.staff_invitation_accept_url
-    if url is None:
+    if url is None or not url.strip():
         return None
     parsed = urlsplit(url)
     if (

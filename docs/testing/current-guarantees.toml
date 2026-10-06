@@ -15,7 +15,7 @@ risk = ["security"]
 
 [[guarantees]]
 id = "INV-AUTHORITY-001"
-statement = "Every state-changing or party-scoped operation is authorized by explicit actor/representation authority and cannot gain authority from caller-supplied identifiers."
+statement = "Every state-changing or party-scoped operation is authorized by explicit actor/representation authority and cannot gain authority from caller-supplied identifiers. Scoped Catalog configuration and Booking supply commands revalidate their exact active Representation inside the owner transaction before returning a stored idempotency receipt, so withdrawing scope also denies later receipt replay; the check is serialized against supported authority changes and does not retroactively cancel an already-admitted transaction. Current regression coverage proves this replay denial for Booking assignment creation; per-command and both-order concurrency evidence remains incomplete."
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
@@ -414,7 +414,7 @@ risk = ["security"]
 
 [[guarantees]]
 id = "INV-NATIVE-WEBAUTHN-LOGIN-001"
-statement = "A valid native WebAuthn assertion completes a bounded one-time challenge and issues a brand-new normal native session whose trusted evidence (initial authenticator, proven methods, user verification and derived assurance) reflects only the verified ceremony; the caller cannot supply assurance, user verification or methods, and, when a login handle is supplied, a decoy options response for an unknown or credential-less login handle is indistinguishable in shape from a real ceremony so the endpoint is not a reliable account-enumeration oracle."
+statement = "A valid native WebAuthn assertion completes a bounded one-time challenge and issues a brand-new normal native session whose trusted evidence (initial authenticator, proven methods, user verification and derived assurance) reflects only the verified ceremony; the caller cannot supply assurance, user verification or methods. Supplied and omitted login handles receive the same discoverable unbound options with an empty allow-list, exposing neither credential count nor credential-id length; completion resolves the demonstrated active credential and any supplied handle must resolve to that same identity before session finalization. Legacy non-discoverable keys are retained but use the documented password/recovery replacement journey rather than handle-login allow-list disclosure."
 severity = "critical"
 required_evidence = ["invariant", "adversarial", "contract"]
 risk = ["security"]

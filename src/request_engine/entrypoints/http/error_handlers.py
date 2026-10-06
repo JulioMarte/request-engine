@@ -11,12 +11,14 @@ from request_engine.entrypoints.http.errors import (
     http_exception_handler,
     idempotency_conflict_handler,
     integrity_error_handler,
+    password_work_capacity_exceeded_handler,
     phishing_resistant_auth_required_handler,
     reauthentication_required_handler,
     recent_authentication_required_handler,
     recovery_completion_required_handler,
     render_error_response,
     request_validation_error_handler,
+    unexpected_error_handler,
 )
 from request_engine.entrypoints.http.native_auth_errors import (
     delegation_resolution_error_handler,
@@ -30,7 +32,13 @@ from request_engine.entrypoints.http.operational_errors import (
     operational_authority_required_handler,
     public_contact_validation_error_handler,
 )
-from request_engine.platform.http.errors import ErrorBody, ErrorResolution
+from request_engine.modules.booking.api import register_terms_input_error_handler
+from request_engine.modules.catalog.api import register_input_error_handler
+from request_engine.platform.http.errors import (
+    ErrorBody,
+    ErrorResolution,
+    install_validation_error_schema,
+)
 from request_engine.platform.idempotency.errors import IdempotencyConflict
 from request_engine.platform.public_contacts import PublicContactValidationError
 from request_engine.platform.security.acting_operator import (
@@ -64,6 +72,7 @@ from request_engine.platform.security.native_auth import NativeAuthenticationErr
 from request_engine.platform.security.native_http import TenantContextInvalid
 from request_engine.platform.security.oidc_auth import OidcAuthenticationRequired
 from request_engine.platform.security.operational_authority import OperationalAuthorityRequired
+from request_engine.platform.security.password_work import PasswordWorkCapacityExceeded
 from request_engine.platform.security.workload_auth import WorkloadAuthenticationError
 
 
@@ -133,7 +142,17 @@ async def agent_budget_exceeded_handler(_: Request, exc: Exception) -> JSONRespo
     )
 
 
+def add_technical_error_handlers(app: FastAPI) -> None:
+    """Install process-wide technical failures, without broadening business handlers."""
+    app.add_exception_handler(Exception, unexpected_error_handler)
+    app.add_exception_handler(PasswordWorkCapacityExceeded, password_work_capacity_exceeded_handler)
+    install_validation_error_schema(app)
+
+
 def add_global_error_handlers(app: FastAPI) -> None:
+    add_technical_error_handlers(app)
+    register_input_error_handler(app)
+    register_terms_input_error_handler(app)
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(NativeAuthenticationError, native_authentication_error_handler)
     app.add_exception_handler(WorkloadAuthenticationError, workload_authentication_error_handler)

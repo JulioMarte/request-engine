@@ -109,3 +109,11 @@ async def test_cas_replay_reads_original_winner() -> None:
     assert staged.created is False
     assert staged.digest == "a" * 64
     assert staged.reference == _PATH
+
+
+@pytest.mark.asyncio
+async def test_discard_cannot_destroy_another_issuers_retained_winner() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        pytest.fail("discard has no exclusive retained-generation ownership")
+
+    await _store(handler).discard(case_id=_CASE_ID, generation=1)

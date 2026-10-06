@@ -215,3 +215,9 @@ also revalidate current manager authority before returning completed idempotency
 receipts. The original receipt does not grant continued access after withdrawal.
 See `docs/architecture/staff-command-replay-authority.md` for trusted actor ceilings,
 ordered locks, compatible migration and concurrent replay/revocation semantics.
+
+Platform owner/invitation reads, closed admin query filters, bounded lookahead
+pagination and replay-safe native account provisioning are documented in
+`docs/architecture/platform-administration-read-and-provision.md`. Account
+provisioning never implies tenant membership or grants. Current native actor
+posture is validated before provisioning receipts are returned.

@@ -18,6 +18,17 @@ section is reported as `unknown` (never ready) without fabricated blockers.
 Recovery readiness is intentionally `unknown` in this iteration because
 delivery/operator configuration is private-process readiness, not a tenant read.
 
+Each configuration blocker points to a mounted owner operation where a safe next
+step exists and supplies `resolution_hint`. This is preparation guidance, not
+authorization or a promise that a single command fixes the journey. Creating a
+resource still requires assignment/availability; configuration readiness proves
+neither a bookable slot nor SMTP delivery. Business-Party readiness checks an
+active organization-kind Party, not the tenant root/controller. Registration
+does not provision a root or grant Representation authority. Missing controller
+authentication requires operator investigation, not a replacement staff member.
+Clients resolve operation IDs against the actual
+OpenAPI schema and revalidate the owner's capabilities, revisions and inputs.
+
 It does **not** own or mutate any source fact:
 
 - Organization/Party/authority -> `tenancy`;

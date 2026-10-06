@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
 
+from request_engine.entrypoints.http.error_handlers import add_technical_error_handlers
 from request_engine.entrypoints.http.errors import (
     authentication_required_handler,
     capability_required_handler,
@@ -19,6 +20,7 @@ from request_engine.entrypoints.http.operational_errors import (
     public_contact_validation_error_handler,
 )
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.http.request_budget import install_request_budget
 from request_engine.platform.idempotency.errors import IdempotencyConflict
 from request_engine.platform.public_contacts import PublicContactValidationError
 from request_engine.platform.security.execution_context import clear_actor_context
@@ -69,7 +71,9 @@ def create_operational_app(
             "deployment ActorResolver; commands additionally require exact Representation scopes."
         ),
     )
+    install_request_budget(app)
     app.middleware("http")(_request_execution_context)
+    add_technical_error_handlers(app)
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
     app.add_exception_handler(IdempotencyConflict, idempotency_conflict_handler)

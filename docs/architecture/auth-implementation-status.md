@@ -7,6 +7,22 @@ amended slices in `principal-agent-and-provisioning-authority-model.md`.
 **Overall status: incomplete; not certified for production.** Passing the current
 tests is necessary but does not prove the unimplemented acceptance journeys.
 
+Current governance correction (2026-10-04): historical E1 tests below validate
+the ordinary controller-policy command with an already authorized, delegable
+manager. They do not establish a supported upgrade journey from an unmodified
+sole `tenant-controller-v3` root. That root lacks upgrade/new capabilities, and
+self-upgrade/outside-ceiling authority remain forbidden. Existing-root adoption
+is pending an explicit governance decision in proposed
+`docs/adr/0016-existing-controller-policy-adoption.md`. A reviewed fresh-tenant
+default does not upgrade old tenants. No automatic grants or platform ceremony
+are implemented or authorized by that proposal.
+
+Current privacy correction superseding historical decoy claims below:
+ADR 0014 §9 (2026-10-03) requires the same discoverable options for supplied and
+omitted handles, with no credential-id/count disclosure and intended-handle
+validation before completion. Legacy non-discoverable keys use the documented
+password/recovery replacement journey; they are not deleted.
+
 Detailed continuation plan: `auth-production-completion-plan.md` (2026-09-14).
 For the initial platform trust root specifically, ADR 0014 and
 `instance-claim-platform-owner-plan.md` (2026-09-18) are now the accepted target:
@@ -425,8 +441,9 @@ Production change:
   `tenant-controller-v5` catalog row = v4 plus the delegable operational
   `authority.inspect_resource` grant. No table, function or backfill; existing
   roots and revoked grants are neither upgraded nor restored. New native roots
-  still select `tenant-controller-v3`; v5 is a governed upgrade target exactly like
-  v4 (documented decision, consistent with E1).
+  selected `tenant-controller-v3` at that historical checkpoint. Current application
+  default is v6 after `0021_tenant_controller_v6`, only for fresh native roots;
+  existing-root adoption remains pending governance, not a working self-upgrade.
 - Pydantic-free tenancy contract `contracts/resource_authority.py`:
   `ResourceAuthorityOperation` (`appointments.book`, `booking.manage_supply`),
   `ResourceAuthorityQuery` (per-operation shape validation), `ResourceAuthorityDecision`
@@ -2202,8 +2219,9 @@ restore. OpenBao/backup recovery is governed separately by ADR 0015.
 Migration `0002_discoverable_webauthn_login` makes `login_handle` optional on the
 native WebAuthn login surface. Omitting it begins a discoverable ceremony (empty
 allow-list, unbound challenge) and completes by resolving the owning native
-identity from the presented credential id; supplying a handle keeps the original
-handle-first flow and its anti-enumeration decoy. Assurance, user verification
+identity from the presented credential id; supplying a handle now uses those
+same discoverable options and additionally validates the intended identity at
+completion (ADR 0014 §9). Assurance, user verification
 and methods remain derived only from the verified ceremony, the authority ->
 identity -> credential lock order is unchanged, and the new finalizer is
 executable only by the app role (PUBLIC revoked). Current guarantee

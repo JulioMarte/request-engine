@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 
+from request_engine.modules.communications.adapters.db.channel_configuration_reader import (
+    PostgresChannelConfigurationReader,
+)
 from request_engine.modules.communications.adapters.db.organization_channel_policy_commands import (
     PostgresOrganizationChannelPolicyCommands,
 )
@@ -51,5 +54,6 @@ def install_http(
         create_channel_policy_router(
             handler=PostgresOrganizationChannelPolicyCommands(session_factory),
             actor_resolver=actor_resolver,
+            reader=PostgresChannelConfigurationReader(session_factory),
         )
     )

@@ -5,6 +5,16 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0025: current HUMAN manager, tenant-local target and delegable ceiling;
+    # revision-checked credential replacement, with no direct credential table ACL.
+    "request_cmd.lock_agent_credential_manager(p_target uuid)",
+    (
+        "request_cmd.rotate_agent_credential(p_target uuid, p_expected bigint, "
+        "p_credential uuid, p_digest bytea, p_fingerprint text, "
+        "p_expiry timestamp with time zone)"
+    ),
+    # Metadata only; never returns token digest, fingerprint or plaintext.
+    "request_read.agent_credential_metadata(p_target uuid)",
     # 0012: closed staff capability gate, current actor locks, no business writes.
     "request_cmd.lock_staff_command_authority(p_capability text)",
     # 0011: fixed-capability tenant-local profile locks/CAS; no authority writes.

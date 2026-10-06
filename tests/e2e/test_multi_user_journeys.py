@@ -461,7 +461,9 @@ async def test_e2e_two_tenants_cannot_observe_or_mutate_each_other(
         assert business_a.json()["organization_id"] == str(practice_a.organization_id)
         assert business_b.json()["organization_id"] == str(practice_b.organization_id)
         catalog_a = await client.get("/v1/catalog/offerings", headers=_auth(practice_a.staff_token))
-        assert {item["offering_key"] for item in catalog_a.json()} == {practice_a.offering_key}
+        assert {item["offering_key"] for item in catalog_a.json()["items"]} == {
+            practice_a.offering_key
+        }
         foreign_slots = await client.get(
             "/v1/appointments/slots",
             params={
@@ -475,6 +477,7 @@ async def test_e2e_two_tenants_cannot_observe_or_mutate_each_other(
         request_from_a = await client.post(
             f"/v1/requests/definitions/{practice_a.request_key}/submit",
             json={
+                "definition_version": 1,
                 "payload": {"message": "tenant A"},
                 "requester_party_id": str(practice_a.people[0].party_id),
             },
@@ -552,6 +555,7 @@ async def test_e2e_public_request_submit_replay_conflict_read_and_cancel(
     async with _client(e2e_session_factory, {practice.staff_token: actor}) as client:
         key = f"submit-{uuid4().hex}"
         body = {
+            "definition_version": 1,
             "payload": {"message": "Please contact me"},
             "requester_party_id": str(practice.people[0].party_id),
         }

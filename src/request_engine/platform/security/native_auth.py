@@ -40,6 +40,11 @@ _ARGON2_HASHER = PasswordHasher(
     hash_len=_ARGON2_HASH_LEN,
     salt_len=_ARGON2_SALT_LEN,
 )
+# Durable provision receipts use a pinned profile, independent of future login
+# verifier upgrades. Changing this profile requires a new intent version.
+_PROVISION_INTENT_V1_HASHER = PasswordHasher(
+    time_cost=2, memory_cost=19456, parallelism=1, hash_len=32, salt_len=16
+)
 
 
 class NativeAuthenticationError(RuntimeError):
@@ -83,11 +88,16 @@ def normalize_login_handle(value: str) -> str:
     return normalized
 
 
-def hash_password(password: str) -> str:
+def hash_password(password: str, *, salt: bytes | None = None) -> str:
     """Hash a password with the current versioned verifier (Argon2id)."""
 
     password_bytes = _validate_password(password)
-    return _ARGON2_HASHER.hash(password_bytes)
+    return _ARGON2_HASHER.hash(password_bytes, salt=salt)
+
+
+def hash_provision_password_intent_v1(password: str, *, salt: bytes) -> str:
+    """Derive costly deterministic receipt material, never a login verifier."""
+    return _PROVISION_INTENT_V1_HASHER.hash(_validate_password(password), salt=salt)
 
 
 def hash_password_scrypt(password: str) -> str:

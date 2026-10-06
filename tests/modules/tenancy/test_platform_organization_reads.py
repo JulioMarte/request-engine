@@ -104,7 +104,7 @@ def _app(reader: _RecordingReader) -> FastAPI:
 @pytest.mark.asyncio
 async def test_list_organizations_projects_only_bounded_fields_and_keyset_cursor() -> None:
     first, second = _organization(), _organization()
-    reader = _RecordingReader((first, second))
+    reader = _RecordingReader((first, second, _organization()))
     async with AsyncClient(
         transport=ASGITransport(app=_app(reader)), base_url="http://test"
     ) as client:
@@ -154,6 +154,18 @@ async def test_get_uses_path_identity_and_absent_is_a_bounded_404() -> None:
     assert missing.status_code == 404
     assert missing.headers["cache-control"] == "no-store"
     assert missing.json()["error"]["code"] == "platform_organization_not_found"
+
+
+@pytest.mark.asyncio
+async def test_exact_full_final_page_has_no_false_continuation() -> None:
+    reader = _RecordingReader((_organization(), _organization()))
+    async with AsyncClient(
+        transport=ASGITransport(app=_app(reader)), base_url="http://test"
+    ) as client:
+        response = await client.get("/v1/platform/organizations", params={"limit": 2})
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == 2
+    assert response.json()["next_after"] is None
 
 
 def test_routes_publish_distinct_owner_capability_and_operation_metadata() -> None:

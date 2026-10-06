@@ -19,7 +19,11 @@ from request_engine.platform.security.freshness import (
     RecentAuthenticationRequired,
     RecoveryCompletionRequired,
 )
-from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
+from request_engine.platform.security.http import (
+    AuthenticationRequired,
+    CapabilityRequired,
+    request_correlation_id,
+)
 
 
 def render_error_response(
@@ -35,6 +39,46 @@ def render_error_response(
     )
 
 
+async def unexpected_error_handler(request: Request, _: Exception) -> JSONResponse:
+    """Do not expose exception text or infer rollback from a failed response.
+
+    Starlette invokes this last-resort handler outside user middleware. Explicit
+    correlation and cache headers therefore cannot depend on middleware returning.
+    A failure after response headers were sent cannot replace that response.
+    """
+    return render_error_response(
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        ErrorBody(
+            code="internal_error",
+            message="An unexpected error occurred; the operation outcome may be uncertain",
+            retryable=False,
+            resolution=ErrorResolution.OPERATOR_INTERVENTION,
+        ),
+        headers={
+            "X-Correlation-ID": str(request_correlation_id(request)),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+async def password_work_capacity_exceeded_handler(request: Request, _: Exception) -> JSONResponse:
+    """Busy password admission has not executed the refused credential work."""
+    return render_error_response(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        ErrorBody(
+            code="password_work_capacity_exceeded",
+            message="Password processing is temporarily at capacity",
+            retryable=True,
+            resolution=ErrorResolution.RETRY_SAME_REQUEST,
+        ),
+        headers={
+            "Retry-After": "1",
+            "X-Correlation-ID": str(request_correlation_id(request)),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 async def authentication_required_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, AuthenticationRequired):
         raise exc
@@ -45,6 +89,7 @@ async def authentication_required_handler(_: Request, exc: Exception) -> JSONRes
             message="authentication is required",
             resolution=ErrorResolution.REAUTHENTICATE,
         ),
+        headers={"WWW-Authenticate": "Bearer", "Cache-Control": "no-store"},
     )
 
 

@@ -101,6 +101,7 @@ async def test_identity_aware_readiness_http_journey(
                 "resolution_capabilities": ["controller_policy_upgrade"],
                 "requires_operator": True,
                 "operation_id": "controller_policy_upgrade",
+                "resolution_hint": None,
             }
         ],
     }

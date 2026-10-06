@@ -174,7 +174,7 @@ async def test_stage_client_error_is_permanent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_discard_issues_metadata_delete() -> None:
+async def test_discard_preserves_possible_retained_winner_without_provider_io() -> None:
     calls: list[tuple[str, str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -183,7 +183,7 @@ async def test_discard_issues_metadata_delete() -> None:
 
     await _store(handler).discard(case_id=_CASE_ID, generation=1)
 
-    assert calls == [("DELETE", f"/v1/secret/metadata/{_PATH}")]
+    assert calls == []
 
 
 @pytest.mark.asyncio
@@ -195,12 +195,11 @@ async def test_discard_ignores_missing_secret() -> None:
 
 
 @pytest.mark.asyncio
-async def test_discard_server_error_is_retryable() -> None:
+async def test_discard_never_contacts_provider_even_if_it_is_unavailable() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"errors": ["boom"]})
 
-    with pytest.raises(RecoveryDeliveryRetryable):
-        await _store(handler).discard(case_id=_CASE_ID, generation=1)
+    await _store(handler).discard(case_id=_CASE_ID, generation=1)
 
 
 @pytest.mark.asyncio

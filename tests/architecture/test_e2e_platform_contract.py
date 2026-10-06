@@ -175,6 +175,25 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
             assert action in allowed_fault_actions, f"{name} has unsupported fault action: {fault}"
 
 
+def test_staff_invitation_delivery_suite_wires_server_side_staging_and_worker_url() -> None:
+    spec = _enabled_suites()["recovery-delivery"]
+    assert (
+        "REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL=https://admin.example.test/staff-invitations"
+        in _string_list(spec, "environment", "recovery-delivery")
+    )
+    compose = (ROOT / "deploy/reference/compose.e2e.yaml").read_text(encoding="utf-8")
+    api = compose.split("  api:\n", 1)[1].split("  control-plane:\n", 1)[0]
+    worker = compose.split("\n  worker:\n", 1)[1].split("\n  event-sink:\n", 1)[0]
+    for surface in (api, worker):
+        for variable in (
+            "REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL",
+            "REQUEST_ENGINE_OPENBAO_ADDR",
+            "REQUEST_ENGINE_OPENBAO_TOKEN",
+        ):
+            assert variable in surface
+    assert "REQUEST_ENGINE_SMTP_" not in api, "HTTP staging must not receive SMTP authority"
+
+
 def test_managed_platform_configuration_suite_has_no_bootstrap_smtp_profile() -> None:
     """P7 managed SMTP acceptance must not inherit bootstrap SMTP settings."""
 

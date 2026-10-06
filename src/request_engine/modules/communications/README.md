@@ -114,6 +114,21 @@ snapshot — keep delivering. `count_disabled_purposes` (via
 `contracts/onboarding.py`) backs the `channel_purpose_disabled` readiness
 blocker of `GET /v1/onboarding/readiness`.
 
+### Configure authorization and replay (2026-10-06)
+
+Pre-production disposition: strengthen admission without changing the HTTP path,
+operation ID, capability, typed command, receipt namespace or revision semantics.
+Configure requires current `communications.configure`, active authority Party and
+exact `operations.manage_profile` Representation inside its transaction BEFORE
+idempotency lookup. A completed receipt does not restore withdrawn authority.
+An admitted Command may finish before a later withdrawal; later replay is denied.
+Principal SHARE -> Party SHARE -> committed Representation read avoids the
+Representation trigger's lock inversion. No grant row lock follows Principal.
+See `docs/architecture/administrative-transaction-authority.md` for guarantees,
+restricted-role evidence and deliberate limits; this is not universal session,
+delegation or agent-policy linearization. Existing frozen delivery intents are
+unchanged. No new DB privileges, automatic grants or provider I/O are added.
+
 ## Delivery escalation (F7b, docs/v3/36 section 4)
 
 A terminally failed channel attempt no longer ends the notification: the
@@ -187,3 +202,14 @@ The initial recurrence type is deliberately narrow:
 - Cancelling a ReminderPlan cancels its pending future reminder ScheduledActions. A concurrently leased occurrence rechecks plan status under the ReminderPlan lock and becomes a no-op if the plan is no longer active.
 
 Medication reminders execute an already-authorized ReminderPlan. This module does not infer dosage, alter treatment, or make clinical decisions.
+
+## Concurrent initial channel configuration
+
+Setting an absent organization/purpose policy requires `expected_revision=0`.
+Concurrent initial commands with different idempotency keys resolve through the
+unique organization/purpose constraint: one creates revision 1, and the loser
+raises the existing revision conflict (HTTP 409), not a technical 500. The loser
+does not overwrite the winner or retain an idempotency receipt/audit record.
+Current capability and Representation checks still precede creation and replay.
+Refresh configuration before proposing a new revision-sensitive intent; do not
+blindly retry with a replacement key. This does not alter delivery semantics.

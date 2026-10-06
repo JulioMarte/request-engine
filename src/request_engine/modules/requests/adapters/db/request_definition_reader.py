@@ -57,7 +57,6 @@ class PostgresRequestDefinitionResolver:
                      AND rdv.request_definition_id = rd.id
                     WHERE rd.organization_id = :organization_id
                       AND rd.request_key = :request_key
-                      AND rd.active = true
                       AND rdv.version = :version
                     LIMIT 1
                     """

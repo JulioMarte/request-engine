@@ -7,20 +7,26 @@ from typing import Annotated, Literal, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, Security
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey
 from request_engine.modules.tenancy.application.commands.staff_invitations import (
     ChangeStaffInvitationCommand,
     CreateStaffInvitationCommand,
     StaffInvitation,
+    normalize_invitation_email,
 )
 from request_engine.modules.tenancy.application.queries.staff_invitation import (
     StaffInvitationPreview,
 )
 from request_engine.platform.http.capability_routes import add_capability_route
-from request_engine.platform.secrets.delivery import RecoveryDeliveryError
+from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+from request_engine.platform.secrets.delivery import (
+    RecoveryDeliveryError,
+    RecoveryDeliveryRetryable,
+)
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import require_capability
 from request_engine.platform.security.subject_http import (
@@ -54,9 +60,14 @@ class StaffInvitationCommands(Protocol):
 
 class StaffInvitationCreateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    email: str = Field(min_length=3, max_length=320)
+    email: str = Field(min_length=3, max_length=254)
     provenance_reference: str = Field(min_length=1, max_length=500)
     expires_in_hours: int = Field(default=72, ge=1, le=168)
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value: str) -> str:
+        return normalize_invitation_email(value)
 
 
 class StaffInvitationChangeBody(BaseModel):
@@ -105,6 +116,31 @@ class StaffInvitationParams(BaseModel):
     limit: int = Field(default=50, ge=1, le=100)
 
 
+def _delivery_failure(
+    exc: RecoveryDeliveryError, *, allow_same_request_retry: bool = False
+) -> JSONResponse:
+    temporary = allow_same_request_retry and isinstance(exc, RecoveryDeliveryRetryable)
+    body = ErrorBody(
+        code=(
+            "staff_invitation_delivery_temporarily_unavailable"
+            if temporary
+            else "staff_invitation_delivery_unavailable"
+        ),
+        message="Staff invitation delivery is unavailable",
+        retryable=temporary,
+        resolution=(
+            ErrorResolution.RETRY_SAME_REQUEST
+            if temporary
+            else ErrorResolution.OPERATOR_INTERVENTION
+        ),
+    )
+    return JSONResponse(
+        status_code=503,
+        content=ErrorEnvelope(error=body).model_dump(mode="json"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 def create_staff_invitation_router(
     *,
     commands: StaffInvitationCommands,
@@ -117,15 +153,15 @@ def create_staff_invitation_router(
         body: StaffInvitationCreateBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
-    ) -> StaffInvitationView:
+    ) -> StaffInvitationView | JSONResponse:
         require_capability(actor, "staff.invite")
         try:
             result = await commands.create(
                 actor,
                 CreateStaffInvitationCommand(**body.model_dump(), idempotency_key=idempotency_key),
             )
-        except RecoveryDeliveryError:
-            raise HTTPException(503, "Staff invitation email delivery is unavailable") from None
+        except RecoveryDeliveryError as exc:
+            return _delivery_failure(exc, allow_same_request_retry=True)
         return StaffInvitationView(**asdict(result))
 
     async def list_invitations(
@@ -156,7 +192,7 @@ def create_staff_invitation_router(
         body: StaffInvitationChangeBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
-    ) -> StaffInvitationView:
+    ) -> StaffInvitationView | JSONResponse:
         require_capability(actor, "staff.invite")
         try:
             result = await commands.resend(
@@ -167,8 +203,8 @@ def create_staff_invitation_router(
                     **body.model_dump(),
                 ),
             )
-        except RecoveryDeliveryError:
-            raise HTTPException(503, "Staff invitation email delivery is unavailable") from None
+        except RecoveryDeliveryError as exc:
+            return _delivery_failure(exc, allow_same_request_retry=True)
         return StaffInvitationView(**asdict(result))
 
     async def revoke(
@@ -176,23 +212,32 @@ def create_staff_invitation_router(
         body: StaffInvitationChangeBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
-    ) -> StaffInvitationView:
+    ) -> StaffInvitationView | JSONResponse:
         require_capability(actor, "staff.invite")
-        result = await commands.revoke(
-            actor,
-            ChangeStaffInvitationCommand(
-                invitation_id=invitation_id, idempotency_key=idempotency_key, **body.model_dump()
-            ),
-        )
+        try:
+            result = await commands.revoke(
+                actor,
+                ChangeStaffInvitationCommand(
+                    invitation_id=invitation_id,
+                    idempotency_key=idempotency_key,
+                    **body.model_dump(),
+                ),
+            )
+        except RecoveryDeliveryError as exc:
+            return _delivery_failure(exc)
         return StaffInvitationView(**asdict(result))
 
     async def subject(
         request: Request,
         _credential: Annotated[
             HTTPAuthorizationCredentials | None,
-            Security(HTTPBearer(scheme_name="SubjectBearer", auto_error=False)),
+            Security(HTTPBearer(scheme_name="NativeSessionBearer", auto_error=False)),
         ],
     ) -> AuthenticatedHttpSubject:
+        if request.query_params:
+            raise TenantContextInvalid(
+                "Invitation recipient operations do not accept query parameters"
+            )
         if ORGANIZATION_HEADER in request.headers:
             raise TenantContextInvalid("Invitation acceptance does not accept a tenant selector")
         if subject_resolver is None:
@@ -204,26 +249,28 @@ def create_staff_invitation_router(
         body: StaffInvitationAcceptBody,
         authenticated: Annotated[AuthenticatedHttpSubject, Depends(subject)],
         response: Response,
-    ) -> StaffInvitationView:
+    ) -> StaffInvitationView | JSONResponse:
         response.headers["Cache-Control"] = "no-store"
-        return StaffInvitationView(
-            **asdict(await commands.accept(authenticated, invitation_id, body.token))
-        )
+        try:
+            result = await commands.accept(authenticated, invitation_id, body.token)
+        except RecoveryDeliveryError as exc:
+            return _delivery_failure(exc)
+        return StaffInvitationView(**asdict(result))
 
     async def preview(
         invitation_id: UUID,
-        request: Request,
         body: StaffInvitationAcceptBody,
         authenticated: Annotated[AuthenticatedHttpSubject, Depends(subject)],
         response: Response,
     ) -> StaffInvitationPreviewView:
-        if request.query_params:
-            raise TenantContextInvalid("Invitation preview does not accept query parameters")
         response.headers["Cache-Control"] = "no-store"
         return StaffInvitationPreviewView(
             **asdict(await commands.preview(authenticated, invitation_id, body.token))
         )
 
+    read_errors = {code: {"model": ErrorEnvelope} for code in (401, 403, 404, 422)}
+    command_errors = {**read_errors, 409: {"model": ErrorEnvelope}}
+    staging_errors = {**command_errors, 503: {"model": ErrorEnvelope}}
     add_capability_route(
         router,
         "",
@@ -233,6 +280,11 @@ def create_staff_invitation_router(
         operation_id="staff_invitation_create",
         response_model=StaffInvitationView,
         status_code=201,
+        summary="Create an expiring staff email invitation",
+        description="Creates no membership or permissions. Staging failures return typed 503; "
+        "retry temporary failures with the same body and Idempotency-Key. "
+        "Email delivery is asynchronous.",
+        responses=staging_errors,
     )
     add_capability_route(
         router,
@@ -242,6 +294,7 @@ def create_staff_invitation_router(
         methods=["GET"],
         operation_id="staff_invitation_list",
         response_model=StaffInvitationPageView,
+        responses=read_errors,
     )
     add_capability_route(
         router,
@@ -251,6 +304,7 @@ def create_staff_invitation_router(
         methods=["GET"],
         operation_id="staff_invitation_get",
         response_model=StaffInvitationView,
+        responses=read_errors,
     )
     add_capability_route(
         router,
@@ -260,6 +314,10 @@ def create_staff_invitation_router(
         methods=["POST"],
         operation_id="staff_invitation_resend",
         response_model=StaffInvitationView,
+        summary="Rotate the pending invitation proof and queue a new generation",
+        description="Requires current revision and Idempotency-Key. On temporary staging 503, "
+        "retry this same request/key/revision; do not create another resend generation.",
+        responses=staging_errors,
     )
     add_capability_route(
         router,
@@ -269,6 +327,7 @@ def create_staff_invitation_router(
         methods=["POST"],
         operation_id="staff_invitation_revoke",
         response_model=StaffInvitationView,
+        responses=staging_errors,
     )
     if subject_resolver is not None:
         router.add_api_route(
@@ -277,11 +336,16 @@ def create_staff_invitation_router(
             methods=["POST"],
             operation_id="staff_invitation_preview",
             response_model=StaffInvitationPreviewView,
+            summary="Preview an invitation using a native session and proof",
+            description="Advisory only; proof belongs in JSON body, never URL/query. "
+            "Rejects all query parameters and tenant selectors. Creates no membership or grants.",
+            responses={400: {"model": ErrorEnvelope}, **command_errors},
             openapi_extra={
                 "x-request-engine-owner": "tenancy",
                 "x-request-engine-kind": "query",
                 "x-request-engine-idempotency": "none",
                 "x-request-engine-authentication": "native-human-subject",
+                "x-request-engine-native-session": True,
             },
         )
         router.add_api_route(
@@ -290,11 +354,17 @@ def create_staff_invitation_router(
             methods=["POST"],
             operation_id="staff_invitation_accept",
             response_model=StaffInvitationView,
+            summary="Accept an invitation with native authentication and proof possession",
+            description="Proof belongs in JSON body, never URL/query. "
+            "Rejects query and tenant selectors. Creates membership with zero permissions. "
+            "Replays only for the originally accepting identity.",
+            responses={400: {"model": ErrorEnvelope}, **staging_errors},
             openapi_extra={
                 "x-request-engine-owner": "tenancy",
                 "x-request-engine-kind": "command",
                 "x-request-engine-idempotency": "subject-bound-acceptance-replay",
                 "x-request-engine-authentication": "native-human-subject",
+                "x-request-engine-native-session": True,
             },
         )
     return router

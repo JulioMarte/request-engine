@@ -129,6 +129,11 @@ def test_begin_options_are_json_serializable() -> None:
     assert payload["challenge"]
     assert payload["rp"]["id"] == RP_ID
     assert payload["user"]["name"] == USER_NAME
+    # New credentials must support the canonical usernameless admin journey.
+    # Omitting this requirement defaults fido2 to discouraged/non-discoverable.
+    assert payload["authenticatorSelection"]["residentKey"] == "required"
+    assert payload["authenticatorSelection"]["requireResidentKey"] is True
+    assert payload["authenticatorSelection"]["userVerification"] == "required"
 
     auth_options = service.begin_authentication()
     auth_payload = json.loads(json.dumps(auth_options.public_key))

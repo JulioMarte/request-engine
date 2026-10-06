@@ -98,6 +98,15 @@ async def platform_read_session_factory() -> AsyncIterator[SessionFactory]:
                 sql.Identifier(role_name)
             )
         )
+        for signature in (
+            "request_platform.read_platform_owners(uuid,uuid,integer)",
+            "request_platform.read_platform_owner_invitations(uuid,uuid,integer)",
+        ):
+            admin.execute(
+                sql.SQL("GRANT EXECUTE ON FUNCTION " + signature + " TO {}").format(
+                    sql.Identifier(role_name)
+                )
+            )
         admin.execute(
             sql.SQL(
                 "GRANT EXECUTE ON FUNCTION request_platform.read_principal_authority(uuid) TO {}"

@@ -265,7 +265,7 @@ PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         TenantIsolationMode.NOT_FOUND,
         HttpProbe(
             "/v1/requests/definitions/probe_request/submit",
-            body={"payload": {"message": "e2e probe"}},
+            body={"definition_version": 1, "payload": {"message": "e2e probe"}},
         ),
     ),
     PublicHttpOperation(

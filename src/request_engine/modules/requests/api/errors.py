@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from request_engine.modules.requests.application.errors import (
     ExternalCorrelationConflict,
+    RequestDefinitionConfigurationConflict,
     RequestDefinitionInactive,
     RequestDefinitionNotFound,
     RequestDefinitionVersionNotFound,
@@ -32,6 +33,13 @@ async def request_error_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 def _request_error(exc: RequestError) -> tuple[int, ErrorBody]:
+    if isinstance(exc, RequestDefinitionConfigurationConflict):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="request_definition_configuration_conflict",
+            message=str(exc),
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
+            details={"reason": exc.reason, "current_revision": exc.current_revision},
+        )
     if isinstance(exc, RequestDefinitionNotFound):
         return status.HTTP_404_NOT_FOUND, ErrorBody(
             code="request_definition_not_found",

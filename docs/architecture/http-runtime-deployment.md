@@ -1,12 +1,11 @@
 # Native-first HTTP runtime
 
-> **Current-state / target-state notice (2026-09-18):** the runtime/configuration
-> details below accurately describe the implemented pre-ADR-0014 system where the
-> native authority ID is deployment configuration and the platform root is created
-> by `request-engine-platform-bootstrap`. ADR 0014 and
-> `instance-claim-platform-owner-plan.md` supersede that installation mechanism
-> as the target architecture. Until those slices are implemented, do not pretend
-> the environment/CLI dependency has already disappeared.
+> **Current installation (2026-10-05):** first-owner claim is implemented through
+> the private control-plane HTTP setup session, identity, WebAuthn, recovery-code
+> and finalize operations of ADR 0014. The accepted migration creates the built-in
+> native authority; deployment still supplies its UUID to the runtime. The
+> historical bootstrap CLI is not the clean-install contract of the Docker E2E
+> platform. HTTP processes never receive migration/bootstrap credentials.
 
 The supported ASGI composition factory is
 `request_engine.bootstrap.server:create_app`. It composes native human sessions,
@@ -21,16 +20,17 @@ commit a populated environment file. No development credentials are defaulted.
 | Environment variable | Requirement |
 | --- | --- |
 | `REQUEST_ENGINE_DATABASE_URL` | Async SQLAlchemy PostgreSQL URL with a dedicated login inheriting `request_engine_app`; never the migration/bootstrap login |
-| `REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID` | UUID of the active native authority established by bootstrap |
+| `REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID` | UUID of the built-in active native authority established by migration and used by HTTP claim |
 | `REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY` | Independently generated secret, at least 32 bytes |
 | `REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY` | Independently generated secret, at least 32 bytes |
-| `REQUEST_ENGINE_WEBAUTHN_DECOY_KEY` | Independently generated secret, at least 32 bytes; keys the enumeration-resistant WebAuthn login decoy |
-| `REQUEST_ENGINE_OIDC_ENABLED` | Defaults to `false`; enabling it reads current trusted authority configuration from PostgreSQL |
+| `REQUEST_ENGINE_WEBAUTHN_DECOY_KEY` | Independently generated secret, at least 32 bytes; retained configuration compatibility input, not used for current discoverable login options (ADR 0014 §9) |
+| `REQUEST_ENGINE_OIDC_ENABLED` | Historical configuration input, not the current routing authority; activation of managed `identity.oidc` configuration governs the federated arm |
 | `REQUEST_ENGINE_DATABASE_PROBE_TIMEOUT_SECONDS` | Positive timeout, defaults to 5 seconds, maximum 30 |
 
 Apply the repository Alembic head with the separate migration credential before
-starting HTTP. Bootstrap the platform trust root through
-`request-engine-platform-bootstrap`; do not give its privileged DSN to HTTP.
+starting HTTP. Establish the first platform owner using the private control-plane
+HTTP claim ceremony. Supply the built-in authority UUID through deployment
+configuration; do not give the privileged migration DSN to HTTP.
 
 ```sh
 uv run uvicorn request_engine.bootstrap.server:create_app --factory --host 127.0.0.1 --port 8000
@@ -40,6 +40,77 @@ For deployment, terminate TLS at a configured ingress, restrict trusted proxy
 headers to that ingress and apply request-size, connection and authentication
 rate limits there. Do not expose the development database to the internet.
 Workers use their separate runtime entrypoint and database role.
+
+## HTTP resource containment
+
+All five HTTP application factories install pre-parser admission. Defaults are
+1 MiB actual body bytes, 15 seconds to read a body, 128 active requests, four
+native-authentication requests and a separate bounded pool of four health probes.
+No request queue is created by this middleware. False/missing Content-Length does
+not bypass the byte limit. Transport errors use ErrorEnvelope, correlation and
+no-store: malformed length400, timeout408, oversized body413, saturation503 with
+Retry-After. Explicit owner response schemas remain intact in OpenAPI.
+
+Tune positive bounded values with `REQUEST_ENGINE_HTTP_MAX_BODY_BYTES`,
+`REQUEST_ENGINE_HTTP_BODY_TIMEOUT_SECONDS`, `REQUEST_ENGINE_HTTP_MAX_ACTIVE_REQUESTS`,
+`REQUEST_ENGINE_HTTP_MAX_ACTIVE_AUTHENTICATION` and
+`REQUEST_ENGINE_HTTP_MAX_ACTIVE_PROBES`. Invalid/zero configuration fails closed.
+These are process-local controls, not distributed/IP rate limits, proxy connection
+limits, decompression protection or an excuse to omit ingress containment.
+
+Costly asynchronous password hash/verification paths share a process-local
+executor, default four jobs (`REQUEST_ENGINE_PASSWORD_WORK_CAPACITY`,1..32).
+Admission is nonblocking; exhausted capacity produces retryable503 before that
+work runs. Cancellation of its HTTP caller does not free a running thread's slot.
+The pool lives for the process lifetime: no thread preemption or graceful app
+shutdown hook is claimed. The synchronous installation CLI is outside this HTTP
+executor. Optional rehash may be skipped under load without preventing valid login.
+
+The deployable API/control-plane factories also apply connection-scoped SQL budgets:
+statement30s, lock5s, transaction60s, idle-in-transaction60s and pool acquisition5s.
+Settings are `REQUEST_ENGINE_HTTP_SQL_STATEMENT_MS`, `REQUEST_ENGINE_HTTP_SQL_LOCK_MS`,
+`REQUEST_ENGINE_HTTP_SQL_TRANSACTION_MS`, `REQUEST_ENGINE_HTTP_SQL_IDLE_TRANSACTION_MS`
+and `REQUEST_ENGINE_HTTP_SQL_POOL_SECONDS`. Lock timeout must be shorter than
+statement timeout, which must be shorter than transaction timeout. They do not
+change global PostgreSQL settings, migrations or worker profiles. They work with
+asyncpg and psycopg; psycopg async on Windows requires a compatible selector loop.
+See [PostgreSQL18 timeout semantics](https://www.postgresql.org/docs/18/runtime-config-client.html).
+
+Unexpected failures return sanitized500 with operator_intervention and no automatic
+retry. This does not certify rollback or redact server logs. Reconcile an ambiguous
+command using its existing receipt/read contract before changing its idempotency key.
+
+### In-process HTTP admission
+
+The runtime, private control, operational, discovery and discovery-availability
+applications install the shared transport budget before parsing a body or running
+an owner operation. Ingress limits remain necessary: these are process-local
+bounds, not distributed rate limiting or a complete denial-of-service defense.
+
+| Environment variable | Default | Accepted bound |
+| --- | --- | --- |
+| `REQUEST_ENGINE_HTTP_MAX_BODY_BYTES` | 1048576 | 1..16777216 bytes |
+| `REQUEST_ENGINE_HTTP_MAX_ACTIVE_REQUESTS` | 128 | 1..4096 |
+| `REQUEST_ENGINE_HTTP_MAX_ACTIVE_AUTHENTICATION` | 4 | 1..64 native-auth requests |
+| `REQUEST_ENGINE_HTTP_MAX_ACTIVE_PROBES` | 4 | 1..64 health probes |
+| `REQUEST_ENGINE_HTTP_BODY_TIMEOUT_SECONDS` | 15 | positive, at most 120 seconds |
+
+The body limit counts actual received bytes, even without `Content-Length`.
+Duplicate/malformed lengths or a completed body whose length disagrees with the
+declared length return `400 invalid_content_length`. Oversized bodies return
+`413 request_body_too_large`; incomplete bodies exceeding the receive deadline
+return `408 request_body_timeout`. These failures precede owner execution and
+are not automatically retryable. Requests without a declared length remain
+supported. This ASGI check does not certify proxy/HTTP-parser request-smuggling
+protection; verify framing separately at the real ingress.
+
+Saturation returns `503 request_capacity_exceeded` with `Retry-After: 1` rather
+than queuing unbounded work. Clients should back off with jitter and preserve the
+original idempotency key. These admission failures use the common error envelope,
+server correlation identifier and `Cache-Control: no-store`. Health probes have
+their own bounded capacity. Disconnects and cancellations release admission slots;
+this fact is not proof of rollback for an owner operation already in progress.
+The body deadline is not a deadline for the entire business operation.
 
 Startup verifies the actual PostgreSQL login is an effective app-role member,
 is not privileged and belongs to no other role. This also rejects non-inherited
@@ -335,9 +406,10 @@ Organization input: `organization_key` (1-120), `display_name` (1-200),
 are rejected. Output: `organization_id`, `organization_party_id`,
 `controller_principal_id`, `controller_binding_id`. The existing native root
 function atomically creates the tenant/Party/controller/binding/membership.
-The application selects the immutable `tenant-controller-v3` initial policy;
-revisions 0036/0037/0038 record v1/v2/v3 and their explicit grants on root INSERT
-only. Provisioner provenance is preserved without making the provisioner
+The application selects the immutable `tenant-controller-v6` initial policy
+after `0021_tenant_controller_v6`; grants materialize on root INSERT only.
+Historical 0036/0037/0038 labels describe earlier v1/v2/v3 provenance, not the
+current application default. Provisioner provenance is preserved without making the provisioner
 a tenant member. See `initial-controller-policy.md` for the exact authority,
 legacy-root compatibility and no-regrant replay contract.
 

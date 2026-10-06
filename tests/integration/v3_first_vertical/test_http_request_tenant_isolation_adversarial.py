@@ -158,6 +158,7 @@ def _submit_body(
     recipient_party_id: UUID,
 ) -> dict[str, object]:
     return {
+        "definition_version": 1,
         "payload": {"message": "Please call me back"},
         "requester_party_id": str(requester_party_id),
         "recipient_party_id": str(recipient_party_id),

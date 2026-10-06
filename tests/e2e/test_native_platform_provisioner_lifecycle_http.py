@@ -1,14 +1,13 @@
-import os
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
+from fido2.utils import websafe_decode
 from httpx import ASGITransport, AsyncClient
 from psycopg import Connection
-from psycopg.conninfo import make_conninfo
+from software_webauthn_authenticator import SoftwareAuthenticator
 
 from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
-from request_engine.entrypoints.platform_bootstrap_cli import establish_root, issue_intent
 from request_engine.platform.db.session import SessionFactory
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e, pytest.mark.security, pytest.mark.invariant]
@@ -20,30 +19,19 @@ async def test_platform_provisioner_lifecycle_http_is_revisioned_and_audited(
     e2e_session_factory: SessionFactory,
     platform_read_session_factory: SessionFactory,
     platform_control_session_factory: SessionFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(
-        "REQUEST_ENGINE_BOOTSTRAP_DSN",
-        make_conninfo(
-            host=e2e_admin_conn.info.host,
-            port=e2e_admin_conn.info.port,
-            dbname=e2e_admin_conn.info.dbname,
-            user=e2e_admin_conn.info.user,
-            password=os.environ.get("PGPASSWORD", "request_engine"),
-        ),
+    # Installation facts only. The supported claim ceremony creates the Owner
+    # and its authority; the former CLI provisioner is not an effective Owner.
+    authority_id = uuid4()
+    e2e_admin_conn.execute(
+        "INSERT INTO request_engine.identity_authorities(id,kind,issuer_or_environment) "
+        "VALUES(%s,'native',%s)",
+        (authority_id, f"native-provisioner-lifecycle-{authority_id}"),
     )
-    intent = dict(
-        line.split(": ", 1)
-        for line in issue_intent(
-            ttl_minutes=5,
-            provenance="http-platform-provisioner-lifecycle-proof",
-        ).splitlines()
-    )
-    authority_id = UUID(intent["Native authority"])
-    root_id = establish_root(
-        login_handle="lifecycle-root@example.test",
-        password="root lifecycle proof password",
-        raw_token=intent["ONE-TIME BOOTSTRAP TOKEN"],
+    e2e_admin_conn.execute(
+        "INSERT INTO request_engine.platform_instance "
+        "(id,built_in_native_authority_id,built_in_workload_authority_id) VALUES(%s,%s,%s)",
+        (uuid4(), authority_id, uuid4()),
     )
     app = create_platform_control_app(
         auth_session_factory=e2e_session_factory,
@@ -54,25 +42,71 @@ async def test_platform_provisioner_lifecycle_http_is_revisioned_and_audited(
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="https://control.test"
     ) as client:
-        root_login = await client.post(
-            "/auth/native/sessions",
+        setup = await client.post("/v1/setup/sessions")
+        assert setup.status_code == 201, setup.text
+        setup_headers = {"Authorization": f"Setup {setup.json()['token']}"}
+        prepared = await client.post(
+            "/v1/setup/native-identity",
+            headers=setup_headers,
             json={
                 "login_handle": "lifecycle-root@example.test",
                 "password": "root lifecycle proof password",
             },
         )
-        assert root_login.status_code == 201
+        assert prepared.status_code == 204, prepared.text
+        registration = await client.post(
+            "/v1/setup/webauthn/registration-options", headers=setup_headers
+        )
+        assert registration.status_code == 200, registration.text
+        options = registration.json()["public_key"]
+        authenticator = SoftwareAuthenticator(rp_id=options["rp"]["id"], origin="https://localhost")
+        registered = await client.post(
+            "/v1/setup/webauthn/registrations",
+            headers=setup_headers,
+            json={
+                "credential": authenticator.registration_credential(
+                    challenge=websafe_decode(options["challenge"]),
+                    user_verified=True,
+                )
+            },
+        )
+        assert registered.status_code == 204, registered.text
+        recovery = await client.post("/v1/setup/recovery-codes", headers=setup_headers)
+        assert recovery.status_code == 201, recovery.text
+        claim = await client.post(
+            "/v1/setup:finalize",
+            headers={**setup_headers, "Idempotency-Key": "lifecycle-owner-claim"},
+            json={"claim_provenance": "e2e:platform-provisioner-lifecycle"},
+        )
+        assert claim.status_code == 201, claim.text
+        root_id = UUID(claim.json()["owner_principal_id"])
+        challenge = await client.post(
+            "/auth/native/webauthn/authentication-options",
+            json={"login_handle": "lifecycle-root@example.test"},
+        )
+        assert challenge.status_code == 200, challenge.text
+        root_login = await client.post(
+            "/auth/native/webauthn/sessions",
+            json={
+                "login_handle": "lifecycle-root@example.test",
+                "credential": authenticator.authentication_credential(
+                    challenge=websafe_decode(challenge.json()["public_key"]["challenge"]),
+                    user_verified=True,
+                ),
+            },
+        )
+        assert root_login.status_code == 201, root_login.text
         root_headers = {"Authorization": f"Bearer {root_login.json()['access_token']}"}
 
         enrollment = await client.post(
             "/v1/platform/native-identities",
-            headers=root_headers,
+            headers={**root_headers, "Idempotency-Key": "lifecycle-native-provisioner-identity"},
             json={
                 "login_handle": "lifecycle-provisioner@example.test",
                 "password": "lifecycle provisioner proof password",
             },
         )
-        assert enrollment.status_code == 201
+        assert enrollment.status_code == 201, enrollment.text
         created = await client.post(
             "/v1/platform/provisioners",
             headers={**root_headers, "Idempotency-Key": "lifecycle-create-1"},

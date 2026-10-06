@@ -31,6 +31,8 @@ from request_engine.platform.db.native_recovery_address_store import (
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
+from request_engine.platform.http.authentication_schema import install_authentication_schema
+from request_engine.platform.http.request_budget import install_request_budget
 from request_engine.platform.secrets.delivery import RecoverySecretStaging
 from request_engine.platform.security.acting_operator import (
     ActingOperatorActorResolver,
@@ -166,6 +168,7 @@ def create_app(
             "authenticated subjects through Request Engine-owned identity and authority state."
         ),
     )
+    install_request_budget(app)
     app.middleware("http")(_request_execution_context)
     add_global_error_handlers(app)
     if (
@@ -208,6 +211,17 @@ def create_app(
         actor_resolver=execution_actor_resolver,
     )
     app.include_router(create_operation_catalog_router(actor_resolver=execution_actor_resolver))
+    install_authentication_schema(
+        app,
+        scheme_name="SubjectBearer",
+        description=(
+            "Deployment-authenticated bearer evidence, resolved to current Request Engine "
+            "identity bindings and authority. Native deployments accept native sessions and "
+            "workload credentials, and optional federated OIDC when configured. "
+            "Provider-neutral deployments use their configured subject resolver."
+        ),
+        tenant_context=True,
+    )
     return app
 
 

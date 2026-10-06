@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 
+from request_engine.entrypoints.http.error_handlers import add_technical_error_handlers
 from request_engine.entrypoints.http.errors import (
     authentication_required_handler,
     capability_required_handler,
@@ -15,6 +16,7 @@ from request_engine.modules.discovery.api import (
     RemotePublishedSlotReader,
     install_http,
 )
+from request_engine.platform.http.request_budget import install_request_budget
 from request_engine.platform.security.http import (
     AuthenticationRequired,
     CapabilityRequired,
@@ -54,7 +56,9 @@ def create_discovery_app(
         version="0.1.0",
         description="Least-privilege cross-tenant discovery over explicitly published supply.",
     )
+    install_request_budget(app)
     app.middleware("http")(_request_context)
+    add_technical_error_handlers(app)
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)

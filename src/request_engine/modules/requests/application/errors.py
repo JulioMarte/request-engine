@@ -29,6 +29,13 @@ class RequestDefinitionInactive(RequestError):
         self.version_id = version_id
 
 
+class RequestDefinitionConfigurationConflict(RequestError):
+    def __init__(self, reason: str, current_revision: int | None = None) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.current_revision = current_revision
+
+
 class RequestResultNotDefined(RequestError):
     def __init__(self, version_id: UUID) -> None:
         super().__init__(f"RequestDefinitionVersion {version_id} has no result schema")

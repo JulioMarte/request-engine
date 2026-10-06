@@ -21,7 +21,7 @@ class ExternalCorrelationInputModel(BaseModel):
 
 class SubmitRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    definition_version: int | None = Field(default=None, gt=0)
+    definition_version: int = Field(gt=0)
     payload: dict[str, object]
     requester_party_id: UUID | None = None
     recipient_party_id: UUID | None = None

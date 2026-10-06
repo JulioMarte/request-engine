@@ -348,7 +348,7 @@ class NativeWebAuthnAuthService:
         return WebAuthnCeremonyStarted(challenge=options.challenge, public_key=options.public_key)
 
     async def complete_discoverable_authentication(
-        self, *, credential: Mapping[str, Any]
+        self, *, credential: Mapping[str, Any], expected_native_identity_id: UUID | None = None
     ) -> NativeWebAuthnSessionIssued:
         """Complete a usernameless ceremony, resolving identity from the credential."""
 
@@ -367,7 +367,14 @@ class NativeWebAuthnAuthService:
 
         credential_id = extract_authentication_credential_id(credential)
         record = await self._store.read_credential(credential_id=credential_id)
-        if record is None or record.status != "active":
+        if (
+            record is None
+            or record.status != "active"
+            or (
+                expected_native_identity_id is not None
+                and record.native_identity_id != expected_native_identity_id
+            )
+        ):
             raise WebAuthnCeremonyError("webauthn_credential_unknown")
 
         verified = self._webauthn.verify_authentication(

@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import text
@@ -7,6 +8,7 @@ from request_engine.modules.tenancy.application.errors import (
     AgentGovernanceNotFound,
 )
 from request_engine.modules.tenancy.application.queries.agent_governance import (
+    AgentCredentialMetadata,
     AgentSummary,
     ListAgentsQuery,
 )
@@ -68,7 +70,10 @@ class PostgresAgentGovernanceReader:
                                      FROM request_engine.principal_authority_grants g
                                     WHERE g.organization_id = a.organization_id
                                       AND g.principal_id = a.principal_id AND g.status = 'active'
-                                    ORDER BY g.capability_key) AS standing_capabilities
+                                    ORDER BY g.capability_key) AS standing_capabilities,
+                                 COALESCE((SELECT jsonb_agg(to_jsonb(c))
+                                     FROM request_read.agent_credential_metadata(a.principal_id) c),
+                                     '[]'::jsonb) AS credentials
                             FROM request_engine.agent_profiles a
                             JOIN request_engine.principals p
                               ON p.organization_id = a.organization_id AND p.id = a.principal_id
@@ -106,6 +111,15 @@ class PostgresAgentGovernanceReader:
                     profile_revision=row["profile_revision"],
                     authority_revision=row["authority_revision"],
                     standing_capabilities=tuple(row["standing_capabilities"]),
+                    credentials=tuple(
+                        AgentCredentialMetadata(
+                            credential_id=UUID(c["credential_id"]),
+                            status=c["status"],
+                            revision=int(c["revision"]),
+                            expires_at=datetime.fromisoformat(c["expires_at"]),
+                        )
+                        for c in row["credentials"]
+                    ),
                 )
                 for row in rows
                 if row["principal_id"] is not None

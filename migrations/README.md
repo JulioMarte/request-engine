@@ -49,6 +49,16 @@ The accepted baseline model recorded in `migrations/baseline/manifest.json` is:
 
 These counts describe the accepted `0001` checkpoint. They are **not ratchets for current HEAD**. Current product counts may change through legitimate migrations; baseline-integrity proof remains pinned to the historical baseline.
 
+Current cluster role extensions are separately audited, not baseline rewrites.
+`0020_retention_recorder_role` evolves the dedicated append-only recorder to
+`request_retention_recorder`, with a closed extension namespace and strict
+attributes, membership and local ACL inventory. Upgrade the existing database
+through this revision before installing another database in the same cluster.
+The migration preserves the original group OID or converges only an empty,
+dependency-free legacy group created by unchanged `0013`. See
+`docs/architecture/temporary-proof-cleanup-inventory-proposal.md` for fail-closed
+rollout and multi-database acceptance requirements.
+
 Fresh-install identity is intentionally **not** a literal part of the checkpoint: `platform_instance.id`, the two built-in authority UUIDs and their creation timestamps are generated anew on every installation. Seed-state evidence normalizes only those fields, and CI proves two clean installs do not reuse the same installation UUIDs.
 
 ## Historical/provenance surfaces

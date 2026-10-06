@@ -2,6 +2,8 @@ from typing import cast
 
 from request_engine.platform.security.capabilities import CapabilityDefinition
 
+from .http_surface_administrative_configuration import ADMINISTRATIVE_CONFIGURATION_OPERATION_IDS
+
 _OPERATION_ID_OVERRIDES = {
     "staff.profile.update": "staff_profile_update",
     "staff.history.list": "staff_history_list",
@@ -90,6 +92,8 @@ def header_parameters(operation: dict[str, object]) -> dict[str, bool]:
 
 
 def expected_operation_id(name: str, definition: CapabilityDefinition) -> str:
+    if name in ADMINISTRATIVE_CONFIGURATION_OPERATION_IDS:
+        return name
     if name in {
         "integration.list",
         "integration.read",

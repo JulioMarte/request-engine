@@ -37,7 +37,9 @@ class PostgresPlatformOrganizationReader:
         query: ListPlatformOrganizationsQuery,
     ) -> tuple[PlatformOrganizationSummary, ...]:
         _authorize(actor)
-        rows = await self._read(organization_id=None, after=query.after, limit=query.limit)
+        rows = await self._read(
+            organization_id=None, after=query.after, limit=query.limit, lookahead=True
+        )
         return tuple(_materialize(row) for row in rows)
 
     async def get_organization(
@@ -57,12 +59,14 @@ class PostgresPlatformOrganizationReader:
         organization_id: object,
         after: object,
         limit: int,
+        lookahead: bool = False,
     ) -> list[Mapping[str, Any]]:
         async with self._session_factory() as session:
             try:
                 result = await session.execute(
                     text(
                         """
+                        WITH page AS MATERIALIZED (
                         SELECT organization_id,
                                organization_key,
                                display_name,
@@ -76,10 +80,23 @@ class PostgresPlatformOrganizationReader:
                               CAST(:organization_id AS uuid),
                               CAST(:after AS uuid),
                               CAST(:limit AS integer)
-                          )
+                          ))
+                        SELECT * FROM page
+                        UNION ALL
+                        SELECT * FROM request_platform.read_platform_organizations(
+                            NULL,
+                            (SELECT organization_id FROM page
+                             ORDER BY organization_id DESC LIMIT 1), 1
+                        ) WHERE :lookahead AND (SELECT count(*) FROM page) = :limit
+                        ORDER BY organization_id
                         """
                     ),
-                    {"organization_id": organization_id, "after": after, "limit": limit},
+                    {
+                        "organization_id": organization_id,
+                        "after": after,
+                        "limit": limit,
+                        "lookahead": lookahead,
+                    },
                 )
             except DBAPIError as exc:
                 error_type = _READ_ERRORS.get(str(getattr(exc.orig, "sqlstate", "")))

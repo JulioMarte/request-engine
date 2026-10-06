@@ -39,6 +39,7 @@ from request_engine.modules.communications.adapters.db.slot_offer_intent import 
     PostgresSlotOfferNotificationIntent,
 )
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
+from request_engine.platform.db.execution_budget import PostgresExecutionBudget
 from request_engine.platform.db.oidc_authority_reader import PostgresOidcAuthorityReader
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
@@ -48,7 +49,10 @@ from request_engine.platform.security.webauthn import WebAuthnPolicy
 def create_app() -> FastAPI:
     """Fail on missing bootstrap config; managed OIDC is governed by database state."""
     settings = HttpSettings.model_validate({})
-    engine = create_postgres_engine(settings.database_url.get_secret_value())
+    engine = create_postgres_engine(
+        settings.database_url.get_secret_value(),
+        budget=PostgresExecutionBudget.http_from_environment(),
+    )
     sessions = create_session_factory(engine)
     # The resolver is always present, but it has no routing authority until an
     # identity.oidc revision is activated.  This removes the second source of

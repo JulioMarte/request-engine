@@ -24,6 +24,7 @@ from request_engine.platform.security.http import require_capability
 
 
 class NativeStaffInviteBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     identity_authority_id: UUID
     native_identity_id: UUID
     provenance_reference: str = Field(min_length=1, max_length=500)
@@ -37,6 +38,7 @@ class NativeStaffInviteView(BaseModel):
 
 
 class StaffAuthorityReplaceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     expected_authority_revision: int = Field(ge=1)
     desired_capabilities: list[str] = Field(max_length=128)
     provenance_reference: str = Field(min_length=1, max_length=500)
@@ -47,6 +49,7 @@ class StaffAuthorityReplaceView(BaseModel):
 
 
 class StaffMembershipTransitionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     expected_revision: int = Field(ge=1)
     target_status: StaffMembershipTargetStatus
     provenance_reference: str = Field(min_length=1, max_length=500)

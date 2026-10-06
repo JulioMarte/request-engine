@@ -2,13 +2,17 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, FastAPI, Header, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request, Response, Security
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from request_engine.modules.tenancy.adapters.db.native_identity_disable_commands import (
     PostgresNativeIdentityDisableCommands,
+)
+from request_engine.modules.tenancy.adapters.db.native_identity_provision_commands import (
+    PostgresNativeIdentityProvisionCommands,
 )
 from request_engine.modules.tenancy.adapters.db.native_identity_reader import (
     PostgresNativeIdentityReader,
@@ -23,6 +27,14 @@ from request_engine.modules.tenancy.application.commands.native_identity_disable
     NativeIdentityDisableNotFound,
     NativeIdentityDisableRevisionConflict,
 )
+from request_engine.modules.tenancy.application.commands.native_identity_provision import (
+    NativeIdentityProvisionConflict,
+    NativeIdentityProvisionError,
+    NativeIdentityProvisionForbidden,
+    NativeIdentityProvisionInvalid,
+    NativeIdentityProvisionUnavailable,
+    ProvisionNativeIdentityCommand,
+)
 from request_engine.modules.tenancy.application.queries.native_identity_read import (
     NATIVE_IDENTITY_READ_CAPABILITY,
     GetNativeIdentityQuery,
@@ -35,24 +47,22 @@ from request_engine.modules.tenancy.application.queries.native_identity_read imp
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
-from request_engine.platform.security.native_auth import (
-    PasswordPolicyViolation,
-    normalize_login_handle,
-)
+from request_engine.platform.security.native_auth import normalize_login_handle
 from request_engine.platform.security.native_human_auth import (
-    NativeEnrollmentUnavailable,
     NativeHumanAuthService,
-    NativeIdentityAlreadyExists,
 )
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.platform_http import (
     PlatformActorResolver,
-    require_platform_capability,
 )
 
 PlatformIdempotencyKey = Annotated[
     str,
     Header(alias="Idempotency-Key", min_length=1, max_length=250),
+]
+_NativeBearer = Annotated[
+    HTTPAuthorizationCredentials | None,
+    Security(HTTPBearer(scheme_name="NativeSessionBearer", auto_error=False)),
 ]
 
 
@@ -131,6 +141,9 @@ def install_native_identity_management_http(
 ) -> None:
     reader = PostgresNativeIdentityReader(read_session_factory)
     commands = PostgresNativeIdentityDisableCommands(write_session_factory)
+    provision_commands = PostgresNativeIdentityProvisionCommands(
+        write_session_factory, native_authority_id=native_authority_id
+    )
     router = APIRouter(tags=["platform native identities"])
 
     async def authenticated_actor(request: Request) -> PlatformActorContext:
@@ -139,24 +152,19 @@ def install_native_identity_management_http(
     async def provision_identity(
         body: NativeIdentityProvisionBody,
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        response: Response,
+        _bearer: _NativeBearer,
+        idempotency_key: PlatformIdempotencyKey,
     ) -> NativeIdentityProvisionView:
-        require_platform_capability(actor, "platform.identity.provision")
-        try:
-            enrolled = await native_auth_service.enroll_password_identity(
-                identity_authority_id=native_authority_id,
+        enrolled = await provision_commands.provision_identity(
+            actor,
+            ProvisionNativeIdentityCommand(
                 login_handle=body.login_handle,
                 password=body.password,
-            )
-        except NativeIdentityAlreadyExists as exc:
-            raise NativeIdentityProvisionConflict(
-                "native login handle is already enrolled"
-            ) from exc
-        except PasswordPolicyViolation as exc:
-            raise NativeIdentityProvisionInvalid("password policy rejected enrollment") from exc
-        except NativeEnrollmentUnavailable as exc:
-            raise NativeIdentityProvisionUnavailable(
-                "native identity authority is unavailable"
-            ) from exc
+                idempotency_key=idempotency_key,
+            ),
+        )
+        response.headers["Cache-Control"] = "no-store"
         return NativeIdentityProvisionView(
             native_identity_id=enrolled.native_identity_id,
             identity_authority_id=native_authority_id,
@@ -164,21 +172,28 @@ def install_native_identity_management_http(
         )
 
     async def list_identities(
-        params: Annotated[NativeIdentityListParams, Depends()],
+        params: Annotated[NativeIdentityListParams, Query()],
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        response: Response,
+        _bearer: _NativeBearer,
     ) -> NativeIdentityPageView:
         rows = await reader.list_identities(
             actor, ListNativeIdentitiesQuery(after=params.after, limit=params.limit)
         )
+        response.headers["Cache-Control"] = "no-store"
+        page = rows[: params.limit]
         return NativeIdentityPageView(
-            items=[_view(row) for row in rows],
-            next_cursor=rows[-1].native_identity_id if len(rows) == params.limit else None,
+            items=[_view(row) for row in page],
+            next_cursor=page[-1].native_identity_id if len(rows) > params.limit else None,
         )
 
     async def read_identity(
         native_identity_id: UUID,
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        response: Response,
+        _bearer: _NativeBearer,
     ) -> NativeIdentityView:
+        response.headers["Cache-Control"] = "no-store"
         return _view(await reader.read_identity(actor, GetNativeIdentityQuery(native_identity_id)))
 
     async def disable_identity(
@@ -186,6 +201,8 @@ def install_native_identity_management_http(
         body: NativeIdentityDisableBody,
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
         idempotency_key: PlatformIdempotencyKey,
+        response: Response,
+        _bearer: _NativeBearer,
     ) -> NativeIdentityDisableView:
         result = await commands.disable_identity(
             actor,
@@ -197,6 +214,7 @@ def install_native_identity_management_http(
                 idempotency_key=idempotency_key,
             ),
         )
+        response.headers["Cache-Control"] = "no-store"
         return NativeIdentityDisableView(
             fact_id=result.fact_id,
             native_identity_id=result.native_identity_id,
@@ -260,28 +278,19 @@ def install_native_identity_management_http(
     app.include_router(router)
 
 
-class NativeIdentityProvisionError(RuntimeError):
-    pass
-
-
-class NativeIdentityProvisionConflict(NativeIdentityProvisionError):
-    pass
-
-
-class NativeIdentityProvisionInvalid(NativeIdentityProvisionError):
-    pass
-
-
-class NativeIdentityProvisionUnavailable(NativeIdentityProvisionError):
-    pass
-
-
 async def native_identity_provision_error_handler(_: Request, exc: Exception) -> JSONResponse:
-    if isinstance(exc, NativeIdentityProvisionConflict):
+    if isinstance(exc, NativeIdentityProvisionForbidden):
+        status_code = http_status.HTTP_403_FORBIDDEN
+        body = ErrorBody(
+            code="native_identity_provision_forbidden",
+            message="current authority does not permit native identity provisioning",
+            resolution=ErrorResolution.REQUEST_AUTHORITY,
+        )
+    elif isinstance(exc, NativeIdentityProvisionConflict):
         status_code = http_status.HTTP_409_CONFLICT
         body = ErrorBody(
-            code="native_identity_already_exists",
-            message="the native login handle is already enrolled",
+            code="native_identity_provision_conflict",
+            message="the native login or idempotency intent conflicts with existing state",
             resolution=ErrorResolution.FIX_REQUEST,
         )
     elif isinstance(exc, NativeIdentityProvisionInvalid):

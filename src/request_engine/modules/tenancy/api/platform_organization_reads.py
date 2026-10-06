@@ -67,9 +67,10 @@ def add_platform_organization_reads(
             actor, ListPlatformOrganizationsQuery(after=params.after, limit=params.limit)
         )
         response.headers["Cache-Control"] = "no-store"
+        page = rows[: params.limit]
         return PlatformOrganizationPageView(
-            items=[_view(row) for row in rows],
-            next_after=rows[-1].organization_id if len(rows) == params.limit else None,
+            items=[_view(row) for row in page],
+            next_after=page[-1].organization_id if len(rows) > params.limit else None,
         )
 
     async def get_organization(

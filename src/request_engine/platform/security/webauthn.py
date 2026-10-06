@@ -35,6 +35,7 @@ from fido2.webauthn import (
     PublicKeyCredentialType,
     PublicKeyCredentialUserEntity,
     RegistrationResponse,
+    ResidentKeyRequirement,
     UserVerificationRequirement,
 )
 
@@ -53,6 +54,7 @@ class _CeremonyServer(Protocol):
         user: PublicKeyCredentialUserEntity,
         credentials: Sequence[PublicKeyCredentialDescriptor] | None = None,
         *,
+        resident_key_requirement: ResidentKeyRequirement | None = None,
         user_verification: UserVerificationRequirement | None = None,
         challenge: bytes | None = None,
     ) -> tuple[CredentialCreationOptions, object]: ...
@@ -306,6 +308,7 @@ class WebAuthnService:
         options, _state = self._server.register_begin(
             user,
             credentials=exclude or None,
+            resident_key_requirement=ResidentKeyRequirement.REQUIRED,
             user_verification=_user_verification(self._policy),
             challenge=raw_challenge,
         )

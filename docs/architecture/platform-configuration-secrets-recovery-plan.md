@@ -262,8 +262,9 @@ High-risk mutation requires the existing recent
 
 `login_handle` is optional on the native WebAuthn login surface: omitted or
 blank runs a discoverable, usernameless ceremony resolved from the presented
-credential id, while a supplied handle preserves the decoy-protected
-handle-first flow. This does not change the `PHISHING_RESISTANT` requirement for
+credential id. A supplied handle uses the same empty-allow-list ceremony and
+must identify that credential's owner at completion (ADR 0014 §9); no credential
+counts or id lengths are disclosed. This does not change the `PHISHING_RESISTANT` requirement for
 high-risk mutation or the offline recovery hierarchy. Guarantee
 `INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001`.
 
