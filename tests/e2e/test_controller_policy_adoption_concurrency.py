@@ -3,8 +3,8 @@
 import asyncio
 import time
 from datetime import UTC, datetime
-from typing import Any, LiteralString, cast
-from uuid import uuid4
+from typing import Any, LiteralString
+from uuid import UUID, uuid4
 
 import pytest
 from psycopg import Connection
@@ -28,13 +28,13 @@ PgConnection = Connection[Any]
 pytestmark = [pytest.mark.e2e, pytest.mark.postgres, pytest.mark.security, pytest.mark.invariant]
 
 
-def _uuid_row(conn: PgConnection, query: LiteralString, params: tuple[object, ...]):
+def _uuid_row(conn: PgConnection, query: LiteralString, params: tuple[object, ...]) -> UUID:
     row = conn.execute(query, params).fetchone()
     assert row is not None
-    return cast(Any, row[0])
+    return row[0]
 
 
-def _create_authority(conn: PgConnection):
+def _create_authority(conn: PgConnection) -> UUID:
     return _uuid_row(
         conn,
         "INSERT INTO request_engine.identity_authorities(kind,issuer_or_environment) "
@@ -43,7 +43,9 @@ def _create_authority(conn: PgConnection):
     )
 
 
-def _provision_legacy_root(conn: PgConnection, authority_id: Any, native_id: Any):
+def _provision_legacy_root(
+    conn: PgConnection, authority_id: UUID, native_id: UUID
+) -> tuple[UUID, UUID, UUID]:
     provisioner = _uuid_row(
         conn,
         "INSERT INTO request_engine.principals(principal_plane,principal_kind,external_subject) "
@@ -56,9 +58,11 @@ def _provision_legacy_root(conn: PgConnection, authority_id: Any, native_id: Any
         "VALUES (%s,'platform','platform','organization.provision',false,'trust_bootstrap',%s)",
         (provisioner, f"adoption-race-provisioner:{uuid4().hex}"),
     )
-    revision = conn.execute(
+    revision_row = conn.execute(
         "SELECT authority_revision FROM request_engine.principals WHERE id=%s", (provisioner,)
-    ).fetchone()[0]
+    ).fetchone()
+    assert revision_row is not None
+    revision = int(revision_row[0])
     organization_id, party_id, root_id = uuid4(), uuid4(), uuid4()
     conn.execute(
         "SELECT set_config('request_engine.authenticated_principal_id',%s,false)",
@@ -99,7 +103,9 @@ def _provision_legacy_root(conn: PgConnection, authority_id: Any, native_id: Any
     return organization_id, root_id, binding_id
 
 
-def _platform_owner(conn: PgConnection, authority_id: Any, native_id: Any):
+def _platform_owner(
+    conn: PgConnection, authority_id: UUID, native_id: UUID
+) -> tuple[UUID, UUID, int]:
     principal = _uuid_row(
         conn,
         "INSERT INTO request_engine.principals(principal_plane,principal_kind,external_subject) "
@@ -125,24 +131,28 @@ def _platform_owner(conn: PgConnection, authority_id: Any, native_id: Any):
     binding_id = _uuid_row(
         conn, "SELECT id FROM request_engine.identity_bindings WHERE principal_id=%s", (principal,)
     )
-    revision = conn.execute(
+    revision_row = conn.execute(
         "SELECT authority_revision FROM request_engine.principals WHERE id=%s", (principal,)
-    ).fetchone()[0]
+    ).fetchone()
+    assert revision_row is not None
+    revision = int(revision_row[0])
     return principal, binding_id, int(revision)
 
 
 def _actor_pair(
     conn: PgConnection,
-    organization_id: Any,
-    root_id: Any,
-    root_binding: Any,
-    platform_id: Any,
-    platform_binding: Any,
+    organization_id: UUID,
+    root_id: UUID,
+    root_binding: UUID,
+    platform_id: UUID,
+    platform_binding: UUID,
     platform_revision: int,
-):
-    root_revision = conn.execute(
+) -> tuple[ActorContext, PlatformActorContext]:
+    root_revision_row = conn.execute(
         "SELECT authority_revision FROM request_engine.principals WHERE id=%s", (root_id,)
-    ).fetchone()[0]
+    ).fetchone()
+    assert root_revision_row is not None
+    root_revision = int(root_revision_row[0])
     root_caps = frozenset(
         str(row[0])
         for row in conn.execute(
@@ -237,13 +247,14 @@ async def test_apply_waits_for_withdrawal_then_fails_closed(
         platform_binding_id,
         platform_revision,
     )
+    assert tenant_actor.authority_revision is not None
     commands = PostgresControllerPolicyAdoptionCommands(
         e2e_session_factory, platform_session_factory=platform_control_session_factory
     )
     request = await commands.request_adoption(
         tenant_actor,
         RequestControllerPolicyAdoption(
-            expected_authority_revision=int(tenant_actor.authority_revision),
+            expected_authority_revision=tenant_actor.authority_revision,
             reason="Withdraw if apply has not acquired authority first",
             idempotency_key=f"request:{uuid4().hex}",
         ),
@@ -301,10 +312,9 @@ async def test_apply_waits_for_withdrawal_then_fails_closed(
         for task in (withdraw_task, apply_task):
             if task is not None and not task.done():
                 task.cancel()
-        await asyncio.gather(
-            *(task for task in (withdraw_task, apply_task) if task is not None),
-            return_exceptions=True,
-        )
+        await asyncio.gather(withdraw_task, return_exceptions=True)
+        if apply_task is not None:
+            await asyncio.gather(apply_task, return_exceptions=True)
 
     state = e2e_admin_conn.execute(
         "SELECT status FROM request_engine.controller_policy_adoption_requests WHERE id=%s",
