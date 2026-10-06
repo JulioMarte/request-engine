@@ -59,7 +59,17 @@ _OVERVIEW_OPERATIONS = frozenset({"platform_readiness_get", "platform_observabil
 # Deliberate exceptions live here. The generic renderer still provides a safe
 # runtime fallback, but CI requires a conscious decision before a new operator
 # operation may remain Advanced-only.
-ADVANCED_ONLY_OPERATION_IDS: frozenset[str] = frozenset()
+ADVANCED_ONLY_OPERATION_IDS: frozenset[str] = frozenset(
+    {
+        # The platform-owner read API is available through the generic
+        # OpenAPI-driven advanced operations surface until a dedicated owner
+        # workspace journey is designed and implemented.
+        "platform_owner_get",
+        "platform_owner_invitation_get",
+        "platform_owner_invitation_list",
+        "platform_owner_list",
+    }
+)
 
 
 def classify_operation(operation: AdminOperation) -> SurfaceCoverage:
