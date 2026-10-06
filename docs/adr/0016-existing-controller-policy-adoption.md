@@ -45,11 +45,13 @@ reviewed column-level access. Migration 0033 adds a tenant-bound policy for
 adoption facts without granting direct app table access. Isolated PostgreSQL
 18.6 evidence currently covers the HTTP/native-auth journeys, replay,
 RLS/least-privilege, revoked grants, tenant FK scope and the withdrawal-wins
-apply race. Exact-head CI exposed the missing facts-table policy; migration 0033
-adds it and the focused RLS group passes locally. The next exact-head run then
-exposed a stale runtime table-privilege inventory, which is corrected locally
-but still needs publication and exact-head verification. The inverse apply-wins
-race and races against platform capability revocation are also not proven.
+apply race. Both lock orderings for apply versus withdrawal now pass local
+PostgreSQL 18.6 tests using independent sessions and observed lock blockers.
+Exact-head CI exposed the missing facts-table policy; migration 0033 adds it and
+the focused RLS group passes locally. A later exact-head run exposed a stale
+runtime table-privilege inventory, which is corrected on the branch. The new
+exact-head run for that correction is still in progress. Concurrent platform
+capability revocation is not proven.
 
 ### Recommended boundaries
 
@@ -156,10 +158,11 @@ organizations use the reviewed v6 default. Existing v1-v5 organizations may opt 
 through the dual-consent API; no legacy organization changes until its original
 root consents and a separately authorized platform HUMAN applies the request.
 The code/schema journey is implemented. Targeted adversarial PostgreSQL 18.6
-proofs pass locally, but production verification still requires exact-head CI
-and publication certification. The apply-wins and concurrent platform
-capability-revocation races remain explicit proof gaps. This is not a reason to
-seed SQL or reset tenant data.
+proofs pass locally, including both apply/withdrawal orderings, but production
+verification still requires exact-head CI and publication certification.
+Apply/apply, apply-versus-authority-revocation and concurrent platform capability
+revocation remain explicit proof gaps. This is not a reason to seed SQL or reset
+tenant data.
 
 The platform would gain a narrow ongoing role in tenant bootstrap governance.
 Dual consent limits unilateral escalation but does not remove that authority
@@ -193,8 +196,9 @@ cannot claim real two-person control merely by creating two identities.
 - Independently synchronized apply/apply, apply/consent-revoke, apply/grant-revoke,
   apply/native-disable/recovery and platform-capability-revocation races; exactly
   one committed fact/receipt/audit and no revival on replay after authority
-  withdrawal. Current proof covers the withdrawal-wins apply race; inverse
-  apply-wins and platform-capability-revocation races remain outstanding.
+  withdrawal. Current proof covers both withdrawal/apply lock orderings;
+  apply/apply, apply-versus-authority-revocation and platform-capability-
+  revocation races remain outstanding.
 - Runtime group/definer ACLs, RLS/foreign-row opacity, migration clean install and
   multi-database compatibility; current-product and exact-head CI evidence.
 - Manual administrator journey shows old policy, requested delta, both consent

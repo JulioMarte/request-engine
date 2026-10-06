@@ -3,7 +3,7 @@
 import asyncio
 import time
 from datetime import UTC, datetime
-from typing import Any, LiteralString
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -330,3 +330,138 @@ async def test_apply_waits_for_withdrawal_then_fails_closed(
         "WHERE organization_id=%s AND principal_id=%s AND provenance_reference=%s",
         (organization_id, root_id, f"adoption:{request.request_id}"),
     ).fetchone() == (0,)
+
+
+@pytest.mark.asyncio
+async def test_withdrawal_waits_for_apply_then_preserves_applied_adoption(
+    e2e_admin_conn: PgConnection,
+    e2e_barrier_conn: PgConnection,
+    e2e_session_factory: SessionFactory,
+    platform_control_session_factory: SessionFactory,
+) -> None:
+    """Apply owns the canonical tenant locks first, so later withdrawal cannot undo it."""
+    authority_id = _create_authority(e2e_admin_conn)
+    enrollment = build_native_auth_runtime(e2e_session_factory)
+    root_identity = await enrollment.service.enroll_password_identity(
+        identity_authority_id=authority_id,
+        login_handle=f"adoption-apply-wins-root-{uuid4().hex}@example.test",
+        password="adoption-apply-wins-root-password-1",
+    )
+    platform_identity = await enrollment.service.enroll_password_identity(
+        identity_authority_id=authority_id,
+        login_handle=f"adoption-apply-wins-owner-{uuid4().hex}@example.test",
+        password="adoption-apply-wins-owner-password-2",
+    )
+    organization_id, root_id, root_binding_id = _provision_legacy_root(
+        e2e_admin_conn,
+        authority_id,
+        root_identity.native_identity_id,
+    )
+    platform_id, platform_binding_id, platform_revision = _platform_owner(
+        e2e_admin_conn, authority_id, platform_identity.native_identity_id
+    )
+    tenant_actor, platform_actor = _actor_pair(
+        e2e_admin_conn,
+        organization_id,
+        root_id,
+        root_binding_id,
+        platform_id,
+        platform_binding_id,
+        platform_revision,
+    )
+    assert tenant_actor.authority_revision is not None
+    commands = PostgresControllerPolicyAdoptionCommands(
+        e2e_session_factory, platform_session_factory=platform_control_session_factory
+    )
+    request = await commands.request_adoption(
+        tenant_actor,
+        RequestControllerPolicyAdoption(
+            expected_authority_revision=tenant_actor.authority_revision,
+            reason="Apply if it acquires authority locks before withdrawal",
+            idempotency_key=f"apply-wins-request:{uuid4().hex}",
+        ),
+    )
+
+    key_digest = "c" * 64
+    intent_digest = "d" * 64
+    correlation_id = uuid4()
+    for setting, value in (
+        ("request_engine.authenticated_principal_id", str(platform_actor.principal_id)),
+        ("request_engine.authority_revision", str(platform_actor.authority_revision)),
+        ("request_engine.identity_binding_id", str(platform_actor.identity_binding_id)),
+        ("request_engine.correlation_id", str(correlation_id)),
+    ):
+        e2e_barrier_conn.execute("SELECT set_config(%s,%s,false)", (setting, value))
+
+    try:
+        e2e_barrier_conn.execute("SET LOCAL ROLE request_platform_control")
+        result = e2e_barrier_conn.execute(
+            "SELECT * FROM request_platform.apply_controller_policy_adoption(%s,%s,%s,%s)",
+            (request.request_id, request.request_revision, key_digest, intent_digest),
+        ).fetchone()
+        assert result is not None
+        apply_pid = e2e_barrier_conn.info.backend_pid
+        withdrawal = asyncio.create_task(
+            commands.withdraw_adoption(
+                tenant_actor,
+                WithdrawControllerPolicyAdoption(
+                    request_id=request.request_id,
+                    expected_request_revision=request.request_revision,
+                    idempotency_key=f"apply-wins-withdraw:{uuid4().hex}",
+                ),
+            )
+        )
+        try:
+            await _wait_for_blocker(
+                e2e_admin_conn,
+                "withdraw_controller_policy_adoption",
+                apply_pid,
+            )
+            # The direct owner operation still holds its transaction. PostgreSQL
+            # reports that the real command is waiting behind that commit.
+            e2e_barrier_conn.commit()
+            with pytest.raises(ControllerPolicyAdoptionConflict):
+                await asyncio.wait_for(withdrawal, timeout=15)
+        finally:
+            if not withdrawal.done():
+                withdrawal.cancel()
+            await asyncio.gather(withdrawal, return_exceptions=True)
+    finally:
+        if not e2e_barrier_conn.autocommit:
+            e2e_barrier_conn.rollback()
+        for setting in (
+            "request_engine.authenticated_principal_id",
+            "request_engine.authority_revision",
+            "request_engine.identity_binding_id",
+            "request_engine.correlation_id",
+        ):
+            e2e_barrier_conn.execute("SELECT set_config(%s,'',false)", (setting,))
+        e2e_barrier_conn.commit()
+
+    state = e2e_admin_conn.execute(
+        "SELECT status,revision FROM request_engine.controller_policy_adoption_requests "
+        "WHERE id=%s",
+        (request.request_id,),
+    ).fetchone()
+    assert state == ("applied", request.request_revision + 1)
+    assert e2e_admin_conn.execute(
+        "SELECT count(*) FROM request_engine.controller_policy_adoption_facts WHERE request_id=%s",
+        (request.request_id,),
+    ).fetchone() == (1,)
+    fact = e2e_admin_conn.execute(
+        "SELECT added_capabilities FROM request_engine.controller_policy_adoption_facts "
+        "WHERE request_id=%s",
+        (request.request_id,),
+    ).fetchone()
+    assert fact is not None
+    added_capabilities = set(cast(list[str], fact[0]))
+    actual_capabilities = {
+        cast(str, row[0])
+        for row in e2e_admin_conn.execute(
+            "SELECT capability_key FROM request_engine.principal_authority_grants "
+            "WHERE organization_id=%s AND principal_id=%s AND provenance_reference=%s "
+            "AND status='active'",
+            (organization_id, root_id, f"adoption:{request.request_id}"),
+        ).fetchall()
+    }
+    assert actual_capabilities == added_capabilities
