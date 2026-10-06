@@ -68,6 +68,12 @@ ADVANCED_ONLY_OPERATION_IDS: frozenset[str] = frozenset(
         "platform_owner_invitation_get",
         "platform_owner_invitation_list",
         "platform_owner_list",
+        # Legacy controller-policy adoption is a specialized governance flow;
+        # keep its API discoverable in Advanced until a dedicated UI journey is
+        # explicitly in scope and implemented.
+        "platform_controller_policy_adoption_apply",
+        "platform_controller_policy_adoption_list",
+        "platform_controller_policy_adoption_review",
     }
 )
 

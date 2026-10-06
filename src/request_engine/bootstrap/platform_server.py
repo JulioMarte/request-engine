@@ -57,9 +57,14 @@ _READ = (
     "request_platform.read_identity_recovery_cases(uuid,uuid,integer)",
     "request_platform.read_native_identities(uuid,uuid,integer)",
     "request_platform.read_platform_organizations(uuid,uuid,integer)",
+    "request_platform.list_controller_policy_adoptions(uuid,integer,uuid)",
     "request_platform.read_platform_configuration_revisions(text)",
     "request_platform.read_platform_secret_binding(uuid)",
     "request_platform.read_platform_readiness()",
+)
+_CONTROLLER_POLICY_ADOPTION = (
+    "request_platform.apply_controller_policy_adoption(uuid,bigint,text,text)",
+    "request_platform.review_controller_policy_adoption(uuid)",
 )
 _PROVISIONER = "request_platform.provision_native_tenant_provisioner(uuid,uuid,uuid,uuid,text)"
 _RECOVERY_OPERATOR = "request_platform.provision_native_recovery_operator(uuid,uuid,uuid,uuid,text)"
@@ -182,6 +187,7 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
                 *_LIFECYCLE,
                 *_RECOVERY,
                 *_OWNER,
+                *_CONTROLLER_POLICY_ADOPTION,
                 *_SETUP,
                 *_PLATFORM_CONFIGURATION,
             )

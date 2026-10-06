@@ -17,6 +17,20 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
     "request_read.agent_credential_metadata(p_target uuid)",
     # 0012: closed staff capability gate, current actor locks, no business writes.
     "request_cmd.lock_staff_command_authority(p_capability text)",
+    # 0028: current controller-upgrade authority before an idempotency replay.
+    "request_cmd.lock_controller_policy_upgrade_authority()",
+    # 0027: original-root consent, cancellation, and own-request receipt reads.
+    (
+        "request_cmd.request_controller_policy_adoption(p_binding_id uuid, "
+        "p_expected_authority_revision bigint, p_reason text, p_key_digest text, "
+        "p_intent_digest text, p_correlation_id uuid)"
+    ),
+    (
+        "request_cmd.withdraw_controller_policy_adoption(p_request_id uuid, "
+        "p_expected_revision bigint, p_binding_id uuid, p_key_digest text, "
+        "p_intent_digest text)"
+    ),
+    "request_cmd.read_controller_policy_adoption(p_request_id uuid, p_binding_id uuid)",
     # 0011: fixed-capability tenant-local profile locks/CAS; no authority writes.
     "request_cmd.lock_staff_member_profile(p_membership uuid)",
     (

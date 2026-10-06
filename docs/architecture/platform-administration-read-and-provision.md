@@ -16,6 +16,15 @@ These are typed owner Queries/Commands and resource HTTP projections. They do
 not need a second agent execution path. Their current operation metadata remains
 the shared source for admin/tool discoverability; visibility never grants access.
 
+New platform owners created by the governed owner-provisioning command use the
+immutable `platform-owner-v5` manifest: exact v4 authority plus the
+nondelegable `platform.organization.adopt_initial_controller_policy` capability.
+This grant is reserved for a future consent-bound policy-adoption Command and is
+not runtime-available yet. First-claim v1 and already-provisioned owners are not
+changed by this default evolution; see ADR 0016 for the remaining legacy-owner
+reachability gap. Owner provisioning remains subject to current HUMAN authority,
+strong recent authentication and the existing invitation/readiness checks.
+
 Owner reads project principal state, current authority revision, binding status
 and capabilities. Invitation reads project lifecycle revision/timestamps and
 expiration, never tokens, secret fingerprints, password material or recovery

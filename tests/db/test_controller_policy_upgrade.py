@@ -366,7 +366,7 @@ async def test_revoked_delta_is_not_resurrected(
 
 
 @pytest.mark.asyncio
-async def test_idempotent_replay_commits_one_grant_set_and_one_audit_row(
+async def test_idempotent_replay_rechecks_current_authority_and_commits_one_audit_row(
     admin_conn: PgConnection,
     command_session_factory: SessionFactory,
 ) -> None:
@@ -413,6 +413,22 @@ async def test_idempotent_replay_commits_one_grant_set_and_one_audit_row(
     )
 
     assert first == second
+    _revoke_capability(
+        admin_conn,
+        organization_id=organization_id,
+        principal_id=root_id,
+        capability_key="controller_policy_upgrade",
+    )
+    with pytest.raises(ControllerPolicyUpgradeForbidden):
+        await _upgrade(
+            commands,
+            actor,
+            target_principal_id=target_id,
+            target_policy_key=_V3,
+            expected_authority_revision=revision,
+            key=key,
+        )
+
     rows = admin_conn.execute(
         """
         SELECT count(*) FROM request_engine.principal_authority_grants

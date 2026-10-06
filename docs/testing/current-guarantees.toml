@@ -378,6 +378,13 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["security", "provenance"]
 
 [[guarantees]]
+id = "INV-CONTROLLER-POLICY-ADOPTION-001"
+statement = "Legacy controller-policy adoption is opt-in and requires current HUMAN consent from the immutable original tenant root through its active bound native identity, followed by a distinct active platform HUMAN identity with the dedicated adoption capability and recent phishing-resistant proof. The platform operator can inspect bounded consent context and the exact proposed/revoked capability delta before applying. Application adds only currently missing target-policy grants, attributes them to the platform approver, records an immutable application fact, and exact consent replay remains readable after the policy changes. Missing platform adoption authority and reuse of the root's same native identity are denied without applying grants. A withdrawal that acquires the tenant authority locks before apply causes apply to fail closed with no grant/fact side effects. This guarantee does not claim proof for the inverse apply-wins ordering or concurrent platform-capability revocation."
+severity = "high"
+required_evidence = ["contract", "invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
 id = "INV-ONBOARDING-READINESS-001"
 statement = "The onboarding readiness projection is an advisory, tenant-scoped composition of owner-published facts: it exposes identity, tenant_control, staff_administration and recovery sections with an explicit ready/blocked/unknown status, never reports a section ready when its owner reader failed (unknown, ready=false, no fabricated blockers), never derives authority or identity from the response, and never leaks another tenant's or the platform's identities, secrets or global recovery configuration. Identity/control facts are read through a tenant-guarded least-privilege surface that refuses any organization other than the transaction's current tenant, and each command the projection suggests revalidates its own authority."
 severity = "high"

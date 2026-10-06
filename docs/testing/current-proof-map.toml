@@ -423,6 +423,21 @@ path = "tests/e2e/test_controller_policy_upgrade_http.py"
 evidence = ["contract", "invariant", "security"]
 
 [[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-ADOPTION-001"
+path = "tests/e2e/test_controller_policy_adoption_http.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-ADOPTION-001"
+path = "tests/e2e/test_controller_policy_adoption_native_http.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-ADOPTION-001"
+path = "tests/e2e/test_controller_policy_adoption_concurrency.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
 guarantee = "INV-ONBOARDING-READINESS-001"
 path = "tests/db/test_identity_onboarding_readiness.py"
 evidence = ["invariant", "adversarial", "security"]

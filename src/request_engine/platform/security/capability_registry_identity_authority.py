@@ -204,6 +204,16 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
         requires_recent_authentication=True,
     ),
+    command_capability(
+        "platform.organization.adopt_initial_controller_policy",
+        CapabilityExposure.OPERATOR,
+        "Apply a separately consented, explicitly approved initial-controller policy adoption.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.REQUIRED,
+        runtime_available=True,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+        requires_recent_authentication=True,
+    ),
     _staff_capability(
         "staff.invite",
         "Invite a credentialed Native human identity into the current tenant.",

@@ -12,22 +12,37 @@ or current release certification. Exact-head CI remains authoritative.
 Owner: Tenancy. Scope: new native organizations created by the private owner command.
 This does not define a core administrator role or make platform authority tenant authority.
 
-## Current limitation: existing controller adoption
+## Existing controller adoption (bounded, opt-in)
 
-The governed upgrade endpoint exists, but it does **not** let a sole existing v3
-controller obtain capabilities outside its current delegable ceiling. That
-controller also lacks `controller_policy_upgrade`, and the endpoint forbids
-self-upgrade. No implemented platform "policy ceremony" currently resolves this
-bootstrap gap. Creating staff or another tenant is not a legitimate workaround.
-Changing the default for future organizations never upgrades existing ones.
+The accepted [ADR 0016](../adr/0016-existing-controller-policy-adoption.md)
+adds a separate dual-consent journey for organizations whose immutable initial
+policy is v1 through v5. The original active HUMAN root requests adoption through
+`POST /v1/controller-policy-adoptions`; a current HUMAN platform operator with
+the dedicated `platform.organization.adopt_initial_controller_policy` grant may
+apply only that durable, unexpired consent through
+`POST /v1/platform/controller-policy-adoptions/{request_id}:apply`. The root can
+withdraw consent and inspect only its own request. A separately authorized
+platform reader can list bounded pending requests, exposing only organization,
+controller and policy/revision metadata needed to complete the handoff.
 
-Existing-root policy adoption therefore remains **pending governance**, not a
-completed administration journey. [ADR 0016](../adr/0016-existing-controller-policy-adoption.md)
-proposes a distinct bounded dual-consent design; it does not authorize new APIs,
-capabilities, automatic grants or exceptions to
-`INV-CONTROLLER-POLICY-UPGRADE-001`. Historical E1 validation below proves only
-the deliberately preauthorized ordinary upgrade contract, not reachability from
-an unmodified existing v3 root.
+The command adds only missing tenant grants from the approved v1-v5 to v6 delta.
+It never backfills existing roots, restores a revoked grant, rewrites the original
+root fact, grants platform authority to a tenant, or turns a platform operator
+into tenant staff. Root consent requires the immutable root relationship, current
+active binding and recent phishing-resistant HUMAN authentication. Application
+requires the dedicated platform capability, current platform authority, a distinct
+active native HUMAN identity and an unchanged root authority revision. Tenant
+reads remain opaque to any principal other than that same active root controller.
+
+This is not a silent migration or universal readiness claim. Existing organizations
+remain unchanged until both actors complete the API journey. The onboarding
+`recorded_policy_key` now reflects the latest successful adoption when present;
+`current_policy_ready` is computed from the original controller's active grants,
+including capability, authority plane, and delegability, so a later revocation or
+semantic mismatch makes readiness false. Its reported authority revision belongs
+to that same original controller. The feature is considered
+implemented at the code/schema level only after the migration and real PostgreSQL
+HTTP/adversarial proofs pass; deployment/publication evidence remains separate.
 
 ## Decision
 
@@ -114,8 +129,8 @@ staff Principal now has a separate governed command
 (`POST /v1/controller-policy-upgrades`, revision 0053) that adds only the target
 policy's missing capabilities within the actor's current delegable ceiling; it is
 never a silent authorization and it never restores a revoked grant. A root with no
-recorded policy selection needs a separately accepted governance operation; no
-implemented platform policy-adoption ceremony should be inferred. Deploy the
+recorded policy selection remains outside the v1-v5 transition contract and needs
+a separately accepted governance operation. Deploy the
 additive migration before the new application. The
 private process must check the selection function is callable and the owner-selected
 version exists at startup and readiness, failing closed on an older schema. Roll

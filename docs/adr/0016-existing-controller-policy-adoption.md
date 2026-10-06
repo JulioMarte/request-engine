@@ -1,6 +1,6 @@
 # 0016 — Explicit adoption of a newer policy by an existing tenant controller
 
-Status: Proposed
+Status: Accepted — implementation in progress
 Date: 2026-10-04
 Owner: Tenancy
 
@@ -29,27 +29,35 @@ platform owner lifecycle and organization creation authority do not authorize
 arbitrary ongoing tenant authority mutation. An operator's provisioning provenance
 is not standing tenant business membership.
 
-## Decision — proposal, not authorization
+## Decision
 
-Recommend a separate, **dual-consent, manifest-bounded bootstrap-policy adoption**
-journey. It must remain a Tenancy owner operation, not a parallel SQL/admin path,
-an exception inside staff delegation, or an automatic grant migration. Acceptance
-requires a user/product decision about the platform's ongoing governance scope.
-No policy-adoption capability, grant, HTTP endpoint or application path is approved
-or implemented by this ADR.
+Implement a separate, **dual-consent, manifest-bounded bootstrap-policy adoption**
+journey. The user explicitly authorized completion of the legacy-permission path.
+That authorization accepts this narrow ongoing platform governance scope: one
+currently authorized HUMAN platform owner may apply a policy delta only after the
+active original tenant controller has independently consented. This remains a
+Tenancy owner operation, not a parallel SQL/admin path, an exception inside staff
+delegation, or an automatic grant migration. The API and durable facts are
+implemented in migrations 0027/0029 and the Tenancy owner surface. Exact
+PostgreSQL HTTP, replay, RLS/least-privilege, revoked-grant, and deterministic
+apply-versus-withdraw race proofs remain required before this decision may be
+described as production-verified. Exact-head CI/publication evidence remains
+separate and outstanding until recorded.
 
 ### Recommended boundaries
 
-1. The active original tenant controller requests adoption of an explicitly
-   approved immutable source-to-target policy transition. This is durable new
-   demand/consent, not the authority mutation itself. Candidate admission is its
-   existing `staff.manage_authority` standing grant plus controller/root relationship,
-   with recent verified native authentication. Extending that capability to this
-   narrow consent intent is itself a CONTROLLED decision requiring acceptance.
-2. A current authorized HUMAN platform operator approves/applies the exact request
-   under a dedicated proposed capability such as
-   `platform.organization.adopt_initial_controller_policy`. Possession of platform
-   owner lifecycle or organization provisioning alone must not imply this right.
+1. The active original tenant HUMAN controller requests adoption of the approved
+   immutable v1-v5 to v6 transition through `POST /v1/controller-policy-adoptions`.
+   This durable consent is not the authority mutation. Admission requires the
+   existing `organization.bootstrap` grant plus exact root relationship, current
+   active native identity binding and recent verified phishing-resistant proof.
+   The request records bounded reason/intent and expires after 24 hours; it does
+   not mutate grants or widen the actor's delegation ceiling.
+2. A current authorized HUMAN platform operator applies that exact request through
+   `POST /v1/platform/controller-policy-adoptions/{request_id}:apply` under the
+   dedicated `platform.organization.adopt_initial_controller_policy` capability.
+   Possession of platform owner lifecycle, organization provisioning or the
+   `platform.owner.provision` command capability alone does not authorize apply.
 3. Consent and application must use distinct bound native identities; recovery-
    restricted, revoked, inactive or stale subjects cannot participate. This proves
    distinct accounts, not that two biologically different people control them.
@@ -75,23 +83,34 @@ or implemented by this ADR.
 
 A new capability in the registry is not usable authority. Do not silently backfill
 it onto existing platform owners or assume a dormant selector grants it.
-An explicitly reviewed newer immutable platform owner policy and owner activation
-selection could let an existing authorized owner invite/approve a **new** owner
-through the existing owner ceremony. That new owner would receive the approved
-policy by the supported owner operation, not by a hand-seeded grant. Existing
-owners would still need an independently accepted policy-adoption path if they
-must acquire this right themselves. This entire reachability change remains
-proposed; its policy contents, admission and continuity must be reviewed first.
+Migration `0026_platform_owner_v5` implements only this reachability prerequisite:
+it appends immutable `platform-owner-v5` as the exact v4 grant list plus the
+nondelegable `platform.organization.adopt_initial_controller_policy` capability,
+changes the shared platform-owner provisioning selector so future provisioned
+owners (including invitation activation) receive v5, and evolves the provisioning-
+fact policy constraint to continue accepting historic v2 facts plus new v5 facts.
+It does not rewrite existing facts or implement the tenant-consent or platform-
+apply journeys described below.
 
-### Candidate operation gate
+The original first-claim owner remains `platform-owner-v1`; existing principals,
+grants, revisions and provisioning facts are not backfilled or rewritten. Thus the
+new apply capability is held only by owners created after this migration. The v1
+root's existing `platform.owner.provision` authority can use the normal invitation
+ceremony to activate a distinct new v5 owner, which closes capability reachability
+without a grant backfill or self-upgrade. The v1 root itself cannot apply or
+self-upgrade. This safe handoff depends on the existing owner invitation ceremony;
+it is not a substitute for the still-unimplemented tenant-consent/apply APIs below.
+Do not substitute direct SQL grants or data reset.
 
-| Item | Proposed contract |
+### Implemented operation contract
+
+| Item | Implemented contract |
 | --- | --- |
 | Business owner | Tenancy |
 | Resource | `controller-policy-adoption` durable request plus explicit apply Command |
-| Candidate HTTP | POST `/v1/controller-policy-adoptions`; POST `/v1/platform/controller-policy-adoptions/{id}:apply` |
-| Stable operation IDs | `controller_policy_adoption_request_create`; `platform_controller_policy_adoption_apply` |
-| Capabilities | Tenant consent admission above; dedicated platform capability above; both pending acceptance |
+| HTTP | POST `/v1/controller-policy-adoptions`; GET `/v1/controller-policy-adoptions/{id}`; POST `/v1/controller-policy-adoptions/{id}:withdraw`; GET `/v1/platform/controller-policy-adoptions`; POST `/v1/platform/controller-policy-adoptions/{id}:apply` |
+| Stable operation IDs | `controller_policy_adoption_request_create`; `controller_policy_adoption_request_get`; `controller_policy_adoption_request_withdraw`; `platform_controller_policy_adoption_list`; `platform_controller_policy_adoption_apply` |
+| Capabilities | Tenant consent/get/withdraw require `organization.bootstrap` and exact root relation; platform list requires `platform.organization.read`; apply requires the dedicated adoption capability and exact current platform authority |
 | Idempotency | Required per actor/semantic operation; current authority rechecked before every receipt |
 | Concurrency | Explicit expected tenant authority revision and consent/adoption revision; one apply winner |
 | Party/target authority | Original root relationship, current tenant controller consent, separately authorized platform actor |
@@ -99,18 +118,18 @@ proposed; its policy contents, admission and continuity must be reviewed first.
 | Failures | 401 invalid session; 403 missing/current authority; opaque 404 unavailable request; 409 stale/conflicting/withdrawn consent; 422 invalid/unapproved transition |
 | Tools | Optional projections of these typed owner operations; no second handler or tool-manufactured actor/tenant identity |
 
-The final resource names, required recent-authentication proof, consent expiry,
-revocation operation, compatibility and audit shape must be accepted before code.
-An ordinary tenant cannot inspect another tenant's request. Platform inspection
-must be separately authorized and expose only the metadata needed for governance,
-not tenant appointments, customers, catalog or other business data.
+An ordinary tenant cannot inspect another tenant's request; unavailable foreign
+request IDs return an opaque 404. The platform list is keyset bounded and contains
+only pending, unexpired consent metadata, not tenant appointments, customers,
+catalog or other business data. Apply/withdraw serialize against the canonical
+tenant staff root and ordered active memberships before locking the adoption row.
 
 ### Consistency and migration gate
 
 READ/PLAN the supported immutable transition and current owner-published state.
-LOCK identity topology and ordered platform/tenant serialization roots consistently
-with existing provisioning, staff and native recovery commands; exact order needs
-an explicit cross-plane deadlock review before implementation. VALIDATE both
+LOCK identity topology, the canonical tenant staff root, ordered active tenant
+memberships and the adoption request consistently with existing staff writers.
+VALIDATE both
 current native authentication paths, principals, grants, binding/root relationship,
 authority revisions and unexpired/unrevoked consent. WRITE delta grants, consume
 consent, persist the immutable adoption fact/receipt and append truthful audit in
@@ -125,10 +144,12 @@ manifests. Existing roots receive no authority during schema installation/replay
 ## Consequences
 
 The ordinary tenant policy-upgrade/delegation guarantees remain unchanged. New
-organizations can adopt a reviewed fresh default without solving this governance
-question. Existing v3 organizations remain unable to use newer capability-gated
-features until an authorized adoption design is accepted and implemented. This is
-a visible product limitation, not production readiness or a reason to seed SQL.
+organizations use the reviewed v6 default. Existing v1-v5 organizations may opt in
+through the dual-consent API; no legacy organization changes until its original
+root consents and a separately authorized platform HUMAN applies the request.
+The code/schema journey is implemented, but it is not production-verified until
+the listed adversarial, concurrency and exact-head publication proofs pass. This
+is not a reason to seed SQL or reset tenant data.
 
 The platform would gain a narrow ongoing role in tenant bootstrap governance.
 Dual consent limits unilateral escalation but does not remove that authority

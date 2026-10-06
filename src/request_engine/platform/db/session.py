@@ -117,7 +117,8 @@ async def set_platform_actor_context(
                 set_config('request_engine.authentication_method', :authentication_method, true),
                 set_config('request_engine.correlation_id', :correlation_id, true),
                 set_config('request_engine.credential_id', :credential_id, true),
-                set_config('request_engine.authority_revision', :authority_revision, true)
+                set_config('request_engine.authority_revision', :authority_revision, true),
+                set_config('request_engine.identity_binding_id', :identity_binding_id, true)
             """
         ),
         {
@@ -127,6 +128,7 @@ async def set_platform_actor_context(
             "correlation_id": str(actor.correlation_id),
             "credential_id": actor.credential_id or "",
             "authority_revision": str(actor.authority_revision),
+            "identity_binding_id": str(actor.identity_binding_id or ""),
         },
     )
 

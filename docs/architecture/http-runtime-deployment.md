@@ -480,6 +480,7 @@ secret manager; do not put real passwords in shell history or committed examples
   `read_principal_authority(uuid)`, `read_platform_provisioners(uuid, uuid, integer)`,
   `read_identity_recovery_cases(uuid, uuid, integer)`,
   `read_native_identities(uuid, uuid, integer)`,
+  `list_controller_policy_adoptions(uuid, integer, uuid)`,
   `read_platform_configuration_revisions(text)`,
   `read_platform_secret_binding(uuid)` and `read_platform_readiness()`.
 - `REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL`: separate login inheriting only
@@ -502,7 +503,10 @@ The app connection cannot execute private platform functions. Read/write connect
 cannot access application relations directly (including column grants) or create
 objects in application schemas. Read can execute only its reviewed projections; write
 can execute only the explicit provisioning, lifecycle and governed-recovery commands
-and the private `select_initial_controller_policy(text)` selector. Required
+and the private `select_initial_controller_policy(text)` selector plus the
+dedicated `apply_controller_policy_adoption(uuid, bigint, text, text)` command.
+The adoption command requires its dedicated platform capability, not the owner
+provision capability. Required
 functions must be present and executable, and the owner-selected controller policy
 must exist. The private selector validates it transaction-locally without creating
 roots or granting authority. This is not an assertion that every

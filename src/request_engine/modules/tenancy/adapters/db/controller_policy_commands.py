@@ -118,6 +118,16 @@ class PostgresControllerPolicyCommands:
             },
         )
         async with actor_transaction(self._session_factory, actor) as session:
+            # Completed receipts are still protected by current authority. The
+            # same ordered tenant/topology locks used by the command serialize
+            # this check against grant withdrawal before an idempotency replay
+            # can reveal a prior result.
+            try:
+                await session.execute(
+                    text("SELECT request_cmd.lock_controller_policy_upgrade_authority()")
+                )
+            except DBAPIError as exc:
+                _raise_controller_policy_db_error(exc)
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=actor.organization_id,

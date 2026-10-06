@@ -19,6 +19,9 @@ from request_engine.modules.platform_configuration.api.http import (
     SmtpProviderTester,
     install_platform_configuration_http,
 )
+from request_engine.modules.tenancy.api.controller_policy_adoption_platform import (
+    install_platform_controller_policy_adoption_http,
+)
 from request_engine.modules.tenancy.api.identity_recovery import (
     install_identity_recovery_http,
 )
@@ -181,6 +184,12 @@ def create_platform_control_app(
     )
     install_platform_organization_reads_http(
         app,
+        read_session_factory=platform_read_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
+    )
+    install_platform_controller_policy_adoption_http(
+        app,
+        write_session_factory=platform_write_session_factory,
         read_session_factory=platform_read_session_factory,
         actor_resolver=runtime.platform_actor_resolver,
     )

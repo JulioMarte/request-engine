@@ -505,6 +505,12 @@ async def test_second_platform_owner_requires_prepared_identity_and_preserves_la
         }
         assert "platform.owner.provision" in owner_caps
         assert "platform.owner.manage_lifecycle" in owner_caps
+        assert "platform.organization.adopt_initial_controller_policy" in owner_caps
+        assert e2e_admin_conn.execute(
+            "SELECT policy_key FROM request_engine.platform_owner_provisioning_facts "
+            "WHERE principal_id=%s",
+            (second_owner_id,),
+        ).fetchone() == ("platform-owner-v5",)
 
         invitation_state = e2e_admin_conn.execute(
             "SELECT status, native_identity_id FROM request_engine.platform_owner_invitations "

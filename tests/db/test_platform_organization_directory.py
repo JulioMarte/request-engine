@@ -88,16 +88,51 @@ def test_directory_is_bounded_and_available_only_through_explicit_execute(
         )
 
 
-def test_platform_owner_v4_contains_the_directory_capability(admin_conn: PgConnection) -> None:
-    grants = admin_conn.execute(
+def test_platform_owner_v5_is_exact_v4_plus_nondelegable_adoption_capability(
+    admin_conn: PgConnection,
+) -> None:
+    policies = admin_conn.execute(
         """
-        SELECT grants
+        SELECT policy_key, revision, grants
           FROM request_engine.platform_owner_policies
-         WHERE policy_key = 'platform-owner-v4' AND revision = 4
+         WHERE policy_key IN ('platform-owner-v4', 'platform-owner-v5')
+         ORDER BY revision
+        """
+    ).fetchall()
+    assert len(policies) == 2
+    v4 = policies[0]
+    v5 = policies[1]
+    assert v4[:2] == ("platform-owner-v4", 4)
+    assert v5[:2] == ("platform-owner-v5", 5)
+    assert v5[2] == [
+        *v4[2],
+        {
+            "delegable": False,
+            "capability_key": "platform.organization.adopt_initial_controller_policy",
+        },
+    ]
+    assert "platform.organization.read" in {item["capability_key"] for item in v5[2]}
+    constraint = admin_conn.execute(
+        """
+        SELECT pg_get_constraintdef(oid)
+          FROM pg_constraint
+         WHERE conrelid='request_engine.platform_owner_provisioning_facts'::regclass
+           AND conname='platform_owner_provisioning_policy_check'
         """
     ).fetchone()
-    assert grants is not None
-    assert {item["capability_key"] for item in grants[0]} >= {"platform.organization.read"}
+    assert constraint is not None
+    assert "platform-owner-v2" in constraint[0]
+    assert "platform-owner-v5" in constraint[0]
+
+    # This migration must not silently activate the new standing grant for old
+    # owners: only immutable policy selection for future provisioning changes.
+    assert admin_conn.execute(
+        """
+        SELECT count(*) FROM request_engine.principal_authority_grants
+         WHERE principal_plane='platform'
+           AND capability_key='platform.organization.adopt_initial_controller_policy'
+        """
+    ).fetchone() == (0,)
     privilege = admin_conn.execute(
         """
         SELECT has_function_privilege(
