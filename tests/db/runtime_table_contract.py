@@ -56,6 +56,10 @@ EXPECTED_TABLE_EXCEPTIONS = {
     "staff_member_profiles": (False,) * 7,
     "discovery_booking_handoffs": (False,) * 7,
     "service_classification_authority_events": (False,) * 7,
+    # 0027 adoption requests expose only an exact column SELECT list; immutable
+    # application facts remain fully mediated by reviewed definer operations.
+    "controller_policy_adoption_requests": (False,) * 7,
+    "controller_policy_adoption_facts": (False,) * 7,
     "service_classifications": (False,) * 7,
     # F4 recomputes assignment availability, legitimately deleting stale rows.
     "resource_location_availability": (True, True, True, True, False, False, False),

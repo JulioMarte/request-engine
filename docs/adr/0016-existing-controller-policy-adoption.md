@@ -45,10 +45,11 @@ reviewed column-level access. Migration 0033 adds a tenant-bound policy for
 adoption facts without granting direct app table access. Isolated PostgreSQL
 18.6 evidence currently covers the HTTP/native-auth journeys, replay,
 RLS/least-privilege, revoked grants, tenant FK scope and the withdrawal-wins
-apply race. Exact-head CI found and exposed the missing facts-table policy; the
-fix is now on the branch but has not yet completed exact-head CI. The inverse
-apply-wins race and races against platform capability revocation are also not
-proven.
+apply race. Exact-head CI exposed the missing facts-table policy; migration 0033
+adds it and the focused RLS group passes locally. The next exact-head run then
+exposed a stale runtime table-privilege inventory, which is corrected locally
+but still needs publication and exact-head verification. The inverse apply-wins
+race and races against platform capability revocation are also not proven.
 
 ### Recommended boundaries
 
