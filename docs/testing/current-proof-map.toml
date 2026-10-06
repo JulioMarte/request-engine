@@ -443,6 +443,16 @@ path = "tests/e2e/test_controller_policy_adoption_concurrency.py"
 evidence = ["invariant", "adversarial", "security"]
 
 [[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-ADOPTION-001"
+path = "tests/e2e/test_controller_policy_adoption_apply_race.py"
+evidence = ["invariant", "adversarial", "security", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-ADOPTION-001"
+path = "tests/e2e/test_controller_policy_adoption_owner_revocation_race.py"
+evidence = ["invariant", "adversarial", "security", "concurrency"]
+
+[[proofs]]
 guarantee = "INV-ONBOARDING-READINESS-001"
 path = "tests/db/test_identity_onboarding_readiness.py"
 evidence = ["invariant", "adversarial", "security"]

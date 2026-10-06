@@ -3,12 +3,11 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request, Response
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey
 from request_engine.modules.tenancy.application.commands.controller_policy_adoption import (
     ApplyControllerPolicyAdoption,
     ControllerPolicyAdoptionCommands,
@@ -35,6 +34,19 @@ from request_engine.platform.security.platform_http import require_platform_capa
 ROOT_ADMISSION = "organization.bootstrap"
 PLATFORM_ADOPTION = "platform.organization.adopt_initial_controller_policy"
 PLATFORM_READ = "platform.organization.read"
+
+
+def _adoption_idempotency_key(
+    value: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=250)],
+) -> str:
+    """Normalize this command family's key and reject whitespace-only values as 422."""
+    normalized = value.strip()
+    if not normalized:
+        raise ControllerPolicyAdoptionInvalid()
+    return normalized
+
+
+AdoptionIdempotencyKey = Annotated[str, Depends(_adoption_idempotency_key)]
 
 
 class ControllerPolicyAdoptionRequestBody(BaseModel):
@@ -127,7 +139,13 @@ class ControllerPolicyAdoptionReviewView(BaseModel):
     expires_at: datetime
     proposed_capabilities: tuple[str, ...]
     revoked_capabilities: tuple[str, ...]
-    can_apply: bool
+    capability_delta_is_non_revoking: bool = Field(
+        description=(
+            "True only when the proposed capability delta removes no current grants. "
+            "This is not apply eligibility: apply independently revalidates the active "
+            "controller binding, approver identity separation, consent, authority, and revisions."
+        )
+    )
 
 
 def add_controller_policy_adoption_tenant_routes(
@@ -139,7 +157,7 @@ def add_controller_policy_adoption_tenant_routes(
     async def request_adoption(
         body: ControllerPolicyAdoptionRequestBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
-        idempotency_key: IdempotencyKey,
+        idempotency_key: AdoptionIdempotencyKey,
         response: Response,
     ) -> ControllerPolicyAdoptionRequestView:
         # This historical capability is an admission requirement. The owner
@@ -169,7 +187,7 @@ def add_controller_policy_adoption_tenant_routes(
         request_id: UUID,
         body: ControllerPolicyAdoptionWithdrawBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
-        idempotency_key: IdempotencyKey,
+        idempotency_key: AdoptionIdempotencyKey,
         response: Response,
     ) -> ControllerPolicyAdoptionWithdrawView:
         require_capability(actor, ROOT_ADMISSION)
@@ -268,7 +286,7 @@ def add_controller_policy_adoption_platform_routes(
         request_id: UUID,
         body: ControllerPolicyAdoptionApplyBody,
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
-        idempotency_key: IdempotencyKey,
+        idempotency_key: AdoptionIdempotencyKey,
         response: Response,
     ) -> ControllerPolicyAdoptionAppliedView:
         require_platform_capability(actor, PLATFORM_ADOPTION)
@@ -359,7 +377,7 @@ def _review_view(row: ControllerPolicyAdoptionReview) -> ControllerPolicyAdoptio
         expires_at=row.request.expires_at,
         proposed_capabilities=row.proposed_capabilities,
         revoked_capabilities=row.revoked_capabilities,
-        can_apply=not row.revoked_capabilities,
+        capability_delta_is_non_revoking=not row.revoked_capabilities,
     )
 
 

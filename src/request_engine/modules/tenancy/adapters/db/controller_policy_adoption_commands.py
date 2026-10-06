@@ -74,7 +74,7 @@ def _require_platform_context(actor: PlatformActorContext) -> None:
 def _digests(key: str, capability: str, values: dict[str, object]) -> tuple[str, str]:
     normalized_key = key.strip()
     if not normalized_key:
-        raise ValueError("Idempotency-Key is required")
+        raise ControllerPolicyAdoptionInvalid()
     return (
         hashlib.sha256(normalized_key.encode("utf-8")).hexdigest(),
         command_fingerprint(capability, values),

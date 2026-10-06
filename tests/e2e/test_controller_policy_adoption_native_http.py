@@ -354,6 +354,24 @@ async def test_adoption_uses_real_native_http_auth_and_platform_control_composit
         assert review.json()["reason"] == "Reconcile legacy root permissions to the current policy"
         assert review.json()["proposed_capabilities"]
         assert review.json()["revoked_capabilities"] == []
+        assert review.json()["capability_delta_is_non_revoking"] is True
+        assert "can_apply" not in review.json()
+
+        same_identity_review = await control.get(
+            f"/v1/platform/controller-policy-adoptions/{request_id}",
+            headers={"Authorization": f"Bearer {same_identity_token}"},
+        )
+        assert same_identity_review.status_code == 200, same_identity_review.text
+        assert same_identity_review.json()["capability_delta_is_non_revoking"] is True
+        assert same_identity_apply.status_code == 403
+        assert same_identity_apply.json()["error"]["code"] == "controller_policy_adoption_forbidden"
+
+        review_schema = control_app.openapi()["components"]["schemas"][
+            "ControllerPolicyAdoptionReviewView"
+        ]["properties"]
+        assert "can_apply" not in review_schema
+        description = review_schema["capability_delta_is_non_revoking"]["description"]
+        assert "not apply eligibility" in description
         applied = await control.post(
             f"/v1/platform/controller-policy-adoptions/{request_id}:apply",
             headers={**owner_headers, "Idempotency-Key": f"valid-apply:{uuid4().hex}"},

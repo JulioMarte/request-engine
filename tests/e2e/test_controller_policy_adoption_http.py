@@ -19,6 +19,12 @@ from request_engine.modules.tenancy.api.controller_policy_adoption_routes import
     add_controller_policy_adoption_platform_routes,
     add_controller_policy_adoption_tenant_routes,
 )
+from request_engine.modules.tenancy.application.commands.controller_policy_adoption import (
+    ApplyControllerPolicyAdoption,
+    ControllerPolicyAdoptionInvalid,
+    RequestControllerPolicyAdoption,
+    WithdrawControllerPolicyAdoption,
+)
 from request_engine.platform.db.session import SessionFactory, actor_transaction
 from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.context import ActorContext
@@ -279,6 +285,24 @@ async def test_legacy_policy_adoption_http_journey_and_readiness(
             transport=ASGITransport(app=platform_app), base_url="http://platform"
         ) as platform,
     ):
+        invalid_create = await tenant.post(
+            "/v1/controller-policy-adoptions",
+            headers={"Idempotency-Key": "   "},
+            json={"expected_authority_revision": root_revision, "reason": "legacy policy adoption"},
+        )
+        assert invalid_create.status_code == 422, invalid_create.text
+        assert invalid_create.json()["error"]["code"] == "controller_policy_adoption_invalid"
+
+        with pytest.raises(ControllerPolicyAdoptionInvalid):
+            await commands.request_adoption(
+                root_actor,
+                RequestControllerPolicyAdoption(
+                    expected_authority_revision=root_revision,
+                    reason="legacy policy adoption",
+                    idempotency_key="   ",
+                ),
+            )
+
         headers = {"Idempotency-Key": f"consent-{uuid4().hex}"}
         consent = await tenant.post(
             "/v1/controller-policy-adoptions",
@@ -294,6 +318,44 @@ async def test_legacy_policy_adoption_http_journey_and_readiness(
         assert detail.status_code == 200, detail.text
         assert detail.json()["status"] == "pending"
         assert detail.json()["added_capabilities"] == []
+
+        invalid_withdraw = await tenant.post(
+            f"/v1/controller-policy-adoptions/{request_id}:withdraw",
+            headers={"Idempotency-Key": "   "},
+            json={"expected_request_revision": request_revision},
+        )
+        assert invalid_withdraw.status_code == 422, invalid_withdraw.text
+        assert invalid_withdraw.json()["error"]["code"] == "controller_policy_adoption_invalid"
+        with pytest.raises(ControllerPolicyAdoptionInvalid):
+            await commands.withdraw_adoption(
+                root_actor,
+                WithdrawControllerPolicyAdoption(
+                    request_id=UUID(request_id),
+                    expected_request_revision=request_revision,
+                    idempotency_key="   ",
+                ),
+            )
+
+        invalid_apply = await platform.post(
+            f"/v1/platform/controller-policy-adoptions/{request_id}:apply",
+            headers={"Idempotency-Key": "   "},
+            json={"expected_request_revision": request_revision},
+        )
+        assert invalid_apply.status_code == 422, invalid_apply.text
+        assert invalid_apply.json()["error"]["code"] == "controller_policy_adoption_invalid"
+        with pytest.raises(ControllerPolicyAdoptionInvalid):
+            await commands.apply_adoption(
+                platform_ctx,
+                ApplyControllerPolicyAdoption(
+                    request_id=UUID(request_id),
+                    expected_request_revision=request_revision,
+                    idempotency_key="   ",
+                ),
+            )
+
+        still_pending = await tenant.get(f"/v1/controller-policy-adoptions/{request_id}")
+        assert still_pending.status_code == 200
+        assert still_pending.json()["status"] == "pending"
 
         pending = await platform.get("/v1/platform/controller-policy-adoptions?limit=10")
         assert pending.status_code == 200, pending.text

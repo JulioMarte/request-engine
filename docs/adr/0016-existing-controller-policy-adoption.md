@@ -119,7 +119,7 @@ Do not substitute direct SQL grants or data reset.
 | Business owner | Tenancy |
 | Resource | `controller-policy-adoption` durable request plus explicit apply Command |
 | HTTP | POST `/v1/controller-policy-adoptions`; GET `/v1/controller-policy-adoptions/{id}`; POST `/v1/controller-policy-adoptions/{id}:withdraw`; GET `/v1/platform/controller-policy-adoptions`; POST `/v1/platform/controller-policy-adoptions/{id}:apply` |
-| Stable operation IDs | `controller_policy_adoption_request_create`; `controller_policy_adoption_request_get`; `controller_policy_adoption_request_withdraw`; `platform_controller_policy_adoption_list`; `platform_controller_policy_adoption_apply` |
+| Stable operation IDs | `controller_policy_adoption_request_create`; `controller_policy_adoption_request_get`; `controller_policy_adoption_request_withdraw`; `platform_controller_policy_adoption_list`; `platform_controller_policy_adoption_review`; `platform_controller_policy_adoption_apply` |
 | Capabilities | Tenant consent/get/withdraw require `organization.bootstrap` and exact root relation; platform list requires `platform.organization.read`; apply requires the dedicated adoption capability and exact current platform authority |
 | Idempotency | Required per actor/semantic operation; current authority rechecked before every receipt |
 | Concurrency | Explicit expected tenant authority revision and consent/adoption revision; one apply winner |
@@ -158,11 +158,22 @@ organizations use the reviewed v6 default. Existing v1-v5 organizations may opt 
 through the dual-consent API; no legacy organization changes until its original
 root consents and a separately authorized platform HUMAN applies the request.
 The code/schema journey is implemented. Targeted adversarial PostgreSQL 18.6
-proofs pass locally, including both apply/withdrawal orderings, but production
-verification still requires exact-head CI and publication certification.
-Apply/apply, apply-versus-authority-revocation and concurrent platform capability
-revocation remain explicit proof gaps. This is not a reason to seed SQL or reset
-tenant data.
+proofs cover both apply/withdrawal orderings, both orders of apply against the
+supported platform-owner lifecycle revocation, and apply/apply with both
+same-key replay and different-key conflict semantics. These local proofs do not
+replace exact-head CI and publication certification. Direct concurrent mutation
+of a single platform capability is not a supported public command and is not
+covered; do not claim it is safe based on the owner lifecycle proof. Races against
+tenant-controller suspension/recovery and other grant lifecycle changes remain
+separate proof obligations. This is not a reason to seed SQL or reset tenant data.
+
+The platform review projection reports `capability_delta_is_non_revoking` only
+to summarize whether the proposed grant delta removes current grants. It is not
+an eligibility/readiness signal: the authoritative apply command still validates
+the active original controller binding and rejects an approver whose native
+identity matches that controller, among other live authority and consent checks.
+Clients must call apply and handle its typed conflict/forbidden response rather
+than treating the review as a reservation or authorization decision.
 
 The platform would gain a narrow ongoing role in tenant bootstrap governance.
 Dual consent limits unilateral escalation but does not remove that authority
@@ -193,12 +204,15 @@ cannot claim real two-person control merely by creating two identities.
   consent, wrong source transition or same bound identity rejects with no effects.
 - No arbitrary target, caller-supplied manifest, cross-tenant graft, workload actor,
   platform-as-tenant masquerade or operational grant to the platform participant.
-- Independently synchronized apply/apply, apply/consent-revoke, apply/grant-revoke,
+- Independently synchronized apply/apply (same-key replay and different-key
+  conflict), apply/consent-revoke, apply/grant-revoke,
   apply/native-disable/recovery and platform-capability-revocation races; exactly
   one committed fact/receipt/audit and no revival on replay after authority
-  withdrawal. Current proof covers both withdrawal/apply lock orderings;
-  apply/apply, apply-versus-authority-revocation and platform-capability-
-  revocation races remain outstanding.
+  withdrawal. Current proofs cover both withdrawal/apply lock orderings, both
+  platform-owner lifecycle-revocation lock orderings, and same-key replay plus
+  different-key conflict for apply/apply. Tenant-controller suspension/recovery
+  and other grant lifecycle races remain outstanding. Direct single-capability
+  revocation is outside the supported public lifecycle API and is not covered.
 - Runtime group/definer ACLs, RLS/foreign-row opacity, migration clean install and
   multi-database compatibility; current-product and exact-head CI evidence.
 - Manual administrator journey shows old policy, requested delta, both consent
