@@ -57,6 +57,7 @@ _GATED_DML_WRITERS: dict[tuple[str, str], str] = {
     ("request_engine", "transition_staff_membership"): _GATE_SHARE,
     ("request_engine", "upgrade_controller_policy"): _GATE_SHARE,
     ("request_platform", "establish_root"): _GATE_EXCLUSIVE,
+    ("request_platform", "apply_controller_policy_adoption"): _GATE_SHARE,
     ("request_platform", "finalize_instance_claim"): _GATE_EXCLUSIVE,
     ("request_platform", "provision_native_organization_root"): _GATE_SHARE,
     ("request_platform", "provision_native_platform_owner"): _GATE_SHARE,
@@ -126,6 +127,7 @@ _WRITER_CALLS: tuple[tuple[str, int], ...] = (
     ("request_engine.transition_staff_membership", 4),
     ("request_engine.upgrade_controller_policy", 5),
     ("request_platform.establish_root", 9),
+    ("request_platform.apply_controller_policy_adoption", 4),
     ("request_platform.finalize_instance_claim", 6),
     ("request_platform.provision_native_organization_root", 8),
     ("request_platform.provision_native_platform_owner", 7),
@@ -146,7 +148,12 @@ _CONTROL_CAPABILITIES = (
 def _first_statement(prosrc: str) -> str:
     begin_match = _BEGIN_LINE.search(prosrc)
     assert begin_match is not None
-    return prosrc[begin_match.end() :].lstrip().split(";", 1)[0].strip()
+    body_lines = prosrc[begin_match.end() :].splitlines()
+    executable_lines = [
+        line for line in body_lines if line.strip() and not line.lstrip().startswith("--")
+    ]
+    assert executable_lines
+    return "\n".join(executable_lines).split(";", 1)[0].strip()
 
 
 def _backend_pid(conn: PgConnection) -> int:

@@ -19,11 +19,12 @@ the shared source for admin/tool discoverability; visibility never grants access
 New platform owners created by the governed owner-provisioning command use the
 immutable `platform-owner-v5` manifest: exact v4 authority plus the
 nondelegable `platform.organization.adopt_initial_controller_policy` capability.
-This grant is reserved for a future consent-bound policy-adoption Command and is
-not runtime-available yet. First-claim v1 and already-provisioned owners are not
-changed by this default evolution; see ADR 0016 for the remaining legacy-owner
-reachability gap. Owner provisioning remains subject to current HUMAN authority,
-strong recent authentication and the existing invitation/readiness checks.
+This grant is consumed only by the implemented, dual-consent legacy controller
+policy-adoption API described in ADR 0016. First-claim v1 and previously
+provisioned owners are not rewritten or backfilled; a v1 owner can use the normal
+invitation ceremony to add a distinct v5 operator if the adoption is needed.
+Owner provisioning remains subject to current HUMAN authority, strong recent
+authentication and the existing invitation/readiness checks.
 
 Owner reads project principal state, current authority revision, binding status
 and capabilities. Invitation reads project lifecycle revision/timestamps and

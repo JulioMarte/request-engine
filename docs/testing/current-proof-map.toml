@@ -38,6 +38,11 @@ path = "tests/db/test_platform_provisioner_lifecycle.py"
 evidence = ["invariant", "adversarial", "security"]
 
 [[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-ADOPTION-001"
+path = "tests/db/test_controller_policy_adoption_provenance.py"
+evidence = ["invariant", "adversarial", "security", "provenance"]
+
+[[proofs]]
 guarantee = "INV-PLATFORM-LIFECYCLE-001"
 path = "tests/db/test_platform_provisioner_lifecycle.py"
 evidence = ["invariant", "adversarial", "security"]

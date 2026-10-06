@@ -124,6 +124,11 @@ def test_i01_every_tenant_owned_foreign_key_is_organization_bound(
             "principal_authority_grants_revoked_by_principal_id_fkey",
             "principals",
         ),
+        (
+            "controller_policy_adoption_facts",
+            "controller_policy_adoption_fact_approver_fk",
+            "principals",
+        ),
     }
     guarded = admin_conn.execute(
         """

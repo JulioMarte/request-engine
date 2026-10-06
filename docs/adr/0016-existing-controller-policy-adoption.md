@@ -1,6 +1,6 @@
 # 0016 — Explicit adoption of a newer policy by an existing tenant controller
 
-Status: Accepted — implementation in progress
+Status: Accepted — implementation present; exact-head production verification in progress
 Date: 2026-10-04
 Owner: Tenancy
 
@@ -38,11 +38,14 @@ currently authorized HUMAN platform owner may apply a policy delta only after th
 active original tenant controller has independently consented. This remains a
 Tenancy owner operation, not a parallel SQL/admin path, an exception inside staff
 delegation, or an automatic grant migration. The API and durable facts are
-implemented in migrations 0027/0029 and the Tenancy owner surface. Exact
-PostgreSQL HTTP, replay, RLS/least-privilege, revoked-grant, and deterministic
-apply-versus-withdraw race proofs remain required before this decision may be
-described as production-verified. Exact-head CI/publication evidence remains
-separate and outstanding until recorded.
+implemented in migrations 0027/0029 and the Tenancy owner surface. Migrations
+0030–0032 add tenant-scoped identity/binding foreign keys, reject a tenant
+principal used as platform approver, and narrow SECURITY DEFINER functions to
+reviewed column-level access. Isolated PostgreSQL 18.6 evidence currently covers
+the HTTP/native-auth journeys, replay, RLS/least-privilege, revoked grants, tenant
+FK scope and the withdrawal-wins apply race. The inverse apply-wins race and
+races against platform capability revocation are not proven. Exact-head
+CI/publication evidence remains outstanding until recorded.
 
 ### Recommended boundaries
 
@@ -89,8 +92,9 @@ nondelegable `platform.organization.adopt_initial_controller_policy` capability,
 changes the shared platform-owner provisioning selector so future provisioned
 owners (including invitation activation) receive v5, and evolves the provisioning-
 fact policy constraint to continue accepting historic v2 facts plus new v5 facts.
-It does not rewrite existing facts or implement the tenant-consent or platform-
-apply journeys described below.
+Migrations 0027–0032 now implement the tenant-consent and platform-apply
+journeys, harden their tenant references and column ACLs, and add database
+proofs for those boundaries. These migrations do not rewrite existing facts.
 
 The original first-claim owner remains `platform-owner-v1`; existing principals,
 grants, revisions and provisioning facts are not backfilled or rewritten. Thus the
@@ -98,8 +102,7 @@ new apply capability is held only by owners created after this migration. The v1
 root's existing `platform.owner.provision` authority can use the normal invitation
 ceremony to activate a distinct new v5 owner, which closes capability reachability
 without a grant backfill or self-upgrade. The v1 root itself cannot apply or
-self-upgrade. This safe handoff depends on the existing owner invitation ceremony;
-it is not a substitute for the still-unimplemented tenant-consent/apply APIs below.
+self-upgrade. This safe handoff depends on the existing owner invitation ceremony.
 Do not substitute direct SQL grants or data reset.
 
 ### Implemented operation contract
@@ -147,9 +150,11 @@ The ordinary tenant policy-upgrade/delegation guarantees remain unchanged. New
 organizations use the reviewed v6 default. Existing v1-v5 organizations may opt in
 through the dual-consent API; no legacy organization changes until its original
 root consents and a separately authorized platform HUMAN applies the request.
-The code/schema journey is implemented, but it is not production-verified until
-the listed adversarial, concurrency and exact-head publication proofs pass. This
-is not a reason to seed SQL or reset tenant data.
+The code/schema journey is implemented. Targeted adversarial PostgreSQL 18.6
+proofs pass locally, but production verification still requires exact-head CI
+and publication certification. The apply-wins and concurrent platform
+capability-revocation races remain explicit proof gaps. This is not a reason to
+seed SQL or reset tenant data.
 
 The platform would gain a narrow ongoing role in tenant bootstrap governance.
 Dual consent limits unilateral escalation but does not remove that authority
@@ -170,7 +175,7 @@ cannot claim real two-person control merely by creating two identities.
 
 ## Required falsification evidence before acceptance/completion
 
-- Real HTTP, native authentication and PostgreSQL 18 journey from an existing v3
+- Real HTTP, native authentication and PostgreSQL 18 journey from existing v1-v5
   root, without manually seeded authority or expected-effect rows.
 - Ordinary upgrade still rejects self-target, missing upgrade capability,
   nondelegable/outside-ceiling capabilities, revoked restoration and foreign target.
@@ -180,9 +185,11 @@ cannot claim real two-person control merely by creating two identities.
   consent, wrong source transition or same bound identity rejects with no effects.
 - No arbitrary target, caller-supplied manifest, cross-tenant graft, workload actor,
   platform-as-tenant masquerade or operational grant to the platform participant.
-- Independently synchronized apply/apply, apply/consent-revoke, apply/grant-revoke
-  and apply/native-disable/recovery races; exactly one committed fact/receipt/audit
-  and no revival on replay after authority withdrawal.
+- Independently synchronized apply/apply, apply/consent-revoke, apply/grant-revoke,
+  apply/native-disable/recovery and platform-capability-revocation races; exactly
+  one committed fact/receipt/audit and no revival on replay after authority
+  withdrawal. Current proof covers the withdrawal-wins apply race; inverse
+  apply-wins and platform-capability-revocation races remain outstanding.
 - Runtime group/definer ACLs, RLS/foreign-row opacity, migration clean install and
   multi-database compatibility; current-product and exact-head CI evidence.
 - Manual administrator journey shows old policy, requested delta, both consent

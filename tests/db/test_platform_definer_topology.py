@@ -42,6 +42,18 @@ _EXPECTED_COLUMN_PRIVILEGES = {
     ("identity_bindings", "status", "SELECT"),
     ("identity_bindings", "revision", "SELECT"),
     ("principal_authority_grants", "authority_plane", "SELECT"),
+    # Adoption list routine needs only a bounded, non-secret projection; these
+    # are granted as individual columns by 0027.
+    ("controller_policy_adoption_requests", "id", "SELECT"),
+    ("controller_policy_adoption_requests", "organization_id", "SELECT"),
+    ("controller_policy_adoption_requests", "controller_principal_id", "SELECT"),
+    ("controller_policy_adoption_requests", "source_policy_key", "SELECT"),
+    ("controller_policy_adoption_requests", "target_policy_key", "SELECT"),
+    ("controller_policy_adoption_requests", "expected_authority_revision", "SELECT"),
+    ("controller_policy_adoption_requests", "status", "SELECT"),
+    ("controller_policy_adoption_requests", "revision", "SELECT"),
+    ("controller_policy_adoption_requests", "created_at", "SELECT"),
+    ("controller_policy_adoption_requests", "expires_at", "SELECT"),
     ("principal_authority_grants", "capability_key", "SELECT"),
     ("principal_authority_grants", "delegable", "SELECT"),
     ("principal_authority_grants", "granted_at", "SELECT"),
@@ -254,6 +266,13 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
             "p_id uuid, p_digest text",
             True,
             ["search_path=pg_catalog, request_engine, pg_temp"],
+        ),
+        (
+            "request_platform",
+            "list_controller_policy_adoptions",
+            "p_after uuid, p_limit integer, p_request_id uuid",
+            True,
+            ["search_path=pg_catalog, request_engine, request_platform, pg_temp"],
         ),
         (
             "request_platform",
