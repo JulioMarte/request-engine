@@ -119,6 +119,9 @@ definer roles. An unavailable database or unsafe role prevents startup.
 Startup also requires the configured authority to exist with `kind=native` and
 `status=active`. A missing migration/read boundary fails startup; the runtime
 does not create authorities, apply migrations or fall back to another provider.
+Discoverable WebAuthn finalization is restricted to this same configured authority
+under the authority lock. A second active native authority in the database is not
+implicitly trusted when `login_handle` is omitted.
 
 `GET /health/live` reports process liveness. `GET /health/ready` performs a bounded
 database query that checks the configured native authority and returns 503 without

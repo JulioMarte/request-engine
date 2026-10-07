@@ -11,7 +11,7 @@ import hashlib
 import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -69,9 +69,12 @@ class SoftwareAuthenticator:
         user_verified: bool = True,
     ) -> dict[str, Any]:
         if user_handle is None and public_key is not None:
-            user = public_key.get("user")
-            if isinstance(user, Mapping) and isinstance(user.get("id"), str):
-                user_handle = websafe_decode(user["id"])
+            user_value = cast(Any, public_key.get("user"))
+            if isinstance(user_value, Mapping):
+                user = cast(Mapping[str, Any], user_value)
+                user_id = user.get("id")
+                if isinstance(user_id, str):
+                    user_handle = websafe_decode(user_id)
         if user_handle is None:
             raise ValueError("registration must use the user id from server-issued options")
         if not 16 <= len(user_handle) <= 64:

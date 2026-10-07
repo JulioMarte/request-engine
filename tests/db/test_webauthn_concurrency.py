@@ -7,6 +7,7 @@ partial consequence, fail-closed against revocation/disable.
 
 import secrets
 import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, LiteralString
@@ -37,6 +38,10 @@ _FINALIZE_AUTHENTICATION: LiteralString = (
 )
 _FINALIZE_STEP_UP: LiteralString = (
     "SELECT request_auth.finalize_webauthn_step_up(%s, %s, %s, %s, %s, %s, %s)"
+)
+_FINALIZE_DISCOVERABLE: LiteralString = (
+    "SELECT native_identity_id FROM request_auth.finalize_discoverable_webauthn_authentication("
+    "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
 )
 
 
@@ -94,9 +99,16 @@ def _world(admin_conn: PgConnection) -> tuple[UUID, UUID, bytes]:
     )
     admin_conn.execute(
         "INSERT INTO request_engine.webauthn_credentials "
-        "(id, native_identity_id, credential_id, public_key, aaguid) "
-        "VALUES (%s, %s, %s, %s, %s)",
-        (uuid4(), identity_id, credential_id, secrets.token_bytes(77), "00" * 16),
+        "(id, native_identity_id, credential_id, public_key, aaguid, user_handle) "
+        "VALUES (%s, %s, %s, %s, %s, %s)",
+        (
+            uuid4(),
+            identity_id,
+            credential_id,
+            secrets.token_bytes(77),
+            "00" * 16,
+            secrets.token_bytes(32),
+        ),
     )
     return authority_id, identity_id, credential_id
 
@@ -354,4 +366,78 @@ def test_step_up_racing_credential_revoke_does_not_deadlock(
         "SELECT count(*) FROM request_engine.native_sessions "
         "WHERE native_identity_id = %s AND status = 'active'",
         (identity_id,),
+    ).fetchone() == (0,)
+
+
+def test_discoverable_finalization_rechecks_expiry_after_identity_lock_wait(
+    admin_conn: PgConnection,
+    app_role_conn_factory: AppConnFactory,
+) -> None:
+    authority_id, identity_id, credential_id = _world(admin_conn)
+    row_id = _credential_row(admin_conn, credential_id)
+    handle_row = admin_conn.execute(
+        "SELECT user_handle FROM request_engine.webauthn_credentials WHERE id=%s", (row_id,)
+    ).fetchone()
+    assert handle_row is not None and handle_row[0] is not None
+    challenge_digest = secrets.token_bytes(32)
+    challenge_id = uuid4()
+    expiry = admin_conn.execute(
+        "INSERT INTO request_engine.webauthn_challenges "
+        "(id,purpose,challenge_digest,expires_at) "
+        "VALUES(%s,'authentication_discoverable',%s,clock_timestamp()+interval '1 second') "
+        "RETURNING expires_at",
+        (challenge_id, challenge_digest),
+    ).fetchone()
+    assert expiry is not None
+    token = issue_opaque_token()
+    args: tuple[object, ...] = (
+        challenge_digest,
+        row_id,
+        7,
+        False,
+        False,
+        True,
+        token.token_id,
+        token.digest,
+        token.fingerprint,
+        datetime.now(UTC) + timedelta(hours=1),
+        authority_id,
+        bytes(handle_row[0]),
+    )
+
+    admin_conn.execute("BEGIN")
+    admin_conn.execute(
+        "SELECT id FROM request_engine.native_identities WHERE id=%s FOR UPDATE",
+        (identity_id,),
+    )
+    blocker_pid = _backend_pid(admin_conn)
+    finalizer = _Contender(app_role_conn_factory(), _FINALIZE_DISCOVERABLE, args)
+    finalizer.start()
+    assert wait_for_lock_wait(admin_conn, finalizer.pid, blocker_pid=blocker_pid)
+
+    deadline = time.monotonic() + 10
+    while True:
+        expired = admin_conn.execute(
+            "SELECT clock_timestamp() >= expires_at FROM request_engine.webauthn_challenges "
+            "WHERE id=%s",
+            (challenge_id,),
+        ).fetchone()
+        assert expired is not None
+        if expired[0]:
+            break
+        assert time.monotonic() < deadline, "database challenge did not expire while blocked"
+        time.sleep(0.01)
+
+    admin_conn.execute("COMMIT")
+    assert finalizer.join()["result"] is None
+    assert admin_conn.execute(
+        "SELECT status,consumed_at FROM request_engine.webauthn_challenges WHERE id=%s",
+        (challenge_id,),
+    ).fetchone() == ("pending", None)
+    assert admin_conn.execute(
+        "SELECT sign_count,last_used_at FROM request_engine.webauthn_credentials WHERE id=%s",
+        (row_id,),
+    ).fetchone() == (0, None)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.native_sessions WHERE id=%s", (token.token_id,)
     ).fetchone() == (0,)

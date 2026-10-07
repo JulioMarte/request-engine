@@ -203,14 +203,15 @@ async def test_finalize_claims_instance_atomically(
         "WHERE native_identity_id = %s AND status = 'active'",
         (identity_id,),
     ).fetchone() == (1,)
-    assert admin_conn.execute(
+    credential_handles = admin_conn.execute(
         "SELECT credential.user_handle, pending.user_handle "
         "FROM request_engine.webauthn_credentials credential "
         "JOIN request_engine.setup_pending_webauthn_credential pending "
         "  ON pending.credential_id=credential.credential_id "
         "WHERE credential.native_identity_id=%s AND pending.setup_session_id=%s",
         (identity_id, setup_session_id),
-    ).fetchone()[0] is not None
+    ).fetchone()
+    assert credential_handles is not None and credential_handles[0] is not None
     assert admin_conn.execute(
         "SELECT credential.user_handle=pending.user_handle "
         "FROM request_engine.webauthn_credentials credential "
@@ -443,8 +444,14 @@ def test_concurrent_finalize_has_exactly_one_winner(
         "INSERT INTO request_engine.setup_pending_webauthn_credential "
         "(id, setup_session_id, credential_id, public_key, aaguid, user_handle) "
         "VALUES (%s, %s, %s, %s, %s, %s)",
-        (uuid4(), setup_session_id, secrets.token_bytes(32), secrets.token_bytes(77), "00" * 16,
-         secrets.token_bytes(32)),
+        (
+            uuid4(),
+            setup_session_id,
+            secrets.token_bytes(32),
+            secrets.token_bytes(77),
+            "00" * 16,
+            secrets.token_bytes(32),
+        ),
     )
     admin_conn.execute(
         "INSERT INTO request_engine.recovery_code_sets(id, setup_session_id) VALUES (%s, %s)",

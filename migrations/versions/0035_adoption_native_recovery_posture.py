@@ -3,17 +3,21 @@
 from alembic import op
 from sqlalchemy import text
 
-revision: str = "0035_adoption_native_recovery_posture"
-down_revision: str | None = "0034_webauthn_discoverable_binding"
+revision: str = "0035_adoption_recovery"
+down_revision: str | None = "0034_webauthn_binding"
 branch_labels: str | None = None
 depends_on: str | None = None
 
 
 def _function_definition(signature: str) -> str:
-    result = op.get_bind().execute(
-        text("SELECT pg_get_functiondef(CAST(:signature AS regprocedure))"),
-        {"signature": signature},
-    ).scalar_one()
+    result = (
+        op.get_bind()
+        .execute(
+            text("SELECT pg_get_functiondef(CAST(:signature AS regprocedure))"),
+            {"signature": signature},
+        )
+        .scalar_one()
+    )
     return str(result)
 
 
@@ -21,7 +25,7 @@ def _replace_function_text(signature: str, old: str, new: str) -> None:
     definition = _function_definition(signature)
     if old not in definition:
         raise RuntimeError(f"Migration anchor missing in {signature}")
-    op.get_bind().exec_driver_sql(definition.replace(old, new, 1))
+    op.get_bind().exec_driver_sql(definition.replace(old, new, 1).replace("%", "%%"))
 
 
 def upgrade() -> None:
@@ -144,33 +148,35 @@ def upgrade() -> None:
     )
     _replace_function_text(
         request_signature,
-        "             END IF;\n"
-        "             IF p_expected_authority_revision IS NULL OR p_expected_authority_revision<1",
-        "             END IF;\n"
-        "             SELECT binding.identity_authority_id,binding.subject_id\n"
-        "               INTO v_identity_authority_id,v_identity_subject\n"
-        "               FROM request_engine.identity_bindings binding\n"
-        "              WHERE binding.id=p_binding_id AND binding.principal_id=v_actor\n"
-        "                AND binding.organization_id=v_org AND binding.status='active';\n"
-        "             IF v_identity_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN\n"
-        "                 RAISE EXCEPTION 'Active bound native controller is required'\n"
-        "                     USING ERRCODE='42501';\n"
-        "             END IF;\n"
-        "             v_native_identity_id:=v_identity_subject::uuid;\n"
-        "             SELECT posture.identity_authority_id,posture.identity_status,\n"
-        "                    posture.recovery_state,posture.recovery_epoch\n"
-        "               INTO v_locked_authority_id,v_identity_status,\n"
-        "                    v_recovery_state,v_recovery_epoch\n"
-        "               FROM request_auth.lock_native_identity_recovery_postures(\n"
-        "                   ARRAY[v_native_identity_id]) posture\n"
-        "              WHERE posture.native_identity_id=v_native_identity_id\n"
-        "                AND posture.identity_status='active';\n"
-        "             IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM v_identity_authority_id\n"
-        "                OR v_identity_status<>'active' OR v_recovery_state<>'normal' THEN\n"
-        "                 RAISE EXCEPTION 'Recovery-restricted controller cannot consent'\n"
-        "                     USING ERRCODE='42501';\n"
-        "             END IF;\n"
-        "             IF p_expected_authority_revision IS NULL OR p_expected_authority_revision<1",
+        "END IF;\n"
+        "            IF p_expected_authority_revision IS NULL OR p_expected_authority_revision<1",
+        "END IF;\n"
+        "            SELECT binding.identity_authority_id,binding.subject_id\n"
+        "              INTO v_identity_authority_id,v_identity_subject\n"
+        "              FROM request_engine.identity_bindings binding\n"
+        "             WHERE binding.id=p_binding_id AND binding.principal_id=v_actor\n"
+        "               AND binding.organization_id=v_org AND binding.status='active';\n"
+        "            IF v_identity_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-"
+        "[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN\n"
+        "                RAISE EXCEPTION 'Active bound native controller is required'\n"
+        "                    USING ERRCODE='42501';\n"
+        "            END IF;\n"
+        "            v_native_identity_id:=v_identity_subject::uuid;\n"
+        "            SELECT posture.identity_authority_id,posture.identity_status,\n"
+        "                   posture.recovery_state,posture.recovery_epoch\n"
+        "              INTO v_locked_authority_id,v_identity_status,\n"
+        "                   v_recovery_state,v_recovery_epoch\n"
+        "              FROM request_auth.lock_native_identity_recovery_postures(\n"
+        "                  ARRAY[v_native_identity_id]) posture\n"
+        "             WHERE posture.native_identity_id=v_native_identity_id\n"
+        "               AND posture.identity_status='active';\n"
+        "            IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM "
+        "v_identity_authority_id\n"
+        "               OR v_identity_status<>'active' OR v_recovery_state<>'normal' THEN\n"
+        "                RAISE EXCEPTION 'Recovery-restricted controller cannot consent'\n"
+        "                    USING ERRCODE='42501';\n"
+        "            END IF;\n"
+        "            IF p_expected_authority_revision IS NULL OR p_expected_authority_revision<1",
     )
     _replace_function_text(
         request_signature,
@@ -183,19 +189,16 @@ def upgrade() -> None:
     )
     _replace_function_text(
         request_signature,
-        "idempotency_key_digest,intent_digest,correlation_id,expires_at)\n"
-        "             VALUES(v_id,v_org,v_actor,p_binding_id,v_policy,'tenant-controller-v6',v_revision,\n"
-        "                 btrim(p_reason),p_key_digest,p_intent_digest,p_correlation_id,v_expiry);",
-        "idempotency_key_digest,intent_digest,correlation_id,expires_at,\n"
-        "                controller_native_identity_id,controller_recovery_epoch)\n"
-        "             VALUES(v_id,v_org,v_actor,p_binding_id,v_policy,'tenant-controller-v6',v_revision,\n"
-        "                 btrim(p_reason),p_key_digest,p_intent_digest,p_correlation_id,v_expiry,\n"
-        "                 v_native_identity_id,v_recovery_epoch);",
+        "correlation_id,expires_at)",
+        "correlation_id,expires_at,controller_native_identity_id,controller_recovery_epoch)",
+    )
+    _replace_function_text(
+        request_signature,
+        "p_intent_digest,p_correlation_id,v_expiry);",
+        "p_intent_digest,p_correlation_id,v_expiry,v_native_identity_id,v_recovery_epoch);",
     )
 
-    apply_signature = (
-        "request_platform.apply_controller_policy_adoption(uuid,bigint,text,text)"
-    )
+    apply_signature = "request_platform.apply_controller_policy_adoption(uuid,bigint,text,text)"
     _replace_function_text(
         apply_signature,
         "v_request record;\n            v_replay record;",
@@ -219,118 +222,101 @@ def upgrade() -> None:
     )
     _replace_function_text(
         apply_signature,
-        "                 RETURN QUERY SELECT v_replay.id,v_replay.request_id,v_replay.organization_id,",
-        "                 v_actor_binding:=NULLIF(current_setting(\n"
-        "                     'request_engine.identity_binding_id',true),'')::uuid;\n"
-        "                 SELECT b.identity_authority_id,b.subject_id\n"
-        "                   INTO v_actor_authority,v_actor_subject\n"
-        "                   FROM request_engine.identity_bindings b\n"
-        "                  WHERE b.id=v_actor_binding AND b.principal_id=v_actor\n"
-        "                    AND b.principal_plane='platform' AND b.organization_id IS NULL\n"
-        "                    AND b.status='active' FOR SHARE;\n"
-        "                 IF NOT FOUND THEN\n"
-        "                     RAISE EXCEPTION 'Bound active Platform identity is required'\n"
-        "                         USING ERRCODE='42501';\n"
-        "                 END IF;\n"
-        "                 IF v_actor_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN\n"
-        "                     RAISE EXCEPTION 'Active native Platform identity is required'\n"
-        "                         USING ERRCODE='42501';\n"
-        "                 END IF;\n"
-        "                 v_actor_native_identity_id:=v_actor_subject::uuid;\n"
-        "                 SELECT posture.identity_authority_id,posture.identity_status,\n"
-        "                        posture.recovery_state\n"
-        "                   INTO v_locked_authority_id,v_identity_status,v_actor_recovery_state\n"
-        "                   FROM request_auth.lock_native_identity_recovery_postures(\n"
-        "                       ARRAY[v_actor_native_identity_id]) posture\n"
-        "                  WHERE posture.native_identity_id=v_actor_native_identity_id\n"
-        "                    AND posture.identity_status='active';\n"
-        "                 IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM v_actor_authority\n"
-        "                    OR v_identity_status<>'active' OR v_actor_recovery_state<>'normal' THEN\n"
-        "                     RAISE EXCEPTION 'Recovery-restricted approver cannot replay adoption'\n"
-        "                         USING ERRCODE='42501';\n"
-        "                 END IF;\n"
-        "                 RETURN QUERY SELECT v_replay.id,v_replay.request_id,v_replay.organization_id,",
+        "RETURN QUERY SELECT v_replay.id,v_replay.request_id,v_replay.organization_id,",
+        "v_actor_binding:=NULLIF(current_setting(\n"
+        "    'request_engine.identity_binding_id',true),'')::uuid;\n"
+        "SELECT b.identity_authority_id,b.subject_id\n"
+        "  INTO v_actor_authority,v_actor_subject\n"
+        "  FROM request_engine.identity_bindings b\n"
+        " WHERE b.id=v_actor_binding AND b.principal_id=v_actor\n"
+        "   AND b.principal_plane='platform' AND b.organization_id IS NULL\n"
+        "   AND b.status='active' FOR SHARE;\n"
+        "IF NOT FOUND THEN\n"
+        "    RAISE EXCEPTION 'Bound active Platform identity is required'\n"
+        "        USING ERRCODE='42501';\n"
+        "END IF;\n"
+        "IF v_actor_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-"
+        "[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN\n"
+        "    RAISE EXCEPTION 'Active native Platform identity is required'\n"
+        "        USING ERRCODE='42501';\n"
+        "END IF;\n"
+        "v_actor_native_identity_id:=v_actor_subject::uuid;\n"
+        "SELECT posture.identity_authority_id,posture.identity_status,posture.recovery_state\n"
+        "  INTO v_locked_authority_id,v_identity_status,v_actor_recovery_state\n"
+        "  FROM request_auth.lock_native_identity_recovery_postures(\n"
+        "      ARRAY[v_actor_native_identity_id]) posture\n"
+        " WHERE posture.native_identity_id=v_actor_native_identity_id\n"
+        "   AND posture.identity_status='active';\n"
+        "IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM v_actor_authority\n"
+        "   OR v_identity_status<>'active' OR v_actor_recovery_state<>'normal' THEN\n"
+        "    RAISE EXCEPTION 'Recovery-restricted approver cannot replay adoption'\n"
+        "        USING ERRCODE='42501';\n"
+        "END IF;\n"
+        "RETURN QUERY SELECT v_replay.id,v_replay.request_id,v_replay.organization_id,",
     )
     _replace_function_text(
         apply_signature,
-        "             IF NOT EXISTS(SELECT 1 FROM request_engine.identity_bindings b\n"
-        "                  JOIN request_engine.principals p ON p.id=b.principal_id\n"
-        "                 WHERE b.id=v_binding AND b.organization_id=v_org AND b.principal_id=v_root\n"
-        "                   AND b.principal_plane='tenant' AND b.status='active'\n"
-        "                   AND p.organization_id=v_org AND p.principal_plane='tenant'\n"
-        "                   AND p.principal_kind='human' AND p.active) THEN",
-        "             IF v_root_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'\n"
-        "                OR v_actor_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN\n"
-        "                 RAISE EXCEPTION 'Bound native identity reference is invalid'\n"
-        "                     USING ERRCODE='42501';\n"
-        "             END IF;\n"
-        "             v_root_native_identity_id:=v_root_subject::uuid;\n"
-        "             v_actor_native_identity_id:=v_actor_subject::uuid;\n"
-        "             IF v_root_native_identity_id IS NULL OR v_actor_native_identity_id IS NULL\n"
-        "                OR v_request.controller_native_identity_id IS DISTINCT FROM\n"
-        "                   v_root_native_identity_id THEN\n"
-        "                 RAISE EXCEPTION 'Controller native consent provenance changed'\n"
-        "                     USING ERRCODE='P0010';\n"
-        "             END IF;\n"
-        "             SELECT count(*)::integer INTO v_posture_count\n"
-        "               FROM request_auth.lock_native_identity_recovery_postures(\n"
-        "                   ARRAY[v_root_native_identity_id,v_actor_native_identity_id]);\n"
-        "             IF v_posture_count<>(CASE WHEN v_root_native_identity_id=v_actor_native_identity_id\n"
-        "                                       THEN 1 ELSE 2 END) THEN\n"
-        "                 RAISE EXCEPTION 'Active native consent and approver identities are required'\n"
-        "                     USING ERRCODE='42501';\n"
-        "             END IF;\n"
-        "             SELECT posture.identity_authority_id,posture.identity_status,\n"
-        "                    posture.recovery_state,posture.recovery_epoch\n"
-        "               INTO v_locked_authority_id,v_identity_status,\n"
-        "                    v_root_recovery_state,v_root_recovery_epoch\n"
-        "               FROM request_auth.lock_native_identity_recovery_postures(\n"
-        "                   ARRAY[v_root_native_identity_id,v_actor_native_identity_id]) posture\n"
-        "              WHERE posture.native_identity_id=v_root_native_identity_id\n"
-        "                AND posture.identity_status='active';\n"
-        "             IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM v_root_authority\n"
-        "                OR v_identity_status<>'active' OR v_root_recovery_state<>'normal'\n"
-        "                OR v_root_recovery_epoch IS DISTINCT FROM v_request.controller_recovery_epoch\n"
-        "             THEN RAISE EXCEPTION 'Controller recovery invalidated consent'\n"
-        "                 USING ERRCODE='P0010'; END IF;\n"
-        "             SELECT posture.identity_authority_id,posture.identity_status,\n"
-        "                    posture.recovery_state,posture.recovery_epoch\n"
-        "               INTO v_locked_authority_id,v_identity_status,\n"
-        "                    v_actor_recovery_state,v_actor_recovery_epoch\n"
-        "               FROM request_auth.lock_native_identity_recovery_postures(\n"
-        "                   ARRAY[v_root_native_identity_id,v_actor_native_identity_id]) posture\n"
-        "              WHERE posture.native_identity_id=v_actor_native_identity_id\n"
-        "                AND posture.identity_status='active';\n"
-        "             IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM v_actor_authority\n"
-        "                OR v_identity_status<>'active' OR v_actor_recovery_state<>'normal' THEN\n"
-        "                 RAISE EXCEPTION 'Recovery-restricted approver cannot apply adoption'\n"
-        "                     USING ERRCODE='42501';\n"
-        "             END IF;\n"
-        "             IF NOT EXISTS(SELECT 1 FROM request_engine.identity_bindings b\n"
-        "                  JOIN request_engine.principals p ON p.id=b.principal_id\n"
-        "                 WHERE b.id=v_binding AND b.organization_id=v_org AND b.principal_id=v_root\n"
-        "                   AND b.principal_plane='tenant' AND b.status='active'\n"
-        "                   AND p.organization_id=v_org AND p.principal_plane='tenant'\n"
-        "                   AND p.principal_kind='human' AND p.active) THEN",
+        "IF NOT EXISTS(SELECT 1 FROM request_engine.identity_bindings b",
+        "IF v_root_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-"
+        "[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'\n"
+        "   OR v_actor_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-"
+        "[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN\n"
+        "    RAISE EXCEPTION 'Bound native identity reference is invalid'\n"
+        "        USING ERRCODE='42501';\n"
+        "END IF;\n"
+        "v_root_native_identity_id:=v_root_subject::uuid;\n"
+        "v_actor_native_identity_id:=v_actor_subject::uuid;\n"
+        "IF v_request.controller_native_identity_id IS DISTINCT FROM\n"
+        "   v_root_native_identity_id THEN\n"
+        "    RAISE EXCEPTION 'Controller native consent provenance changed'\n"
+        "        USING ERRCODE='P0010';\n"
+        "END IF;\n"
+        "SELECT count(*)::integer INTO v_posture_count\n"
+        "  FROM request_auth.lock_native_identity_recovery_postures(\n"
+        "      ARRAY[v_root_native_identity_id,v_actor_native_identity_id]);\n"
+        "IF v_posture_count<>2 THEN\n"
+        "    RAISE EXCEPTION 'Active native consent and approver identities are required'\n"
+        "        USING ERRCODE='42501';\n"
+        "END IF;\n"
+        "SELECT posture.identity_authority_id,posture.identity_status,\n"
+        "       posture.recovery_state,posture.recovery_epoch\n"
+        "  INTO v_locked_authority_id,v_identity_status,\n"
+        "       v_root_recovery_state,v_root_recovery_epoch\n"
+        "  FROM request_auth.lock_native_identity_recovery_postures(\n"
+        "      ARRAY[v_root_native_identity_id,v_actor_native_identity_id]) posture\n"
+        " WHERE posture.native_identity_id=v_root_native_identity_id\n"
+        "   AND posture.identity_status='active';\n"
+        "IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM v_root_authority\n"
+        "   OR v_identity_status<>'active' OR v_root_recovery_state<>'normal'\n"
+        "   OR v_root_recovery_epoch IS DISTINCT FROM v_request.controller_recovery_epoch THEN\n"
+        "    RAISE EXCEPTION 'Controller recovery invalidated consent' USING ERRCODE='P0010';\n"
+        "END IF;\n"
+        "SELECT posture.identity_authority_id,posture.identity_status,\n"
+        "       posture.recovery_state,posture.recovery_epoch\n"
+        "  INTO v_locked_authority_id,v_identity_status,\n"
+        "       v_actor_recovery_state,v_actor_recovery_epoch\n"
+        "  FROM request_auth.lock_native_identity_recovery_postures(\n"
+        "      ARRAY[v_root_native_identity_id,v_actor_native_identity_id]) posture\n"
+        " WHERE posture.native_identity_id=v_actor_native_identity_id\n"
+        "   AND posture.identity_status='active';\n"
+        "IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM v_actor_authority\n"
+        "   OR v_identity_status<>'active' OR v_actor_recovery_state<>'normal' THEN\n"
+        "    RAISE EXCEPTION 'Recovery-restricted approver cannot apply adoption'\n"
+        "        USING ERRCODE='42501';\n"
+        "END IF;\n"
+        "IF NOT EXISTS(SELECT 1 FROM request_engine.identity_bindings b",
     )
     _replace_function_text(
         apply_signature,
-        "request_id,organization_id,controller_principal_id,controller_binding_id,\n"
-        "                platform_approver_principal_id,source_policy_key,target_policy_key,\n"
-        "                authority_revision_before,authority_revision_after,added_capabilities,\n"
-        "                idempotency_key_digest,intent_digest,platform_authority_revision,correlation_id)\n"
-        "             VALUES(p_request_id,v_org,v_root,v_binding,v_actor,v_source,v_request.target_policy_key,\n"
-        "                 v_before,v_after,v_added,p_key_digest,p_intent_digest,v_actor_revision,\n"
-        "                 NULLIF(current_setting('request_engine.correlation_id',true),'')::uuid)",
-        "request_id,organization_id,controller_principal_id,controller_binding_id,\n"
-        "                platform_approver_principal_id,source_policy_key,target_policy_key,\n"
-        "                authority_revision_before,authority_revision_after,added_capabilities,\n"
-        "                idempotency_key_digest,intent_digest,platform_authority_revision,correlation_id,\n"
-        "                controller_native_identity_id,controller_recovery_epoch)\n"
-        "             VALUES(p_request_id,v_org,v_root,v_binding,v_actor,v_source,v_request.target_policy_key,\n"
-        "                 v_before,v_after,v_added,p_key_digest,p_intent_digest,v_actor_revision,\n"
-        "                 NULLIF(current_setting('request_engine.correlation_id',true),'')::uuid,\n"
-        "                 v_root_native_identity_id,v_request.controller_recovery_epoch)",
+        "platform_authority_revision,correlation_id)",
+        "platform_authority_revision,correlation_id,controller_native_identity_id,"
+        "controller_recovery_epoch)",
+    )
+    _replace_function_text(
+        apply_signature,
+        "NULLIF(current_setting('request_engine.correlation_id',true),'')::uuid)",
+        "NULLIF(current_setting('request_engine.correlation_id',true),'')::uuid,"
+        "v_root_native_identity_id,v_request.controller_recovery_epoch)",
     )
 
 

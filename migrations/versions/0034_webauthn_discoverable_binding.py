@@ -7,7 +7,7 @@ import hashlib
 from alembic import op
 from sqlalchemy import text
 
-revision: str = "0034_webauthn_discoverable_binding"
+revision: str = "0034_webauthn_binding"
 down_revision: str | None = "0033_adopt_fact_tenant_rls"
 branch_labels: str | None = None
 depends_on: str | None = None
@@ -17,10 +17,14 @@ _SETUP_HANDLE_PREFIX = b"request-engine:setup:"
 
 
 def _definition(signature: str) -> str:
-    value = op.get_bind().execute(
-        text("SELECT pg_get_functiondef(CAST(:signature AS regprocedure))"),
-        {"signature": signature},
-    ).scalar_one()
+    value = (
+        op.get_bind()
+        .execute(
+            text("SELECT pg_get_functiondef(CAST(:signature AS regprocedure))"),
+            {"signature": signature},
+        )
+        .scalar_one()
+    )
     return str(value)
 
 
@@ -28,7 +32,9 @@ def _replace_function_text(signature: str, old: str, new: str) -> None:
     definition = _definition(signature)
     if old not in definition:
         raise RuntimeError(f"Migration anchor missing in {signature}")
-    op.get_bind().exec_driver_sql(definition.replace(old, new, 1))
+    # psycopg's pyformat cursor treats PostgreSQL %ROWTYPE as a placeholder even
+    # when no application parameters are supplied; quote literal percent signs.
+    op.get_bind().exec_driver_sql(definition.replace(old, new, 1).replace("%", "%%"))
 
 
 def _backfill_user_handles() -> None:
@@ -201,33 +207,36 @@ def upgrade() -> None:
 
     _replace_function_text(
         "request_auth.finalize_webauthn_registration(bytea,uuid,bytea,bytea,bigint,text,boolean,boolean,boolean)",
-        "IF NOT FOUND OR v_challenge.native_identity_id IS NULL THEN\n                 RETURN false;\n             END IF;",
-        "IF NOT FOUND OR v_challenge.native_identity_id IS NULL\n                OR v_challenge.user_handle IS NULL THEN\n                 RETURN false;\n             END IF;",
+        "IF NOT FOUND OR v_challenge.native_identity_id IS NULL THEN",
+        "IF NOT FOUND OR v_challenge.native_identity_id IS NULL\n"
+        "               OR v_challenge.user_handle IS NULL THEN",
     )
     _replace_function_text(
         "request_auth.finalize_webauthn_registration(bytea,uuid,bytea,bytea,bigint,text,boolean,boolean,boolean)",
-        "p_credential_row_id, v_challenge.native_identity_id,\n                 p_credential_id_bytes, p_public_key, p_sign_count, p_aaguid,\n                 p_backup_eligible, p_backup_state, p_user_verified",
-        "p_credential_row_id, v_challenge.native_identity_id,\n                 p_credential_id_bytes, p_public_key, p_sign_count, p_aaguid,\n                 p_backup_eligible, p_backup_state, p_user_verified, v_challenge.user_handle",
+        "p_backup_eligible, p_backup_state, p_user_verified\n            )",
+        "p_backup_eligible, p_backup_state, p_user_verified, v_challenge.user_handle\n"
+        "            )",
     )
     _replace_function_text(
         "request_auth.finalize_webauthn_registration(bytea,uuid,bytea,bytea,bigint,text,boolean,boolean,boolean)",
-        "aaguid, backup_eligible, backup_state, user_verified\n             ) VALUES (",
-        "aaguid, backup_eligible, backup_state, user_verified, user_handle\n             ) VALUES (",
+        "aaguid, backup_eligible, backup_state, user_verified\n            ) VALUES (",
+        "aaguid, backup_eligible, backup_state, user_verified, user_handle\n            ) VALUES (",
     )
     _replace_function_text(
         "request_auth.finalize_setup_webauthn_registration(bytea,uuid,bytea,bytea,bigint,text,boolean,boolean,boolean,uuid)",
-        "OR v_challenge.setup_session_id <> p_setup_session_id\n             THEN",
-        "OR v_challenge.setup_session_id <> p_setup_session_id\n                OR v_challenge.user_handle IS NULL\n             THEN",
+        "OR v_challenge.setup_session_id <> p_setup_session_id",
+        "OR v_challenge.setup_session_id <> p_setup_session_id\n"
+        "                OR v_challenge.user_handle IS NULL",
     )
     _replace_function_text(
         "request_auth.finalize_setup_webauthn_registration(bytea,uuid,bytea,bytea,bigint,text,boolean,boolean,boolean,uuid)",
-        "aaguid, backup_eligible, backup_state, user_verified\n             ) VALUES (",
-        "aaguid, backup_eligible, backup_state, user_verified, user_handle\n             ) VALUES (",
+        "aaguid, backup_eligible, backup_state, user_verified\n            ) VALUES (",
+        "aaguid, backup_eligible, backup_state, user_verified, user_handle\n            ) VALUES (",
     )
     _replace_function_text(
         "request_auth.finalize_setup_webauthn_registration(bytea,uuid,bytea,bytea,bigint,text,boolean,boolean,boolean,uuid)",
-        "p_public_key, p_sign_count, p_aaguid, p_backup_eligible,\n                 p_backup_state, p_user_verified\n             )",
-        "p_public_key, p_sign_count, p_aaguid, p_backup_eligible,\n                 p_backup_state, p_user_verified, v_challenge.user_handle\n             )",
+        "p_backup_state, p_user_verified\n            )",
+        "p_backup_state, p_user_verified, v_challenge.user_handle\n            )",
     )
 
     op.execute(

@@ -11,8 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from request_engine.modules.tenancy.application.commands.controller_policy_adoption import (
     ApplyControllerPolicyAdoption,
     ControllerPolicyAdoptionCommands,
-    ControllerPolicyAdoptionConsentInvalidated,
     ControllerPolicyAdoptionConflict,
+    ControllerPolicyAdoptionConsentInvalidated,
     ControllerPolicyAdoptionDetail,
     ControllerPolicyAdoptionError,
     ControllerPolicyAdoptionForbidden,
@@ -140,11 +140,12 @@ class ControllerPolicyAdoptionReviewView(BaseModel):
     expires_at: datetime
     proposed_capabilities: tuple[str, ...]
     revoked_capabilities: tuple[str, ...]
-    capability_delta_is_non_revoking: bool = Field(
+    proposed_delta_does_not_restore_revoked_capabilities: bool = Field(
         description=(
-            "True only when the proposed capability delta removes no current grants. "
-            "This is not apply eligibility: apply independently revalidates the active "
-            "controller binding, approver identity separation, consent, authority, and revisions."
+            "True only when the proposed capability delta contains no capabilities with "
+            "revoked grant history. This is not apply eligibility: apply independently "
+            "revalidates both native identities, recovery posture, consent, authority, "
+            "and revisions."
         )
     )
 
@@ -281,7 +282,7 @@ def add_controller_policy_adoption_platform_routes(
         require_platform_capability(actor, PLATFORM_ADOPTION)
         review = await commands.get_review(actor, request_id)
         response.headers["Cache-Control"] = "no-store"
-        return _review_view(review)
+        return controller_policy_adoption_review_view(review)
 
     async def apply_adoption(
         request_id: UUID,
@@ -364,7 +365,9 @@ def _summary_view(row: ControllerPolicyAdoptionSummary) -> ControllerPolicyAdopt
     )
 
 
-def _review_view(row: ControllerPolicyAdoptionReview) -> ControllerPolicyAdoptionReviewView:
+def controller_policy_adoption_review_view(
+    row: ControllerPolicyAdoptionReview,
+) -> ControllerPolicyAdoptionReviewView:
     return ControllerPolicyAdoptionReviewView(
         request_id=row.request.request_id,
         organization_id=row.request.organization_id,
@@ -378,7 +381,7 @@ def _review_view(row: ControllerPolicyAdoptionReview) -> ControllerPolicyAdoptio
         expires_at=row.request.expires_at,
         proposed_capabilities=row.proposed_capabilities,
         revoked_capabilities=row.revoked_capabilities,
-        capability_delta_is_non_revoking=not row.revoked_capabilities,
+        proposed_delta_does_not_restore_revoked_capabilities=not row.revoked_capabilities,
     )
 
 

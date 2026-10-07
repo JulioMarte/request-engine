@@ -666,6 +666,8 @@ _CONTROLLER_POLICY_ADOPTION_COLUMNS = (
             "revision",
             "created_at",
             "expires_at",
+            "controller_native_identity_id",
+            "controller_recovery_epoch",
         )
     }
     | {
@@ -689,6 +691,8 @@ _CONTROLLER_POLICY_ADOPTION_COLUMNS = (
             "platform_approver_principal_id",
             "platform_authority_revision",
             "applied_at",
+            "controller_native_identity_id",
+            "controller_recovery_epoch",
         )
     }
     | {
@@ -708,6 +712,8 @@ _CONTROLLER_POLICY_ADOPTION_COLUMNS = (
             "intent_digest",
             "platform_authority_revision",
             "correlation_id",
+            "controller_native_identity_id",
+            "controller_recovery_epoch",
         )
     }
 )

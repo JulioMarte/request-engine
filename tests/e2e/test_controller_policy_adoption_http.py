@@ -353,6 +353,77 @@ async def test_legacy_policy_adoption_http_journey_and_readiness(
                 ),
             )
 
+        # Advance the persisted consent's valid creation window as a test
+        # precondition while preserving its 24-hour shape. GET and exact replay
+        # must agree on the effective state without changing or renewing it.
+        e2e_admin_conn.execute(
+            "UPDATE request_engine.controller_policy_adoption_requests "
+            "SET created_at=clock_timestamp()-interval '26 hours', "
+            "    expires_at=clock_timestamp()-interval '3 hours' WHERE id=%s",
+            (request_id,),
+        )
+        persisted_expiry = e2e_admin_conn.execute(
+            "SELECT status,expires_at FROM request_engine.controller_policy_adoption_requests "
+            "WHERE id=%s",
+            (request_id,),
+        ).fetchone()
+        assert persisted_expiry is not None and persisted_expiry[0] == "pending"
+        expired_detail = await tenant.get(f"/v1/controller-policy-adoptions/{request_id}")
+        assert expired_detail.status_code == 200, expired_detail.text
+        assert expired_detail.json()["status"] == "expired"
+
+        expired_replay = await tenant.post(
+            "/v1/controller-policy-adoptions",
+            headers=headers,
+            json={"expected_authority_revision": root_revision, "reason": "legacy policy adoption"},
+        )
+        assert expired_replay.status_code == 201, expired_replay.text
+        assert expired_replay.json()["request_id"] == request_id
+        assert expired_replay.json()["status"] == "expired"
+        detail_expiry = datetime.fromisoformat(
+            expired_detail.json()["expires_at"].replace("Z", "+00:00")
+        )
+        replay_expiry = datetime.fromisoformat(
+            expired_replay.json()["expires_at"].replace("Z", "+00:00")
+        )
+        assert detail_expiry == replay_expiry == persisted_expiry[1]
+        assert (
+            e2e_admin_conn.execute(
+                "SELECT status,expires_at FROM request_engine.controller_policy_adoption_requests "
+                "WHERE id=%s",
+                (request_id,),
+            ).fetchone()
+            == persisted_expiry
+        )
+
+        expired_apply = await platform.post(
+            f"/v1/platform/controller-policy-adoptions/{request_id}:apply",
+            headers={"Idempotency-Key": f"expired-apply-{uuid4().hex}"},
+            json={"expected_request_revision": request_revision},
+        )
+        assert expired_apply.status_code == 409, expired_apply.text
+        assert e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.controller_policy_adoption_facts "
+            "WHERE request_id=%s",
+            (request_id,),
+        ).fetchone() == (0,)
+
+        headers = {"Idempotency-Key": f"consent-after-expiry-{uuid4().hex}"}
+        renewed_consent = await tenant.post(
+            "/v1/controller-policy-adoptions",
+            headers=headers,
+            json={"expected_authority_revision": root_revision, "reason": "legacy policy adoption"},
+        )
+        assert renewed_consent.status_code == 201, renewed_consent.text
+        assert renewed_consent.json()["status"] == "pending"
+        old_status = e2e_admin_conn.execute(
+            "SELECT status FROM request_engine.controller_policy_adoption_requests WHERE id=%s",
+            (request_id,),
+        ).fetchone()
+        assert old_status == ("expired",)
+        request_id = renewed_consent.json()["request_id"]
+        request_revision = renewed_consent.json()["request_revision"]
+
         still_pending = await tenant.get(f"/v1/controller-policy-adoptions/{request_id}")
         assert still_pending.status_code == 200
         assert still_pending.json()["status"] == "pending"

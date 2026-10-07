@@ -73,6 +73,15 @@ async def _enroll_identity(
     return enrollment.native_identity_id
 
 
+def _identity_authority_id(admin_conn: PgConnection, identity_id: UUID) -> UUID:
+    row = admin_conn.execute(
+        "SELECT identity_authority_id FROM request_engine.native_identities WHERE id=%s",
+        (identity_id,),
+    ).fetchone()
+    assert row is not None
+    return UUID(str(row[0]))
+
+
 def _insert_credential(admin_conn: PgConnection, identity_id: UUID) -> tuple[UUID, bytes]:
     row_id = uuid4()
     credential_id = secrets.token_bytes(32)
@@ -388,7 +397,10 @@ async def test_discoverable_login_resolves_identity_from_credential(
     options = await service.begin_authentication_discoverable()
     assert not options.public_key.get("allowCredentials")
     assertion = authenticator.authentication_credential(challenge=options.challenge)
-    issued = await service.complete_discoverable_authentication(credential=assertion)
+    issued = await service.complete_discoverable_authentication(
+        credential=assertion,
+        expected_authority_id=_identity_authority_id(admin_conn, identity_id),
+    )
 
     assert issued.native_identity_id == identity_id
     subject = await _session_authenticator(command_session_factory).authenticate(
@@ -402,7 +414,10 @@ async def test_discoverable_login_resolves_identity_from_credential(
 
     # Replay: the consumed unbound challenge cannot be finalized again.
     with pytest.raises(WebAuthnCeremonyError):
-        await service.complete_discoverable_authentication(credential=assertion)
+        await service.complete_discoverable_authentication(
+            credential=assertion,
+            expected_authority_id=_identity_authority_id(admin_conn, identity_id),
+        )
 
 
 @pytest.mark.asyncio
@@ -422,7 +437,10 @@ async def test_discoverable_login_rejects_unknown_credential(
     options = await service.begin_authentication_discoverable()
     assertion = stranger.authentication_credential(challenge=options.challenge)
     with pytest.raises(WebAuthnCeremonyError):
-        await service.complete_discoverable_authentication(credential=assertion)
+        await service.complete_discoverable_authentication(
+            credential=assertion,
+            expected_authority_id=_identity_authority_id(admin_conn, identity_id),
+        )
 
 
 @pytest.mark.asyncio
@@ -647,7 +665,10 @@ async def test_suspended_authority_cannot_register_credential(
 
 
 _LEAST_PRIVILEGE_FUNCTIONS = (
-    "create_webauthn_challenge_with_user_handle(uuid, text, uuid, uuid, uuid, bytea, timestamptz, bytea)",
+    (
+        "create_webauthn_challenge_with_user_handle(uuid, text, uuid, uuid, uuid, "
+        "bytea, timestamptz, bytea)"
+    ),
     "read_webauthn_challenge(bytea, text)",
     "read_webauthn_credential_for_assertion(bytea)",
     "read_webauthn_credentials(uuid)",

@@ -58,13 +58,17 @@ capability revocation is not proven.
 1. The active original tenant HUMAN controller requests adoption of the approved
    immutable v1-v5 to v6 transition through `POST /v1/controller-policy-adoptions`.
    This durable consent is not the authority mutation. Admission requires the
-   existing `organization.bootstrap` grant plus exact root relationship, current
-   active native identity binding and recent verified phishing-resistant proof.
+    existing `organization.bootstrap` grant plus exact root relationship, current
+    active native identity binding, normal native recovery posture and recent
+    verified phishing-resistant proof. The request snapshots the bound native
+    identity and its recovery epoch as durable consent provenance.
    The request records bounded reason/intent and expires after 24 hours; it does
    not mutate grants or widen the actor's delegation ceiling.
 2. A current authorized HUMAN platform operator applies that exact request through
    `POST /v1/platform/controller-policy-adoptions/{request_id}:apply` under the
-   dedicated `platform.organization.adopt_initial_controller_policy` capability.
+    dedicated `platform.organization.adopt_initial_controller_policy` capability.
+    The approver must also have an active bound native identity in normal recovery
+    posture at apply admission.
    Possession of platform owner lifecycle, organization provisioning or the
    `platform.owner.provision` command capability alone does not authorize apply.
 3. Consent and application must use distinct bound native identities; recovery-
@@ -98,10 +102,12 @@ nondelegable `platform.organization.adopt_initial_controller_policy` capability,
 changes the shared platform-owner provisioning selector so future provisioned
 owners (including invitation activation) receive v5, and evolves the provisioning-
 fact policy constraint to continue accepting historic v2 facts plus new v5 facts.
-Migrations 0027–0033 now implement the tenant-consent and platform-apply
-journeys, harden their tenant references, RLS policy and column ACLs, and add
-database proofs for those boundaries. These migrations do not rewrite existing
-facts.
+Migrations 0027–0033 implement the tenant-consent and platform-apply journeys and
+harden tenant references, RLS and column ACLs. The current 0034–0035 additions
+bind WebAuthn login to the configured native authority/userHandle and bind adoption
+to a native controller recovery epoch/posture. Existing historical facts are
+preserved; pending consent without a provable recovery snapshot is expired rather
+than assigned invented provenance.
 
 The original first-claim owner remains `platform-owner-v1`; existing principals,
 grants, revisions and provisioning facts are not backfilled or rewritten. Thus the
@@ -125,7 +131,7 @@ Do not substitute direct SQL grants or data reset.
 | Concurrency | Explicit expected tenant authority revision and consent/adoption revision; one apply winner |
 | Party/target authority | Original root relationship, current tenant controller consent, separately authorized platform actor |
 | Schemas | Immutable policy keys, bounded reason, revisions; response contains request/fact IDs and real revisions, no secrets |
-| Failures | 401 invalid session; 403 missing/current authority; opaque 404 unavailable request; 409 stale/conflicting/withdrawn consent; 422 invalid/unapproved transition |
+| Failures | 401 invalid session; 403 missing/current authority or recovery-restricted participant; opaque 404 unavailable request; 409 stale/conflicting/withdrawn consent or controller-recovery invalidation; 422 invalid/unapproved transition |
 | Tools | Optional projections of these typed owner operations; no second handler or tool-manufactured actor/tenant identity |
 
 An ordinary tenant cannot inspect another tenant's request; unavailable foreign
@@ -139,9 +145,14 @@ tenant staff root and ordered active memberships before locking the adoption row
 READ/PLAN the supported immutable transition and current owner-published state.
 LOCK identity topology, the canonical tenant staff root, ordered active tenant
 memberships and the adoption request consistently with existing staff writers.
-VALIDATE both
-current native authentication paths, principals, grants, binding/root relationship,
-authority revisions and unexpired/unrevoked consent. WRITE delta grants, consume
+Then lock both native authorities by UUID, both native identities by UUID and
+existing recovery-state rows by identity UUID. VALIDATE principals, grants,
+binding/root relationship, normal native recovery posture, controller identity and
+recovery epoch against the consent snapshot, authority revisions and
+unexpired/unrevoked consent. Recovery-start races serialize with apply; recovery
+after consent permanently invalidates that unapplied consent, including after
+recovery completion. Exact replay of a committed application remains a historical
+receipt and does not reapply grants. WRITE delta grants, consume
 consent, persist the immutable adoption fact/receipt and append truthful audit in
 one Session and explicit transaction. EMIT no external consequence under locks.
 
@@ -163,17 +174,20 @@ supported platform-owner lifecycle revocation, and apply/apply with both
 same-key replay and different-key conflict semantics. These local proofs do not
 replace exact-head CI and publication certification. Direct concurrent mutation
 of a single platform capability is not a supported public command and is not
-covered; do not claim it is safe based on the owner lifecycle proof. Races against
-tenant-controller suspension/recovery and other grant lifecycle changes remain
-separate proof obligations. This is not a reason to seed SQL or reset tenant data.
+covered; do not claim it is safe based on the owner lifecycle proof. Controller
+recovery posture/epoch is revalidated at consent and apply; controller suspension
+and other grant lifecycle races remain separate proof obligations. Deterministic
+both-order concurrency evidence for recovery versus apply is still required. This
+is not a reason to seed SQL or reset tenant data.
 
-The platform review projection reports `capability_delta_is_non_revoking` only
-to summarize whether the proposed grant delta removes current grants. It is not
-an eligibility/readiness signal: the authoritative apply command still validates
-the active original controller binding and rejects an approver whose native
-identity matches that controller, among other live authority and consent checks.
-Clients must call apply and handle its typed conflict/forbidden response rather
-than treating the review as a reservation or authorization decision.
+The platform review projection reports
+`proposed_delta_does_not_restore_revoked_capabilities` only to identify whether
+the proposed capability delta intersects historical revoked-grant history. It is
+not an eligibility/readiness signal: the authoritative apply command independently
+validates the active original controller binding, both native identity postures,
+recovery epoch, distinct identities, current authority and consent. Clients must
+call apply and handle its typed conflict/forbidden response rather than treating
+the review as a reservation or authorization decision.
 
 The platform would gain a narrow ongoing role in tenant bootstrap governance.
 Dual consent limits unilateral escalation but does not remove that authority

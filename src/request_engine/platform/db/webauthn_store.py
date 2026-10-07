@@ -107,7 +107,9 @@ class PostgresWebAuthnStore:
                             SELECT id, native_identity_id, credential_id, public_key,
                                    sign_count, aaguid, backup_eligible, backup_state,
                                    user_verified, status, user_handle
-                              FROM request_auth.read_webauthn_credential_for_assertion(:credential_id)
+                              FROM request_auth.read_webauthn_credential_for_assertion(
+                                  :credential_id
+                              )
                             """
                         ),
                         {"credential_id": credential_id},

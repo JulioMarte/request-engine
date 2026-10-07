@@ -356,7 +356,7 @@ async def test_adoption_uses_real_native_http_auth_and_platform_control_composit
         assert review.json()["reason"] == "Reconcile legacy root permissions to the current policy"
         assert review.json()["proposed_capabilities"]
         assert review.json()["revoked_capabilities"] == []
-        assert review.json()["capability_delta_is_non_revoking"] is True
+        assert review.json()["proposed_delta_does_not_restore_revoked_capabilities"] is True
         assert "can_apply" not in review.json()
 
         same_identity_review = await control.get(
@@ -364,7 +364,10 @@ async def test_adoption_uses_real_native_http_auth_and_platform_control_composit
             headers={"Authorization": f"Bearer {same_identity_token}"},
         )
         assert same_identity_review.status_code == 200, same_identity_review.text
-        assert same_identity_review.json()["capability_delta_is_non_revoking"] is True
+        assert (
+            same_identity_review.json()["proposed_delta_does_not_restore_revoked_capabilities"]
+            is True
+        )
         assert same_identity_apply.status_code == 403
         assert same_identity_apply.json()["error"]["code"] == "controller_policy_adoption_forbidden"
 
@@ -372,7 +375,8 @@ async def test_adoption_uses_real_native_http_auth_and_platform_control_composit
             "ControllerPolicyAdoptionReviewView"
         ]["properties"]
         assert "can_apply" not in review_schema
-        description = review_schema["capability_delta_is_non_revoking"]["description"]
+        field_name = "proposed_delta_does_not_restore_revoked_capabilities"
+        description = review_schema[field_name]["description"]
         assert "not apply eligibility" in description
         applied = await control.post(
             f"/v1/platform/controller-policy-adoptions/{request_id}:apply",
@@ -383,3 +387,285 @@ async def test_adoption_uses_real_native_http_auth_and_platform_control_composit
         assert applied.json()["controller_principal_id"] == str(root_principal_id)
         assert applied.json()["platform_approver_principal_id"] == str(owner_principal_id)
         assert applied.json()["target_policy_key"] == "tenant-controller-v6"
+
+
+@pytest.mark.asyncio
+async def test_recovery_after_consent_requires_withdrawal_and_fresh_consent(
+    e2e_admin_conn: PgConnection,
+    e2e_session_factory: SessionFactory,
+    platform_read_session_factory: SessionFactory,
+    platform_control_session_factory: SessionFactory,
+) -> None:
+    identity_authority_id = uuid4()
+    e2e_admin_conn.execute(
+        "INSERT INTO request_engine.identity_authorities(id,kind,issuer_or_environment) "
+        "VALUES(%s,'native',%s)",
+        (identity_authority_id, f"adoption-recovery:{uuid4().hex}"),
+    )
+    e2e_admin_conn.execute(
+        "INSERT INTO request_engine.platform_instance "
+        "(id,built_in_native_authority_id,built_in_workload_authority_id) VALUES(%s,%s,%s)",
+        (uuid4(), identity_authority_id, uuid4()),
+    )
+    enrollment = build_native_auth_runtime(e2e_session_factory)
+    root_handle = f"adoption-recovery-root-{uuid4().hex}@example.test"
+    approver_handle = f"adoption-recovery-approver-{uuid4().hex}@example.test"
+    original_password = _PASSWORD
+    root_identity = await enrollment.service.enroll_password_identity(
+        identity_authority_id=identity_authority_id,
+        login_handle=root_handle,
+        password=original_password,
+    )
+    approver_identity = await enrollment.service.enroll_password_identity(
+        identity_authority_id=identity_authority_id,
+        login_handle=approver_handle,
+        password=original_password,
+    )
+    organization_id, root_principal_id = _provision_legacy_root(
+        e2e_admin_conn,
+        identity_authority_id=identity_authority_id,
+        native_identity_id=root_identity.native_identity_id,
+    )
+    owner_principal_id = _platform_principal(
+        e2e_admin_conn,
+        identity_authority_id=identity_authority_id,
+        native_identity_id=approver_identity.native_identity_id,
+        capabilities=("platform.organization.adopt_initial_controller_policy",),
+    )
+    control_app = create_platform_control_app(
+        auth_session_factory=e2e_session_factory,
+        platform_read_session_factory=platform_read_session_factory,
+        platform_write_session_factory=platform_control_session_factory,
+        native_authority_id=identity_authority_id,
+        webauthn_policy=_WEBAUTHN,
+        webauthn_decoy_key=b"a" * 32,
+    )
+    tenant_app = create_native_app(
+        session_factory=e2e_session_factory,
+        native_identity_authority_id=identity_authority_id,
+        appointment_option_signing_key=_SIGNING_KEY,
+        webauthn_policy=_WEBAUTHN,
+        webauthn_decoy_key=b"a" * 32,
+    )
+    async with (
+        AsyncClient(
+            transport=ASGITransport(app=control_app), base_url="https://control.test"
+        ) as control,
+        AsyncClient(
+            transport=ASGITransport(app=tenant_app), base_url="https://tenant.test"
+        ) as tenant,
+    ):
+        root_token, authenticator = await _passkey_login(
+            tenant, login_handle=root_handle, password=original_password
+        )
+        approver_token, _ = await _passkey_login(
+            control, login_handle=approver_handle, password=original_password
+        )
+        recovery_codes = await tenant.post(
+            "/auth/native/sessions/current/recovery-codes",
+            headers={"Authorization": f"Bearer {root_token}"},
+        )
+        assert recovery_codes.status_code == 201, recovery_codes.text
+
+        initial_grants = e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.principal_authority_grants "
+            "WHERE principal_id=%s AND status='active'",
+            (root_principal_id,),
+        ).fetchone()
+        assert initial_grants is not None
+        consent = await tenant.post(
+            "/v1/controller-policy-adoptions",
+            headers=_tenant_headers(root_token, organization_id, "recovery-stale-consent"),
+            json={
+                "expected_authority_revision": _authority_revision(
+                    e2e_admin_conn, root_principal_id
+                ),
+                "reason": "Account recovery requires renewed consent",
+            },
+        )
+        assert consent.status_code == 201, consent.text
+        stale_request_id = UUID(consent.json()["request_id"])
+        stale_revision = int(consent.json()["request_revision"])
+        assert e2e_admin_conn.execute(
+            "SELECT controller_native_identity_id,controller_recovery_epoch "
+            "FROM request_engine.controller_policy_adoption_requests WHERE id=%s",
+            (stale_request_id,),
+        ).fetchone() == (root_identity.native_identity_id, 0)
+
+        recovered_password = "controller recovery password after consent"
+        recovered = await tenant.post(
+            "/auth/native/password:recover-with-code",
+            json={
+                "recovery_code": recovery_codes.json()["codes"][0],
+                "new_password": recovered_password,
+            },
+        )
+        assert recovered.status_code == 204, recovered.text
+        assert e2e_admin_conn.execute(
+            "SELECT state,recovery_epoch FROM request_engine.native_identity_recovery_state "
+            "WHERE native_identity_id=%s",
+            (root_identity.native_identity_id,),
+        ).fetchone() == ("recovery_restricted", 1)
+
+        apply_url = f"/v1/platform/controller-policy-adoptions/{stale_request_id}:apply"
+        approver_headers = {
+            "Authorization": f"Bearer {approver_token}",
+            "Idempotency-Key": "recovery-stale-apply",
+        }
+        rejected = await control.post(
+            apply_url,
+            headers=approver_headers,
+            json={"expected_request_revision": stale_revision},
+        )
+        assert rejected.status_code == 409, rejected.text
+        assert rejected.json()["error"]["code"] == (
+            "controller_policy_adoption_consent_invalidated"
+        )
+        assert e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.controller_policy_adoption_facts "
+            "WHERE request_id=%s",
+            (stale_request_id,),
+        ).fetchone() == (0,)
+        assert (
+            e2e_admin_conn.execute(
+                "SELECT count(*) FROM request_engine.principal_authority_grants "
+                "WHERE principal_id=%s AND status='active'",
+                (root_principal_id,),
+            ).fetchone()
+            == initial_grants
+        )
+        assert e2e_admin_conn.execute(
+            "SELECT status,revision FROM request_engine.controller_policy_adoption_requests "
+            "WHERE id=%s",
+            (stale_request_id,),
+        ).fetchone() == ("pending", stale_revision)
+
+        restricted_login = await tenant.post(
+            "/auth/native/sessions",
+            json={"login_handle": root_handle, "password": recovered_password},
+        )
+        assert restricted_login.status_code == 201, restricted_login.text
+        restricted_token = restricted_login.json()["access_token"]
+        restricted_headers = {"Authorization": f"Bearer {restricted_token}"}
+        current = await tenant.get("/auth/native/sessions/current", headers=restricted_headers)
+        assert current.status_code == 200
+        assert current.json()["recovery_restricted"] is True
+        step_options = (
+            await tenant.post(
+                "/auth/native/sessions/current/webauthn/step-up-options",
+                headers=restricted_headers,
+            )
+        ).json()["public_key"]
+        assertion = authenticator.authentication_credential(
+            challenge=websafe_decode(step_options["challenge"]), user_verified=True
+        )
+        step_up = await tenant.post(
+            "/auth/native/sessions/current/webauthn/step-up",
+            headers=restricted_headers,
+            json={"credential": assertion},
+        )
+        assert step_up.status_code == 200, step_up.text
+        completed = await tenant.post(
+            "/auth/native/sessions/current/recovery:complete", headers=restricted_headers
+        )
+        assert completed.status_code == 200, completed.text
+        assert completed.json()["recovery_state"] == "normal"
+        assert e2e_admin_conn.execute(
+            "SELECT recovery_epoch FROM request_engine.native_identity_recovery_state "
+            "WHERE native_identity_id=%s",
+            (root_identity.native_identity_id,),
+        ).fetchone() == (1,)
+
+        still_rejected = await control.post(
+            apply_url,
+            headers=approver_headers,
+            json={"expected_request_revision": stale_revision},
+        )
+        assert still_rejected.status_code == 409, still_rejected.text
+        assert still_rejected.json()["error"]["code"] == (
+            "controller_policy_adoption_consent_invalidated"
+        )
+        withdrawn = await tenant.post(
+            f"/v1/controller-policy-adoptions/{stale_request_id}:withdraw",
+            headers=_tenant_headers(restricted_token, organization_id, "recovery-withdraw-stale"),
+            json={"expected_request_revision": stale_revision},
+        )
+        assert withdrawn.status_code == 200, withdrawn.text
+        assert withdrawn.json()["status"] == "withdrawn"
+
+        fresh_consent = await tenant.post(
+            "/v1/controller-policy-adoptions",
+            headers=_tenant_headers(restricted_token, organization_id, "recovery-fresh-consent"),
+            json={
+                "expected_authority_revision": _authority_revision(
+                    e2e_admin_conn, root_principal_id
+                ),
+                "reason": "Fresh consent after recovery completed",
+            },
+        )
+        assert fresh_consent.status_code == 201, fresh_consent.text
+        fresh_request_id = UUID(fresh_consent.json()["request_id"])
+        assert e2e_admin_conn.execute(
+            "SELECT controller_native_identity_id,controller_recovery_epoch "
+            "FROM request_engine.controller_policy_adoption_requests WHERE id=%s",
+            (fresh_request_id,),
+        ).fetchone() == (root_identity.native_identity_id, 1)
+        fresh_apply_key = "recovery-fresh-apply"
+        fresh_apply_headers = {**approver_headers, "Idempotency-Key": fresh_apply_key}
+        fresh_apply_body = {
+            "expected_request_revision": int(fresh_consent.json()["request_revision"])
+        }
+        fresh_apply = await control.post(
+            f"/v1/platform/controller-policy-adoptions/{fresh_request_id}:apply",
+            headers=fresh_apply_headers,
+            json=fresh_apply_body,
+        )
+        assert fresh_apply.status_code == 200, fresh_apply.text
+        assert e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.controller_policy_adoption_facts "
+            "WHERE request_id=%s",
+            (fresh_request_id,),
+        ).fetchone() == (1,)
+        assert e2e_admin_conn.execute(
+            "SELECT state,recovery_epoch FROM request_engine.native_identity_recovery_state "
+            "WHERE native_identity_id=%s",
+            (root_identity.native_identity_id,),
+        ).fetchone() == ("normal", 1)
+        exact_replay = await control.post(
+            f"/v1/platform/controller-policy-adoptions/{fresh_request_id}:apply",
+            headers=fresh_apply_headers,
+            json=fresh_apply_body,
+        )
+        assert exact_replay.status_code == 200, exact_replay.text
+        assert exact_replay.json()["fact_id"] == fresh_apply.json()["fact_id"]
+        assert e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.controller_policy_adoption_facts "
+            "WHERE request_id=%s",
+            (fresh_request_id,),
+        ).fetchone() == (1,)
+        recovered_again = await tenant.post(
+            "/auth/native/password:recover-with-code",
+            json={
+                "recovery_code": recovery_codes.json()["codes"][1],
+                "new_password": "controller password after another recovery",
+            },
+        )
+        assert recovered_again.status_code == 204, recovered_again.text
+        assert e2e_admin_conn.execute(
+            "SELECT state,recovery_epoch FROM request_engine.native_identity_recovery_state "
+            "WHERE native_identity_id=%s",
+            (root_identity.native_identity_id,),
+        ).fetchone() == ("recovery_restricted", 2)
+        assert owner_principal_id != root_principal_id
+        exact_replay = await control.post(
+            f"/v1/platform/controller-policy-adoptions/{fresh_request_id}:apply",
+            headers=fresh_apply_headers,
+            json=fresh_apply_body,
+        )
+        assert exact_replay.status_code == 200, exact_replay.text
+        assert exact_replay.json()["fact_id"] == fresh_apply.json()["fact_id"]
+        assert e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.controller_policy_adoption_facts "
+            "WHERE request_id=%s",
+            (fresh_request_id,),
+        ).fetchone() == (1,)
