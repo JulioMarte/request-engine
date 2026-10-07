@@ -24,6 +24,11 @@ There is no planned blanket architecture freeze. A production release may make p
 
 ## 2. Current architecture map
 
+Latest PR #137 API-only readiness review, reproduced adversarial failures,
+candidate-specific CI evidence and executable remediation gates:
+[`testing/pr137-api-production-readiness-2026-10-06.md`](testing/pr137-api-production-readiness-2026-10-06.md).
+This is a diagnostic report; the current candidate is not production-certified.
+
 API-only adversarial findings, remediation boundaries, production closure gates
 and executed evidence: [API closure plan](testing/api-production-closure-plan-2026-10-04.md).
 Client composition, authority discovery, reconstruction and safe retries:

@@ -114,7 +114,9 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
         rp_id = public_key["rp"]["id"]
         authenticator = SoftwareAuthenticator(rp_id=rp_id, origin=ORIGIN)
         credential = authenticator.registration_credential(
-            challenge=websafe_decode(public_key["challenge"]), user_verified=True
+            challenge=websafe_decode(public_key["challenge"]),
+            public_key=public_key,
+            user_verified=True,
         )
         registered = await client.post(
             "/v1/setup/webauthn/registrations",
@@ -241,7 +243,9 @@ async def test_webauthn_registration_rejects_another_setup_session(
         public_key = options_response.json()["public_key"]
         authenticator = SoftwareAuthenticator(rp_id=public_key["rp"]["id"], origin=ORIGIN)
         credential = authenticator.registration_credential(
-            challenge=websafe_decode(public_key["challenge"]), user_verified=True
+            challenge=websafe_decode(public_key["challenge"]),
+            public_key=public_key,
+            user_verified=True,
         )
 
         # A valid bearer for another concurrent ceremony cannot complete this one.

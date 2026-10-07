@@ -256,7 +256,7 @@ def _claim_instance(
     challenge = _required_string(public_key, "challenge", "setup WebAuthn challenge")
     authenticator = SoftwareAuthenticator(rp_id=rp_id, origin=f"https://{rp_id}")
     credential = authenticator.registration_credential(
-        challenge=websafe_decode(challenge), user_verified=True
+        challenge=websafe_decode(challenge), public_key=public_key, user_verified=True
     )
     _http_request(
         "POST",
@@ -618,6 +618,7 @@ def _strong_native_session(
     authenticator = SoftwareAuthenticator(rp_id=rp_id, origin=f"https://{rp_id}")
     credential = authenticator.registration_credential(
         challenge=websafe_decode(challenge),
+        public_key=public_key,
         user_verified=True,
     )
     _http_json(

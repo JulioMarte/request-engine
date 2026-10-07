@@ -111,6 +111,10 @@ class ControllerPolicyAdoptionConflict(ControllerPolicyAdoptionError):
     pass
 
 
+class ControllerPolicyAdoptionConsentInvalidated(ControllerPolicyAdoptionConflict):
+    """A controller's native account recovery invalidated the consent snapshot."""
+
+
 class ControllerPolicyAdoptionInvalid(ControllerPolicyAdoptionError):
     pass
 

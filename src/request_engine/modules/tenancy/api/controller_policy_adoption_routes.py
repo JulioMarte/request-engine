@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from request_engine.modules.tenancy.application.commands.controller_policy_adoption import (
     ApplyControllerPolicyAdoption,
     ControllerPolicyAdoptionCommands,
+    ControllerPolicyAdoptionConsentInvalidated,
     ControllerPolicyAdoptionConflict,
     ControllerPolicyAdoptionDetail,
     ControllerPolicyAdoptionError,
@@ -417,6 +418,13 @@ async def controller_policy_adoption_error_handler(_: Request, exc: Exception) -
             "controller_policy_adoption_not_found",
             "The policy adoption request is unavailable.",
             ErrorResolution.FIX_REQUEST,
+        )
+    elif isinstance(exc, ControllerPolicyAdoptionConsentInvalidated):
+        status, code, message, resolution = (
+            409,
+            "controller_policy_adoption_consent_invalidated",
+            "Native account recovery occurred after controller consent; request fresh consent.",
+            ErrorResolution.REFRESH_AND_RETRY,
         )
     elif isinstance(exc, ControllerPolicyAdoptionConflict):
         status, code, message, resolution = (

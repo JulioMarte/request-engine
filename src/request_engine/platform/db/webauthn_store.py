@@ -42,14 +42,15 @@ class PostgresWebAuthnStore:
         native_identity_id: UUID | None = None,
         session_id: UUID | None = None,
         setup_session_id: UUID | None = None,
+        user_handle: bytes | None = None,
     ) -> bool:
         async with self._session_factory() as session, session.begin():
             created = await session.scalar(
                 text(
                     """
-                    SELECT request_auth.create_webauthn_challenge(
+                    SELECT request_auth.create_webauthn_challenge_with_user_handle(
                         :challenge_id, :purpose, :native_identity_id, :session_id,
-                        :setup_session_id, :challenge_digest, :expires_at
+                        :setup_session_id, :challenge_digest, :expires_at, :user_handle
                     )
                     """
                 ),
@@ -59,6 +60,7 @@ class PostgresWebAuthnStore:
                     "native_identity_id": native_identity_id,
                     "session_id": session_id,
                     "setup_session_id": setup_session_id,
+                    "user_handle": user_handle,
                     "challenge_digest": challenge_digest,
                     "expires_at": expires_at,
                 },
@@ -104,8 +106,8 @@ class PostgresWebAuthnStore:
                             """
                             SELECT id, native_identity_id, credential_id, public_key,
                                    sign_count, aaguid, backup_eligible, backup_state,
-                                   user_verified, status
-                              FROM request_auth.read_webauthn_credential(:credential_id)
+                                   user_verified, status, user_handle
+                              FROM request_auth.read_webauthn_credential_for_assertion(:credential_id)
                             """
                         ),
                         {"credential_id": credential_id},
@@ -256,6 +258,8 @@ class PostgresWebAuthnStore:
         token_digest: bytes,
         token_fingerprint: str,
         expires_at: datetime,
+        expected_authority_id: UUID,
+        user_handle: bytes,
     ) -> UUID | None:
         async with self._session_factory() as session, session.begin():
             value = await session.scalar(
@@ -265,7 +269,8 @@ class PostgresWebAuthnStore:
                       FROM request_auth.finalize_discoverable_webauthn_authentication(
                           :challenge_digest, :credential_row_id, :sign_count,
                           :backup_eligible, :backup_state, :user_verified,
-                          :session_id, :token_digest, :token_fingerprint, :expires_at
+                          :session_id, :token_digest, :token_fingerprint, :expires_at,
+                          :expected_authority_id, :user_handle
                       )
                     """
                 ),
@@ -280,6 +285,8 @@ class PostgresWebAuthnStore:
                     "token_digest": token_digest,
                     "token_fingerprint": token_fingerprint,
                     "expires_at": expires_at,
+                    "expected_authority_id": expected_authority_id,
+                    "user_handle": user_handle,
                 },
             )
         return None if value is None else UUID(str(value))
@@ -395,6 +402,7 @@ def _record(row: Mapping[str, Any]) -> WebAuthnCredentialRecord:
         backup_state=bool(row["backup_state"]),
         user_verified=bool(row["user_verified"]),
         status=str(row["status"]),
+        user_handle=(None if row.get("user_handle") is None else bytes(row["user_handle"])),
     )
 
 

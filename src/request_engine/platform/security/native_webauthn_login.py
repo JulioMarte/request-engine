@@ -69,14 +69,18 @@ class NativeWebAuthnLoginService:
         credential: Mapping[str, Any],
     ) -> NativeWebAuthnSessionIssued:
         if login_handle is None or not login_handle.strip():
-            return await self._webauthn.complete_discoverable_authentication(credential=credential)
+            return await self._webauthn.complete_discoverable_authentication(
+                credential=credential, expected_authority_id=identity_authority_id
+            )
         identity_id = await self._resolve(identity_authority_id, login_handle)
         if identity_id is None:
             # Opaque: identical to a known identity whose assertion does not
             # verify. Never reveals that the handle is unknown.
             raise WebAuthnCeremonyError("webauthn_credential_unknown")
         return await self._webauthn.complete_discoverable_authentication(
-            expected_native_identity_id=identity_id, credential=credential
+            expected_authority_id=identity_authority_id,
+            expected_native_identity_id=identity_id,
+            credential=credential,
         )
 
     async def _resolve(self, identity_authority_id: UUID, login_handle: str) -> UUID | None:

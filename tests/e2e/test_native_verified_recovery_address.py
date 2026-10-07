@@ -136,6 +136,7 @@ async def _strong_session(
     )
     registration = authenticator.registration_credential(
         challenge=websafe_decode(options["challenge"]),
+        public_key=options,
         user_verified=True,
     )
     registered = await client.post(

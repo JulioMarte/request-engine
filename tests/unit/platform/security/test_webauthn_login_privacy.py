@@ -70,7 +70,7 @@ async def test_real_assertion_cannot_authenticate_another_intended_handle() -> N
     registration = crypto.begin_registration(user_handle=key.user_handle, user_name="owner")
     verified = crypto.verify_registration(
         credential=key.registration_credential(
-            challenge=registration.challenge, user_verified=True
+            challenge=registration.challenge, user_handle=key.user_handle, user_verified=True
         ),
         expected_challenge=registration.challenge,
     )

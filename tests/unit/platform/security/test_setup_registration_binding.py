@@ -100,7 +100,9 @@ def _service(store: _ChallengeOwnerStore) -> NativeWebAuthnAuthService:
 
 def _credential() -> Mapping[str, Any]:
     authenticator = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
-    return authenticator.registration_credential(challenge=b"\x42" * 32, user_verified=True)
+    return authenticator.registration_credential(
+        challenge=b"\x42" * 32, user_handle=authenticator.user_handle, user_verified=True
+    )
 
 
 @pytest.mark.asyncio

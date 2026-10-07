@@ -51,7 +51,9 @@ def _registered(
     service: WebAuthnService, authenticator: SoftwareAuthenticator
 ) -> tuple[RegistrationOptions, VerifiedRegistration]:
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, user_handle=authenticator.user_handle
+    )
     verified = service.verify_registration(
         credential=credential, expected_challenge=options.challenge
     )
@@ -62,7 +64,9 @@ def test_registration_and_authentication_round_trip() -> None:
     service = _service()
     authenticator = _authenticator()
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, user_handle=authenticator.user_handle
+    )
     assert extract_registration_challenge(credential) == options.challenge
 
     verified = service.verify_registration(
@@ -145,7 +149,7 @@ def test_registration_rejects_missing_user_verification() -> None:
     authenticator = _authenticator()
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
     credential = authenticator.registration_credential(
-        challenge=options.challenge, user_verified=False
+        challenge=options.challenge, user_handle=authenticator.user_handle, user_verified=False
     )
     with pytest.raises(WebAuthnVerificationError) as exc:
         service.verify_registration(credential=credential, expected_challenge=options.challenge)
@@ -174,7 +178,9 @@ def test_registration_rejects_wrong_origin() -> None:
     service = _service()
     authenticator = _authenticator(origin="http://evil.test")
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, user_handle=authenticator.user_handle
+    )
     with pytest.raises(WebAuthnVerificationError):
         service.verify_registration(credential=credential, expected_challenge=options.challenge)
 
@@ -183,7 +189,9 @@ def test_registration_rejects_wrong_rp_id() -> None:
     service = _service()
     authenticator = _authenticator(rp_id="evil.test")
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, user_handle=authenticator.user_handle
+    )
     with pytest.raises(WebAuthnVerificationError):
         service.verify_registration(credential=credential, expected_challenge=options.challenge)
 
@@ -192,7 +200,9 @@ def test_registration_rejects_wrong_expected_challenge() -> None:
     service = _service()
     authenticator = _authenticator()
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, user_handle=authenticator.user_handle
+    )
     with pytest.raises(WebAuthnVerificationError):
         service.verify_registration(credential=credential, expected_challenge=b"\x01" * 32)
 

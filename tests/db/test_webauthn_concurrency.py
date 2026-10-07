@@ -114,12 +114,20 @@ def _pending_challenge(
     admin_conn: PgConnection, identity_id: UUID, purpose: str = "authentication"
 ) -> bytes:
     digest = secrets.token_bytes(32)
-    admin_conn.execute(
-        "INSERT INTO request_engine.webauthn_challenges "
-        "(id, purpose, native_identity_id, challenge_digest, expires_at) "
-        "VALUES (%s, %s, %s, %s, clock_timestamp() + interval '5 minutes')",
-        (uuid4(), purpose, identity_id, digest),
-    )
+    if purpose == "registration":
+        admin_conn.execute(
+            "INSERT INTO request_engine.webauthn_challenges "
+            "(id, purpose, native_identity_id, challenge_digest, expires_at, user_handle) "
+            "VALUES (%s, %s, %s, %s, clock_timestamp() + interval '5 minutes', %s)",
+            (uuid4(), purpose, identity_id, digest, secrets.token_bytes(32)),
+        )
+    else:
+        admin_conn.execute(
+            "INSERT INTO request_engine.webauthn_challenges "
+            "(id, purpose, native_identity_id, challenge_digest, expires_at) "
+            "VALUES (%s, %s, %s, %s, clock_timestamp() + interval '5 minutes')",
+            (uuid4(), purpose, identity_id, digest),
+        )
     return digest
 
 

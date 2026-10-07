@@ -94,7 +94,9 @@ async def _claim_owner(
     ).json()["public_key"]
     authenticator = SoftwareAuthenticator(rp_id=options["rp"]["id"], origin=ORIGIN)
     credential = authenticator.registration_credential(
-        challenge=websafe_decode(options["challenge"]), user_verified=True
+        challenge=websafe_decode(options["challenge"]),
+        public_key=options,
+        user_verified=True,
     )
     assert (
         await client.post(
@@ -279,7 +281,9 @@ async def test_current_identity_can_enroll_passkey_then_issue_offline_recovery_c
         ).json()["public_key"]
         authenticator = SoftwareAuthenticator(rp_id=options["rp"]["id"], origin=ORIGIN)
         credential = authenticator.registration_credential(
-            challenge=websafe_decode(options["challenge"]), user_verified=True
+            challenge=websafe_decode(options["challenge"]),
+            public_key=options,
+            user_verified=True,
         )
         registered = await client.post(
             "/auth/native/sessions/current/webauthn/registrations",
@@ -455,6 +459,7 @@ async def test_second_platform_owner_requires_prepared_identity_and_preserves_la
         )
         registration = candidate_authenticator.registration_credential(
             challenge=websafe_decode(registration_options["challenge"]),
+            public_key=registration_options,
             user_verified=True,
         )
         registered = await client.post(
@@ -680,7 +685,9 @@ async def test_authentication_options_do_not_reveal_unknown_handles(
             headers=headers,
             json={
                 "credential": second_authenticator.registration_credential(
-                    challenge=websafe_decode(registration_options["challenge"]), user_verified=True
+                    challenge=websafe_decode(registration_options["challenge"]),
+                    public_key=registration_options,
+                    user_verified=True,
                 )
             },
         )
@@ -852,6 +859,7 @@ async def test_offline_recovery_restricts_sensitive_authority_until_webauthn_com
         )
         credential = replacement_authenticator.registration_credential(
             challenge=websafe_decode(options["challenge"]),
+            public_key=options,
             user_verified=True,
         )
         registered = await client.post(

@@ -5,9 +5,8 @@
 # starts the private admin console pointed at it. Everything the console shows
 # and executes is the real control plane and the real database.
 #
-# It stops stale dev processes and starts both services FULLY DETACHED (via the
-# WMI Win32_Process.Create provider, so they never inherit this shell's
-# stdout/stderr pipes and cannot block the caller), waits for readiness and
+# It stops stale dev processes and starts services detached with explicit
+# environment maps (secrets never appear in command arguments), waits for readiness and
 # prints the URLs. It returns promptly and never runs a server in the foreground.
 #
 # Prereqs: `uv sync`, the local PostgreSQL container up, and the database
@@ -23,10 +22,18 @@ param(
   [int]$RuntimePort = 8000,
   [string]$Container = 'request-engine-postgres-1',
   [string]$Database = 'request_engine_current',
-  [string]$DbSuperuser = 'request_engine'
+  [string]$DbSuperuser = 'request_engine',
+  [switch]$WithDelivery,
+  [int]$OpenBaoPort = 58241,
+  [int]$SmtpPort = 58242,
+  [int]$MailpitPort = 58243
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not (Get-Command Start-Process).Parameters.ContainsKey('Environment')) {
+  throw 'PowerShell 7.4+ required: application secrets must not be embedded in process arguments'
+}
+. (Join-Path $PSScriptRoot 'local_panel_delivery.ps1')
 $log = Join-Path $env:TEMP 're-admin'
 New-Item -ItemType Directory -Force -Path $log | Out-Null
 
@@ -75,11 +82,10 @@ if (-not $authority) {
   throw "no platform_instance found in $Database; run 'alembic upgrade head' first"
 }
 
-function Start-Detached([string]$CommandLine) {
-  # Win32_Process.Create spawns outside this shell; no inherited pipes.
-  Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-    CommandLine = $CommandLine
-  } | Out-Null
+function Start-PanelServer([string]$Module, [int]$Port, [hashtable]$Environment, [string]$OutputLog) {
+  Start-Process -FilePath $python -WorkingDirectory $Root -WindowStyle Hidden `
+    -ArgumentList @('-m', 'uvicorn', "${Module}:create_app", '--factory', '--host', '127.0.0.1', '--port', "$Port") `
+    -Environment $Environment -RedirectStandardOutput $OutputLog -RedirectStandardError "$OutputLog.err" | Out-Null
 }
 
 function New-DevelopmentSecret {
@@ -102,43 +108,50 @@ $appUrl = "postgresql+asyncpg://re_dev_app:dev-app-only@127.0.0.1:5432/$Database
 $readUrl = "postgresql+asyncpg://re_dev_read:dev-read-only@127.0.0.1:5432/$Database"
 $controlDbUrl = "postgresql+asyncpg://re_dev_control:dev-control-only@127.0.0.1:5432/$Database"
 
-$controlCmd = ('cmd.exe /c "cd /d "{0}" && ' +
-  'set REQUEST_ENGINE_DATABASE_URL={1}&& ' +
-  'set REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL={2}&& ' +
-  'set REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL={3}&& ' +
-  'set REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID={4}&& ' +
-  'set REQUEST_ENGINE_WEBAUTHN_DECOY_KEY={5}&& ' +
-  'set REQUEST_ENGINE_WEBAUTHN_RP_ID=localhost&& ' +
-  'set REQUEST_ENGINE_WEBAUTHN_RP_NAME=Request Engine&& ' +
-  'set REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS=http://localhost:{6}&& ' +
-  '"{7}" -m uvicorn request_engine.bootstrap.platform_server:create_app --factory ' +
-  '--host 127.0.0.1 --port {8} > "{9}" 2>&1"') -f `
-  $Root, $appUrl, $readUrl, $controlDbUrl, $authority, $decoy, $ConsolePort, $python, $ControlPort, $controlLog
-Start-Detached $controlCmd
-
-$runtimeCmd = ('cmd.exe /c "cd /d "{0}" && ' +
-  'set REQUEST_ENGINE_DATABASE_URL={1}&& ' +
-  'set REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID={2}&& ' +
-  'set REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY={3}&& ' +
-  'set REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY={4}&& ' +
-  'set REQUEST_ENGINE_WEBAUTHN_DECOY_KEY={5}&& ' +
-  'set REQUEST_ENGINE_WEBAUTHN_RP_ID=localhost&& ' +
-  'set REQUEST_ENGINE_WEBAUTHN_RP_NAME=Request Engine&& ' +
-  'set REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS=http://localhost:{6}&& ' +
-  '"{7}" -m uvicorn request_engine.bootstrap.server:create_app --factory ' +
-  '--host 127.0.0.1 --port {8} > "{9}" 2>&1"') -f `
-  $Root, $appUrl, $authority, $optionSigningSecret, $fingerprintSecret, $decoy, $ConsolePort, $python, $RuntimePort, $runtimeLog
-Start-Detached $runtimeCmd
-
-$consoleCmd = ('cmd.exe /c "cd /d "{0}" && set REQUEST_ENGINE_ADMIN_CONSOLE_CONTROL_API_BASE_URL=http://127.0.0.1:{1}&& ' +
-  'set REQUEST_ENGINE_ADMIN_CONSOLE_RUNTIME_API_BASE_URL=http://127.0.0.1:{6}&& ' +
-  'set REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_SECRET={2}&& ' +
-  'set "REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY={7}"&& ' +
-  'set REQUEST_ENGINE_ADMIN_CONSOLE_COOKIE_SECURE=false&& ' +
-  'set REQUEST_ENGINE_ADMIN_CONSOLE_DEBUG=true&& ' +
-  '"{3}" -m uvicorn request_engine.bootstrap.admin_console_server:create_app --factory --host 127.0.0.1 --port {4} > "{5}" 2>&1"') -f `
-  $Root, $ControlPort, $consoleSessionSecret, $python, $ConsolePort, $consoleLog, $RuntimePort, $sessionDirectory
-Start-Detached $consoleCmd
+$shared = @{
+  REQUEST_ENGINE_DATABASE_URL = $appUrl
+  REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID = $authority
+  REQUEST_ENGINE_WEBAUTHN_DECOY_KEY = $decoy
+  REQUEST_ENGINE_WEBAUTHN_RP_ID = 'localhost'
+  REQUEST_ENGINE_WEBAUTHN_RP_NAME = 'Request Engine'
+  REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS = "http://localhost:$ConsolePort"
+}
+if ($WithDelivery) {
+  $delivery = Start-PanelLocalDelivery $Root $OpenBaoPort $SmtpPort $MailpitPort
+  $shared.REQUEST_ENGINE_OPENBAO_ADDR = $delivery.Address
+  $shared.REQUEST_ENGINE_OPENBAO_MOUNT = 'secret'
+  $shared.REQUEST_ENGINE_OPENBAO_NAMESPACE = ''
+  $shared.REQUEST_ENGINE_OPENBAO_PATH_PREFIX = 'request-engine/identity-recovery'
+  $shared.REQUEST_ENGINE_VAULT_ADDR = ''
+  $shared.REQUEST_ENGINE_VAULT_TOKEN = ''
+  $shared.REQUEST_ENGINE_SMTP_HOST = '127.0.0.1'
+  $shared.REQUEST_ENGINE_SMTP_PORT = "$SmtpPort"
+  $shared.REQUEST_ENGINE_SMTP_SENDER = 'request-engine@localhost.test'
+  $shared.REQUEST_ENGINE_SMTP_STARTTLS = 'false'
+  $shared.REQUEST_ENGINE_SMTP_SSL = 'false'
+  $shared.REQUEST_ENGINE_SMTP_USERNAME = ''
+  $shared.REQUEST_ENGINE_SMTP_PASSWORD = ''
+  $shared.REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL = "http://localhost:$ConsolePort/staff-invitations"
+}
+$controlEnvironment = $shared.Clone()
+$controlEnvironment.REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL = $readUrl
+$controlEnvironment.REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL = $controlDbUrl
+if ($WithDelivery) { $controlEnvironment.REQUEST_ENGINE_OPENBAO_TOKEN = $delivery.ControlToken }
+$runtimeEnvironment = $shared.Clone()
+$runtimeEnvironment.REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY = $optionSigningSecret
+$runtimeEnvironment.REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY = $fingerprintSecret
+if ($WithDelivery) { $runtimeEnvironment.REQUEST_ENGINE_OPENBAO_TOKEN = $delivery.RuntimeToken }
+$consoleEnvironment = @{
+  REQUEST_ENGINE_ADMIN_CONSOLE_CONTROL_API_BASE_URL = "http://127.0.0.1:$ControlPort"
+  REQUEST_ENGINE_ADMIN_CONSOLE_RUNTIME_API_BASE_URL = "http://127.0.0.1:$RuntimePort"
+  REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_SECRET = $consoleSessionSecret
+  REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY = $sessionDirectory
+  REQUEST_ENGINE_ADMIN_CONSOLE_COOKIE_SECURE = 'false'
+  REQUEST_ENGINE_ADMIN_CONSOLE_DEBUG = 'true'
+}
+Start-PanelServer 'request_engine.bootstrap.platform_server' $ControlPort $controlEnvironment $controlLog
+Start-PanelServer 'request_engine.bootstrap.server' $RuntimePort $runtimeEnvironment $runtimeLog
+Start-PanelServer 'request_engine.bootstrap.admin_console_server' $ConsolePort $consoleEnvironment $consoleLog
 
 function Wait-Http([string]$Url, [int]$Seconds) {
   $deadline = (Get-Date).AddSeconds($Seconds)
@@ -161,4 +174,8 @@ Write-Output "tenant runtime     : http://127.0.0.1:$RuntimePort  (health/ready 
 Write-Output "admin console      : http://localhost:$ConsolePort  (use localhost, not 127.0.0.1, for passkeys)"
 Write-Output "database           : $Database  (instance authority $authority)"
 Write-Output "logs               : $log"
+if ($WithDelivery) {
+  Write-Output "local mail inbox   : http://127.0.0.1:$MailpitPort (development only; contains sensitive links)"
+  Write-Output 'delivery worker    : NOT started; provision an integration principal through APIs and follow docs/testing/local-panel-delivery.md'
+}
 Write-Output "ready              : $($controlReady -eq 200 -and $runtimeReady -eq 200 -and $consoleReady -eq 200)"

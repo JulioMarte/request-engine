@@ -66,6 +66,7 @@ async def test_platform_provisioner_lifecycle_http_is_revisioned_and_audited(
             json={
                 "credential": authenticator.registration_credential(
                     challenge=websafe_decode(options["challenge"]),
+                    public_key=options,
                     user_verified=True,
                 )
             },

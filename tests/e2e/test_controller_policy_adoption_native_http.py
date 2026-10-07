@@ -154,7 +154,9 @@ async def _passkey_login(
         headers=bearer,
         json={
             "credential": authenticator.registration_credential(
-                challenge=websafe_decode(public_key["challenge"]), user_verified=True
+                challenge=websafe_decode(public_key["challenge"]),
+                public_key=public_key,
+                user_verified=True,
             )
         },
     )

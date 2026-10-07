@@ -68,7 +68,9 @@ async def test_claimed_owner_provisions_native_human_and_tenant_without_sql_bind
         options = registration.json()["public_key"]
         authenticator = SoftwareAuthenticator(rp_id=options["rp"]["id"], origin="https://localhost")
         credential = authenticator.registration_credential(
-            challenge=websafe_decode(options["challenge"]), user_verified=True
+            challenge=websafe_decode(options["challenge"]),
+            public_key=options,
+            user_verified=True,
         )
         registered = await client.post(
             "/v1/setup/webauthn/registrations",

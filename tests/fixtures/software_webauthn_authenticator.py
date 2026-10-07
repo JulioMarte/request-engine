@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from fido2.cose import ES256
-from fido2.utils import websafe_encode
+from fido2.utils import websafe_decode, websafe_encode
 from fido2.webauthn import (
     AttestationObject,
     AttestedCredentialData,
@@ -60,8 +61,22 @@ class SoftwareAuthenticator:
         return flags
 
     def registration_credential(
-        self, *, challenge: bytes, user_verified: bool = True
+        self,
+        *,
+        challenge: bytes,
+        public_key: Mapping[str, Any] | None = None,
+        user_handle: bytes | None = None,
+        user_verified: bool = True,
     ) -> dict[str, Any]:
+        if user_handle is None and public_key is not None:
+            user = public_key.get("user")
+            if isinstance(user, Mapping) and isinstance(user.get("id"), str):
+                user_handle = websafe_decode(user["id"])
+        if user_handle is None:
+            raise ValueError("registration must use the user id from server-issued options")
+        if not 16 <= len(user_handle) <= 64:
+            raise ValueError("WebAuthn userHandle must be between 16 and 64 bytes")
+        self.user_handle = user_handle
         cose_key = ES256.from_cryptography_key(self._private_key.public_key())
         credential_data = AttestedCredentialData.create(self.aaguid, self.credential_id, cose_key)
         auth_data = AuthenticatorData.create(  # pyright: ignore[reportUnknownMemberType]

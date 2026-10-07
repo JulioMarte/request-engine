@@ -26,6 +26,47 @@
 
   document.addEventListener("DOMContentLoaded", rememberPasswordHandle);
 
+  // Some Chromium configurations omit Origin on a top-level same-origin form
+  // navigation. The admin CSRF boundary intentionally rejects that request.
+  // Submit every setup mutation through fetch instead; fetch is same-origin,
+  // carries the setup cookie, and causes Chromium to emit Origin reliably.
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (!(form instanceof HTMLFormElement) || !form.matches("form[data-setup-session], form[data-setup-form]")) return;
+    event.preventDefault();
+    var button = form.querySelector("button[type=submit]");
+    var status = form.querySelector("[data-setup-session-status], [data-setup-form-status]");
+    if (button) button.disabled = true;
+    if (status) status.textContent = "Processing…";
+    fetch(form.action, {
+      method: "POST",
+      body: new FormData(form),
+      credentials: "same-origin",
+      redirect: "follow",
+    }).then(function (response) {
+      if (!response.ok) {
+        return response.json().catch(function () { return {}; }).then(function (body) {
+          throw new Error(body.error || "Could not start setup session");
+        });
+      }
+      // Identity validation and invalid submissions redirect. Recovery-code
+      // issuance and final claim return HTML directly; replace the document for
+      // those responses instead of navigating to a POST-only URL.
+      if (response.redirected) {
+        window.location.assign(response.url);
+        return;
+      }
+      return response.text().then(function (html) {
+        document.open();
+        document.write(html);
+        document.close();
+      });
+    }).catch(function (error) {
+      if (button) button.disabled = false;
+      if (status) status.textContent = String(error.message || error);
+    });
+  });
+
   function initializeFormIntents(root) {
     var fields = (root || document).querySelectorAll("input[data-form-intent]");
     fields.forEach(function (field) {

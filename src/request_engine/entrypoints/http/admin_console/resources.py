@@ -255,6 +255,10 @@ DEPLOYMENT_OPERATION_IDS = {
     "reconcile": "platform_deployment_recovery_reconcile",
 }
 OWNER_OPERATION_IDS = {
+    "list": "platform_owner_list",
+    "get": "platform_owner_get",
+    "invitation_list": "platform_owner_invitation_list",
+    "invitation_get": "platform_owner_invitation_get",
     "invite": "platform_owner_invitation_create",
     "revoke_invitation": "platform_owner_invitation_revoke",
     "activate_invitation": "platform_owner_invitation_activate",

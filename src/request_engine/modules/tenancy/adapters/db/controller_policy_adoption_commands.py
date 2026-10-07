@@ -9,6 +9,7 @@ from sqlalchemy.exc import DBAPIError
 from request_engine.modules.tenancy.application.commands.controller_policy_adoption import (
     ApplyControllerPolicyAdoption,
     ControllerPolicyAdoptionConflict,
+    ControllerPolicyAdoptionConsentInvalidated,
     ControllerPolicyAdoptionDetail,
     ControllerPolicyAdoptionForbidden,
     ControllerPolicyAdoptionInvalid,
@@ -48,6 +49,8 @@ def _map_db_error(exc: DBAPIError) -> NoReturn:
         raise ControllerPolicyAdoptionForbidden() from exc
     if sqlstate == "P0002":
         raise ControllerPolicyAdoptionNotFound() from exc
+    if sqlstate == "P0010":
+        raise ControllerPolicyAdoptionConsentInvalidated() from exc
     if sqlstate in {"40001", "40P01", "23505", "23514", "55000"}:
         raise ControllerPolicyAdoptionConflict() from exc
     if sqlstate == "22023":

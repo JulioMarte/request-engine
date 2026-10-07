@@ -151,6 +151,7 @@ class VerifiedAuthentication:
     user_verified: bool
     backup_eligible: bool
     backup_state: bool
+    user_handle: bytes | None
 
 
 def generate_challenge() -> bytes:
@@ -388,7 +389,9 @@ class WebAuthnService:
                 CoseKey.parse(cast("Mapping[int, Any]", _decode_cbor(public_key))),
             )
             self._server.authenticate_complete(state, [stored], credential)
-            auth_data = AuthenticationResponse.from_dict(credential).response.authenticator_data
+            authentication_response = AuthenticationResponse.from_dict(credential).response
+            auth_data = authentication_response.authenticator_data
+            user_handle = authentication_response.user_handle
         except _VERIFICATION_ERRORS as exc:
             raise WebAuthnVerificationError(
                 "webauthn_verification_failed", "Authentication verification failed"
@@ -400,4 +403,5 @@ class WebAuthnService:
             user_verified=bool(auth_data.is_user_verified()),
             backup_eligible=bool(auth_data.is_backup_eligible()),
             backup_state=bool(auth_data.is_backed_up()),
+            user_handle=None if user_handle is None else bytes(user_handle),
         )
