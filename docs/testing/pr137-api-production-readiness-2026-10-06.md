@@ -1070,3 +1070,32 @@ sumaron ficticiamente a unit/modules. Su lane canónica es
 archivo y se activa al cambiar producción o sus pruebas. Seis pruebas de
 contrato documental y `git diff --check` también pasaron. La publicación debe
 conservar el árbol certificado y esperar el CI del nuevo candidato.
+
+### Bloqueo del registro de imágenes y corrección de infraestructura
+
+El cambio de alertas quedó publicado como `d0a68c4f`, árbol `66a93769`, idéntico
+al checkpoint certificado `28645b9d` (PASS en 91,19 s). Su nuevo CI pasó calidad
+y observabilidad, pero Docker E2E falló antes de ejecutar pruebas por HTTP 429
+al descargar `python:3.13-slim`; el reintento del mismo run volvió a fallar.
+Configuración P7 también falló antes de collection: cuota Docker Hub y timeout
+al descargar `postgres:18`. Recuperación simulada no alcanzó sus pruebas.
+No se atribuye un resultado verde al candidato ni un defecto de producto a
+ese fallo de infraestructura.
+
+Se cambia exclusivamente el registro de Python/PostgreSQL hacia su publicación
+oficial de Docker en ECR Public. Conserva Python `3.13-slim` y PostgreSQL `18`,
+sin omitir validación ni introducir credenciales compartidas. Abarca Dockerfiles
+del artifact/runner, Compose reusable, jobs PostgreSQL de CI/P7 y los helpers
+de baseline/restore. Se elimina la descarga innecesaria del frontend Dockerfile
+externo; las instrucciones usadas son compatibles con el frontend incluido.
+OpenBao `2.6.1` y Mailpit `v1.27` de los lanes CI pasan a sus publicaciones
+oficiales en GHCR tras verificar las fuentes de los mantenedores. También
+se actualizan el helper Raft y el arranque de OpenBao del workflow P7.
+No se presume digest idéntico solo por conservar tags; el próximo CI debe
+acreditar descarga, build, migración y journeys con los nuevos registros.
+
+Dos candidatos de mantenibilidad del fix de alertas (`QR-160d118fae82` y
+`QR-737caa3d0ed7`) fueron revisados con packets `quality-evidence/v2` actuales
+y validados por JSON Schema. Ambos quedaron `HEALTHY_AS_IS`: una colección
+cohesiva de señales y sus pruebas, sin separación artificial por tamaño.
+La revisión no acepta la operación productiva ni reemplaza Docker/CI.

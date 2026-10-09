@@ -24,7 +24,7 @@ x-platform-env: &platform-env
 
 services:
   postgres:
-    image: postgres:18
+    image: public.ecr.aws/docker/library/postgres:18
     environment:
       POSTGRES_DB: request_engine
       POSTGRES_USER: postgres
@@ -37,7 +37,7 @@ services:
     networks: [backend]
 
   openbao:
-    image: openbao/openbao:2.6.1
+    image: ghcr.io/openbao/openbao:2.6.1
     profiles: [secrets]
     cap_add: [IPC_LOCK]
     environment:
@@ -52,7 +52,7 @@ services:
     networks: [backend]
 
   mailpit:
-    image: axllent/mailpit:v1.27
+    image: ghcr.io/axllent/mailpit:v1.27
     profiles: [delivery, managed-delivery]
     environment:
       # The delivery profile must be able to validate/serve a *credentialed*

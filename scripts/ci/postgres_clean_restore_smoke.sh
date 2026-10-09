@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE="${POSTGRES_IMAGE:-postgres:18}"
+IMAGE="${POSTGRES_IMAGE:-public.ecr.aws/docker/library/postgres:18}"
 SOURCE="p7-pg-source-${GITHUB_RUN_ID:-local}-$$"
 TARGET="p7-pg-target-${GITHUB_RUN_ID:-local}-$$"
 SOURCE_PORT="${P7_PG_SOURCE_PORT:-15432}"

@@ -4,6 +4,15 @@ Date: 2026-09-19
 Branch: `feature/platform-config-openbao-recovery`  
 Authority: ADR 0015
 
+Acceptance infrastructure (2026-10-09): the reference Compose PostgreSQL service
+and Python runtime/black-box runner now use Docker's official ECR Public
+publication, preserving PostgreSQL `18` and Python `3.13-slim`. This addresses
+Docker Hub quota failures without weakening isolation, fresh-target restoration,
+secret access or outbound fences. The existing provider versions remain intact;
+download/build and actual image provenance must still pass the candidate's CI.
+See [Docker E2E platform](docker-e2e-ci-plan.md). This does not certify off-host
+backup or real SMTP/network acceptance.
+
 > **P7 execution handoff (2026-09-20):**
 > `p7-platform-configuration-secrets-implementation-handoff.md` is the
 > executable continuation for the deferred P7 surface. This document remains the

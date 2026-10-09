@@ -2,6 +2,15 @@
 
 Status: Accepted
 
+Operational amendment (2026-10-09): the reusable reference acceptance deployment
+pulls Python/PostgreSQL from Docker's official ECR Public publication with the
+existing `3.13-slim`/`18` tags. This changes artifact distribution only after
+Docker Hub quota failures; it does not change secret authority, process/network
+separation, recovery fencing or production acceptance. See
+[Docker E2E platform](../architecture/docker-e2e-ci-plan.md) for provenance and
+actual resolved-image evidence requirements. Registry availability remains a
+failing prerequisite, never permission to skip recovery proofs.
+
 ## Context
 
 Request Engine historically composes SMTP, Vault and cryptographic deployment

@@ -2,6 +2,25 @@
 
 Fecha: 2026-09-17. Branch de referencia: `cohesion/system-optimization`.
 
+**Registro de imágenes (2026-10-09):** Python `3.13-slim` y PostgreSQL `18`
+del deployment reusable y los jobs PostgreSQL actuales se descargan desde
+`public.ecr.aws/docker/library/`, la publicación oficial de Docker en ECR Public.
+Se conservan tags/versiones, red, roles, datos frescos y pruebas. El Dockerfile
+usa el frontend incluido en BuildKit: sus instrucciones no requieren descargar
+un frontend externo. No se sustituye una descarga fallida por una imagen
+arbitraria ni se salta una suite. La evidencia debe registrar el registro y
+digest realmente resueltos; igualdad de tags entre registros no acredita por
+sí sola igualdad de digest. ECR también puede tener cuotas/fallos; el CI debe
+fallar en ese caso. Fuente: [anuncio oficial de Docker](https://www.docker.com/blog/news-from-aws-reinvent-docker-official-images-on-amazon-ecr-public/).
+
+OpenBao `2.6.1` y Mailpit `v1.27` de estas mismas rutas CI usan sus publicaciones
+oficiales en GHCR (`ghcr.io/openbao/openbao` y `ghcr.io/axllent/mailpit`).
+Fuentes: [OpenBao](https://openbao.org/docs/next/install/) y
+[Mailpit](https://mailpit.axllent.org/docs/install/docker/). La descarga de los
+tags exactos y los journeys reales deben pasar; no se presume disponibilidad
+por la documentación. Este cambio abarca los lanes de aceptación actuales;
+otros launchers locales/históricos pueden conservar sus referencias anteriores.
+
 Estado: **arquitectura oficial de system/E2E; core reusable P3a/P3b implementado y validado en CI para el lane black-box base.** F-01 está demostrado black-box hasta donde los contratos actuales lo permiten (foundation, staff/AGENT, recovery governance, last-controller refusal y fault injection worker/API); el recovery positivo y el reemplazo de controller están bloqueados por gaps de producto documentados en la sección 14. Quedan pendientes la policy final de coste/gating y la promoción del lane desde `continue-on-error`. No es certificación ni autorización de despliegue a producción.
 
 **Trust-root transition (2026-09-19):** ADR 0014 y `instance-claim-platform-owner-plan.md` aceptan que el mundo fresco se reclame por HTTP/TCP en el control plane con SetupSession + WebAuthn + finalize atómico. La plataforma E2E ya consume ese flujo: el orquestador deja de invocar `request-engine-platform-bootstrap issue/establish`, lee el `built_in_native_authority_id` de `request_engine.platform_instance` solo para arrancar procesos, y el runner black-box completa la reclamación por HTTP con un autenticador WebAuthn software de criptografía real, aprendiendo ambos authority ids del recibo del claim. El CLI histórico puede seguir existiendo para otros caminos, pero ya no es el contrato de instalación limpia de esta plataforma.

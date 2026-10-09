@@ -49,7 +49,7 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:18
+        image: public.ecr.aws/docker/library/postgres:18
         env:
           POSTGRES_DB: request_engine_p7
           POSTGRES_USER: postgres
@@ -112,7 +112,7 @@ jobs:
             --cap-add IPC_LOCK \
             -p 127.0.0.1:8200:8200 \
             -e VAULT_DEV_ROOT_TOKEN_ID=ci-root-token \
-            openbao/openbao:2.6.1 \
+            ghcr.io/openbao/openbao:2.6.1 \
             server -dev -dev-root-token-id=ci-root-token -dev-listen-address=0.0.0.0:8200
           for attempt in $(seq 1 30); do
             if docker exec p7-openbao bao status -address=http://127.0.0.1:8200 >/dev/null 2>&1; then

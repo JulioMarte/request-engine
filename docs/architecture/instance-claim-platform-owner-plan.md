@@ -4,6 +4,14 @@ Date: 2026-09-18
 Branch of reference: `cohesion/system-optimization`  
 Status: **accepted architecture and implementation handoff; not production certification.**
 
+The reference software-authenticator runner keeps Python `3.13-slim` and the
+same isolated TCP/WebAuthn claim journey. Its base image is now Docker's
+official `public.ecr.aws/docker/library/python:3.13-slim` publication, avoiding
+the shared Docker Hub pull quota observed in CI. This is an image registry
+change, not a relaxation of claim/signature/origin/authority acceptance. Resolve
+and record the actual candidate image digest; a mirrored tag alone is not a
+proof that two registries currently return identical bytes.
+
 Implementation status (2026-09-19, migration head `0067_webauthn_login`):
 
 ```text

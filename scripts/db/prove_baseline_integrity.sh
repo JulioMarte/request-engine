@@ -97,7 +97,7 @@ else
     --env POSTGRES_DB \
     --env POSTGRES_USER=postgres \
     --publish 127.0.0.1::5432 \
-    postgres:18 >/dev/null
+    public.ecr.aws/docker/library/postgres:18 >/dev/null
   unset POSTGRES_PASSWORD POSTGRES_DB
   PORT="$(docker port "$CONTAINER" 5432/tcp | head -n 1 | awk -F: '{print $NF}')"
 fi
