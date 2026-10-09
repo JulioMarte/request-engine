@@ -12,6 +12,7 @@ from psycopg import Connection, sql
 from sqlalchemy import text
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from request_engine.platform.db.execution_budget import PostgresExecutionBudget
@@ -110,3 +111,39 @@ async def _lock_timeout(url: str) -> None:
         assert not await loser.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": key})
         await winner.rollback()
         assert await loser.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": key})
+
+
+@pytest.mark.parametrize("driver", ["asyncpg", "psycopg"])
+def test_pool_ceiling_rejects_excess_checkout_and_recovers(
+    bounded_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("REQUEST_ENGINE_DB_POOL_SIZE", "1")
+    monkeypatch.setenv("REQUEST_ENGINE_DB_POOL_MAX_OVERFLOW", "1")
+    asyncio.run(_pool_ceiling(bounded_database_url), loop_factory=asyncio.SelectorEventLoop)
+
+
+async def _pool_ceiling(url: str) -> None:
+    engine = create_postgres_engine(url, budget=PostgresExecutionBudget(pool_seconds=0.1))
+    try:
+        async with engine.connect() as first, engine.connect() as second:
+            first_pid = await first.scalar(text("SELECT pg_backend_pid()"))
+            second_pid = await second.scalar(text("SELECT pg_backend_pid()"))
+            assert first_pid != second_pid
+            with pytest.raises(PoolTimeoutError):
+                async with engine.connect():
+                    pytest.fail("pool admitted a third concurrent connection")
+            assert (
+                await first.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_stat_activity WHERE usename="
+                        "current_user AND datname=current_database()"
+                    )
+                )
+                == 2
+            )
+            await second.close()
+            async with engine.connect() as recovered:
+                assert await recovered.scalar(text("SELECT pg_backend_pid()")) == second_pid
+                assert await recovered.scalar(text("SELECT 1")) == 1
+    finally:
+        await engine.dispose()

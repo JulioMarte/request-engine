@@ -42,7 +42,7 @@ def _uuid_row(conn: PgConnection, query: LiteralString, params: tuple[object, ..
     return row[0]
 
 
-def _create_authority(conn: PgConnection) -> UUID:
+def adoption_create_authority(conn: PgConnection) -> UUID:
     return _uuid_row(
         conn,
         "INSERT INTO request_engine.identity_authorities(kind,issuer_or_environment) "
@@ -51,7 +51,7 @@ def _create_authority(conn: PgConnection) -> UUID:
     )
 
 
-def _provision_root(
+def adoption_provision_root(
     conn: PgConnection, authority_id: UUID, native_id: UUID
 ) -> tuple[UUID, UUID, UUID]:
     provisioner = _uuid_row(
@@ -111,7 +111,7 @@ def _provision_root(
     return organization_id, root_id, binding_id
 
 
-def _platform_actor(
+def adoption_platform_actor(
     conn: PgConnection, authority_id: UUID, native_id: UUID
 ) -> PlatformActorContext:
     principal = _uuid_row(
@@ -160,7 +160,7 @@ def _platform_actor(
     )
 
 
-def _root_actor(
+def adoption_root_actor(
     conn: PgConnection, organization_id: UUID, root_id: UUID, binding_id: UUID
 ) -> ActorContext:
     revision_row = conn.execute(
@@ -188,7 +188,9 @@ def _root_actor(
     )
 
 
-async def _wait_for_blocker(observer: PgConnection, query_fragment: str, blocker_pid: int) -> int:
+async def adoption_wait_for_blocker(
+    observer: PgConnection, query_fragment: str, blocker_pid: int
+) -> int:
     deadline = time.monotonic() + 15.0
     while time.monotonic() < deadline:
         rows = observer.execute(
@@ -219,7 +221,7 @@ async def test_concurrent_apply_serializes_replay_or_conflict_without_duplicate_
     retry_same_key_and_payload: bool,
 ) -> None:
     """Same-key retry replays; another key/payload conflicts after waiting for the winner."""
-    authority_id = _create_authority(e2e_admin_conn)
+    authority_id = adoption_create_authority(e2e_admin_conn)
     enrollment = build_native_auth_runtime(e2e_session_factory)
     root_identity = await enrollment.service.enroll_password_identity(
         identity_authority_id=authority_id,
@@ -231,12 +233,12 @@ async def test_concurrent_apply_serializes_replay_or_conflict_without_duplicate_
         login_handle=f"apply-race-owner-{uuid4().hex}@example.test",
         password="apply-race-owner-password-2",
     )
-    organization_id, root_id, root_binding_id = _provision_root(
+    organization_id, root_id, root_binding_id = adoption_provision_root(
         e2e_admin_conn, authority_id, root_identity.native_identity_id
     )
-    root_actor = _root_actor(e2e_admin_conn, organization_id, root_id, root_binding_id)
+    root_actor = adoption_root_actor(e2e_admin_conn, organization_id, root_id, root_binding_id)
     assert root_actor.authority_revision is not None
-    platform_actor = _platform_actor(
+    platform_actor = adoption_platform_actor(
         e2e_admin_conn, authority_id, platform_identity.native_identity_id
     )
     commands = PostgresControllerPolicyAdoptionCommands(
@@ -293,7 +295,7 @@ async def test_concurrent_apply_serializes_replay_or_conflict_without_duplicate_
                 ),
             )
         )
-        await _wait_for_blocker(
+        await adoption_wait_for_blocker(
             e2e_admin_conn,
             "apply_controller_policy_adoption",
             first_pid,

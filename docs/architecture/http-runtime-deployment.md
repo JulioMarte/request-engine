@@ -76,6 +76,23 @@ change global PostgreSQL settings, migrations or worker profiles. They work with
 asyncpg and psycopg; psycopg async on Windows requires a compatible selector loop.
 See [PostgreSQL18 timeout semantics](https://www.postgresql.org/docs/18/runtime-config-client.html).
 
+Every async PostgreSQL engine (API, private control and worker) also sets an
+explicit connection ceiling. `REQUEST_ENGINE_DB_POOL_SIZE` defaults to 5 and
+must be an integer from 1 to 64; `REQUEST_ENGINE_DB_POOL_MAX_OVERFLOW` defaults
+to 10 and must be an integer from 0 to 64. Zero pool size and negative overflow
+are rejected because SQLAlchemy would interpret them as unbounded. HTTP pool
+acquisition retains the timeout above. Worker acquisition retains its existing
+SQLAlchemy pool acquisition timeout (30 seconds); these settings do not install HTTP statement limits on workers.
+
+Budget the deployment total as the sum of `(pool size + overflow)` for **every
+engine in every process and replica**, plus migration/operator/monitoring reserve.
+The control-plane can have several independent role-specific engines and workers
+have their own pools; a ceiling on one engine is not a cluster-wide rate limit.
+Set values per process environment before startup and keep the deployment total
+below PostgreSQL's available connection budget. The fixed-ceiling regression
+uses two real connections, rejects a third checkout and verifies recovery after
+release; it does not establish production throughput or acceptable latency.
+
 Unexpected failures return sanitized500 with operator_intervention and no automatic
 retry. This does not certify rollback or redact server logs. Reconcile an ambiguous
 command using its existing receipt/read contract before changing its idempotency key.

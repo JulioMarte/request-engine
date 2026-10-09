@@ -453,6 +453,31 @@ path = "tests/e2e/test_controller_policy_adoption_owner_revocation_race.py"
 evidence = ["invariant", "adversarial", "security", "concurrency"]
 
 [[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-ADOPTION-001"
+path = "tests/e2e/test_controller_policy_adoption_lifecycle_races.py"
+evidence = ["invariant", "adversarial", "security", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-ADOPTION-001"
+path = "tests/e2e/test_controller_policy_adoption_native_disable_races.py"
+evidence = ["invariant", "adversarial", "security", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-AUTHORITY-001"
+path = "tests/integration/f1_operational_profile/test_configuration_command_authority_matrix.py"
+evidence = ["invariant", "adversarial", "security", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-IDEMPOTENCY-001"
+path = "tests/integration/f1_operational_profile/test_configuration_command_authority_matrix.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001"
+path = "tests/db/test_webauthn_populated_upgrade.py"
+evidence = ["invariant", "adversarial", "security", "provenance"]
+
+[[proofs]]
 guarantee = "INV-ONBOARDING-READINESS-001"
 path = "tests/db/test_identity_onboarding_readiness.py"
 evidence = ["invariant", "adversarial", "security"]
@@ -556,6 +581,11 @@ evidence = ["invariant", "adversarial", "security"]
 guarantee = "INV-WEBAUTHN-CHALLENGE-SINGLE-USE-001"
 path = "tests/db/test_webauthn_persistence.py"
 evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WEBAUTHN-CHALLENGE-SINGLE-USE-001"
+path = "tests/db/test_webauthn_concurrency.py"
+evidence = ["invariant", "adversarial", "security", "concurrency"]
 
 [[proofs]]
 guarantee = "INV-PRIVILEGED-AUTH-FRESHNESS-001"

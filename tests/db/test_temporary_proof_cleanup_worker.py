@@ -203,7 +203,7 @@ async def test_restore_fence_drift_stops_claim_and_provider_io(
     record(admin_conn, backend)
     accepted = admission(tmp_path, backend)
     (tmp_path / "restore_fence").write_text("restored instance", encoding="utf-8")
-    async with httpx.AsyncClient(base_url="http://127.0.0.1:8200") as client:
+    async with httpx.AsyncClient(base_url="http://127.0.0.1:8200", trust_env=False) as client:
         worker = TemporaryProofCleanupWorker(
             cleanup_sessions,
             client,
@@ -227,7 +227,7 @@ async def test_claim_skips_independently_locked_work_and_never_releases_other_le
     backend = uuid4()
     record(admin_conn, backend)
     record(admin_conn, backend)
-    async with httpx.AsyncClient(base_url="http://127.0.0.1:8200") as client:
+    async with httpx.AsyncClient(base_url="http://127.0.0.1:8200", trust_env=False) as client:
         worker = TemporaryProofCleanupWorker(
             cleanup_sessions,
             client,

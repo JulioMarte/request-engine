@@ -3,6 +3,10 @@
 Fecha: 2026-10-06. Alcance: API, autenticación, autoridad, persistencia, contratos,
 evidencia y operación. La UI administrativa está excluida.
 
+Este informe conserva los hallazgos y resultados del candidato auditado el
+6 de octubre. Para el estado posterior de las correcciones, consultar la
+[actualización del candidato del 8 de octubre](#actualizacion-del-candidato-2026-10-08).
+
 ## Reporte simple (para humanos)
 
 **Veredicto: no certificar ni lanzar la API a producción en este estado.**
@@ -612,3 +616,284 @@ compaction invocable expuesta; el harness gestiona la compactación.
 
 **Estado verificado: candidato con CI existente verde y pruebas nuevas rojas.
 Corrección y certificación productiva no realizadas.**
+
+## Actualizacion del candidato 2026-10-08
+
+### Reporte simple (para humanos)
+
+La revisión del código posterior encontró correcciones para los seis primeros
+hallazgos de este informe. La recuperación de una cuenta ya invalida su permiso
+previo para adoptar la nueva política, y el acceso con passkey comprueba mejor
+la cuenta, la identidad registrada y el vencimiento del intento. También se
+corrigieron respuestas que podían describir mal los permisos o un consentimiento
+vencido. Los fallos del 6 de octubre se conservan como evidencia del candidato
+anterior; no se presentan todos como fallos todavía abiertos.
+
+Eso todavía no certifica producción. Hay pruebas añadidas en el repositorio,
+pero esta actualización documental no informa una nueva ejecución de ellas.
+Falta completar pruebas de operaciones y cambios de autoridad concurrentes,
+aceptar la actualización de una instalación con datos existentes, validar el
+candidato final y demostrar que el entorno real funciona bajo carga, envía
+correo, avisa de fallos y puede recuperarse de una pérdida de datos.
+
+### Reporte técnico (detallado)
+
+**Procedencia y alcance.** Inspección de `feature/admin-console` en
+`1bf18997da0818f87e67cd0bb8c9e89e64f10062`, incluyendo las correcciones de
+`1997505ff88924caf2438760eee5a2c2fa2beafd`. Este bloque reconcilia documentación
+con código y pruebas presentes; no acredita ejecución nueva, CI exact-head,
+revisión semántica final, despliegue ni aceptación operacional. Los resultados
+anteriores conservan su candidato, entorno y límites originales.
+
+| Hallazgo anterior | Corrección presente y prueba identificada | Límite que conserva la revisión |
+| --- | --- | --- |
+| R-01 | `0035_adoption_native_recovery_posture.py` vincula consentimiento a identidad y recovery epoch, admite ambos participantes bajo su postura nativa y deniega el consentimiento invalidado. `test_recovery_after_consent_requires_withdrawal_and_fresh_consent` en `tests/e2e/test_controller_policy_adoption_native_http.py` recorre recuperación, finalización, retirada y consentimiento nuevo. | No prueba todas las carreras recovery/apply ni suspensión del controller. No declarar la matriz adversarial completa por este recorrido secuencial. |
+| R-02 | `0034_webauthn_discoverable_binding.py` persiste/backfillea handles de registro y conserva el handle de setup al promover la passkey. `test_discoverable_login_requires_the_credential_user_handle_association` en `tests/e2e/test_native_webauthn_login_http.py` cubre la asociación requerida. | La instalación limpia y el claim actual no reemplazan una prueba de upgrade poblado con credenciales registradas antes de 0034. |
+| R-03 | El finalizer discoverable de 0034 revalida vencimiento después de adquirir locks. `test_discoverable_finalization_rechecks_expiry_after_identity_lock_wait` en `tests/db/test_webauthn_concurrency.py` protege ese límite. | La evidencia identificada es de finalización discoverable; no extrapolar esa carrera concreta a cada propósito de challenge. |
+| R-04 | La resolución/finalización discoverable exige la autoridad nativa configurada. `test_discoverable_login_rejects_a_second_active_native_authority` en `tests/e2e/test_native_webauthn_login_http.py` cubre otra autoridad activa. | Esto no certifica la configuración RP/origin, TLS o exposición de la instalación productiva. |
+| R-05 | `controller_policy_adoption_routes.py` usa `proposed_delta_does_not_restore_revoked_capabilities`; ADR 0016 explica el delta. `tests/modules/tenancy/test_controller_policy_adoption_review_projection.py` protege su interpretación. | El indicador es diagnóstico y no concede autorización para aplicar. |
+| R-06 | La proyección usa estado efectivo según vencimiento, incluso en replay. `tests/e2e/test_controller_policy_adoption_http.py` comprueba detalle/replay expired, identidad del consentimiento y ausencia de application fact. | El test adelanta el vencimiento persistido; no representa espera real de 24 horas ni aceptación operacional. |
+
+**Trabajo todavía abierto.** R-07 sigue siendo una matriz de evidencia por owner
+y operación, no un defecto universal confirmado. Priorizar resource create,
+assignment create/supersede/retire, availability, terms y exceptions; después
+Catalog y Communications. Identificar capability/scope, lock root, admisión y
+replay; probar retirada de autoridad y ambos órdenes concurrentes con efectos
+durables independientes. Conservar los límites de
+`architecture/administrative-transaction-authority.md`; no introducir un guard
+global ni transformar namespaces de receipts en capabilities.
+
+`current-guarantees.toml` sigue delimitando las carreras de adopción demostradas:
+apply/withdraw y revocación del platform owner tienen pruebas identificadas;
+suspensión del controller y otras carreras de lifecycle permanecen por demostrar.
+ADR 0016 está Accepted y la adopción está implementada, por lo que el estado
+actual de `auth-implementation-status.md` ya no debe describirla como propuesta.
+
+Los gates O-01–O-09 de la sección 5 conservan sus criterios de salida: aislamiento
+y TLS; upgrade poblado del entorno instalado; carga/presupuesto global; SMTP
+externo; cleanup seguro si se promete destrucción; backup/restore real; alertas
+y progreso; consumidor autorizado si se promete procesamiento terminal de
+Requests; y certificación/revisión del candidato final. La presencia de las
+correcciones no acepta ninguno de esos gates. No se actualizó una base de usuario
+ni se activaron providers o cleanup en esta reconciliación documental.
+
+### Continuación: validación numérica de recuperación
+
+La revisión encontró otro defecto reproducido en los gates operativos: NaN e
+infinito podían evitar las comparaciones de RPO/RTO o alcanzar el diagnóstico de
+recuperación verificada. La corrección exige tiempos y límites finitos y no
+negativos en `scripts/operations/p7_production_certification.py`,
+`scripts/operations/recovery_drill_evidence.py` y el parser de
+`platform_configuration/application/recovery_certification.py`. La ventana de
+actualidad del gate final también debe ser finita, positiva y representable.
+No cambia el schema, las migraciones ni la autoridad; cero sigue siendo válido,
+y una medición sin límites aprobados sigue admitida para diagnóstico, pero no
+para la certificación productiva final.
+
+Evidencia ejecutada en Linux, Python 3.13.16 y dependencias del lockfile:
+
+```text
+uv run pytest tests/unit/operations/test_p7_production_certification.py \
+  tests/unit/operations/test_recovery_drill_evidence.py \
+  tests/modules/platform_configuration/test_recovery_certification.py -q --tb=short
+73 passed in 0.13s
+```
+
+La primera batería antes del fix registró 38 fallos y 29 casos correctos; la
+batería final añade también protección para valores enormes y controles válidos.
+Las pruebas ejercitan los validadores reales y verifican que el rechazo no cree
+un artifact de certificación. No prueban un simulacro ni generan una aceptación
+operacional real.
+
+La revisión independiente de consola/origen/sesión y verificación WebAuthn
+ejecutó 104 casos unitarios correctos. Queda una observación estática separada:
+registro de passkey normal, registro de setup y step-up todavía comprueban
+caducidad antes de esperar otros locks. Debe fijarse el contrato temporal de
+esas variantes y probar sus interleavings; no se reprodujo una explotación ni
+se modificaron sus finalizers. El entorno actual no tiene Docker/PostgreSQL;
+no se atribuye una nueva ejecución local de los tests DB ni del runner E2E.
+
+
+## Continuacion de implementacion 2026-10-09
+
+### Reporte simple (para humanos)
+
+La revisión adicional reprodujo ocho casos en los que una passkey podía terminar
+su operación después de vencer mientras esperaba a la base de datos. La nueva
+corrección impide esas operaciones y revierte sus cambios parciales. También se
+añadió configuración explícita del límite de conexiones: las nuevas variables
+no existían antes; ahora permiten un techo menor, rechazan el exceso y el pool
+se recupera. Los valores anteriores ya eran finitos.
+
+Se ampliaron las pruebas de permisos, recuperación, suspensión y desactivación,
+y se ensayó actualizar una base con passkeys y permisos existentes. Es evidencia
+local del código; no acredita que una instalación real ya tenga correo, copias,
+alertas, aislamiento de redes ni capacidad suficiente. Los criterios operativos
+O-01–O-09 siguen pendientes de aceptación del entorno correspondiente.
+
+### Reporte técnico (detallado)
+
+**Cambios y decisiones.** Nueva revisión `0036_webauthn_deadline`, desde
+`0035_adoption_recovery`, en
+`migrations/versions/0036_webauthn_finalization_deadline.py`. Los cinco finalizers
+revalidan deadline después de locks y antes de consumo; el bloque de efectos
+revierte mediante subtransacción al vencer, sin cambiar firmas, ACLs, OIDs ni
+lock order. ADR 0014 §10 fija el límite en el efecto del finalizer, no en el COMMIT
+posterior. Roll-forward only; drenar invocaciones antiguas antes de migrar.
+
+`platform/db/execution_budget.py::PostgresPoolBudget` acepta size 1–64 y overflow
+0–64; `platform/db/session.py::create_postgres_engine` aplica los límites tanto
+con presupuesto HTTP como sin él. Configuración explícita mediante
+`REQUEST_ENGINE_DB_POOL_SIZE` y `REQUEST_ENGINE_DB_POOL_MAX_OVERFLOW`; defaults
+5/10 preservan los anteriores de SQLAlchemy. Es un techo por engine: requiere
+sumar engines, procesos y réplicas; no es presupuesto global ni rate limiting.
+
+La matriz de 17 comandos de Booking/Catalog prueba solicitud y replay tras
+retirada de Representation exacta, Principal o Party, y ambos órdenes concurrentes.
+No crea una capability universal ni cambia el contrato de los guards heredados.
+Las 12 carreras nuevas de adopción cubren recovery de ambos participantes,
+suspensión de binding/membership del controller y global native disable de
+ambos participantes. No se inventa una operación de suspensión de autoridad
+nativa: no existe un owner command soportado para esa transición.
+
+El upgrade poblado parte de 0033 y llega al head: preserva credenciales normales
+y promovidas desde setup, identidades, bindings, grants/revocaciones y facts;
+expira ceremonies/consent pendientes afectados por las nuevas revisiones;
+conserva consumed/authentication/withdrawn y provenance histórica sin inventar
+nuevos snapshots. Dos passkeys genuinas hacen login mediante un LOGIN restringido;
+una assertion con firma válida y userHandle incorrecto no crea sesión. No equivale
+a O-02: ese gate exige copia de la instalación real desde la revisión realmente instalada (0025).
+
+**Entorno.** Linux, PostgreSQL 18.6 compilado de la distribución oficial. Este
+sandbox solo mapea uid 0 y no tiene Docker: el build de laboratorio permite
+lanzamiento root únicamente bajo una variable explícita; esa adaptación afecta
+los tres controles OS de arranque de postgres/initdb/pg_ctl, no roles, RLS,
+constraints ni locks. No es la imagen de producción ni evidencia Docker E2E.
+Clústeres nuevos por prueba/batería, credenciales de laboratorio, runtime LOGINs
+restringidos para los mecanismos reclamados; admin solo prepara fixtures/oráculos.
+
+El runner de baseline conserva Docker por defecto y añade modo nativo explícito
+`REQUEST_ENGINE_BASELINE_PG_BIN`. Inicializa otro clúster limpio, SCRAM y loopback,
+instala 0001 dos veces y ejecuta los mismos catálogos/integridad/identidad. No
+reescribe baseline ni migra datos de usuario. El wrapper local inicia vía Bash;
+los datos temporales se alojan fuera del árbol sincronizado para evitar errores
+de retirada de `.rsync-tmp` después de pruebas correctas.
+
+**Evidencia focal ejecutada**, en `.ci/readiness-20261008/`:
+
+| Prueba | Resultado y límite |
+| --- | --- |
+| WebAuthn antes, 0035 | 8 FAIL / 7 PASS; contender COMMIT anterior al oráculo evita rollback accidental de resultados defectuosos |
+| WebAuthn después, 0036 | 50 PASS en 27,58 s; ACL/OID/security/search_path idénticos; downgrade rechazado |
+| Pool antes, source `cbf0478c` | 2 FAIL: admite tercera conexión pese al techo configurado |
+| Pool después, asyncpg/psycopg | 6 PASS en 2,66 s, incluyendo statement/lock timeout y liberación/reutilización |
+| Booking/Catalog autoridad | 204 PASS en 77,32 s; quitar temporalmente guard produce FAIL esperado |
+| Catalog offering policy/Communications existentes | 22 PASS en 8,15 s |
+| Adopción, familia completa | 20 PASS en 16,03 s; runtime roles y bloqueos observados |
+| Upgrade 0033→head | 1 PASS en 2,43 s; credenciales genuinas y oráculos durables |
+
+Los primeros runs de deadlines/matriz acabaron con error de cleanup del wrapper
+posterior al pytest; el directorio detenido se retiró después. No se presentan
+sus códigos globales como PASS. La validación general posterior detectó 16 errores
+Pyright en tests nuevos (imports privados/lista sin tipo); se corrigieron nombres
+compartidos y tipos, sin eliminar pruebas ni suprimir el chequeo.
+
+**Pendiente.** Registrar el resultado de la batería canónica completa y del
+candidato estable; CI remoto exact-head, revisión/merge y O-01–O-09 siguen sin
+aceptación. La retención/rate de emisión de challenges discoverable sigue siendo
+un asunto operativo abierto: el techo de conexiones no resuelve crecimiento de
+filas ni abuso distribuido. Requests requiere definir su consumidor si se promete
+resultado terminal automático. No se publicaron estos cambios ni se activaron
+SMTP/OpenBao/cleanup/restore de una instalación real.
+
+
+Revisión independiente posterior: no se confirmó un defecto en rollback,
+lock protocol, ACLs de 0036 ni techo del pool. Se precisó que los defaults
+anteriores ya eran finitos y que el worker sin presupuesto HTTP conserva el
+pool acquisition timeout de SQLAlchemy, no un driver connection timeout.
+El modo baseline nativo ahora conserva el directorio y falla si `pg_ctl stop`
+falla. Una inyección real de stop fallido verificó código 1, clúster vivo
+conservado y parada posterior exitosa (`native-cleanup-fault/result.txt`).
+
+`python-quality-final` terminó con 12 pasos PASS: 203 architecture, 1133 unit
+(una advertencia de deprecación) y 770 modules. El primer runner PostgreSQL
+completo se detuvo con 476 PASS/2 FAIL en principal-authority: dos clientes
+HTTP locales de pruebas heredaban un proxy SOCKS del sandbox sin `socksio`.
+Se añadió `trust_env=False` solo a esos clientes de loopback, preservando
+fences/locks/oráculos y el cliente productivo. La repetición completa se inició
+en un clúster nuevo, con evidencia separada `current-product-final`.
+
+
+La ejecución `current-product-final` pasó 20 paquetes completos, incluidos
+478 casos de principal-authority, pero fue interrumpida durante `tests/e2e` y
+no produjo `proof-execution.json` ni un exit global verificable. No se presenta
+como batería completa aprobada. La continuación reprodujo un fallo de
+`test_http_runtime_factory_starts_under_real_app_login`: otro cliente loopback
+heredaba el proxy SOCKS del sandbox. Corrección test-only `trust_env=False`;
+antes 1 FAIL/6 PASS, después 7 PASS en 7,25 s (PG18.6, `luna-runtime.xml`). No
+se cambió la configuración de proxy del runtime productivo ni se añadió una
+dependencia opcional para hacer pasar el cliente local.
+
+La segunda revisión independiente de upgrade/matriz/lifecycle no identificó
+oráculos vacíos ni preparación previa del resultado esperado. Se corrigió una
+frase: el `userHandle` no está firmado; el caso negativo presenta una assertion
+con firma válida y un `userHandle` incorrecto. Se corrigió también el anchor
+ASCII del enlace al bloque actual. La nueva batería `current-product-complete`
+registra explícitamente su código de salida aparte del log y JUnit; su resultado
+final debe verificarse antes de declarar cierre local.
+
+
+### Cierre de validación local completa
+
+La batería `current-product-complete` **terminó con exit 0** sobre código y pruebas
+estables de `7ca79bca922b54ba51cdf23be090792e473f50c3`. Las correcciones del cliente
+TCP privado quedaron aplicadas antes de iniciar collection de `tests/e2e`.
+Base remota reconfirmada por `git fetch`:
+`1f0d3fcc5fa537ef6f014d66e24effd77a1ad14d`; feature remota aún
+`1bf18997da0818f87e67cd0bb8c9e89e64f10062`. La documentación final posterior no
+cambia código, pruebas, migraciones ni dependencias.
+
+```text
+bash ../run-pg18-lab.sh current-product-complete none \
+  env REQUEST_ENGINE_BASELINE_PG_BIN=/workspace/scratch/c9098fcf9926/pg18-runtime/bin \
+  CURRENT_PRODUCT_CI_ARTIFACT_DIR=.ci/readiness-20261008/current-product-complete \
+  bash scripts/ci/run_current_product.sh
+```
+
+Entorno: Linux, Python 3.13.16, PostgreSQL 18.6 del laboratorio descrito arriba,
+dependencias del lockfile. No Docker ni servicios productivos. Evidence:
+`current-product-complete-run.log`, `current-product-complete-exit.txt`, los JUnit,
+`proof-execution.json` y `stop.log` en `.ci/readiness-20261008/`.
+
+| Resultado final | Evidencia |
+| --- | --- |
+| Runner canónico completo | 24 paquetes; 1676 pruebas; 0 failures, 0 errors, 0 skipped; exit 0 |
+| E2E in-process/runtime PostgreSQL | 484 PASS; no sustituye Docker/ingress externo |
+| Principal/authority/WebAuthn/upgrade | 478 PASS |
+| Semantic commands, incluida matriz nueva | 317 PASS |
+| Baseline independiente | 0001 instalada dos veces; catálogos de schema/roles/seed equivalentes; identidad local distinta |
+| Migración multibase | Segunda base alcanza 0036 con roles compartidos auditados |
+| Mapa de ejecución | 389 archivos ejecutados; 79 garantías con pruebas mapeadas ejecutadas; gaps=[] |
+| Cleanup laboratorio | Servidor detenido; wrapper y comando exterior exit 0 |
+
+El segundo cliente TCP local, en
+`tests/e2e/test_platform_control_runtime_factory.py`, también reprodujo la
+interferencia del proxy. `trust_env=False` corrige solo el cliente de loopback:
+10 casos del archivo PASS en 13,17 s, además de su inclusión en los 484 E2E del
+runner final. Los dos checks de servidores conservan startup con LOGINs reales,
+readiness y rechazos de privilegios; no reemplazan TCP por mocks.
+
+**Estado local:** vencimiento de los cinco finalizers corregido y ejecutado;
+matriz de 17 operaciones y carreras de adopción ejecutadas en sus scopes
+explícitos; upgrade poblado 0033→head ejecutado; pool finito configurado y
+verificado con ambos drivers; calidad y revisión independiente completadas.
+Los candidatos de mantenibilidad reportados por certificación son señales de
+revisión, no defects reproducidos ni aprobación automática de producción.
+
+**Estado de producción:** continúa **NO CERTIFICADO**. O-01–O-09 no quedan
+aceptados por estos resultados. Faltan GitHub CI/review del nuevo HEAD, la copia
+del entorno real desde 0025, presupuesto agregado y carga/rate/retención de
+challenges, SMTP externo, cleanup admitido/scheduled si se promete destrucción,
+backup/restore sin fuente y alertas recibidas por el operador. Requests necesita
+su consumidor y autoridad acordados si se promete resultado terminal automático.
+No se desplegó, publicaron cambios, enviaron mensajes ni tocaron datos reales.

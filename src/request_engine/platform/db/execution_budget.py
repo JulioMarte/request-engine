@@ -5,6 +5,30 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
+class PostgresPoolBudget:
+    """Per-engine connection ceiling; deployment totals include every process."""
+
+    size: int = 5
+    max_overflow: int = 10
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.size) is not int
+            or type(self.max_overflow) is not int
+            or not 1 <= self.size <= 64
+            or not 0 <= self.max_overflow <= 64
+        ):
+            raise ValueError("Invalid PostgreSQL pool budget")
+
+    @classmethod
+    def from_environment(cls) -> "PostgresPoolBudget":
+        return cls(
+            size=int(os.environ.get("REQUEST_ENGINE_DB_POOL_SIZE", "5")),
+            max_overflow=int(os.environ.get("REQUEST_ENGINE_DB_POOL_MAX_OVERFLOW", "10")),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class PostgresExecutionBudget:
     statement_ms: int = 30_000
     lock_ms: int = 5_000

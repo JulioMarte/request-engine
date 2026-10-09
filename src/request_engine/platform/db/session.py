@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from request_engine.platform.db.execution_budget import PostgresExecutionBudget
+from request_engine.platform.db.execution_budget import PostgresExecutionBudget, PostgresPoolBudget
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.discovery_handoff_context import (
     current_discovery_handoff_id,
@@ -23,12 +23,23 @@ SessionFactory = async_sessionmaker[AsyncSession]
 
 
 def create_postgres_engine(
-    database_url: str, *, echo: bool = False, budget: PostgresExecutionBudget | None = None
+    database_url: str,
+    *,
+    echo: bool = False,
+    budget: PostgresExecutionBudget | None = None,
+    pool_budget: PostgresPoolBudget | None = None,
 ) -> AsyncEngine:
     """Create the process-level async PostgreSQL engine."""
 
+    pool_budget = pool_budget or PostgresPoolBudget.from_environment()
     if budget is None:
-        return create_async_engine(database_url, echo=echo, pool_pre_ping=True)
+        return create_async_engine(
+            database_url,
+            echo=echo,
+            pool_pre_ping=True,
+            pool_size=pool_budget.size,
+            max_overflow=pool_budget.max_overflow,
+        )
     driver = make_url(database_url).get_driver_name()
     settings = budget.server_settings()
     if driver == "asyncpg":
@@ -42,6 +53,8 @@ def create_postgres_engine(
         echo=echo,
         pool_pre_ping=True,
         pool_timeout=budget.pool_seconds,
+        pool_size=pool_budget.size,
+        max_overflow=pool_budget.max_overflow,
         connect_args=connect_args,
     )
 

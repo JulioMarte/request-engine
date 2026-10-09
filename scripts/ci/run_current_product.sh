@@ -78,6 +78,7 @@ uv run pytest \
   tests/integration/f1_operational_profile/test_public_contact_normalization.py \
   tests/integration/f1_operational_profile/test_contextual_terms_supersession.py \
   tests/integration/f1_operational_profile/test_contextual_configuration_races.py \
+  tests/integration/f1_operational_profile/test_configuration_command_authority_matrix.py \
   tests/integration/f1_operational_profile/test_supply_configuration_reads.py \
   tests/db/test_catalog_booking_policy_override.py \
   tests/db/test_organization_channel_policies.py \
@@ -168,6 +169,7 @@ uv run pytest \
   tests/db/test_native_recovery_addresses.py \
   tests/db/test_webauthn_persistence.py \
   tests/db/test_webauthn_concurrency.py \
+  tests/db/test_webauthn_populated_upgrade.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/principal-authority.xml"
 

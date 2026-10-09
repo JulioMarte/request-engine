@@ -37,6 +37,15 @@ python scripts/operations/p7_production_certification.py \
 
 This final gate does not perform or simulate production operations. It proves that all three independent operational acceptances exist, are accepted and fresh, that the OpenBao artifact belongs to the intended topology, that SMTP includes mailbox/throttling references, and that recovery contains both measured and explicitly operator-approved RPO/RTO limits. It hashes every input artifact into the final certification so the evidence set is immutable/auditable. CI tests the gate's fail-closed semantics but cannot generate a production certification.
 
+Measured recovery times and approved limits must be finite, non-negative numbers;
+zero is valid. Booleans, NaN, infinity and numbers too large to represent are
+invalid evidence. The final gate also requires a finite, positive freshness
+budget that fits the supported duration range. These checks apply before writing
+a certification; the control-plane recovery parser rejects non-finite values
+before they can appear in verified readiness diagnostics. A measurement with
+no approved limits remains usable for diagnostics, but the final production
+gate requires both approved limits.
+
 ## Required evidence schema
 
 ```json

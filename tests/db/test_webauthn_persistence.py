@@ -678,6 +678,10 @@ _LEAST_PRIVILEGE_FUNCTIONS = (
         "boolean, boolean, boolean)"
     ),
     (
+        "finalize_setup_webauthn_registration(bytea, uuid, bytea, bytea, bigint, text, "
+        "boolean, boolean, boolean, uuid)"
+    ),
+    (
         "finalize_webauthn_authentication(bytea, uuid, uuid, bigint, boolean, boolean, "
         "boolean, uuid, bytea, text, timestamptz)"
     ),

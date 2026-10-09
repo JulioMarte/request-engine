@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -92,8 +93,8 @@ def certify(
         ("max_rpo_seconds", max_rpo_seconds),
         ("max_rto_seconds", max_rto_seconds),
     ):
-        if value is not None and value < 0:
-            raise EvidenceError(f"{name} must be non-negative")
+        if value is not None and (isinstance(value, bool) or not math.isfinite(value) or value < 0):
+            raise EvidenceError(f"{name} must be a finite non-negative number")
     if max_rpo_seconds is not None and rpo > max_rpo_seconds:
         raise EvidenceError(
             f"observed RPO {rpo:.3f}s exceeds accepted maximum {max_rpo_seconds:.3f}s"

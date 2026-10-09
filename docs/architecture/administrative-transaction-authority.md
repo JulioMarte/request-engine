@@ -22,9 +22,9 @@ or a later administrative read after the standing grant has been withdrawn.
   and supersession, assignment retirement, availability replacement and both
   schedule-exception Commands revalidate the exact active Representation before
   idempotency receipt lookup (explicit pre-production adoption, 2026-10-06).
-  The durable HTTP regression currently proves assignment-create replay denial
-  after withdrawal; equivalent per-command and two-order concurrent withdrawal
-  proofs remain required before claiming full adversarial coverage.
+  The durable HTTP regression proves assignment-create replay denial after
+  withdrawal. The operation matrix below identifies the additional owner
+  transaction evidence and its execution limits.
 - Communications channel configuration Query and configure Command, including
   completed receipt replay (explicit pre-production adoption, 2026-10-06).
 
@@ -118,9 +118,12 @@ This is **not a universal transaction-time authentication/policy revalidation**.
 Token possession, native session/identity posture, binding resolution, tenant
 feature policy, delegation and agent tool policy retain their existing ingress
 or owning command contracts. Existing unrelated commands are not silently
-retrofitted. Other Catalog and Booking legacy configuration Commands remain
-outside this adoption; do not claim all administrative writes have received this
-strengthening. Broader policy linearization needs explicit owner
+retrofitted. The listed legacy Catalog and Booking Commands adopt exact-Representation
+revalidation before receipt lookup, but remain outside **standing-grant**
+revalidation inside the owner transaction. Their published capability is still
+required at HTTP ingress; an internal receipt namespace is not that capability.
+Do not claim they gained the newer standing-grant check or universal
+transaction-time authentication. Broader policy linearization needs explicit owner
 contracts and lock-order proof rather than an implicit new global policy engine.
 
 ## Executed scoped evidence (2026-10-04)
@@ -211,3 +214,91 @@ coordination/cleanup waits, the six affected race cases passed on the final test
 source: 6 passed / 14 deselected in 35.50s. Ruff and targeted Pyright passed.
 This adds scoped concurrency evidence, not complete public endpoint coverage or
 certification of the still-running canonical product lane.
+
+
+## Owner operation matrix (2026-10-08)
+
+This matrix records existing admission semantics; it does not add capabilities,
+change migration history or retrofit a global authorization engine. Every row
+checks exact tenant/Principal/Party/scope Representation before reading an
+idempotency receipt. The legacy guard also requires active Principal and Party.
+Its SHARE row locks cover Representation, Principal and Party through commit;
+owner serialization roots listed below follow that admission and receipt phase.
+
+| Owner operation | Published ingress capability | Exact Representation scope | Subsequent owner serialization root |
+| --- | --- | --- | --- |
+| Booking resource create | `booking.manage_supply` | `operations.manage_supply` | Active Location; new Resource identity and uniqueness |
+| Booking assignment create | `booking.manage_supply` | `operations.manage_supply` | Location, then Resource; availability revision and effective-range exclusion |
+| Booking assignment retire | `booking.manage_supply` | `operations.manage_supply` | Resource, then Assignment; both expected revisions |
+| Booking availability replace | `booking.manage_supply` | `operations.manage_supply` | Resource, then Assignment; availability revision |
+| Booking assignment exception set | `booking.manage_supply` | `operations.manage_supply` | Resource, then Assignment; availability revision |
+| Booking resource-wide exception set | `booking.manage_supply` | `operations.manage_supply` | Resource; availability revision |
+| Booking contextual terms create | `catalog.manage` | `operations.manage_terms` | Resource, then Assignment; effective-range exclusion |
+| Booking contextual terms supersede | `catalog.manage` | `operations.manage_terms` | Resource, Assignment and current Terms; expected terms revision/cutover |
+| Catalog Location create | `catalog.manage` | `operations.manage_profile` | New Location identity and tenant key uniqueness |
+| Catalog Location information update | `catalog.manage` | `operations.manage_profile` | Location; expected operational revision |
+| Catalog Location contacts replace | `catalog.manage` | `operations.manage_profile` | Location |
+| Catalog Location hours replace | `catalog.manage` | `operations.manage_profile` | Location; expected operational revision |
+| Catalog Location exception set | `catalog.manage` | `operations.manage_profile` | Location; expected operational revision |
+| Catalog organization holidays declare | `catalog.manage` | `operations.manage_profile` | Active Locations in stable UUID order |
+| Catalog resource capability create | `catalog.manage` | `operations.manage_profile` | New capability identity and tenant key uniqueness |
+| Catalog Offering create | `catalog.manage` | `operations.manage_terms` | New Offering/version identity and tenant key uniqueness |
+| Catalog base booking terms configure | `catalog.manage` | `operations.manage_terms` | Offering; one immutable terms fact per OfferingVersion |
+
+There is no standalone assignment-supersede Command in this surface: assignment
+creation and retirement are distinct Commands, and terms supersession has its
+own explicit Command. Exception `set` supports existing and new identities;
+the matrix evidence below exercises creation/replay, rather than claiming every
+exception update lifecycle variant is independently covered.
+
+`tests/integration/f1_operational_profile/test_configuration_command_authority_matrix.py`
+contains 204 real PostgreSQL cases for these 17 operations. Each operation has
+fresh-intent and completed-receipt denial after exact-scope Representation,
+Principal or Party withdrawal. Representation withdrawal leaves the other valid
+scopes live, so accepting any active Representation would fail the proof.
+The matrix also exercises both transaction orders versus exact-scope
+Representation withdrawal, Principal deactivation and Party deactivation.
+Commands and racing authority writers use independent Sessions of actual
+restricted application LOGINs; `pg_blocking_pids` proves the contested order.
+The synchronization wrapper pauses **after** the real authority SQL and does
+not replace admission, receipt, owner-write, revision, audit or transaction code.
+
+An independent privileged observer compares complete owner rows, including
+revisions and effective ranges, plus receipts, audit and outbox. Successful
+Command admission must produce exactly one receipt and audit, with no outbox;
+ordinary replay must preserve all rows. Withdrawal-first must leave every
+snapshot unchanged; Command-first must finish exactly once and deny subsequent
+replay after withdrawal commits.
+
+**Executed scoped evidence:** isolated PostgreSQL 18.6, Python 3.13 and
+current migrations through `0036_webauthn_deadline`; application LOGINs inherit
+`request_engine_app`, with no superuser or RLS bypass. The current matrix source
+passed **204 tests in 77.32 seconds**. Its fresh-world wrapper exited 1 afterward
+because transient `.rsync-tmp` content prevented removal of a scratch database
+directory; the pytest JUnit artifact records zero failures/errors. This cleanup
+failure must be distinguished from the completed database proofs and corrected
+in the disposable harness; it is not a product runtime or release PASS.
+
+```text
+bash ../run-pg18-lab.sh authority-matrix head uv run pytest \
+  tests/integration/f1_operational_profile/test_configuration_command_authority_matrix.py \
+  -q --tb=short --junitxml=.ci/readiness-20261008/authority-matrix.xml
+204 passed in 77.32s
+```
+
+The neighboring Catalog offering-policy and Communications configure/creation
+race suites passed **22 tests in 8.15 seconds** on their own fresh PG18.6 world.
+Ruff and targeted Pyright passed for the new matrix. A disposable pytest plugin
+replaced only the resource adapter's authority guard with an unconditional grant;
+the fresh/withdrawn-Representation case then failed with
+`DID NOT RAISE OperationalAuthorityRequired`. The plugin was outside the repo,
+used for that single subprocess, and never changed production source or canonical
+CI. This demonstrates the negative proof catches a removed admission guard.
+
+The subsequent canonical local current-product run completed with exit 0 and
+1676 passing tests, including this matrix; its dated result and environment limits
+are recorded in `../testing/pr137-api-production-readiness-2026-10-06.md`. These
+executions are not exact-head GitHub CI or production acceptance. They prove the listed
+legacy owner contracts, not standing-grant or native-session linearization for
+those Commands. Existing Communications configure and Catalog offering-policy
+standing-capability checks retain their separate scope described above.

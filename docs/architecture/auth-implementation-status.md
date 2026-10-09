@@ -7,15 +7,45 @@ amended slices in `principal-agent-and-provisioning-authority-model.md`.
 **Overall status: incomplete; not certified for production.** Passing the current
 tests is necessary but does not prove the unimplemented acceptance journeys.
 
-Current governance correction (2026-10-04): historical E1 tests below validate
-the ordinary controller-policy command with an already authorized, delegable
-manager. They do not establish a supported upgrade journey from an unmodified
-sole `tenant-controller-v3` root. That root lacks upgrade/new capabilities, and
-self-upgrade/outside-ceiling authority remain forbidden. Existing-root adoption
-is pending an explicit governance decision in proposed
-`docs/adr/0016-existing-controller-policy-adoption.md`. A reviewed fresh-tenant
-default does not upgrade old tenants. No automatic grants or platform ceremony
-are implemented or authorized by that proposal.
+Current governance correction (2026-10-08, inspected candidate `1bf18997`):
+ADR 0016 is Accepted and existing-root controller-policy adoption is implemented.
+The original tenant root gives explicit consent; a distinct authorized platform
+HUMAN approves it with recent phishing-resistant proof. Neither ordinary
+self-upgrade beyond a delegable ceiling nor automatic grants are authorized.
+Historical E1 tests below exercise a manager who already has upgrade authority;
+they are not the evidence for this separate adoption journey.
+
+The current implementation snapshots the controller's native identity and
+recovery epoch. Recovery after consent invalidates unapplied consent even after
+recovery completes; withdrawal and fresh consent are required. Both participants
+must meet the configured native authority and normal recovery-posture admission
+checks. Discoverable WebAuthn login binds the required assertion user handle to
+the credential's persisted registration handle, preserves setup handles during
+claim promotion, checks the configured authority and rechecks challenge expiry
+after serialization locks. These corrections are present in the candidate;
+this documentation reconciliation does not establish a new passing test run.
+
+Current verification continuation (2026-10-09): migration
+`0036_webauthn_deadline` extends the strict atomic-effect expiry contract to all
+five finalizers and rolls back effects delayed beyond TTL. Local PostgreSQL 18.6
+proofs reproduced eight failures before the fix and passed 50 cases afterward.
+Per-engine connection ceilings are configurable and enforced for both supported
+async drivers. The 17-operation Booking/Catalog authority matrix passed 204
+cases; adoption recovery/suspension/native-disable races passed, and a populated
+0033-to-head upgrade preserved genuine native/setup passkeys. These are local
+proofs with explicit fixture preconditions, not operational acceptance.
+
+The complete local current-product run subsequently passed 1676 tests in 24
+packets, including 484 E2E and 478 principal-authority cases, with no failures or
+skips. Its executed-proof validation reports no gaps. This is PostgreSQL 18.6
+laboratory evidence on the frozen code/tests of `7ca79bca`, not Docker, exact-head
+GitHub CI or acceptance of a real deployment.
+
+The [current readiness reconciliation](../testing/pr137-api-production-readiness-2026-10-06.md#continuacion-de-implementacion-2026-10-09)
+records those results, their laboratory boundaries and remaining evidence.
+Production remains uncertified: final candidate CI/review, upgrade from the
+actual installed revision, capacity/ingress/rate/retention budgets and acceptance
+of real SMTP, backup/restore, alerts and isolated deployment remain open.
 
 Current privacy correction superseding historical decoy claims below:
 ADR 0014 §9 (2026-10-03) requires the same discoverable options for supplied and

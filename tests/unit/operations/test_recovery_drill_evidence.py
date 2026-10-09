@@ -102,3 +102,14 @@ def test_certification_rejects_exceeded_recovery_objective(
     kwargs = {field: limit}
     with pytest.raises(module.EvidenceError, match=message):
         module.certify(_write(tmp_path, _evidence()), None, **kwargs)
+
+
+@pytest.mark.parametrize("field", ["max_rpo_seconds", "max_rto_seconds"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), True])
+def test_drill_rejects_non_finite_or_boolean_objectives(
+    tmp_path: Path, field: str, value: float
+) -> None:
+    output = tmp_path / "certification.json"
+    with pytest.raises(module.EvidenceError, match="finite non-negative number"):
+        module.certify(_write(tmp_path, _evidence()), output, **{field: value})
+    assert not output.exists()
