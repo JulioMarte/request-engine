@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from request_engine.platform.observability.p7_metrics import (
@@ -133,3 +135,56 @@ def test_backup_and_restore_ages_keep_advancing(monkeypatch: pytest.MonkeyPatch)
 
     assert snapshot.last_successful_backup_age_seconds == 90.0
     assert snapshot.restore_drill_age_seconds == 100.0
+
+
+@pytest.mark.unit
+@pytest.mark.adversarial
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf, True, 10**1000, -1.0])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "max_config_propagation_lag_seconds",
+        "max_backup_age_seconds",
+        "max_restore_drill_age_seconds",
+    ],
+)
+def test_alert_thresholds_reject_values_that_can_hide_staleness(field: str, value: float) -> None:
+    with pytest.raises(ValueError, match="finite.*non-negative"):
+        P7AlertThresholds(**{field: value})
+
+
+@pytest.mark.unit
+@pytest.mark.adversarial
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf, True, 10**1000, -1.0])
+@pytest.mark.parametrize(
+    "method,field",
+    [
+        ("observe_config_propagation_lag", "config_propagation_lag_seconds"),
+        ("observe_last_successful_backup_age", "last_successful_backup_age_seconds"),
+        ("observe_restore_drill_age", "restore_drill_age_seconds"),
+    ],
+)
+def test_invalid_observation_preserves_previous_signal(
+    method: str, field: str, value: float, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "request_engine.platform.observability.p7_metrics.time.monotonic", lambda: 100.0
+    )
+    metrics = P7OperationalMetrics()
+    getattr(metrics, method)(100.0)
+    with pytest.raises(ValueError, match="finite.*non-negative"):
+        getattr(metrics, method)(value)
+    assert getattr(metrics.snapshot(), field) == 100.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", [0, 0.0, 1, 1.5])
+def test_valid_thresholds_preserve_zero_and_strict_boundary(value: float) -> None:
+    metrics = P7OperationalMetrics()
+    metrics.observe_config_propagation_lag(value)
+    limits = P7AlertThresholds(max_config_propagation_lag_seconds=value)
+    assert metrics.alerts(limits) == ()
+    metrics.observe_config_propagation_lag(value + 1.0)
+    assert tuple(alert.code for alert in metrics.alerts(limits)) == (
+        "configuration_propagation_stale",
+    )

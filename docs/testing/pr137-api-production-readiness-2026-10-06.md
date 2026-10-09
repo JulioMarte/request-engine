@@ -984,3 +984,89 @@ independiente del árbol nuevo confirmó cerrado el hallazgo de roles con ACL
 excesivos tras las pruebas de upgrade aislado. La batería enfocada final pasó
 46 pruebas PostgreSQL y 54 unitarias; la multibase final pasó con los roles
 exactos en ambas bases. Esto no reemplaza el CI propio del siguiente candidato.
+
+## Cierre remoto y continuación operativa (2026-10-09)
+
+### Reporte simple (para humanos)
+
+Los cinco procesos de CI del candidato `68f76bce` terminaron correctamente.
+El log del producto confirma 1.690 pruebas correctas. La ejecución local nueva
+quedó interrumpida después de sus 485 pruebas E2E: no tiene resultado global
+verificable y no se declara aprobada. La evidencia completa corresponde a GitHub.
+
+La continuación encontró y corrigió otro fallo: los límites y tiempos de alertas
+aceptaban números inválidos que podían ocultar un aviso. Las nuevas pruebas
+comprueban el rechazo, conservan el valor anterior y permiten valores válidos,
+incluido cero. Se añadieron guías de recepción de alertas y aislamiento de red.
+Estas guías no prueban recepción ni aislamiento productivos. Todavía no hay
+instalación; el sistema continúa sin certificación de producción.
+
+### Reporte técnico (detallado)
+
+Estado consultado mediante el conector autenticado, junto con jobs y logs:
+
+| Workflow de source `68f76bce2746217cd5373f5619f463a3e8428d24` | Run | Resultado |
+| --- | --- | --- |
+| CI | 37968258480 | success |
+| Docker E2E | 37968258427 | success |
+| Configuración P7 | 37968258420 | success |
+| Coolify | 37968258426 | success |
+| Recuperación simulada | 37968258524 | success |
+
+El job `113948976542` descargó y probó el candidato de integración
+`7276b03026e603fcd5567e909cfa711f9af0d8ec`, source anterior sobre base
+`1f0d3fcc5fa537ef6f014d66e24effd77a1ad14d`. Sus 24 resultados de pytest suman
+1690 PASS: 485 E2E, 490 principal-authority, 317 semantic-commands y los paquetes
+restantes. E2E registra además dos deselections deliberadas del runner; no se
+afirma que ninguna prueba se haya excluido. El paso canónico y la subida del
+artifact `11635971220` terminaron en success. El aggregate V3 no es otra batería.
+La descarga del ZIP desde la URL temporal devolvió HTTP 403 en esta continuación:
+los recuentos provienen del log del job, no de una nueva lectura de sus XML.
+
+La ejecución local `operational-current-product` contiene 485 E2E correctas,
+pero no completó el cierre/regresiones/mapa ni dejó exit final verificable.
+Se conserva como evidencia parcial; no se repite una batería de base de datos
+solo para sustituir la evidencia completa ya terminada en GitHub.
+
+Cambio posterior: `platform/observability/p7_metrics.py` valida los tres
+`P7AlertThresholds` y las tres observaciones de duración con
+`_require_finite_non_negative`. Rechaza NaN, infinitos, booleanos, negativos y
+enteros no representables antes de cambiar valor o reloj de observación. No
+modifica defaults, comparación estricta `observed > threshold`, permisos,
+migraciones, contratos de autenticación ni entrega de notificaciones.
+
+`uv run pytest tests/platform/observability/test_p7_metrics.py -q --tb=short`:
+antes 36 FAIL/10 PASS; después 46 PASS. Los fallos anteriores incluyen seis
+rechazos de negativos y seis de infinito negativo cuyo mensaje previo no
+coincidía, además de las entradas indebidamente admitidas; no son 36 bypasses.
+Las pruebas fijan reloj, comprueban conservación de snapshot tras rechazo y la
+frontera de alerta con cero, enteros y decimales. Revisión estática independiente
+GPT-6 Luna: ningún defecto adicional confirmado; no ejecutó esa batería.
+
+Guías nuevas, indexadas desde `docs/README.md`:
+[alertas](../operations/operator-alert-acceptance.md) y
+[aislamiento](../operations/network-isolation-acceptance.md). La primera distingue
+alertas locales de entrega, exige señales/exportación verificadas y recibo del
+operador. La segunda exige probes públicos/privados, TLS/proxies, IPv4/IPv6
+cuando se enrutan y privilegios efectivos; 401/403 desde público no acredita
+aislamiento de transporte. No se añade un despachador de notificaciones ni se
+fabrican certificados de operación.
+
+O-01/O-03/O-04/O-05/O-06/O-07 siguen abiertos en sus ámbitos reales. O-02 debe
+reformular su origen al crear la primera instalación: la referencia histórica
+a una base instalada en 0025 no implica que exista hoy una instalación. O-08
+continúa condicionado al consumidor prometido de Requests. El CI del source
+anterior no se atribuye al cambio de alertas: requiere su propia certificación
+y CI. No se hizo merge ni despliegue ni se enviaron notificaciones externas.
+
+Validación general de esta continuación:
+`uv run python scripts/ci/ci_jobs.py python-quality --log-dir
+.ci/readiness-20261009/quality --summary-output
+.ci/readiness-20261009/quality-summary.json` terminó con exit 0 y 12 pasos PASS:
+203 architecture, 1228 unit (una advertencia de deprecación preexistente) y
+770 modules. Las 46 pruebas de métricas se ejecutaron separadamente; no se
+sumaron ficticiamente a unit/modules. Su lane canónica es
+`.github/workflows/p7-platform-configuration-contract.yml`, que incluye el
+archivo y se activa al cambiar producción o sus pruebas. Seis pruebas de
+contrato documental y `git diff --check` también pasaron. La publicación debe
+conservar el árbol certificado y esperar el CI del nuevo candidato.

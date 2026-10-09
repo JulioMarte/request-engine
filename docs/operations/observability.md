@@ -215,6 +215,15 @@ backend.
 
 ## Operational checks
 
+P7 duration observations and alert thresholds reject non-finite, negative,
+boolean and unrepresentable values before replacing a previous signal. Initial
+zero-valued metrics do not prove that backup/drill evidence exists; readiness
+must independently report verified evidence. Process-local API alerts do not
+deliver notifications. See [operator alert acceptance](operator-alert-acceptance.md)
+for missing-signal/export checks, reversible fault trials and actual receiver
+evidence. The semantic metrics above and their monitoring route must be verified
+before claiming unattended operational alerting.
+
 Before deployment:
 
 1. Validate Collector configuration.

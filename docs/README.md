@@ -150,6 +150,8 @@ Identity/authentication and deployment references:
 - `operations/http-authentication-limits.md` — process-local authentication admission limits and required deployment-wide abuse controls;
 - `operations/native-challenge-retention.md` — bounded, opt-in maintenance of unusable WebAuthn challenges with dedicated database privileges;
 - `operations/http-load-probe.md` — allowlisted load measurement with full-response deadlines, finite resource limits and explicit acceptance budgets;
+- `operations/operator-alert-acceptance.md` — required signal/export preparation, fault trials and independent operator receipt evidence;
+- `operations/network-isolation-acceptance.md` — public/private probe matrix, trusted proxy/TLS and effective runtime privilege acceptance;
 - `architecture/docker-e2e-ci-plan.md` — reusable clean-install black-box system/E2E execution platform.
 - `architecture/p7-platform-configuration-secrets-implementation-handoff.md` — executable P7 handoff for governed platform configuration, secret lifecycle, provider validation/hot reload and operational disaster-recovery acceptance.
 
