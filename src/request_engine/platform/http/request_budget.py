@@ -1,7 +1,12 @@
 """Bound transport admission before parsing or authoritative owner execution."""
 
 import asyncio
+import math
 import os
+import re
+import time
+from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from fastapi import FastAPI, Request
@@ -17,6 +22,7 @@ class HttpRequestBudget:
     max_body_bytes: int = 1_048_576
     max_active_requests: int = 128
     max_active_authentication: int = 4
+    max_authentication_per_minute: int = 120
     max_active_probes: int = 4
     body_timeout_seconds: float = 15
 
@@ -30,9 +36,19 @@ class HttpRequestBudget:
         )
         if any(not 0 < value <= maximum for value, maximum in bounds):
             raise ValueError("HTTP request budgets must be positive and within deployment bounds")
+        if (
+            type(self.max_authentication_per_minute) is not int
+            or not 1 <= self.max_authentication_per_minute <= 10_000
+        ):
+            raise ValueError("authentication rate limit must be an integer from 1 through 10000")
 
     @classmethod
     def from_environment(cls) -> "HttpRequestBudget":
+        auth_rate_limit = os.environ.get("REQUEST_ENGINE_HTTP_MAX_AUTHENTICATION_PER_MINUTE", "120")
+        if not re.fullmatch(r"[0-9]+", auth_rate_limit):
+            raise ValueError(
+                "REQUEST_ENGINE_HTTP_MAX_AUTHENTICATION_PER_MINUTE must be an exact integer"
+            )
         return cls(
             max_body_bytes=int(os.environ.get("REQUEST_ENGINE_HTTP_MAX_BODY_BYTES", "1048576")),
             max_active_requests=int(
@@ -41,6 +57,7 @@ class HttpRequestBudget:
             max_active_authentication=int(
                 os.environ.get("REQUEST_ENGINE_HTTP_MAX_ACTIVE_AUTHENTICATION", "4")
             ),
+            max_authentication_per_minute=int(auth_rate_limit),
             body_timeout_seconds=float(
                 os.environ.get("REQUEST_ENGINE_HTTP_BODY_TIMEOUT_SECONDS", "15")
             ),
@@ -49,9 +66,19 @@ class HttpRequestBudget:
 
 
 class RequestBudgetMiddleware:
-    def __init__(self, app: ASGIApp, *, budget: HttpRequestBudget) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        budget: HttpRequestBudget,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self.app = app
         self.budget = budget
+        self.clock = clock
+        self.authentication_attempts: deque[float] = deque(
+            maxlen=budget.max_authentication_per_minute
+        )
         self.active = asyncio.Semaphore(budget.max_active_requests)
         self.authentication = asyncio.Semaphore(budget.max_active_authentication)
         self.probes = asyncio.Semaphore(budget.max_active_probes)
@@ -71,7 +98,24 @@ class RequestBudgetMiddleware:
             finally:
                 self.probes.release()
             return
-        authentication = str(scope["path"]).startswith("/auth/native")
+        path = str(scope["path"])
+        authentication = path == "/auth/native" or path.startswith("/auth/native/")
+        authentication_attempt = scope["method"] == "POST" and (
+            authentication or path.startswith("/v1/setup/")
+        )
+        if authentication_attempt:
+            retry_after = self._record_authentication_attempt()
+            if retry_after is not None:
+                await self._reject(
+                    scope,
+                    receive,
+                    send,
+                    429,
+                    "request_rate_exceeded",
+                    True,
+                    retry_after_seconds=retry_after,
+                )
+                return
         if self.active.locked() or (authentication and self.authentication.locked()):
             await self._reject(scope, receive, send, 503, "request_capacity_exceeded", True)
             return
@@ -136,16 +180,40 @@ class RequestBudgetMiddleware:
 
         await self.app(scope, bounded_receive, send)
 
+    def _record_authentication_attempt(self) -> int | None:
+        now = self.clock()
+        while self.authentication_attempts and now - self.authentication_attempts[0] >= 60:
+            self.authentication_attempts.popleft()
+        rejected = len(self.authentication_attempts) >= self.budget.max_authentication_per_minute
+        # Rejected attempts are retained too, so repeated floods cannot gain admission
+        # by filling only a separate rejection path. deque(maxlen=...) bounds memory.
+        self.authentication_attempts.append(now)
+        if not rejected:
+            return None
+        remaining = 60 - (now - self.authentication_attempts[0])
+        return max(1, math.ceil(remaining))
+
     @staticmethod
     async def _reject(
-        scope: Scope, receive: Receive, send: Send, status: int, code: str, retryable: bool
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        status: int,
+        code: str,
+        retryable: bool,
+        *,
+        retry_after_seconds: int | None = None,
     ) -> None:
         correlation = request_correlation_id(Request(scope))
         response = JSONResponse(
             ErrorEnvelope(
                 error=ErrorBody(
                     code=code,
-                    message="Request exceeded the server transport budget",
+                    message=(
+                        "Authentication request rate exceeded"
+                        if code == "request_rate_exceeded"
+                        else "Request exceeded the server transport budget"
+                    ),
                     retryable=retryable,
                     resolution=(
                         ErrorResolution.RETRY_SAME_REQUEST
@@ -158,7 +226,7 @@ class RequestBudgetMiddleware:
             headers={
                 "Cache-Control": "no-store",
                 "X-Correlation-ID": str(correlation),
-                **({"Retry-After": "1"} if retryable else {}),
+                **({"Retry-After": str(retry_after_seconds or 1)} if retryable else {}),
             },
         )
         await response(scope, receive, send)

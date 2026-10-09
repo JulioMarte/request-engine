@@ -112,6 +112,140 @@ def _verify_cleanup_worker_privileges(connection: psycopg.Connection[Any]) -> No
         raise RuntimeError("cleanup worker ACL convergence mismatch")
 
 
+def _verify_webauthn_retention_authority(connection: psycopg.Connection[Any]) -> None:
+    """Exact role attributes and direct ACLs for the bounded retention capability."""
+    roles = connection.execute("""
+        SELECT rolname,rolcanlogin,rolsuper,rolcreatedb,rolcreaterole,
+               rolreplication,rolbypassrls,rolconfig
+        FROM pg_roles
+        WHERE rolname IN (
+            'request_webauthn_retention',
+            'request_webauthn_retention_definer'
+        )
+        ORDER BY rolname
+    """).fetchall()
+    expected_roles = [
+        ("request_webauthn_retention", False, False, False, False, False, False, None),
+        ("request_webauthn_retention_definer", False, False, False, False, False, False, None),
+    ]
+    if roles != expected_roles:
+        raise RuntimeError(f"WebAuthn retention role attributes mismatch: {roles!r}")
+    memberships = connection.execute("""
+        SELECT parent.rolname,member.rolname
+        FROM pg_auth_members membership
+        JOIN pg_roles parent ON parent.oid=membership.roleid
+        JOIN pg_roles member ON member.oid=membership.member
+        WHERE parent.rolname IN (
+            'request_webauthn_retention','request_webauthn_retention_definer'
+        ) OR member.rolname IN (
+            'request_webauthn_retention','request_webauthn_retention_definer'
+        )
+        ORDER BY parent.rolname,member.rolname
+    """).fetchall()
+    if memberships:
+        raise RuntimeError(f"WebAuthn retention role memberships mismatch: {memberships!r}")
+
+    acl = connection.execute("""
+        SELECT 'schema',n.nspname,r.rolname,a.privilege_type,a.is_grantable
+        FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a
+        JOIN pg_roles r ON r.oid=a.grantee
+        WHERE r.rolname IN (
+            'request_webauthn_retention','request_webauthn_retention_definer'
+        )
+        UNION ALL
+        SELECT 'function',n.nspname||'.'||p.proname,
+               r.rolname,a.privilege_type,a.is_grantable
+        FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        CROSS JOIN LATERAL aclexplode(p.proacl) a
+        JOIN pg_roles r ON r.oid=a.grantee
+        WHERE r.rolname IN (
+            'request_webauthn_retention','request_webauthn_retention_definer'
+        )
+        UNION ALL
+        SELECT 'table',n.nspname||'.'||c.relname,r.rolname,a.privilege_type,a.is_grantable
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        CROSS JOIN LATERAL aclexplode(c.relacl) a
+        JOIN pg_roles r ON r.oid=a.grantee
+        WHERE r.rolname IN (
+            'request_webauthn_retention','request_webauthn_retention_definer'
+        )
+        UNION ALL
+        SELECT 'column',n.nspname||'.'||c.relname||'.'||att.attname,
+               r.rolname,a.privilege_type,a.is_grantable
+        FROM pg_attribute att JOIN pg_class c ON c.oid=att.attrelid
+        JOIN pg_namespace n ON n.oid=c.relnamespace
+        CROSS JOIN LATERAL aclexplode(att.attacl) a
+        JOIN pg_roles r ON r.oid=a.grantee
+        WHERE att.attnum>0 AND NOT att.attisdropped
+          AND r.rolname IN (
+            'request_webauthn_retention','request_webauthn_retention_definer'
+          )
+        ORDER BY 1,2,3,4
+    """).fetchall()
+    expected_acl = [
+        (
+            "column",
+            "request_engine.webauthn_challenges.consumed_at",
+            "request_webauthn_retention_definer",
+            "SELECT",
+            False,
+        ),
+        (
+            "column",
+            "request_engine.webauthn_challenges.expires_at",
+            "request_webauthn_retention_definer",
+            "SELECT",
+            False,
+        ),
+        (
+            "column",
+            "request_engine.webauthn_challenges.id",
+            "request_webauthn_retention_definer",
+            "SELECT",
+            False,
+        ),
+        (
+            "column",
+            "request_engine.webauthn_challenges.id",
+            "request_webauthn_retention_definer",
+            "UPDATE",
+            False,
+        ),
+        (
+            "column",
+            "request_engine.webauthn_challenges.status",
+            "request_webauthn_retention_definer",
+            "SELECT",
+            False,
+        ),
+        (
+            "function",
+            "request_auth.delete_retained_webauthn_challenges",
+            "request_webauthn_retention",
+            "EXECUTE",
+            False,
+        ),
+        (
+            "function",
+            "request_auth.delete_retained_webauthn_challenges",
+            "request_webauthn_retention_definer",
+            "EXECUTE",
+            False,
+        ),
+        ("schema", "request_auth", "request_webauthn_retention", "USAGE", False),
+        ("schema", "request_engine", "request_webauthn_retention_definer", "USAGE", False),
+        (
+            "table",
+            "request_engine.webauthn_challenges",
+            "request_webauthn_retention_definer",
+            "DELETE",
+            False,
+        ),
+    ]
+    if acl != expected_acl:
+        raise RuntimeError(f"WebAuthn retention ACL convergence mismatch: {acl!r}")
+
+
 def _run_alembic(database: str, target: str) -> None:
     env = os.environ.copy()
     env["MIGRATION_DATABASE_URL"] = _database_url(database)
@@ -145,6 +279,7 @@ def main() -> None:
         source_row = source.execute("SELECT version_num FROM alembic_version").fetchone()
         _verify_native_receipt_privileges(source)
         _verify_cleanup_worker_privileges(source)
+        _verify_webauthn_retention_authority(source)
     if source_row is None:
         raise RuntimeError("source database has no Alembic head")
     expected_head = str(source_row[0])
@@ -161,6 +296,7 @@ def main() -> None:
         with psycopg.connect(_conninfo(proof_database)) as proof:
             _verify_native_receipt_privileges(proof)
             _verify_cleanup_worker_privileges(proof)
+            _verify_webauthn_retention_authority(proof)
             head = proof.execute("SELECT version_num FROM alembic_version").fetchone()
             if head is None or str(head[0]) != expected_head:
                 raise RuntimeError(
@@ -202,6 +338,8 @@ def main() -> None:
                      'request_engine_discovery_definer',
                      'request_engine_schema_owner',
                      'request_engine_worker',
+                     'request_webauthn_retention',
+                     'request_webauthn_retention_definer',
                      'request_platform_control',
                      'request_platform_control_definer',
                      'request_platform_definer',
@@ -222,6 +360,8 @@ def main() -> None:
                 ("request_platform_control_definer", False, False, True),
                 ("request_platform_definer", False, False, True),
                 ("request_retention_recorder", False, False, False),
+                ("request_webauthn_retention", False, False, False),
+                ("request_webauthn_retention_definer", False, False, False),
             ]
             if roles != expected_roles:
                 raise RuntimeError(f"second database managed role topology mismatch: {roles!r}")

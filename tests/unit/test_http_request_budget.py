@@ -1,6 +1,7 @@
 """Transport admission rejects before owner execution, with no unbounded queue."""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 
 import pytest
@@ -15,7 +16,13 @@ from request_engine.platform.http.request_budget import (
     install_request_budget,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.security, pytest.mark.contract]
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.security,
+    pytest.mark.contract,
+    pytest.mark.invariant,
+    pytest.mark.adversarial,
+]
 
 
 def _app(budget: HttpRequestBudget) -> tuple[FastAPI, list[bytes]]:
@@ -261,6 +268,144 @@ def test_environment_configuration_fails_closed(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("REQUEST_ENGINE_HTTP_MAX_ACTIVE_PROBES", "0")
     with pytest.raises(ValueError):
         HttpRequestBudget.from_environment()
+
+
+@pytest.mark.parametrize(
+    "value",
+    (True, 1.0, float("nan"), 0, 10_001),
+)
+def test_authentication_rate_limit_requires_exact_bounded_integer(value: object) -> None:
+    with pytest.raises(ValueError):
+        HttpRequestBudget(max_authentication_per_minute=value)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("value", ("1.0", "nan", "True", "0", "10001", " 1"))
+def test_environment_authentication_rate_limit_requires_decimal_integer(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("REQUEST_ENGINE_HTTP_MAX_AUTHENTICATION_PER_MINUTE", value)
+    with pytest.raises(ValueError):
+        HttpRequestBudget.from_environment()
+
+
+@pytest.mark.asyncio
+async def test_authentication_rate_limit_enforces_exact_threshold_and_remaining_retry_after() -> (
+    None
+):
+    now = [100.0]
+    calls = 0
+    app = FastAPI()
+
+    async def authenticate() -> dict[str, bool]:
+        nonlocal calls
+        calls += 1
+        return {"ok": True}
+
+    app.add_api_route("/auth/native/login", authenticate, methods=["POST"])
+    app.add_middleware(
+        RequestBudgetMiddleware,
+        budget=HttpRequestBudget(max_authentication_per_minute=2),
+        clock=lambda: now[0],
+    )
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+        assert (await client.post("/auth/native/login")).status_code == 200
+        assert (await client.post("/auth/native/login")).status_code == 200
+        rejected = await client.post("/auth/native/login")
+        assert rejected.status_code == 429
+        assert rejected.json()["error"]["code"] == "request_rate_exceeded"
+        assert rejected.json()["error"]["retryable"] is True
+        assert rejected.headers["Retry-After"] == "60"
+        assert calls == 2
+
+        now[0] = 101.0
+        still_rejected = await client.post("/auth/native/login")
+        assert still_rejected.status_code == 429
+        assert still_rejected.headers["Retry-After"] == "59"
+
+        # Rejected requests count in the rolling window too; after the last
+        # rejection has aged out, the first request is admitted again.
+        now[0] = 161.0
+        admitted = await client.post("/auth/native/login")
+        assert admitted.status_code == 200
+        assert calls == 3
+
+
+@pytest.mark.asyncio
+async def test_rejected_auth_attempt_does_not_consume_body_or_call_owner() -> None:
+    owner_calls = 0
+    receive_calls = 0
+
+    async def owner(scope: Scope, receive: Receive, send: Send) -> None:
+        nonlocal owner_calls
+        owner_calls += 1
+        await receive()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    middleware = RequestBudgetMiddleware(
+        owner,
+        budget=HttpRequestBudget(max_authentication_per_minute=1),
+        clock=lambda: 0.0,
+    )
+    scope: Scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/auth/native/login",
+        "headers": [],
+    }
+
+    async def request_once(body: bytes) -> list[Message]:
+        nonlocal receive_calls
+        response: list[Message] = []
+        delivered = False
+
+        async def receive() -> Message:
+            nonlocal delivered, receive_calls
+            receive_calls += 1
+            if delivered:
+                return {"type": "http.disconnect"}
+            delivered = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        async def collect(message: Message) -> None:
+            response.append(message)
+
+        await middleware(scope, receive, collect)
+        return response
+
+    first = await request_once(b"first")
+    assert owner_calls == 1
+    calls_before_reject = receive_calls
+    rejected = await request_once(b"sensitive-invalid-body")
+    assert owner_calls == 1
+    assert receive_calls == calls_before_reject
+    assert rejected[0]["status"] == 429
+    rendered_body = next(
+        message["body"] for message in rejected if message["type"] == "http.response.body"
+    )
+    assert json.loads(rendered_body)["error"]["code"] == "request_rate_exceeded"
+    assert first[0]["status"] == 200
+
+
+@pytest.mark.asyncio
+async def test_get_introspection_and_probes_are_not_rate_limited() -> None:
+    app = FastAPI()
+    app.add_api_route("/auth/native/login", lambda: {"ok": True}, methods=["POST"])
+    app.add_api_route("/auth/native/sessions/current", lambda: {"ok": True}, methods=["GET"])
+    app.add_api_route("/v1/setup/session", lambda: {"ok": True}, methods=["POST"])
+    app.add_api_route("/health/ready", lambda: {"ok": True}, methods=["GET"])
+    app.add_middleware(
+        RequestBudgetMiddleware,
+        budget=HttpRequestBudget(max_authentication_per_minute=1),
+        clock=lambda: 0.0,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+        assert (await client.post("/auth/native/login")).status_code == 200
+        assert (await client.post("/auth/native/login")).status_code == 429
+        assert (await client.post("/v1/setup/session")).status_code == 429
+        assert (await client.get("/auth/native/sessions/current")).status_code == 200
+        assert (await client.get("/health/ready")).status_code == 200
 
 
 def test_middleware_errors_are_discoverable_without_overwriting_owner_protocol() -> None:

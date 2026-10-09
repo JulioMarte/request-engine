@@ -170,6 +170,7 @@ uv run pytest \
   tests/db/test_webauthn_persistence.py \
   tests/db/test_webauthn_concurrency.py \
   tests/db/test_webauthn_populated_upgrade.py \
+  tests/db/test_webauthn_challenge_retention.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/principal-authority.xml"
 

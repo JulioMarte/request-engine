@@ -39,6 +39,8 @@ from fido2.webauthn import (
     UserVerificationRequirement,
 )
 
+_MAX_CHALLENGE_TTL_SECONDS = 900
+
 CHALLENGE_BYTES = 32
 
 
@@ -111,8 +113,12 @@ class WebAuthnPolicy:
             raise ValueError("WebAuthn rp_id is required")
         if not self.allowed_origins:
             raise ValueError("WebAuthn allowed_origins cannot be empty")
-        if self.challenge_ttl_seconds <= 0:
-            raise ValueError("WebAuthn challenge_ttl_seconds must be positive")
+        if type(self.challenge_ttl_seconds) is not int:
+            raise ValueError("WebAuthn challenge_ttl_seconds must be an exact integer")
+        if not 0 < self.challenge_ttl_seconds <= _MAX_CHALLENGE_TTL_SECONDS:
+            raise ValueError(
+                f"WebAuthn challenge_ttl_seconds must be between 1 and {_MAX_CHALLENGE_TTL_SECONDS}"
+            )
         if self.attestation not in {"none", "indirect", "direct", "enterprise"}:
             raise ValueError("Unsupported WebAuthn attestation preference")
         if self.attestation != "none":

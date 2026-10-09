@@ -478,6 +478,26 @@ path = "tests/db/test_webauthn_populated_upgrade.py"
 evidence = ["invariant", "adversarial", "security", "provenance"]
 
 [[proofs]]
+guarantee = "INV-WEBAUTHN-CHALLENGE-RETENTION-001"
+path = "tests/db/test_webauthn_challenge_retention.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WEBAUTHN-CHALLENGE-RETENTION-001"
+path = "tests/unit/test_webauthn_challenge_retention.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-HTTP-AUTH-ADMISSION-001"
+path = "tests/unit/test_http_request_budget.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-HTTP-AUTH-ADMISSION-001"
+path = "tests/e2e/test_http_load_probe_runtime.py"
+evidence = ["invariant", "adversarial", "security", "capacity"]
+
+[[proofs]]
 guarantee = "INV-ONBOARDING-READINESS-001"
 path = "tests/db/test_identity_onboarding_readiness.py"
 evidence = ["invariant", "adversarial", "security"]

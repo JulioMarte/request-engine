@@ -147,6 +147,9 @@ Identity/authentication and deployment references:
 - `architecture/principal-agent-and-provisioning-authority-model.md` — Principal planes, workload authority and the amended implementation slice order;
 - `architecture/http-runtime-deployment.md` — native-first and separate private provisioning ASGI factories, explicit configuration, least-privilege startup and readiness limits;
 - `architecture/auth-implementation-status.md` — dated validation evidence and remaining identity-plan acceptance gaps;
+- `operations/http-authentication-limits.md` — process-local authentication admission limits and required deployment-wide abuse controls;
+- `operations/native-challenge-retention.md` — bounded, opt-in maintenance of unusable WebAuthn challenges with dedicated database privileges;
+- `operations/http-load-probe.md` — allowlisted load measurement with full-response deadlines, finite resource limits and explicit acceptance budgets;
 - `architecture/docker-e2e-ci-plan.md` — reusable clean-install black-box system/E2E execution platform.
 - `architecture/p7-platform-configuration-secrets-implementation-handoff.md` — executable P7 handoff for governed platform configuration, secret lifecycle, provider validation/hot reload and operational disaster-recovery acceptance.
 

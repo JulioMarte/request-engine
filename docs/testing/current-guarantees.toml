@@ -455,6 +455,20 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
 
 [[guarantees]]
+id = "INV-WEBAUTHN-CHALLENGE-RETENTION-001"
+statement = "WebAuthn challenge retention deletes only expired challenges eligible under the bounded retention policy, processes at most the configured bounded batch per invocation, and preserves recent consumed evidence; invocation is available only through a dedicated non-login caller role and a SECURITY DEFINER function whose non-login owner has only the challenge-table privileges and columns required for that deletion."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "availability"]
+
+[[guarantees]]
+id = "INV-HTTP-AUTH-ADMISSION-001"
+statement = "Each HTTP process bounds native-authentication and initial-setup POST attempt admission within a monotonic rolling minute before body parsing, hashing or owner execution; exhausted admission returns an opaque 429 with Retry-After without authoritative side effects, while GET introspection and health probes remain outside that window. This process-local limit is not deployment-wide or per-account brute-force protection; replicas, restarts and shared ingress policy require separate operational acceptance."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "availability"]
+
+[[guarantees]]
 id = "INV-PRIVILEGED-AUTH-FRESHNESS-001"
 statement = "The reusable privileged-authentication guard fails closed on trusted session evidence and distinguishes insufficient assurance (including any recovery-derived session) from stale strong authentication, so a sensitive operation can require recent phishing-resistant authentication without hard-coding checks in individual routers."
 severity = "high"

@@ -897,3 +897,90 @@ challenges, SMTP externo, cleanup admitido/scheduled si se promete destrucción,
 backup/restore sin fuente y alertas recibidas por el operador. Requests necesita
 su consumidor y autoridad acordados si se promete resultado terminal automático.
 No se desplegó, publicaron cambios, enviaron mensajes ni tocaron datos reales.
+
+
+## Candidato operativo sin instalación (2026-10-09)
+
+El usuario confirmó que todavía no hay una instalación. Por tanto, no existe
+un proveedor SMTP, host de restauración, receptor de alertas ni red productiva
+que pueda aceptarse con evidencia real. Las pruebas del repositorio y del
+laboratorio no fabrican esas aceptaciones.
+
+El árbol certificado local `99b9be0da5390c8d3af091fe16499219b736371c` quedó
+publicado en `origin/feature/admin-console` mediante el commit
+`a2579c0e4a5238dab6756b5f01c41902e6c9a9e5`. El transporte autenticado de GitHub
+creó un SHA diferente al checkpoint local `8dd23ac4`; se comparó el árbol exacto,
+sin omisiones. El CLI de Git carecía de credenciales para escribir. Los
+checkpoints locales se conservaron en una rama `tmp/` sin PR. No se hizo merge.
+
+El siguiente candidato añade:
+
+- TTL WebAuthn entero entre 1 y 900 segundos; no admite booleanos, flotantes,
+  NaN ni infinito. El default sigue siendo 300 segundos.
+- Retención manual acotada en `0037_webauthn_retention`, sin reescribir 0001:
+  siete días por defecto, mínimo 24 horas, máximo 90 días; lote máximo 1000.
+  No elimina desafíos vivos ni consumos recientes, credenciales, sesiones,
+  auditoría o secretos. Usa `SKIP LOCKED`, índice de expiración y roles separados
+  `request_webauthn_retention` / `request_webauthn_retention_definer`. El mínimo
+  `UPDATE(id)` del definer sirve al requisito PostgreSQL del bloqueo; la función
+  no actualiza ese campo. Roles preexistentes inseguros deben abortar el upgrade.
+- Admisión de POST de autenticación nativa/setup a 120 intentos por minuto por
+  proceso, configurable entre 1 y 10000, antes de body/hashing/SQL; 429 y
+  `Retry-After`. GET de sesión y probes quedan fuera. Réplicas y reinicios
+  requieren controles agregados de ingress; esto no certifica rate global.
+- Probe de carga con destino/ruta explícitos, sin redirects ni proxy heredado,
+  TLS verificado, solicitudes/concurrencia/tiempo/cuerpo finitos y latencia hasta
+  el cuerpo completo. Truncamiento, cuerpo lento, exceso y compresión inesperada
+  cuentan como error; no se guardan bodies ni cabeceras sensibles.
+
+### Evidencia de carga real de laboratorio
+
+La prueba siguiente pasó en PostgreSQL 18.6 y Python 3.13.16:
+
+```bash
+bash ../run-pg18-lab.sh runtime-load-rate head uv run pytest \
+  tests/e2e/test_http_load_probe_runtime.py -q -s
+```
+ El servidor Uvicorn usó TCP y un LOGIN runtime real sin elevación,
+pool size 1 + overflow 1; los datos son artificiales. Presupuesto de p95 5000 ms
+solamente para el laboratorio, no un SLO aprobado.
+
+| Fase | Resultado independiente |
+| --- | --- |
+| 200 readiness GET, concurrencia 2 | 200 respuestas 200; p95 44,32 ms; cero errores |
+| 100 opciones WebAuthn POST, concurrencia 2 | 100 respuestas 200; p95 47,98 ms; cero errores |
+| Otras 50 opciones, misma ventana | 20 respuestas 200, 30 respuestas 429; el probe devuelve `budget_exceeded` |
+| Estado autoritativo | Exactamente 120 desafíos pendientes persistidos; ninguna sesión emitida |
+
+La medición previa con concurrencia 8 registró 136 respuestas 200 y 64 respuestas
+503 (32% de errores). Ese resultado se conserva como rechazo bajo presión,
+no como capacidad aceptada: había límites de probes y conexiones inferiores a
+la concurrencia. La medición por sí sola no identifica cuál causó cada rechazo.
+La fase nominal no borra esa limitación ni mide CPU/RSS, carga multi-réplica,
+hashing sostenido, duración extensa o cardinalidad productiva.
+
+### Operaciones que siguen sin aceptación real
+
+| Área | Estado y siguiente evidencia necesaria |
+| --- | --- |
+| Correo | Runbook `operations/p7-smtp-production-acceptance.md`; faltan proveedor, secreto, dominio/TLS y entrega a buzón real, fallo ambiguo y throttling |
+| Restauración | Runbook `operations/p7-disaster-recovery-drill.md`; falta restaurar PostgreSQL + OpenBao desde copia off-host sin fuente y medir RPO/RTO, con outbound fence |
+| Alertas | Contrato/runtime probado; faltan destino y recepción por un responsable al inducir fallos reales |
+| Aislamiento | Docker E2E prueba su red de laboratorio; faltan host/ingress y pruebas negativa pública→control/DB, TLS/proxies de la instalación |
+| Retención | CLI lista para invocación explícita; faltan LOGIN/secret dedicados y schedule operativo. Su índice requiere planificar locks/drain de autenticación al migrar una tabla grande |
+| Capacidad | Carga de laboratorio ejecutada; faltan presupuesto agregado por proceso/réplica, ingress compartido y carga del producto prometido |
+
+Las nuevas pruebas deben quedar incluidas en los runners canónicos y en el mapa
+de garantías. El CI del árbol anterior no certifica estos cambios nuevos:
+se requiere publicar el nuevo árbol y esperar todos sus workflows de exact-head.
+El estado sigue siendo **preproducción; no certificado para producción**.
+
+
+El CI de `a2579c0e` terminó con los cinco workflows en `success`: CI
+(run 37965587545, incluidos calidad, observabilidad, historia V2 y PostgreSQL
+actual), Docker E2E (37965587504), configuración P7 (37965587550), Coolify
+(37965587438) y recuperación simulada (37965587418). La revisión adversarial
+independiente del árbol nuevo confirmó cerrado el hallazgo de roles con ACL
+excesivos tras las pruebas de upgrade aislado. La batería enfocada final pasó
+46 pruebas PostgreSQL y 54 unitarias; la multibase final pasó con los roles
+exactos en ambas bases. Esto no reemplaza el CI propio del siguiente candidato.

@@ -47,6 +47,21 @@ Production remains uncertified: final candidate CI/review, upgrade from the
 actual installed revision, capacity/ingress/rate/retention budgets and acceptance
 of real SMTP, backup/restore, alerts and isolated deployment remain open.
 
+Current operational candidate continuation (2026-10-09, no installation yet):
+`0037_webauthn_retention` adds opt-in bounded challenge cleanup with dedicated
+NOLOGIN roles and fail-closed role reuse. Authentication/setup POST admission
+is limited to 120 attempts per rolling minute per process; replicas and restarts
+still need deployment-wide ingress controls. A full-response bounded load probe
+exercises real TCP and records failures rather than certifying capacity.
+Laboratory evidence includes 300 successful nominal requests and a subsequent
+50-request phase with exactly 20 accepted options and 30 rejected with 429;
+PostgreSQL holds exactly 120 pending challenges and no issued sessions.
+The earlier concurrency-8 measurement had 32% 503 responses under smaller
+admission/pool limits and is not a passing capacity result. No real SMTP,
+off-host restore, operator alert delivery or production network acceptance
+can be completed before an installation exists. See the updated readiness
+report and the indexed operational guides for commands and evidence limits.
+
 Current privacy correction superseding historical decoy claims below:
 ADR 0014 §9 (2026-10-03) requires the same discoverable options for supplied and
 omitted handles, with no credential-id/count disclosure and intended-handle

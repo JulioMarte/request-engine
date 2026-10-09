@@ -292,6 +292,39 @@ def test_policy_rejects_empty_allowed_origins() -> None:
         WebAuthnPolicy(rp_id=RP_ID, rp_name="Request Engine", allowed_origins=frozenset())
 
 
+@pytest.mark.parametrize("ttl", [0, -1, 901, 3600])
+def test_policy_rejects_unbounded_challenge_ttl(ttl: int) -> None:
+    with pytest.raises(ValueError, match="challenge_ttl_seconds"):
+        WebAuthnPolicy(
+            rp_id=RP_ID,
+            rp_name="Request Engine",
+            allowed_origins=frozenset({ORIGIN}),
+            challenge_ttl_seconds=ttl,
+        )
+
+
+@pytest.mark.parametrize("ttl", [True, 1.0, float("nan"), float("inf"), float("-inf")])
+def test_policy_requires_an_exact_integer_challenge_ttl(ttl: object) -> None:
+    with pytest.raises(ValueError, match="exact integer"):
+        WebAuthnPolicy(
+            rp_id=RP_ID,
+            rp_name="Request Engine",
+            allowed_origins=frozenset({ORIGIN}),
+            challenge_ttl_seconds=cast(int, ttl),
+        )
+
+
+def test_policy_accepts_challenge_ttl_at_bounded_edges() -> None:
+    for ttl in (1, 900):
+        policy = WebAuthnPolicy(
+            rp_id=RP_ID,
+            rp_name="Request Engine",
+            allowed_origins=frozenset({ORIGIN}),
+            challenge_ttl_seconds=ttl,
+        )
+        assert policy.challenge_ttl_seconds == ttl
+
+
 def test_policy_rejects_non_none_attestation_without_verifier() -> None:
     with pytest.raises(ValueError):
         WebAuthnPolicy(
