@@ -16,6 +16,8 @@ _TRUSTED_DEFINER_OWNERS = {
     "request_engine_schema_owner",
 }
 _EXACT_DEFINER_OWNERS = {
+    # Operator count projection is isolated behind a LOGIN-only monitor group.
+    ("request_admin", "read_operator_metrics", ""): "request_operator_metrics_definer",
     # 0014 owner-only read projections need platform-plane RLS visibility.
     # Approval is signature-scoped, never blanket trust in the control definer.
     ("request_platform", "assert_owner_read_actor", ""): "request_platform_control_definer",

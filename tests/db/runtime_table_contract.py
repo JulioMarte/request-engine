@@ -27,6 +27,8 @@ PRIVATE_GLOBAL_TABLES = {
     "platform_configuration_revisions",
     "platform_installation_claim_facts",
     "platform_instance",
+    # 0038: transport-admission state is accessible only through its narrow definer function.
+    "http_auth_admission_state",
     "platform_owner_policies",
     # Accepted 0001: platform control definer only, never tenant app CRUD.
     "platform_owner_invitation_facts",

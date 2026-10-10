@@ -72,3 +72,37 @@ Repeat after proxy, firewall, routing, DNS, container publishing or host changes
 A missing source network, untested routed address family, reachable private
 listener, insecure TLS or unverified effective LOGIN permissions leaves O-01
 pending. No production acceptance is inferred from CI or local loopback tests.
+
+## Executable listener observations
+
+`scripts/operations/network_acceptance_probe.py PLAN --output EVIDENCE` checks
+only declared IP literals and ports (at most 64, each with a finite deadline).
+Run separately on the approved public and private machines. A plan has this
+shape, with operator-reviewed values:
+
+```json
+{
+  "schema": "request-engine/network-plan/v1",
+  "candidate": "exact-source-sha-and-image-digest",
+  "configuration_reference": "reviewed-ingress-firewall-revision",
+  "source_reference": "approved-external-machine",
+  "vantage": "public",
+  "timeout_seconds": 3,
+  "endpoints": [
+    {"id": "control-ipv4", "address": "192.0.2.10", "port": 443,
+     "protocol": "tls", "server_name": "control.example.com", "expected": "blocked"}
+  ]
+}
+```
+
+The documentation address must be replaced; the tool does not discover hosts
+or scan ports. Declare every routed IPv4/IPv6 listener explicitly. For public
+HTTPS and the private positive baseline, use `expected: "reachable"`; TLS
+requires a verified certificate matching `server_name` on the pinned IP. A TCP
+handshake always fails a blocked expectation, including TLS rejection/timeout.
+DNS errors cannot masquerade as isolation because targets are IP literals.
+Refusal/timeout records an observation, not proof of firewall policy. Match
+every negative listener with its positive private baseline and effective host
+configuration review. Evidence deliberately remains uncertified and marks
+those independent checks as required. HTTP route/proxy and LOGIN checks from
+the matrix above remain separate acceptance trials.

@@ -5,6 +5,8 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0038: bounded transport-only shared authentication admission; no direct state-table ACL.
+    "request_auth.admit_http_authentication(p_limit integer)",
     # 0025: current HUMAN manager, tenant-local target and delegable ceiling;
     # revision-checked credential replacement, with no direct credential table ACL.
     "request_cmd.lock_agent_credential_manager(p_target uuid)",

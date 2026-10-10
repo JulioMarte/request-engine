@@ -5,6 +5,9 @@ on:
     branches: [development]
     paths:
       - "scripts/ci/postgres_clean_restore_smoke.sh"
+      - "scripts/db/export_role_catalog.py"
+      - "scripts/operations/recovery_bundle.py"
+      - "scripts/operations/recovery_drill_evidence.py"
       - "scripts/ci/openbao_raft_restore_smoke.sh"
       - "scripts/ci/run_e2e_*.sh"
       - "tests/system_e2e/**"

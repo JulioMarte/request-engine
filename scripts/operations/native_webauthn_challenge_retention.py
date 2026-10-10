@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 from request_engine.platform.db.webauthn_challenge_retention import (
     DEFAULT_BATCH_SIZE,
@@ -16,6 +17,22 @@ from request_engine.platform.db.webauthn_challenge_retention import (
 )
 
 _DSN_ENV = "REQUEST_ENGINE_WEBAUTHN_RETENTION_DATABASE_URL"
+_DSN_FILE_ENV = "REQUEST_ENGINE_WEBAUTHN_RETENTION_DATABASE_URL_FILE"
+
+
+def _database_url_from_environment() -> str | None:
+    direct = os.environ.get(_DSN_ENV)
+    credential_file = os.environ.get(_DSN_FILE_ENV)
+    if direct and credential_file:
+        raise ValueError("provide the maintenance DSN by only one mechanism")
+    if credential_file:
+        value = Path(credential_file).read_text(encoding="utf-8")
+        if value.endswith("\n"):
+            value = value[:-1]
+        if not value or any(character in value for character in "\r\n\x00"):
+            raise ValueError("maintenance credential must contain exactly one non-empty line")
+        return value
+    return direct
 
 
 def _config_from_environment() -> tuple[int, int]:
@@ -48,10 +65,10 @@ def main() -> int:
     args = parser.parse_args()
     if not args.execute:
         parser.error("--execute is required; this maintenance pass never runs implicitly")
-    dsn = os.environ.get(_DSN_ENV)
-    if not dsn:
-        parser.error(f"{_DSN_ENV} must contain a dedicated maintenance-login DSN")
     try:
+        dsn = _database_url_from_environment()
+        if not dsn:
+            raise ValueError("maintenance DSN is not configured")
         env_retention, env_batch = _config_from_environment()
         retention = env_retention if args.retention_seconds is None else args.retention_seconds
         batch = env_batch if args.batch_size is None else args.batch_size

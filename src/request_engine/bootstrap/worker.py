@@ -34,6 +34,7 @@ from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.events.provider_events import PostgresProviderEventWorker
+from request_engine.platform.observability.worker_telemetry import create_worker_telemetry
 from request_engine.platform.outbox.worker import PostgresOutboxWorker
 from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
@@ -118,6 +119,7 @@ def build_worker_process(
             scheduled_store,
             scheduled_router,
             config=runtime_config.scheduled_actions,
+            telemetry=create_worker_telemetry("scheduled_action"),
         ),
         outbox_messages=FencedWorkerRuntime(
             outbox_store,
@@ -127,12 +129,14 @@ def build_worker_process(
                 fenced_internal_handlers=fenced_internal_handlers,
             ),
             config=runtime_config.outbox_messages,
+            telemetry=create_worker_telemetry("outbox"),
         ),
         provider_events=FencedWorkerRuntime(
             provider_event_store,
             ProviderEventRouter(provider_event_handlers),
             rejecter=provider_event_store.reject,
             config=runtime_config.provider_events,
+            telemetry=create_worker_telemetry("provider_event"),
         ),
         recovery_sweep=build_recovery_sweep(
             worker_session_factory,

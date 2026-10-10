@@ -37,19 +37,42 @@ python scripts/operations/smtp_production_acceptance.py \
   --destination operator-controlled@example.com \
   --idempotency-key p7-production-acceptance-2026-09-27 \
   --throttling-evidence-reference CHANGE-1234 \
-  --delivery-evidence-reference MAILBOX-CHECK-1234 \
-  --output smtp-production-acceptance.json
+  --output smtp-send-evidence.json
 ```
 
 The command uses the same certificate-verifying SMTP validator and provider
 tester as P7. It fails unless DNS resolves, TLS/STARTTLS is used, authenticated
-SMTP succeeds, provider validation is valid, the provider accepts the controlled
-SMTP submission, an operator-verified mailbox receipt reference is supplied, and
-the throttling/error-behavior evidence reference is present.
+SMTP succeeds, provider validation is valid, and the provider accepts the
+controlled SMTP submission. The throttling/error-behavior evidence reference is
+required in the send step; mailbox evidence is recorded only after receipt.
 
-The resulting JSON records the SMTP submission result and the operator-provided
-mailbox evidence reference; it does not infer end-to-end delivery from SMTP
-submission alone. It contains no password and no destination address. Do not attach
+The first command generates a unique UUID send ID and corresponding `Message-ID`.
+It produces `submission_accepted_pending_mailbox_verification`, never a delivery
+acceptance. SMTP `250` means the provider accepted the message for processing; it
+does not prove mailbox delivery. If the result is `UNKNOWN`, do not rerun or resend
+automatically: inspect the mailbox and provider logs for the recorded send ID. The
+command writes its ambiguous send evidence and exits non-zero. A definite failure
+can be investigated before an operator deliberately starts a new send with a new
+send ID. The DNS preflight uses a bounded five-second process timeout. Provider
+sockets use the configured timeout, capped at 30 seconds per socket operation.
+The SMTP library performs its own hostname lookup when opening each connection;
+that resolver call and the combined validation/send wall time do not have a hard
+overall deadline in this runner.
+
+After an operator observes that exact `Message-ID` in the controlled mailbox,
+promote the evidence in a separate step:
+
+```bash
+python scripts/operations/smtp_production_acceptance.py \
+  --verify-send-evidence smtp-send-evidence.json \
+  --observed-message-id '<p7-...@request-engine>' \
+  --delivery-evidence-reference MAILBOX-CHECK-1234 \
+  --output smtp-production-acceptance.json
+```
+
+The accepted artifact carries the same unique send ID and `Message-ID`. The
+receipt reference is collected only after the send. The artifact contains no
+password or destination address. Do not attach
 provider credentials, SMTP passwords, OpenBao tokens, or recovery codes to the
 acceptance artifact.
 
@@ -61,4 +84,6 @@ configuration, or network path.
 
 An `UNKNOWN` delivery outcome is not accepted as production certification. The
 normal product semantics still preserve UNKNOWN rather than blindly retrying an
-ambiguous transmission.
+ambiguous transmission. The verifier requires the exact observed `Message-ID` and
+checks that it matches the recorded send ID. Its receipt reference remains an
+operator assertion rather than a mailbox API result.

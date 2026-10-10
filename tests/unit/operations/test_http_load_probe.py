@@ -383,3 +383,73 @@ def test_production_claimed_plan_requires_https() -> None:
 
     with pytest.raises(module.LoadProbeError, match="require HTTPS"):
         module.validate_plan(plan)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_sustained_trial_runs_to_deadline_with_bounded_workers(
+    local_http_origin: str,
+) -> None:
+    plan = _plan(local_http_origin)
+    plan.update(total_requests=1000, concurrency=2, duration_seconds=1)
+    result = await module.run_plan(plan)
+    assert result["outcome"] == "within_declared_budgets"
+    assert result["duration_completed"] is True
+    assert 12 < result["total_requests"] < 1000
+    assert result["elapsed_seconds"] >= 1
+    assert result["last_request_started_seconds"] >= 0.9
+    assert result["peak_active_requests"] == 2
+    assert sum(result["status_counts"].values()) == result["total_requests"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_request_cap_exhaustion_cannot_pass_a_sustained_trial(local_http_origin: str) -> None:
+    plan = _plan(local_http_origin)
+    plan.update(total_requests=2, concurrency=2, duration_seconds=1)
+    result = await module.run_plan(plan)
+    assert result["outcome"] == "budget_exceeded"
+    assert result["duration_completed"] is False
+    assert result["total_requests"] == 2
+    assert result["error_rate"] == 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("duration", [True, float("nan"), float("inf"), 0.99, 3601, 10**400])
+def test_sustained_duration_is_bounded_and_finite(duration: Any) -> None:
+    plan = _plan("http://127.0.0.1:8000")
+    plan["duration_seconds"] = duration
+    with pytest.raises(module.LoadProbeError, match="duration_seconds"):
+        module.validate_plan(plan)
+
+
+@pytest.mark.unit
+def test_request_body_cannot_exceed_byte_cap_with_unicode_expansion() -> None:
+    plan = _plan("http://127.0.0.1:8000", method="POST")
+    plan["request"]["json_body"] = "é" * (module.MAX_REQUEST_BODY_BYTES // 2)
+    with pytest.raises(module.LoadProbeError, match="request cap"):
+        module.validate_plan(plan)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_large_environment_header_fails_before_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan("http://127.0.0.1:1")
+    plan["request"]["headers_env"] = {"Authorization": "PROBE_TEST_AUTH"}
+    monkeypatch.setenv("PROBE_TEST_AUTH", "s" * module.MAX_HEADER_BYTES)
+    with pytest.raises(module.LoadProbeError, match="aggregate cap"):
+        await module.run_plan(plan)
+
+
+@pytest.mark.unit
+def test_cli_rejects_oversized_plan_before_json_parse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "plan.json"
+    source.write_bytes(b" " * (module.MAX_PLAN_BYTES + 1))
+    monkeypatch.setattr(sys, "argv", ["http_load_probe.py", str(source)])
+    with pytest.raises(SystemExit, match="input cap"):
+        module.main()

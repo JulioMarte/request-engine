@@ -27,6 +27,10 @@ There is no planned blanket architecture freeze. A production release may make p
 PR #137 API-only readiness review, reproduced adversarial failures,
 candidate-specific CI evidence and executable remediation gates:
 [`testing/pr137-api-production-readiness-2026-10-06.md`](testing/pr137-api-production-readiness-2026-10-06.md).
+The next operational implementation checkpoint is
+[`testing/operational-implementation-2026-10-10.md`](testing/operational-implementation-2026-10-10.md),
+covering shared admission, scheduled retention, mail/restore acceptance tooling,
+monitoring and deployment network probes with explicit installation evidence gaps.
 Its [current candidate reconciliation](testing/pr137-api-production-readiness-2026-10-06.md#actualizacion-del-candidato-2026-10-08)
 distinguishes implemented security corrections from pending owner-specific proofs,
 final candidate certification and operational acceptance. The dated audit remains
@@ -147,10 +151,11 @@ Identity/authentication and deployment references:
 - `architecture/principal-agent-and-provisioning-authority-model.md` — Principal planes, workload authority and the amended implementation slice order;
 - `architecture/http-runtime-deployment.md` — native-first and separate private provisioning ASGI factories, explicit configuration, least-privilege startup and readiness limits;
 - `architecture/auth-implementation-status.md` — dated validation evidence and remaining identity-plan acceptance gaps;
-- `operations/http-authentication-limits.md` — process-local authentication admission limits and required deployment-wide abuse controls;
-- `operations/native-challenge-retention.md` — bounded, opt-in maintenance of unusable WebAuthn challenges with dedicated database privileges;
-- `operations/http-load-probe.md` — allowlisted load measurement with full-response deadlines, finite resource limits and explicit acceptance budgets;
+- `operations/http-authentication-limits.md` — shared PostgreSQL authentication admission, explicit local mode and deployment abuse controls;
+- `operations/native-challenge-retention.md` — bounded WebAuthn maintenance with dedicated privileges and a hardened systemd timer;
+- `operations/http-load-probe.md` — allowlisted count or sustained load measurement with full-response deadlines and finite budgets;
 - `operations/operator-alert-acceptance.md` — required signal/export preparation, fault trials and independent operator receipt evidence;
+- `operations/http-deployment-renderer.md` — immutable-image split HTTP Compose with explicit bindings, credentials and proxy trust;
 - `operations/network-isolation-acceptance.md` — public/private probe matrix, trusted proxy/TLS and effective runtime privilege acceptance;
 - `architecture/docker-e2e-ci-plan.md` — reusable clean-install black-box system/E2E execution platform.
 - `architecture/p7-platform-configuration-secrets-implementation-handoff.md` — executable P7 handoff for governed platform configuration, secret lifecycle, provider validation/hot reload and operational disaster-recovery acceptance.

@@ -53,7 +53,7 @@ def create_discovery_availability_app(
         version="0.1.0",
         description="Internal publication-fenced access to authoritative Booking availability.",
     )
-    install_request_budget(app)
+    install_request_budget(app, session_factory=domain_session_factory)
     app.middleware("http")(_request_context)
     add_technical_error_handlers(app)
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)

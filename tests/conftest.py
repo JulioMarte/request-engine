@@ -215,7 +215,10 @@ def isolate_postgres_test_data(request: _FixtureRequest) -> Iterator[None]:
                   -- test-created business state or a seeded command result.
                   AND NOT (
                       n.nspname = 'request_engine'
-                      AND c.relname IN ('initial_controller_policies', 'platform_owner_policies')
+                      AND c.relname IN (
+                          'initial_controller_policies', 'platform_owner_policies',
+                          'http_auth_admission_state'
+                      )
                   )
                 ORDER BY n.nspname, c.relname
                 """,
@@ -229,6 +232,14 @@ def isolate_postgres_test_data(request: _FixtureRequest) -> Iterator[None]:
                             for schema_name, table_name in tables
                         )
                     )
+                )
+            state_exists = conn.execute(
+                "SELECT to_regclass('request_engine.http_auth_admission_state') IS NOT NULL"
+            ).fetchone()
+            if state_exists is not None and state_exists[0]:
+                conn.execute(
+                    "UPDATE request_engine.http_auth_admission_state "
+                    "SET attempts = '{}', configured_limit = NULL WHERE singleton"
                 )
         finally:
             conn.close()

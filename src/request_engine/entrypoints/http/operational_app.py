@@ -71,7 +71,7 @@ def create_operational_app(
             "deployment ActorResolver; commands additionally require exact Representation scopes."
         ),
     )
-    install_request_budget(app)
+    install_request_budget(app, session_factory=session_factory)
     app.middleware("http")(_request_execution_context)
     add_technical_error_handlers(app)
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)

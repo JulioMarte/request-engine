@@ -37,8 +37,10 @@ uv run uvicorn request_engine.bootstrap.server:create_app --factory --host 127.0
 ```
 
 For deployment, terminate TLS at a configured ingress, restrict trusted proxy
-headers to that ingress and apply request-size, connection and authentication
-rate limits there. Do not expose the development database to the internet.
+headers to that ingress and apply request-size, connection and client-aware
+authentication controls there. The application also applies one shared
+PostgreSQL rolling-window limit to native-authentication mutations and initial
+setup POSTs. Do not expose the development database to the internet.
 Workers use their separate runtime entrypoint and database role.
 
 ## HTTP resource containment
@@ -55,8 +57,12 @@ Tune positive bounded values with `REQUEST_ENGINE_HTTP_MAX_BODY_BYTES`,
 `REQUEST_ENGINE_HTTP_BODY_TIMEOUT_SECONDS`, `REQUEST_ENGINE_HTTP_MAX_ACTIVE_REQUESTS`,
 `REQUEST_ENGINE_HTTP_MAX_ACTIVE_AUTHENTICATION` and
 `REQUEST_ENGINE_HTTP_MAX_ACTIVE_PROBES`. Invalid/zero configuration fails closed.
-These are process-local controls, not distributed/IP rate limits, proxy connection
-limits, decompression protection or an excuse to omit ingress containment.
+Body, active-request, active-authentication and probe budgets are process-local
+controls, not proxy connection limits, decompression protection or an excuse to
+omit ingress containment. The authentication rate limit is PostgreSQL-shared
+across replicas using the same database; it is global, not per IP, handle or
+tenant, and fails closed if its shared state is unavailable or replica settings
+disagree.
 
 Costly asynchronous password hash/verification paths share a process-local
 executor, default four jobs (`REQUEST_ENGINE_PASSWORD_WORK_CAPACITY`,1..32).
@@ -97,12 +103,13 @@ Unexpected failures return sanitized500 with operator_intervention and no automa
 retry. This does not certify rollback or redact server logs. Reconcile an ambiguous
 command using its existing receipt/read contract before changing its idempotency key.
 
-### In-process HTTP admission
+### HTTP admission
 
 The runtime, private control, operational, discovery and discovery-availability
 applications install the shared transport budget before parsing a body or running
-an owner operation. Ingress limits remain necessary: these are process-local
-bounds, not distributed rate limiting or a complete denial-of-service defense.
+an owner operation. Transport byte/time/concurrency budgets are process-local;
+authentication-attempt admission is shared through PostgreSQL. Ingress limits
+remain necessary for client-aware controls and broader denial-of-service defense.
 
 | Environment variable | Default | Accepted bound |
 | --- | --- | --- |
@@ -111,6 +118,8 @@ bounds, not distributed rate limiting or a complete denial-of-service defense.
 | `REQUEST_ENGINE_HTTP_MAX_ACTIVE_AUTHENTICATION` | 4 | 1..64 native-auth requests |
 | `REQUEST_ENGINE_HTTP_MAX_ACTIVE_PROBES` | 4 | 1..64 health probes |
 | `REQUEST_ENGINE_HTTP_BODY_TIMEOUT_SECONDS` | 15 | positive, at most 120 seconds |
+| `REQUEST_ENGINE_HTTP_MAX_AUTHENTICATION_PER_MINUTE` | 120 | 1..10000 shared attempts per rolling 60 seconds |
+| `REQUEST_ENGINE_HTTP_SHARED_AUTH_ADMISSION` | true | set false only for explicit process-local fallback |
 
 The body limit counts actual received bytes, even without `Content-Length`.
 Duplicate/malformed lengths or a completed body whose length disagrees with the

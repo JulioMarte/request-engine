@@ -168,7 +168,7 @@ def create_app(
             "authenticated subjects through Request Engine-owned identity and authority state."
         ),
     )
-    install_request_budget(app)
+    install_request_budget(app, session_factory=session_factory)
     app.middleware("http")(_request_execution_context)
     add_global_error_handlers(app)
     if (

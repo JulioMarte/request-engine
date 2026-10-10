@@ -128,6 +128,8 @@ uv run pytest \
   tests/db/test_native_enrollment_outcomes.py \
   tests/db/test_native_authority_probe.py \
   tests/db/test_http_sql_execution_budget.py \
+  tests/db/test_shared_http_auth_admission.py \
+  tests/db/test_operator_metrics_projection.py \
   tests/db/test_workload_authentication.py \
   tests/db/test_agent_governance.py \
   tests/db/test_agent_governance_reader.py \
@@ -357,6 +359,7 @@ uv run pytest \
   tests/modules/platform_configuration/test_recovery_policy_validation.py \
   tests/unit/scripts/test_recovery_bundle.py \
   tests/unit/scripts/test_render_recovery_backup_systemd.py \
+  tests/unit/scripts/test_render_native_webauthn_retention_systemd.py \
   tests/modules/booking/test_appointment_options.py \
   tests/unit/platform/security/test_appointment_option_keyring.py \
   tests/unit/test_managed_appointment_signing.py \

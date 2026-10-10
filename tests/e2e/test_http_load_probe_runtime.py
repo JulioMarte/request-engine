@@ -103,6 +103,29 @@ async def test_bounded_probe_exercises_real_runtime_and_persists_every_option(
                 assert evidence["outcome"] == "within_declared_budgets"
                 assert evidence["status_counts"] == {"200": total}
                 assert evidence["error_count"] == 0
+            sustained = await probe.run_plan(
+                {
+                    "schema": "request-engine/http-load-plan/v1",
+                    "mode": "lab",
+                    "target_origin": origin,
+                    "allowed_target_origins": [origin],
+                    "allowed_paths": ["/health/ready"],
+                    "request": {"method": "GET", "path": "/health/ready"},
+                    "total_requests": 10000,
+                    "duration_seconds": 2,
+                    "concurrency": 2,
+                    "timeout_seconds": 5,
+                    "max_p95_ms": 5000,
+                    "max_error_rate": 0,
+                }
+            )
+            print(json.dumps(sustained, sort_keys=True))
+            assert sustained["outcome"] == "within_declared_budgets"
+            assert sustained["duration_completed"] is True
+            assert sustained["elapsed_seconds"] >= 2
+            assert sustained["peak_active_requests"] == 2
+            assert sum(sustained["status_counts"].values()) == sustained["total_requests"]
+            assert sustained["error_count"] == 0
             # The first 100 options consumed admission slots. The remaining 20
             # must persist; the following 30 must stop before authoritative SQL.
             rate_path = "/auth/native/webauthn/authentication-options"

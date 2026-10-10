@@ -10,9 +10,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from fastapi import FastAPI, Request
+from sqlalchemy import text
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 from request_engine.platform.security.http import request_correlation_id
 
@@ -27,15 +29,24 @@ class HttpRequestBudget:
     body_timeout_seconds: float = 15
 
     def __post_init__(self) -> None:
-        bounds = (
+        integer_bounds = (
             (self.max_body_bytes, 16_777_216),
             (self.max_active_requests, 4096),
             (self.max_active_authentication, 64),
             (self.max_active_probes, 64),
-            (self.body_timeout_seconds, 120),
         )
-        if any(not 0 < value <= maximum for value, maximum in bounds):
+        if any(
+            type(value) is not int or not 0 < value <= maximum for value, maximum in integer_bounds
+        ):
             raise ValueError("HTTP request budgets must be positive and within deployment bounds")
+        if (
+            type(self.body_timeout_seconds) not in (int, float)
+            or not math.isfinite(self.body_timeout_seconds)
+            or not 0 < self.body_timeout_seconds <= 120
+        ):
+            raise ValueError(
+                "HTTP body timeout must be finite, positive and within deployment bounds"
+            )
         if (
             type(self.max_authentication_per_minute) is not int
             or not 1 <= self.max_authentication_per_minute <= 10_000
@@ -72,10 +83,14 @@ class RequestBudgetMiddleware:
         *,
         budget: HttpRequestBudget,
         clock: Callable[[], float] = time.monotonic,
+        session_factory: SessionFactory | None = None,
+        shared_admission_required: bool = False,
     ) -> None:
         self.app = app
         self.budget = budget
         self.clock = clock
+        self.session_factory = session_factory
+        self.shared_admission_required = shared_admission_required
         self.authentication_attempts: deque[float] = deque(
             maxlen=budget.max_authentication_per_minute
         )
@@ -99,23 +114,14 @@ class RequestBudgetMiddleware:
                 self.probes.release()
             return
         path = str(scope["path"])
-        authentication = path == "/auth/native" or path.startswith("/auth/native/")
-        authentication_attempt = scope["method"] == "POST" and (
-            authentication or path.startswith("/v1/setup/")
+        authentication = (
+            path == "/auth/native"
+            or path.startswith("/auth/native/")
+            or path.startswith("/v1/setup/")
         )
-        if authentication_attempt:
-            retry_after = self._record_authentication_attempt()
-            if retry_after is not None:
-                await self._reject(
-                    scope,
-                    receive,
-                    send,
-                    429,
-                    "request_rate_exceeded",
-                    True,
-                    retry_after_seconds=retry_after,
-                )
-                return
+        authentication_attempt = (scope["method"] == "POST" and authentication) or (
+            scope["method"] == "PUT" and path == "/auth/native/password"
+        )
         if self.active.locked() or (authentication and self.authentication.locked()):
             await self._reject(scope, receive, send, 503, "request_capacity_exceeded", True)
             return
@@ -124,6 +130,27 @@ class RequestBudgetMiddleware:
         if authentication:
             await self.authentication.acquire()
         try:
+            if authentication_attempt:
+                try:
+                    retry_after = await self._record_authentication_attempt()
+                except Exception:
+                    if self.shared_admission_required:
+                        await self._reject(
+                            scope, receive, send, 503, "request_capacity_exceeded", True
+                        )
+                        return
+                    retry_after = self._record_local_authentication_attempt()
+                if retry_after is not None:
+                    await self._reject(
+                        scope,
+                        receive,
+                        send,
+                        429,
+                        "request_rate_exceeded",
+                        True,
+                        retry_after_seconds=retry_after,
+                    )
+                    return
             await self._admitted(scope, receive, send)
         finally:
             if authentication:
@@ -180,7 +207,30 @@ class RequestBudgetMiddleware:
 
         await self.app(scope, bounded_receive, send)
 
-    def _record_authentication_attempt(self) -> int | None:
+    async def _record_authentication_attempt(self) -> int | None:
+        if self.session_factory is not None:
+            async with asyncio.timeout(1):
+                async with self.session_factory() as session, session.begin():
+                    await session.execute(text("SET LOCAL lock_timeout = '100ms'"))
+                    await session.execute(text("SET LOCAL statement_timeout = '250ms'"))
+                    result = await session.execute(
+                        text(
+                            "SELECT allowed, retry_after_seconds "
+                            "FROM request_auth.admit_http_authentication(:limit)"
+                        ),
+                        {"limit": self.budget.max_authentication_per_minute},
+                    )
+                    allowed, retry_after = result.one()
+                    if type(allowed) is not bool or type(retry_after) is not int:
+                        raise RuntimeError("shared HTTP admission returned malformed state")
+                    if allowed and retry_after != 0 or not allowed and retry_after < 1:
+                        raise RuntimeError("shared HTTP admission returned an invalid decision")
+                    return None if allowed else retry_after
+        if self.shared_admission_required:
+            raise RuntimeError("shared authentication admission is required but unavailable")
+        return self._record_local_authentication_attempt()
+
+    def _record_local_authentication_attempt(self) -> int | None:
         now = self.clock()
         while self.authentication_attempts and now - self.authentication_attempts[0] >= 60:
             self.authentication_attempts.popleft()
@@ -232,6 +282,19 @@ class RequestBudgetMiddleware:
         await response(scope, receive, send)
 
 
-def install_request_budget(app: FastAPI) -> None:
+def install_request_budget(
+    app: FastAPI,
+    *,
+    session_factory: SessionFactory | None = None,
+) -> None:
+    shared_setting = os.environ.get("REQUEST_ENGINE_HTTP_SHARED_AUTH_ADMISSION", "true").lower()
+    if shared_setting not in {"true", "false", "1", "0", "yes", "no"}:
+        raise ValueError("REQUEST_ENGINE_HTTP_SHARED_AUTH_ADMISSION must be a boolean")
+    shared_required = shared_setting in {"true", "1", "yes"}
     app.state.http_request_budget_installed = True
-    app.add_middleware(RequestBudgetMiddleware, budget=HttpRequestBudget.from_environment())
+    app.add_middleware(
+        RequestBudgetMiddleware,
+        budget=HttpRequestBudget.from_environment(),
+        session_factory=session_factory if shared_required else None,
+        shared_admission_required=shared_required,
+    )

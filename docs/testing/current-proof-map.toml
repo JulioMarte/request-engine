@@ -765,3 +765,8 @@ evidence = ["contract", "adversarial"]
 guarantee = "INV-RECOVERY-POLICY-001"
 path = "tests/modules/platform_configuration/test_http_contract.py"
 evidence = ["contract"]
+
+[[proofs]]
+guarantee = "INV-HTTP-AUTH-ADMISSION-001"
+path = "tests/db/test_shared_http_auth_admission.py"
+evidence = ["invariant", "adversarial", "security", "concurrency"]

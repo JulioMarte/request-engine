@@ -112,7 +112,7 @@ def create_platform_control_app(
         store=PostgresRecoveryCodeStore(auth_session_factory)
     )
     app = FastAPI(title="Request Engine platform control", version="1.0.0")
-    install_request_budget(app)
+    install_request_budget(app, session_factory=auth_session_factory)
 
     async def uncached_control_response(
         request: Request,

@@ -86,8 +86,31 @@ Use a dedicated isolated target. A probe can add load and change observed
 behavior; never point it at an unapproved external or production system. This
 tool is a single-process HTTP measurement, not a capacity certification: it
 does not model multiple machines, realistic user arrival distributions,
-database growth, ingress/TLS termination, background workers, or long-duration
-soak. A successful run says only that this one run stayed within the budgets
+database growth, ingress/TLS termination, or background workers. A successful run says only that this one run stayed within the budgets
 written in its plan. It does not approve those budgets, certify production, or
 replace end-to-end SMTP, backup/restore, alert delivery, network isolation, or
 operator acceptance evidence.
+
+## Sustained trials
+
+Add `duration_seconds` (finite, 1 through 3600) to keep a fixed number of
+workers issuing requests until the deadline. `total_requests` remains a hard
+10,000-request safety cap. Exhausting that cap before the deadline fails the
+trial, even when latency and errors pass; increase the cap within its bound or
+reduce the duration/concurrency in the approved plan. This is closed-loop load:
+a slow server reduces achieved throughput. It does not promise a fixed arrival
+rate. Evidence includes actual requests, peak active requests, throughput,
+last request start, and `duration_completed`; draining slow responses alone
+does not satisfy a cap-exhausted duration.
+
+For productive capacity acceptance, run the plan on the installed candidate
+with background workers and intended replicas, retain host CPU/RSS, database
+pool/wait observations, and concurrent readiness evidence from an independent
+client. Compare the measured throughput to the approved workload. The probe
+still emits `production_certified: false`; loopback success cannot establish
+deployment capacity.
+
+Request JSON is limited to 1 MiB after compact UTF-8 serialization. Plan input
+is capped at 2 MiB before parsing. At most 64 environment-referenced headers
+may contribute at most 16 KiB in aggregate; invalid control characters are
+rejected before connecting. These bounds apply in count and sustained modes.

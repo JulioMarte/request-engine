@@ -11,13 +11,31 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 class EvidenceError(RuntimeError):
     pass
+
+
+MAX_EVIDENCE_BYTES = 64 * 1024
+
+
+def _read_json(path: Path, label: str) -> Any:
+    try:
+        with path.open("rb") as evidence_file:
+            content = evidence_file.read(MAX_EVIDENCE_BYTES + 1)
+    except OSError as exc:
+        raise EvidenceError(f"cannot read {label}") from exc
+    if len(content) > MAX_EVIDENCE_BYTES:
+        raise EvidenceError(f"{label} exceeds the {MAX_EVIDENCE_BYTES}-byte limit")
+    try:
+        return json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise EvidenceError(f"{label} is not valid UTF-8 JSON") from exc
 
 
 def _time(value: Any, field: str) -> datetime:
@@ -37,6 +55,57 @@ def _yes(value: Any, field: str) -> None:
         raise EvidenceError(f"required proof is not true: {field}")
 
 
+def _validate_restore_evidence(
+    source: Path,
+    reference_value: str,
+    bundle_sha: str,
+    failure: datetime,
+    recovered: datetime,
+) -> tuple[Path, datetime, datetime]:
+    reference = Path(reference_value)
+    if not reference.is_absolute():
+        reference = source.parent / reference
+    restore_value = _read_json(reference, "referenced restore evidence")
+    if not isinstance(restore_value, dict):
+        raise EvidenceError("referenced restore evidence must be an object")
+    record = cast(dict[str, object], restore_value)
+    steps_value = record.get("completed_steps")
+    if not isinstance(steps_value, list):
+        raise EvidenceError("referenced restore evidence lacks completed restore steps")
+    steps_list = cast(list[object], steps_value)
+    if not all(isinstance(step, str) for step in steps_list):
+        raise EvidenceError("referenced restore evidence lacks completed restore steps")
+    steps = cast(list[str], steps_value)
+    required_steps = {
+        "bundle_integrity_verified",
+        "postgres_restore_applied",
+        "postgres_owner_acl_topology_applied",
+        "openbao_raft_force_restore_applied",
+    }
+    if not required_steps.issubset(steps):
+        raise EvidenceError("referenced restore evidence lacks completed restore steps")
+
+    started = _time(record.get("started_at"), "restore_evidence.started_at")
+    completed = _time(record.get("completed_at"), "restore_evidence.completed_at")
+    if started < failure:
+        raise EvidenceError("restore evidence started before failure_declared_at")
+    if completed < started:
+        raise EvidenceError("restore evidence completed before it started")
+    if completed > recovered:
+        raise EvidenceError("restore evidence completed after service_recovered_at")
+    if (
+        record.get("schema") != "request-engine/restore-evidence/v1"
+        or record.get("outcome") != "restore_applied_pending_verification"
+        or record.get("bundle_sha256") != bundle_sha.lower()
+        or record.get("postgres_topology_preserved") is not True
+        or record.get("postgres_owner_acl_topology_applied") is not True
+        or record.get("post_restore_verification_required") is not True
+        or record.get("outbound_isolation_independently_proven") is not False
+    ):
+        raise EvidenceError("referenced restore evidence does not match this drill bundle")
+    return reference, started, completed
+
+
 def certify(
     source: Path,
     output: Path | None,
@@ -44,8 +113,11 @@ def certify(
     max_rpo_seconds: float | None = None,
     max_rto_seconds: float | None = None,
 ) -> dict[str, Any]:
-    raw = json.loads(source.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or raw.get("schema") != "request-engine/recovery-drill/v1":
+    raw_value = _read_json(source, "recovery drill evidence")
+    if not isinstance(raw_value, dict):
+        raise EvidenceError("unsupported recovery drill evidence schema")
+    raw = cast(dict[str, object], raw_value)
+    if raw.get("schema") != "request-engine/recovery-drill/v1":
         raise EvidenceError("unsupported recovery drill evidence schema")
 
     backup = _time(raw.get("backup_completed_at"), "backup_completed_at")
@@ -59,6 +131,7 @@ def certify(
     proofs = raw.get("proofs")
     if not isinstance(proofs, dict):
         raise EvidenceError("proofs must be an object")
+    proof_map = cast(dict[str, object], proofs)
     required = (
         "postgres_restored_from_bundle",
         "openbao_restored_from_bundle",
@@ -77,15 +150,34 @@ def certify(
         "setup_remained_closed",
     )
     for name in required:
-        _yes(proofs.get(name), f"proofs.{name}")
+        _yes(proof_map.get(name), f"proofs.{name}")
 
     bundle_sha = raw.get("bundle_sha256")
-    if not isinstance(bundle_sha, str) or len(bundle_sha) != 64:
+    if not isinstance(bundle_sha, str) or re.fullmatch(r"[0-9a-fA-F]{64}", bundle_sha) is None:
         raise EvidenceError("bundle_sha256 must be a SHA-256 hex digest")
-    try:
-        int(bundle_sha, 16)
-    except ValueError as exc:
-        raise EvidenceError("bundle_sha256 is not hexadecimal") from exc
+
+    # These references force the operator to attach the actual restore and
+    # off-host retrieval records to the drill packet. They are provenance
+    # handles, not machine-verifiable claims of network isolation or storage
+    # durability; those require deployment-specific independent evidence.
+    for field in (
+        "restore_evidence_reference",
+        "off_host_retrieval_evidence_reference",
+        "outbound_fence_evidence_reference",
+    ):
+        value = raw.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise EvidenceError(f"missing evidence reference: {field}")
+    restore_reference_value = raw["restore_evidence_reference"]
+    if not isinstance(restore_reference_value, str):
+        raise EvidenceError("missing evidence reference: restore_evidence_reference")
+    restore_reference, restore_started, restore_completed = _validate_restore_evidence(
+        source,
+        restore_reference_value,
+        bundle_sha,
+        failure,
+        recovered,
+    )
 
     rpo = (failure - backup).total_seconds()
     rto = (recovered - failure).total_seconds()
@@ -93,8 +185,13 @@ def certify(
         ("max_rpo_seconds", max_rpo_seconds),
         ("max_rto_seconds", max_rto_seconds),
     ):
-        if value is not None and (isinstance(value, bool) or not math.isfinite(value) or value < 0):
-            raise EvidenceError(f"{name} must be a finite non-negative number")
+        if value is not None:
+            try:
+                valid = not isinstance(value, bool) and math.isfinite(value) and value >= 0
+            except (OverflowError, TypeError):
+                valid = False
+            if not valid:
+                raise EvidenceError(f"{name} must be a finite non-negative number")
     if max_rpo_seconds is not None and rpo > max_rpo_seconds:
         raise EvidenceError(
             f"observed RPO {rpo:.3f}s exceeds accepted maximum {max_rpo_seconds:.3f}s"
@@ -114,8 +211,13 @@ def certify(
         "accepted_max_rto_seconds": max_rto_seconds,
         "backup_completed_at": backup.isoformat(),
         "failure_declared_at": failure.isoformat(),
+        "restore_started_at": restore_started.isoformat(),
+        "restore_completed_at": restore_completed.isoformat(),
         "service_recovered_at": recovered.isoformat(),
         "required_proofs": list(required),
+        "restore_evidence_reference": str(restore_reference.resolve()),
+        "off_host_retrieval_evidence_reference": raw["off_host_retrieval_evidence_reference"],
+        "outbound_fence_evidence_reference": raw["outbound_fence_evidence_reference"],
     }
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)

@@ -6,18 +6,34 @@ Owner: the deployment operator. This guide completes gate O-07 in the
 
 ## Existing boundary and remaining implementation
 
+The `operator-alerts` CI job runs a narrowly scoped observability fixture: pinned
+Collector, Prometheus and Alertmanager containers validate the exact configs; an
+OTLP emitter sends bounded worker/gauge samples; `promtool` evaluates the alert
+fixtures; and a local webhook records firing and resolved statuses. This is a
+specialized metrics-path proof, not a customer/business E2E suite. The containers
+receive no Request Engine database URL, application credentials, HUMAN bearer, or
+Docker socket access. Its allowlisted artifacts contain config/rule check output,
+fixed metric names/labels, and only the fixture's firing/resolved status values.
+The local HTTP 2xx proves transport to that test fixture, not external human
+acknowledgement.
+
 `GET /v1/platform/observability` requires a HUMAN actor with
 `platform.readiness.read` on the private control plane. Its P7 measurements and
 threshold alerts are advisory, process-local snapshots. They are not a queue of
 notifications, durable incident history, or proof of operator receipt. Do not
 publish that API or give a monitoring agent a human bearer credential to scrape
-it. The supported monitoring/export boundary must be chosen and implemented
-before unattended alert delivery can be claimed.
+it. Deployment now provides a separate Collector Prometheus scrape endpoint,
+Prometheus alert rules, and an Alertmanager webhook route. The route is unusable
+until the operator replaces its `.invalid` placeholder with the operator-owned HTTPS
+receiver. The local compose stack does not activate that receiver.
 
-The OpenTelemetry Collector/runtime contract proves transport mechanics, not
-coverage of all semantic signals. The required worker, backlog and delivery
-metrics listed in [observability](observability.md) still need verified
-instrumentation/export wherever absent. Use a dedicated monitoring service for
+The central scheduled-action, outbox, and provider-event worker pools emit bounded
+claims, cycles, outcomes, lease-loss, and processing-duration metrics when the pinned
+OTel runtime is installed. An independent, read-only database poller emits capped
+backlog/oldest-age and recent delivery failure/ambiguity metrics through a dedicated
+login role. Backup/restore-evidence gauges still have no verified source; their rules
+fire as missing/unknown rather than treating absence as health. This configuration
+does not establish external receipt or acknowledgement. Use a dedicated monitoring service for
 routing, grouping, deduplication and notifications; avoid placing network
 notification calls inside business transactions or P7 metric observers.
 

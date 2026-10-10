@@ -270,6 +270,14 @@ def test_environment_configuration_fails_closed(monkeypatch: pytest.MonkeyPatch)
         HttpRequestBudget.from_environment()
 
 
+def test_shared_admission_mode_rejects_ambiguous_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("REQUEST_ENGINE_HTTP_SHARED_AUTH_ADMISSION", "maybe")
+    with pytest.raises(ValueError, match="must be a boolean"):
+        install_request_budget(FastAPI())
+
+
 @pytest.mark.parametrize(
     "value",
     (True, 1.0, float("nan"), 0, 10_001),
@@ -277,6 +285,24 @@ def test_environment_configuration_fails_closed(monkeypatch: pytest.MonkeyPatch)
 def test_authentication_rate_limit_requires_exact_bounded_integer(value: object) -> None:
     with pytest.raises(ValueError):
         HttpRequestBudget(max_authentication_per_minute=value)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"max_body_bytes": True},
+        {"max_active_requests": 1.0},
+        {"max_active_authentication": False},
+        {"max_active_probes": 1.5},
+        {"body_timeout_seconds": float("nan")},
+        {"body_timeout_seconds": float("inf")},
+    ),
+)
+def test_transport_budgets_reject_non_exact_counts_and_nonfinite_timeout(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError):
+        HttpRequestBudget(**kwargs)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("value", ("1.0", "nan", "True", "0", "10001", " 1"))
@@ -388,9 +414,60 @@ async def test_rejected_auth_attempt_does_not_consume_body_or_call_owner() -> No
 
 
 @pytest.mark.asyncio
+async def test_shared_admission_database_failure_fails_closed_before_body_read() -> None:
+    class BrokenSession:
+        async def __aenter__(self) -> "BrokenSession":
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        def begin(self) -> "BrokenSession":
+            return self
+
+        async def execute(self, _statement: object) -> None:
+            raise RuntimeError("database unavailable")
+
+    owner_calls = 0
+    receive_calls = 0
+
+    async def owner(scope: Scope, receive: Receive, send: Send) -> None:
+        nonlocal owner_calls
+        owner_calls += 1
+
+    async def receive() -> Message:
+        nonlocal receive_calls
+        receive_calls += 1
+        return {"type": "http.request", "body": b"secret", "more_body": False}
+
+    sent: list[Message] = []
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    middleware = RequestBudgetMiddleware(
+        owner,
+        budget=HttpRequestBudget(),
+        session_factory=lambda: BrokenSession(),  # type: ignore[arg-type]
+        shared_admission_required=True,
+    )
+    scope: Scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/auth/native/login",
+        "headers": [],
+    }
+    await middleware(scope, receive, send)
+    assert owner_calls == 0 and receive_calls == 0
+    assert sent[0]["status"] == 503
+    assert sent[0]["headers"]
+
+
+@pytest.mark.asyncio
 async def test_get_introspection_and_probes_are_not_rate_limited() -> None:
     app = FastAPI()
     app.add_api_route("/auth/native/login", lambda: {"ok": True}, methods=["POST"])
+    app.add_api_route("/auth/native/password", lambda: {"ok": True}, methods=["PUT"])
     app.add_api_route("/auth/native/sessions/current", lambda: {"ok": True}, methods=["GET"])
     app.add_api_route("/v1/setup/session", lambda: {"ok": True}, methods=["POST"])
     app.add_api_route("/health/ready", lambda: {"ok": True}, methods=["GET"])
@@ -404,6 +481,7 @@ async def test_get_introspection_and_probes_are_not_rate_limited() -> None:
         assert (await client.post("/auth/native/login")).status_code == 200
         assert (await client.post("/auth/native/login")).status_code == 429
         assert (await client.post("/v1/setup/session")).status_code == 429
+        assert (await client.put("/auth/native/password")).status_code == 429
         assert (await client.get("/auth/native/sessions/current")).status_code == 200
         assert (await client.get("/health/ready")).status_code == 200
 

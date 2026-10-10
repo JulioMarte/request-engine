@@ -1,6 +1,6 @@
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.157.0
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.157.0
     command: ["--config=/etc/otelcol/config.yaml"]
     restart: unless-stopped
     security_opt:
@@ -11,3 +11,28 @@ services:
       - "127.0.0.1:4317:4317"
       - "127.0.0.1:4318:4318"
       - "127.0.0.1:13133:13133"
+      - "127.0.0.1:9464:9464"
+  prometheus:
+    image: quay.io/prometheus/prometheus:v3.8.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yaml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./alert-rules.yaml:/etc/prometheus/alert-rules.yaml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+  alertmanager:
+    image: quay.io/prometheus/alertmanager:v0.31.1
+    command: ["--config.file=/etc/alertmanager/alertmanager.yaml"]
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro
+    ports:
+      - "127.0.0.1:9093:9093"
