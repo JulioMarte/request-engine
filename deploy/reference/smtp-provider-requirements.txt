@@ -1,0 +1,2 @@
+# The isolated test-provider image has no application/database dependencies.
+aiosmtpd==1.4.6

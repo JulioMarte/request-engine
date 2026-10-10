@@ -22,6 +22,7 @@ Key references:
 - `docs/testing/repository-governance-contract.md` — HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification.
 - `docs/testing/evidence-authoring-guide.md` — falsifiable proof workflow.
 - `docs/architecture/docker-e2e-ci-plan.md` — **canonical reusable Docker platform for clean-install black-box system/E2E suites**.
+- `docs/testing/operational-simulation-lab.md` — SMTP/TLS, shared replica limits, network isolation, encrypted off-host restore and alert fault simulations, with explicit evidence limits.
 - `docs/architecture/pre-production-evolution-policy.md` — KEEP / ADAPT / REPLACE / REMOVE / HISTORICAL policy.
 - `docs/testing/current-proof-map.toml` — representative proof mapping.
 - `docs/testing/test-architecture-migration.md` — test-taxonomy/disposition ledger.

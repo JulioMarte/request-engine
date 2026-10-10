@@ -612,6 +612,24 @@ Cada excepción debe explicar por qué la plataforma reusable no puede demostrar
 
 ## 18. Qué CI puede y no puede certificar
 
+### Laboratorio operacional opcional
+
+El registry admite `driver = "generic"` (default) y el driver especializado
+cerrado `network-boundary`, más `infrastructure_services`, `ingress_services`
+y `tls_hosts` opcionales. Infraestructura se inicia antes de migrar; ingress se
+inicia después de sus upstreams. Los certificados efímeros se generan fuera de
+artifacts; la CA privada nunca se monta y los clientes reciben sólo la CA pública.
+La réplica API conserva la misma imagen immutable. Un driver desconocido falla.
+
+El driver de red conserva el runner normal aislado y añade clientes separados:
+público únicamente en public-ingress; privado en private-ingress/backend para
+controles positivos TCP sin credenciales DB. Lifecycle y lectura SQL agregada
+pertenecen al orquestador exterior. Restore y monitoring son excepciones de
+infraestructura explícitas con autoridad administrativa fuera del runner normal.
+Alcance, oráculos y límites: [operational simulation lab](../testing/operational-simulation-lab.md).
+Las afirmaciones excluidas más abajo se refieren a producción real: el laboratorio
+puede demostrar TLS, SMTP, recuperación externa y alertas en su topología simulada.
+
 ### CI puede demostrar
 
 - instalación reproducible desde cero;

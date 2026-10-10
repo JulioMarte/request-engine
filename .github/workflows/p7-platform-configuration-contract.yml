@@ -30,6 +30,9 @@ on:
       - "tests/db/test_platform_configuration_*.py"
       - "tests/db/test_managed_oidc_projection.py"
       - "tests/platform/observability/**"
+      - "tests/integration/test_smtp_provider_lab_acceptance.py"
+      - "tests/system_e2e/smtp_provider_lab.py"
+      - "src/request_engine/platform/secrets/smtp_delivery_channel.py"
       - "tests/unit/operations/test_recovery_drill_evidence.py"
       - "tests/unit/operations/test_openbao_operational_acceptance.py"
       - "tests/unit/operations/test_smtp_production_acceptance.py"
@@ -113,6 +116,12 @@ jobs:
             'tests/e2e/test_platform_control_runtime_factory.py::test_private_runtime_rechecks_privileges_and_authority[membership]' \
             -q --tb=short --durations=20 \
             --junitxml=.ci/p7-platform-configuration.xml
+      - name: Prove SMTP authentication, verified STARTTLS and delivery outcomes
+        run: |
+          uv run --with aiosmtpd==1.4.6 pytest \
+            tests/integration/test_smtp_provider_lab_acceptance.py \
+            tests/modules/platform_configuration/test_smtp_tls_protocol.py \
+            -q --tb=short --junitxml=.ci/smtp-provider-lab.xml
       - name: Start real OpenBao engine for CAS acceptance
         run: |
           docker run -d --name p7-openbao \
@@ -152,6 +161,7 @@ jobs:
           name: p7-platform-configuration-proof
           path: |
             .ci/p7-platform-configuration.xml
+            .ci/smtp-provider-lab.xml
             .ci/openbao-operational-acceptance.json
             .ci/openbao-raft-restore-smoke.json
           if-no-files-found: error

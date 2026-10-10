@@ -8,12 +8,13 @@ from unittest.mock import patch
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+RUNNER = ROOT / "tests/system_e2e/runner.py"
 pytestmark = [pytest.mark.unit, pytest.mark.contract]
 
 
 def _parser():
-    with patch.object(sys, "path", [str(ROOT / "tests/fixtures"), *sys.path]):
-        return runpy.run_path(str(ROOT / "tests/system_e2e/runner.py"))["_invitation_mail_proof"]
+    with patch.object(sys, "path", [str(RUNNER.parent), str(ROOT / "tests/fixtures"), *sys.path]):
+        return runpy.run_path(str(RUNNER))["_invitation_mail_proof"]
 
 
 def test_invitation_mail_parser_accepts_only_matching_fragment_proof() -> None:

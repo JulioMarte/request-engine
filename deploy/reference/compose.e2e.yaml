@@ -12,6 +12,7 @@ x-public-env: &public-env
   REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY: ci-only-appointment-signing-key-32-bytes-minimum
   REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY: ci-only-fingerprint-key-32-bytes-minimum
   REQUEST_ENGINE_WEBAUTHN_DECOY_KEY: ci-only-webauthn-decoy-key-32-bytes-minimum
+  REQUEST_ENGINE_HTTP_MAX_AUTHENTICATION_PER_MINUTE: ${REQUEST_ENGINE_HTTP_MAX_AUTHENTICATION_PER_MINUTE:-120}
   REQUEST_ENGINE_OUTBOUND_FENCED: ${REQUEST_ENGINE_OUTBOUND_FENCED:-false}
 
 x-platform-env: &platform-env
@@ -20,6 +21,7 @@ x-platform-env: &platform-env
   REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL: postgresql+psycopg://request_e2e_control:ci-control-only@postgres:5432/request_engine
   REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
   REQUEST_ENGINE_WEBAUTHN_DECOY_KEY: ci-only-webauthn-decoy-key-32-bytes-minimum
+  REQUEST_ENGINE_HTTP_MAX_AUTHENTICATION_PER_MINUTE: ${REQUEST_ENGINE_HTTP_MAX_AUTHENTICATION_PER_MINUTE:-120}
   REQUEST_ENGINE_OUTBOUND_FENCED: ${REQUEST_ENGINE_OUTBOUND_FENCED:-false}
 
 services:
@@ -92,6 +94,25 @@ services:
       retries: 40
     networks: [edge, backend]
 
+  api-replica:
+    <<: *request-engine
+    profiles: [network-lab]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *public-env
+      REQUEST_ENGINE_OPENBAO_ADDR: ${REQUEST_ENGINE_OPENBAO_ADDR:-}
+      REQUEST_ENGINE_OPENBAO_TOKEN: ${REQUEST_ENGINE_OPENBAO_TOKEN:-}
+      REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL: ${REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL:-}
+    command: [uvicorn, "request_engine.bootstrap.server:create_app", --factory, --host, "0.0.0.0", --port, "8000"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    networks: [edge, backend]
+
   control-plane:
     <<: *request-engine
     depends_on:
@@ -118,6 +139,84 @@ services:
       interval: 3s
       timeout: 3s
       retries: 40
+    networks: [edge, backend]
+
+  api-ingress:
+    image: public.ecr.aws/docker/library/nginx:1.29.1-alpine
+    profiles: [network-lab]
+    depends_on:
+      api:
+        condition: service_healthy
+      api-replica:
+        condition: service_healthy
+    volumes:
+      - ../../tests/system_e2e/fixtures/network-auth-api-proxy.conf:/etc/nginx/nginx.conf:ro
+      - ${E2E_TLS_DIR:-/tmp}/api-lab.crt:/tls/api-lab.crt:ro
+      - ${E2E_TLS_DIR:-/tmp}/api-lab.key:/tls/api-lab.key:ro
+      - ${E2E_TLS_DIR:-/tmp}/api-replica-lab.crt:/tls/api-replica-lab.crt:ro
+      - ${E2E_TLS_DIR:-/tmp}/api-replica-lab.key:/tls/api-replica-lab.key:ro
+    healthcheck:
+      test: [CMD-SHELL, "nginx -t"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks:
+      edge: {}
+      public-ingress:
+        aliases: [api-lab, api-replica-lab]
+
+  control-ingress:
+    image: public.ecr.aws/docker/library/nginx:1.29.1-alpine
+    profiles: [network-lab]
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    volumes:
+      - ../../tests/system_e2e/fixtures/network-auth-control-proxy.conf:/etc/nginx/nginx.conf:ro
+      - ${E2E_TLS_DIR:-/tmp}/control-lab.crt:/tls/control-lab.crt:ro
+      - ${E2E_TLS_DIR:-/tmp}/control-lab.key:/tls/control-lab.key:ro
+    healthcheck:
+      test: [CMD-SHELL, "nginx -t"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks:
+      edge: {}
+      private-ingress:
+        aliases: [control-lab]
+
+  public-probe:
+    image: request-engine-e2e-runner:${E2E_RUNNER_IMAGE_TAG:-e2e}
+    profiles: [network-lab]
+    entrypoint: [python, /e2e/network_boundary_probe.py]
+    networks: [public-ingress]
+
+  private-probe:
+    image: request-engine-e2e-runner:${E2E_RUNNER_IMAGE_TAG:-e2e}
+    profiles: [network-lab]
+    entrypoint: [python, /e2e/network_boundary_probe.py]
+    networks: [private-ingress, backend]
+
+  smtp-provider:
+    build:
+      context: ../..
+      dockerfile: deploy/reference/smtp-provider.Dockerfile
+    image: request-engine-smtp-provider:${E2E_RUNNER_IMAGE_TAG:-e2e}
+    profiles: [smtp-provider]
+    environment:
+      SMTP_LAB_CONTROL_TOKEN: ${SMTP_LAB_CONTROL_TOKEN:-smtp-lab-control-only}
+      SMTP_LAB_CERT_FILE: /tls/smtp-provider.crt
+      SMTP_LAB_KEY_FILE: /tls/smtp-provider.key
+      SMTP_LAB_USERNAME: smtp-lab-user
+      SMTP_LAB_PASSWORD: smtp-lab-test-password
+    volumes:
+      - ${E2E_TLS_DIR:-/tmp}/smtp-provider.crt:/tls/smtp-provider.crt:ro
+      - ${E2E_TLS_DIR:-/tmp}/smtp-provider.key:/tls/smtp-provider.key:ro
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health',timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     networks: [edge, backend]
 
   event-sink:
@@ -173,9 +272,15 @@ services:
       dockerfile: deploy/reference/e2e-runner.Dockerfile
     image: request-engine-e2e-runner:${E2E_RUNNER_IMAGE_TAG:-e2e}
     profiles: [runner]
+    environment:
+      SMTP_LAB_CONTROL_TOKEN: ${SMTP_LAB_CONTROL_TOKEN:-}
     networks: [edge]
 
 networks:
   edge: {}
+  public-ingress:
+    internal: true
+  private-ingress:
+    internal: true
   backend:
     internal: true

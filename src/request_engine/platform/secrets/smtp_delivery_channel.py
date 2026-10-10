@@ -231,6 +231,18 @@ class SmtpRecoveryDeliveryChannel:
             ssl.SSLCertVerificationError,
         ):
             return DeliveryOutcome.FAILED
+        except smtplib.SMTPDataError as exc:
+            # A final DATA refusal is definitive: the provider did not accept
+            # the message. Retry only a temporary 4xx; a permanent 5xx must
+            # not be retried. A dropped response after acceptance remains
+            # caught below as UNKNOWN.
+            if 400 <= exc.smtp_code < 500:
+                raise RecoveryDeliveryRetryable(
+                    "smtp provider temporarily rejected message data"
+                ) from exc
+            if 500 <= exc.smtp_code < 600:
+                return DeliveryOutcome.FAILED
+            return DeliveryOutcome.UNKNOWN
         except TimeoutError:
             return DeliveryOutcome.UNKNOWN
         except smtplib.SMTPConnectError as exc:

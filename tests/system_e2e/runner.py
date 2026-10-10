@@ -18,6 +18,12 @@ from typing import cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fido2.utils import websafe_decode
+from smtp_provider_suite import (
+    run_provider_outcome_matrix,
+    set_provider_behavior,
+    verify_ambiguous_worker_delivery,
+    wait_for_accepted_sender,
+)
 from software_webauthn_authenticator import SoftwareAuthenticator
 
 FORBIDDEN_ENV_FRAGMENTS = (
@@ -2567,6 +2573,10 @@ def _p7_stage_smtp_configuration(
     secret_binding_id: str,
     sender: str,
     idempotency_key: str,
+    host: str = "mailpit",
+    port: int = 1025,
+    security: str = "plain",
+    username: str = "managed-smtp",
 ) -> int:
     response = _http_json(
         "POST",
@@ -2576,11 +2586,11 @@ def _p7_stage_smtp_configuration(
         payload={
             "provider_kind": "smtp",
             "configuration": {
-                "host": "mailpit",
-                "port": 1025,
+                "host": host,
+                "port": port,
                 "sender": sender,
-                "security": "plain",
-                "username": "managed-smtp",
+                "security": security,
+                "username": username,
             },
             "secret_binding_id": secret_binding_id,
         },
@@ -2919,6 +2929,138 @@ def _run_platform_configuration(checkpoints: list[dict[str, str]], phase: str) -
     )
 
 
+def _run_smtp_provider_lab(checkpoints: list[dict[str, str]], phase: str) -> None:
+    """Exercise real managed STARTTLS SMTP against the isolated provider lab."""
+    if phase == "prepare-worker":
+        _run_f01_foundation(checkpoints, phase)
+        return
+    if phase != "main":
+        raise RuntimeError("smtp-provider-lab requires prepare-worker then main")
+
+    state_dir, controller = _handoff()
+    foundation = _json_object(state_dir / "f01-foundation.json")
+    control_url = "http://control-plane:8001"
+    provider_url = "http://smtp-provider:8091"
+    try:
+        provider_control_token = os.environ["SMTP_LAB_CONTROL_TOKEN"]
+    except KeyError as exc:
+        raise RuntimeError("SMTP lab control token was not supplied to the runner") from exc
+    if not provider_control_token:
+        raise RuntimeError("SMTP lab control token is empty")
+
+    platform_login = _required_string(controller, "login_handle", "platform-controller secret")
+    platform_password = _required_string(controller, "password", "platform-controller secret")
+    platform_token = _strong_native_session(control_url, platform_login, platform_password)
+    operator_login = "f01-recovery-operator@example.invalid"
+    operator_password = _derived_password(platform_password, "f01-recovery-operator")
+    operator_token = _strong_native_session(control_url, operator_login, operator_password)
+    target_identity_id = _required_string(
+        foundation, "tenant_native_identity_id", "F01 foundation state"
+    )
+
+    created = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/secrets",
+        bearer=platform_token,
+        idempotency_key="smtp-provider-lab-secret-create-v1",
+        payload={"purpose": "email.smtp.password", "value": "smtp-lab-test-password"},
+        expected_statuses=(201,),
+    )
+    binding_id = _required_string(created, "binding_id", "SMTP provider lab secret response")
+    revision = _p7_stage_smtp_configuration(
+        control_url,
+        platform_token,
+        secret_binding_id=binding_id,
+        sender="smtp-lab@example.test",
+        idempotency_key="smtp-provider-lab-config-stage-v1",
+        host="smtp-provider",
+        security="starttls",
+        username="smtp-lab-user",
+    )
+    _p7_validate_configuration(
+        control_url,
+        platform_token,
+        revision=revision,
+        idempotency_key="smtp-provider-lab-config-validate-v1",
+    )
+    matrix = run_provider_outcome_matrix(
+        control_url=control_url,
+        provider_url=provider_url,
+        provider_control_token=provider_control_token,
+        bearer=platform_token,
+        revision=revision,
+        idempotency_prefix="smtp-provider-lab-outcome-v1",
+    )
+    checkpoints.append(
+        _checkpoint(
+            "smtp-provider-outcome-matrix",
+            "passed",
+            "real STARTTLS provider outcomes, authentication rejection, and independent receipts: "
+            + json.dumps(matrix, sort_keys=True),
+        )
+    )
+
+    _p7_activate_configuration(
+        control_url,
+        platform_token,
+        revision=revision,
+        expected_active_revision=None,
+        idempotency_key="smtp-provider-lab-config-activate-v1",
+    )
+    delivered_case = _p7_issue_governed_recovery(
+        control_url,
+        platform_token=platform_token,
+        operator_token=operator_token,
+        target_identity_id=target_identity_id,
+        suffix="smtp-provider-success",
+        destination="smtp-provider-success@example.test",
+    )
+    _p7_wait_for_case_delivery(control_url, platform_token, delivered_case)
+    observed_message_ids = wait_for_accepted_sender(
+        provider_url=provider_url,
+        sender="smtp-lab@example.test",
+    )
+    if not observed_message_ids:
+        raise RuntimeError("independent provider API did not observe the worker recovery message")
+    checkpoints.append(
+        _checkpoint(
+            "smtp-provider-worker-delivery",
+            "passed",
+            "managed worker recovery reached delivered and appeared in "
+            "independent provider receipts",
+        )
+    )
+
+    set_provider_behavior(
+        "accept_then_drop",
+        provider_url=provider_url,
+        control_token=provider_control_token,
+    )
+    ambiguous_case = _p7_issue_governed_recovery(
+        control_url,
+        platform_token=platform_token,
+        operator_token=operator_token,
+        target_identity_id=target_identity_id,
+        suffix="smtp-provider-ambiguous",
+        destination="smtp-provider-ambiguous@example.test",
+    )
+    ambiguity = verify_ambiguous_worker_delivery(
+        control_url=control_url,
+        bearer=platform_token,
+        case_id=ambiguous_case,
+        issue_idempotency_key="p7-config-recovery-issue-smtp-provider-ambiguous-v1",
+        provider_url=provider_url,
+    )
+    checkpoints.append(
+        _checkpoint(
+            "smtp-provider-ambiguous-no-retry",
+            "passed",
+            "provider accepted DATA then dropped its final response; "
+            "worker stayed UNKNOWN after replay: " + json.dumps(ambiguity, sort_keys=True),
+        )
+    )
+
+
 def _run_clone_fence(checkpoints: list[dict[str, str]], phase: str) -> None:
     if phase == "prepare-worker":
         _run_f01_foundation(checkpoints, phase)
@@ -2994,6 +3136,7 @@ SUITES: dict[str, Suite] = {
     "worker-runtime": _run_worker_runtime,
     "recovery-delivery": _run_recovery_delivery,
     "platform-configuration": _run_platform_configuration,
+    "smtp-provider-lab": _run_smtp_provider_lab,
     "clone-fence": _run_clone_fence,
 }
 

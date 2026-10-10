@@ -192,6 +192,16 @@ class SmtplibProviderTester(SmtpProviderTester):
                 ProviderTestOutcome.FAILED,
                 "smtp_test_rejected",
             )
+        except smtplib.SMTPDataError as exc:
+            # A final 4xx/5xx after DATA is a definitive rejection: SMTP
+            # requires the server not to accept the message. Only a lost
+            # response after the server may have accepted DATA is UNKNOWN.
+            detail_code = (
+                "smtp_test_temporarily_rejected"
+                if 400 <= exc.smtp_code < 500
+                else "smtp_test_rejected"
+            )
+            return ProviderTestResult(ProviderTestOutcome.FAILED, detail_code)
         except smtplib.SMTPException:
             if transmission_started:
                 return ProviderTestResult(

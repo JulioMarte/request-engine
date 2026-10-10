@@ -1,0 +1,23 @@
+# Optional trust overlay. Clients receive only the ephemeral CA certificate;
+# provider and ingress private keys are mounted only by their owning service.
+services:
+  api:
+    environment:
+      SSL_CERT_FILE: /tls/ca.crt
+    volumes:
+      - ${E2E_TLS_DIR}/ca.crt:/tls/ca.crt:ro
+  control-plane:
+    environment:
+      SSL_CERT_FILE: /tls/ca.crt
+    volumes:
+      - ${E2E_TLS_DIR}/ca.crt:/tls/ca.crt:ro
+  worker:
+    environment:
+      SSL_CERT_FILE: /tls/ca.crt
+    volumes:
+      - ${E2E_TLS_DIR}/ca.crt:/tls/ca.crt:ro
+  api-replica:
+    environment:
+      SSL_CERT_FILE: /tls/ca.crt
+    volumes:
+      - ${E2E_TLS_DIR}/ca.crt:/tls/ca.crt:ro

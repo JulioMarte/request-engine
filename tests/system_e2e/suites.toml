@@ -146,3 +146,47 @@ merge = true
 nightly = true
 manual = true
 enabled = true
+
+[suites.network-auth-admission]
+description = "Separate public/private HTTPS clients prove ingress boundaries and PostgreSQL-shared authentication admission across an API restart"
+selector = "network-auth-admission"
+driver = "network-boundary"
+profiles = ["network-lab", "secrets"]
+services = ["api", "api-replica", "control-plane"]
+ingress_services = ["api-ingress", "control-ingress"]
+infrastructure_services = []
+tls_hosts = ["api-lab", "api-replica-lab", "control-lab"]
+deferred_services = []
+runtime_env_from_state = []
+environment = ["REQUEST_ENGINE_HTTP_MAX_AUTHENTICATION_PER_MINUTE=3"]
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "medium"
+artifact_namespace = "network-auth-admission"
+pr = true
+merge = true
+nightly = true
+manual = true
+enabled = true
+
+[suites.smtp-provider-lab]
+description = "Managed SMTP configuration acceptance against a TLS STARTTLS lab provider with independent receipts and deterministic delivery outcomes"
+selector = "smtp-provider-lab"
+profiles = ["worker", "secrets", "managed-delivery", "smtp-provider"]
+services = ["api", "control-plane", "worker"]
+infrastructure_services = ["smtp-provider"]
+tls_hosts = ["smtp-provider"]
+environment = ["SMTP_LAB_CONTROL_TOKEN=smtp-lab-control-only"]
+deferred_services = ["worker"]
+runtime_env_from_state = ["REQUEST_ENGINE_WORKER_PRINCIPAL_ID=f01-foundation.json:worker_principal_id"]
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "large"
+artifact_namespace = "smtp-provider-lab"
+pr = true
+merge = true
+nightly = true
+manual = true
+enabled = true

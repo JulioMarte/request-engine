@@ -17,7 +17,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.contract]
 
 
 def test_native_provision_command_sends_same_key_and_body_on_transport_retry() -> None:
-    with patch.object(sys, "path", [str(ROOT / "tests/fixtures"), *sys.path]):
+    with patch.object(sys, "path", [str(RUNNER.parent), str(ROOT / "tests/fixtures"), *sys.path]):
         runner = runpy.run_path(str(RUNNER))
     response = Mock(status=201)
     response.read.return_value = b'{"native_identity_id":"transport-fixture-id"}'

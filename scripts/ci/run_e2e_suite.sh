@@ -29,8 +29,12 @@ sys.stdout.reconfigure(newline="\n")
 spec=json.loads(sys.argv[1])
 print(spec["selector"])
 print(spec["artifact_namespace"])
+print(f'driver:{spec.get("driver", "generic")}')
 for profile in spec.get("profiles", []): print(f"profile:{profile}")
 for service in spec.get("services", []): print(f"service:{service}")
+for service in spec.get("infrastructure_services", []): print(f"infra:{service}")
+for service in spec.get("ingress_services", []): print(f"ingress:{service}")
+for host in spec.get("tls_hosts", []): print(f"tlshost:{host}")
 for service in spec.get("deferred_services", []): print(f"deferred:{service}")
 for item in spec.get("environment", []): print(f"environment:{item}")
 for mapping in spec.get("runtime_env_from_state", []): print(f"runtimeenv:{mapping}")
@@ -41,6 +45,10 @@ selector="${resolved[0]}"
 namespace="${resolved[1]}"
 profiles=()
 runtime_services=()
+declared_infrastructure=()
+ingress_services=()
+driver=generic
+tls_hosts=()
 deferred_services=()
 static_environment=()
 runtime_env_from_state=()
@@ -49,6 +57,10 @@ for item in "${resolved[@]:2}"; do
   case "$item" in
     profile:*) profiles+=("${item#profile:}") ;;
     service:*) runtime_services+=("${item#service:}") ;;
+    infra:*) declared_infrastructure+=("${item#infra:}") ;;
+    ingress:*) ingress_services+=("${item#ingress:}") ;;
+    driver:*) driver="${item#driver:}" ;;
+    tlshost:*) tls_hosts+=("${item#tlshost:}") ;;
     deferred:*) deferred_services+=("${item#deferred:}") ;;
     environment:*) static_environment+=("${item#environment:}") ;;
     runtimeenv:*) runtime_env_from_state+=("${item#runtimeenv:}") ;;
@@ -79,6 +91,7 @@ export COMPOSE_PROJECT_NAME="re-e2e-${safe_suite}-${run_suffix}"
 export E2E_RUNNER_IMAGE_TAG="${E2E_RUNNER_IMAGE_TAG:-${REQUEST_ENGINE_IMAGE_TAG:-e2e}}"
 export E2E_COMPOSE_FILE="$compose_file"
 export E2E_COMPOSE_PROFILES="$(IFS=,; echo "${profiles[*]}")"
+export COMPOSE_PROFILES="$E2E_COMPOSE_PROFILES"
 
 compose=(docker compose -f "$compose_file" --profile runner)
 for profile in "${profiles[@]}"; do compose+=(--profile "$profile"); done
@@ -89,6 +102,9 @@ handoff_parent="${RUNNER_TEMP:-/tmp}"
 state_dir="$(mktemp -d "$handoff_parent/request-engine-e2e-state.XXXXXX")"
 secret_dir="$(mktemp -d "$handoff_parent/request-engine-e2e-secrets.XXXXXX")"
 chmod 0700 "$state_dir" "$secret_dir"
+mkdir "$secret_dir/runtime"
+chmod 0700 "$secret_dir/runtime"
+export E2E_TLS_DIR="$secret_dir/tls"
 
 cleanup() {
   status=$?
@@ -99,9 +115,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if ((${#tls_hosts[@]} > 0)); then
+  bash scripts/ci/create_lab_tls.sh "$E2E_TLS_DIR" "${tls_hosts[@]}"
+  compose+=(-f deploy/reference/compose.lab-tls.yaml)
+  export E2E_TLS_OVERLAY=deploy/reference/compose.lab-tls.yaml
+fi
+
 if [[ "${E2E_IMAGES_READY:-0}" != "1" ]]; then build_images; fi
 
 infra=(postgres)
+infra+=("${declared_infrastructure[@]}")
 for profile in "${profiles[@]}"; do
   case "$profile" in
     secrets) infra+=(openbao) ;;
@@ -157,7 +180,7 @@ authority="$("${compose[@]}" exec -T -e PGPASSWORD=ci-postgres-only postgres psq
 test -n "$authority"
 export REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID="$authority"
 
-python - "$secret_dir/platform-controller.json" "$login_handle" "$password" <<'PY'
+python - "$secret_dir/runtime/platform-controller.json" "$login_handle" "$password" <<'PY'
 import json, os, pathlib, sys
 path=pathlib.Path(sys.argv[1]); path.write_text(json.dumps({"login_handle":sys.argv[2],"password":sys.argv[3]},sort_keys=True)+"\n",encoding="utf-8"); os.chmod(path,0o600)
 PY
@@ -169,7 +192,7 @@ fi
 
 artifact_abs="$(cd "$suite_artifacts" && pwd)"
 state_abs="$(cd "$state_dir" && pwd)"
-secret_abs="$(cd "$secret_dir" && pwd)"
+secret_abs="$(cd "$secret_dir/runtime" && pwd)"
 # Native Docker on Windows needs host paths, but container paths such as /state
 # must not be rewritten by Git Bash's automatic argument conversion.
 if command -v cygpath >/dev/null 2>&1; then
@@ -183,7 +206,7 @@ run_runner() {
   MSYS_NO_PATHCONV=1 "${compose[@]}" run --rm --no-deps --user "$(id -u):$(id -g)" \
     -e E2E_STATE_DIR=/state -e E2E_SECRET_DIR=/secrets \
     -v "$phase_artifacts:/artifacts" -v "$state_abs:/state" -v "$secret_abs:/secrets:ro" \
-    e2e-runner run "$selector" --phase "$phase" --artifact-dir /artifacts
+    e2e-runner run "${2:-$selector}" --phase "$phase" --artifact-dir /artifacts
 }
 
 if ((${#deferred_services[@]} > 0)); then
@@ -208,7 +231,20 @@ fi
 export E2E_RUNTIME_SERVICES="${runtime_services[*]}"
 bash scripts/ci/assert_reference_image_identity.sh 2>&1 | tee "$suite_artifacts/phases/image-identity.log"
 
-if ((${#faults[@]} == 0)); then
+if ((${#ingress_services[@]} > 0)); then
+  "${compose[@]}" up -d --no-build --wait --wait-timeout 90 "${ingress_services[@]}" \
+    2>&1 | tee "$suite_artifacts/phases/ingress-start.log"
+fi
+
+if [[ "$driver" == network-boundary ]]; then
+  run_runner main smoke 2>&1 | tee "$suite_artifacts/phases/normal-runner-isolation.log"
+  E2E_NETWORK_PLAN_DIR="$state_abs" E2E_NETWORK_ARTIFACT_DIR="$artifact_abs" \
+    bash scripts/ci/run_e2e_network_boundary.sh \
+    2>&1 | tee "$suite_artifacts/phases/network-boundary.log"
+elif [[ "$driver" != generic ]]; then
+  echo "unsupported E2E driver: $driver" >&2
+  exit 2
+elif ((${#faults[@]} == 0)); then
   run_runner main 2>&1 | tee "$suite_artifacts/phases/runner.log"
 else
   run_runner before-fault 2>&1 | tee "$suite_artifacts/phases/runner-before-fault.log"
