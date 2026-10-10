@@ -24,7 +24,9 @@ trap cleanup EXIT
 wait_pg() {
   local container="$1"
   for _ in $(seq 1 60); do
-    if docker exec "$container" pg_isready -U postgres -d "$DATABASE" >/dev/null 2>&1; then
+    # The image's initialization server accepts Unix sockets before it restarts.
+    # TCP is available only on the final server used by migrations and restore.
+    if docker exec "$container" pg_isready -h 127.0.0.1 -U postgres -d "$DATABASE" >/dev/null 2>&1; then
       return 0
     fi
     sleep 1

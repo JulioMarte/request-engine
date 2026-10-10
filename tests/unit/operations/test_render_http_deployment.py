@@ -176,7 +176,12 @@ def test_docker_compose_config_when_available(tmp_path: Path) -> None:
         pytest.skip("Docker is unavailable; generated YAML is parsed structurally above")
     plan_path = tmp_path / "plan.json"
     compose_path = tmp_path / "compose.yaml"
-    plan_path.write_text(json.dumps(_plan()), encoding="utf-8")
+    plan = _plan()
+    for field in ("api_env_file", "control_env_file"):
+        env_path = tmp_path / f"{field}.env"
+        env_path.write_text("", encoding="utf-8")
+        plan[field] = str(env_path)
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
     subprocess.run(
         ["python", str(SCRIPT_PATH), str(plan_path), "--output", str(compose_path)],
         check=True,
