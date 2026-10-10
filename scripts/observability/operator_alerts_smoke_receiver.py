@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -13,10 +14,18 @@ parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--mode-file", type=Path)
 parser.add_argument("--bind", default="127.0.0.1")
 args = parser.parse_args()
+last_watchdog_timestamp: float | None = None
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
+        if self.path == "/watchdog":
+            body = json.dumps({"last_accepted_timestamp": last_watchdog_timestamp}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path != "/healthz":
             self.send_error(404)
             return
@@ -36,6 +45,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(mode.encode("ascii"))
 
     def do_POST(self) -> None:  # noqa: N802
+        global last_watchdog_timestamp
         if self.path != "/alerts":
             self.send_error(404)
             return
@@ -56,6 +66,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"temporary receiver failure")
             return
+        if any(
+            alert.get("labels", {}).get("alertname") == "Watchdog"
+            and alert.get("status", payload.get("status")) == "firing"
+            for alert in payload.get("alerts", [])
+        ):
+            last_watchdog_timestamp = time.time()
         with args.output.open("a", encoding="utf-8") as stream:
             stream.write(f"{payload.get('status', 'unknown')}|{alertnames}\n")
         self.send_response(200)

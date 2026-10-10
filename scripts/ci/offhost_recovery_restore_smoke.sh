@@ -26,7 +26,7 @@ STORE_NET="${STORE}-net"
 SOURCE_NET="p7-offhost-source-$RUN_ID"
 TARGET_NET="p7-offhost-target-$RUN_ID"
 PG_SOURCE_PORT=""
-PG_TARGET_PORT=""
+MIGRATION_IMAGE="p7-recovery-cli:$RUN_ID"
 DATABASE="request_engine"
 PASSWORD="$(openssl rand -hex 24)"
 STORE_TOKEN="$(openssl rand -hex 32)"
@@ -42,6 +42,7 @@ cleanup() {
   docker volume rm -f "$PG_SOURCE_VOL" "$PG_TARGET_VOL" "$BAO_SOURCE_VOL" "$BAO_TARGET_VOL" "$STORE_VOL" >/dev/null 2>&1 || true
   docker network rm "$STORE_NET" "$SOURCE_NET" "$TARGET_NET" >/dev/null 2>&1 || true
   docker image rm "p7-age-cli:$RUN_ID" >/dev/null 2>&1 || true
+  docker image rm "$MIGRATION_IMAGE" >/dev/null 2>&1 || true
   rm -rf "$LAB"
 }
 trap cleanup EXIT
@@ -96,6 +97,7 @@ for required in ca.crt objectstore-lab.crt objectstore-lab.key; do [[ -s "$TLS_D
 chmod 0600 "$TLS_DIR/ca.key" 2>/dev/null || true
 
 docker build -f "$ROOT/scripts/ci/Dockerfile.p7-age-cli" -t "p7-age-cli:$RUN_ID" "$ROOT" >/dev/null
+docker build -f "$ROOT/deploy/reference/Dockerfile" -t "$MIGRATION_IMAGE" "$ROOT" >/dev/null
 AGE_IMAGE="p7-age-cli:$RUN_ID"
 docker network create "$STORE_NET" --internal >/dev/null
 docker network create "$SOURCE_NET" >/dev/null
@@ -268,14 +270,17 @@ REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE="$LAB/identity.txt" \
 # Create clean restore targets only after source deletion and HTTPS download.
 docker volume create "$PG_TARGET_VOL" >/dev/null
 docker run -d --name "$PG_TARGET" --network "$TARGET_NET" -e POSTGRES_PASSWORD \
-  -e POSTGRES_DB="$DATABASE" -p '127.0.0.1::5432' \
+  -e POSTGRES_DB="$DATABASE" \
   --mount "type=volume,src=$PG_TARGET_VOL,dst=/var/lib/postgresql" "$PG_IMAGE" >/dev/null
-PG_TARGET_PORT="$(docker port "$PG_TARGET" 5432/tcp | sed 's/.*://')"
 wait_pg "$PG_TARGET"
 docker exec "$PG_TARGET" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
   'CREATE DATABASE request_engine_role_bootstrap' >/dev/null
-export MIGRATION_DATABASE_URL="postgresql+psycopg://postgres:$PASSWORD@127.0.0.1:$PG_TARGET_PORT/request_engine_role_bootstrap"
-uv run alembic upgrade head
+# Docker internal networks deliberately do not publish host ports. Bootstrap
+# target cluster roles from a short-lived installer on that isolated network;
+# never open an egress network just to make host migration convenient.
+MIGRATION_DATABASE_URL="postgresql+psycopg://postgres:$PASSWORD@$PG_TARGET:5432/request_engine_role_bootstrap" \
+  docker run --rm --network "$TARGET_NET" -e MIGRATION_DATABASE_URL \
+    "$MIGRATION_IMAGE" alembic upgrade head
 docker exec "$PG_TARGET" dropdb -U postgres request_engine_role_bootstrap
 docker volume create "$BAO_TARGET_VOL" >/dev/null
 start_bao "$BAO_TARGET" "$BAO_TARGET_VOL" "$TARGET_NET" "$LAB/openbao.hcl"
@@ -284,7 +289,7 @@ init_bao "$BAO_TARGET" TARGET_KEY TARGET_ROOT_TOKEN
 unset P7_PG_SOURCE_CONTAINER P7_OPENBAO_SOURCE_CONTAINER P7_OPENBAO_SOURCE_TOKEN
 export P7_PG_TARGET_CONTAINER="$PG_TARGET" P7_OPENBAO_TARGET_CONTAINER="$BAO_TARGET"
 export P7_OPENBAO_TARGET_TOKEN="$TARGET_ROOT_TOKEN"
-export REQUEST_ENGINE_RESTORE_DATABASE_URL="postgresql://postgres:$PASSWORD@127.0.0.1:$PG_TARGET_PORT/$DATABASE"
+export REQUEST_ENGINE_RESTORE_DATABASE_URL="postgresql://postgres:$PASSWORD@$PG_TARGET:5432/$DATABASE"
 export REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE="$LAB/identity.txt"
 export REQUEST_ENGINE_OUTBOUND_FENCED=true
 uv run python scripts/operations/recovery_bundle.py restore "$LAB/download/$BUNDLE_NAME" \

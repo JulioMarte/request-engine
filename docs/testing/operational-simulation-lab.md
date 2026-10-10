@@ -10,7 +10,7 @@ of a production installation.
 | Risk | Execution boundary | Independent oracle | Defect that must fail |
 | --- | --- | --- | --- |
 | SMTP authentication and transport | Actual STARTTLS/AUTH against the programmable SMTP service | Provider attempt/receipt API and exact Message-ID | Wrong credentials accepted, unverified TLS, or missing receipt |
-| SMTP uncertain delivery | Provider accepts DATA and drops the final reply | One accepted message and one attempt after command replay | Blind resend or incorrectly claiming a definitive rejection |
+| SMTP uncertain delivery | Provider accepts DATA and drops the final reply | Exact Message-ID retains one receipt/attempt after replay and a distinct governed delivery completes with its own receipt | Blind resend during observed worker progress or incorrectly claiming a definitive rejection |
 | Definite SMTP rejection | Provider returns 451 or 550 without accepting DATA | No accepted message; production result classification | Temporary rejection treated as ambiguous, or permanent rejection retried blindly |
 | Global authentication admission | Two API processes use one PostgreSQL admission state; one process restarts | HTTP 200/429 plus outer read-only SQL state | Independent per-process budgets, reset on restart, or sessions created by rejected calls |
 | Container network boundary | Public and private probe containers on distinct ingress networks | Same live IP/port reachable privately and refused, timed out or explicitly without route publicly | Public TCP access to PostgreSQL, OpenBao or control plane |
@@ -19,7 +19,7 @@ of a production installation.
 | Clean recovery | Real CLI restores downloaded PostgreSQL archive and OpenBao Raft snapshot | Restored marker, ownership/ACL/RLS/function catalog and independent secret lookup | Lost facts, privileges changed, or original volume reused |
 | Alert causality and recovery | Real worker failure, SQL collector, Prometheus rule, Alertmanager and receiver | Receiver records firing and resolved notifications; worker final outcomes | Synthetic alert injection substitutes for the rule path, or recovery fails to clear the signal |
 | Receiver outage | Receiver returns HTTP 503 before accepting notifications | Rejected request followed by actual Alertmanager retry | Failed notification silently disappears |
-| Monitor failure | Stop SQL collector, OTel Collector and Prometheus separately | Rules and receiver for collectors; separate host Watchdog probe for Prometheus | Failed monitor reports itself healthy or its loss remains invisible |
+| Monitor failure | Stop SQL collector, OTel Collector, Prometheus and Alertmanager separately | Rules and receiver for collectors; separate host probe checks the current Prometheus Watchdog and freshness of the receiver's last accepted Watchdog | Failed monitor reports itself healthy or lost notification delivery remains invisible |
 
 ## Execution and isolation
 
@@ -43,6 +43,17 @@ source volumes, create targets or inject actual service failures. They do not
 grant that authority to a normal black-box runner. Monitoring fixture setup and
 administrative replay are distinct from the restricted worker and collector
 connections. These probes do not certify business capability authorization.
+
+The monitoring worker receives only its restricted runtime database login. The
+outer host creates the disposable event and administratively replays it before
+signalling recovery. The worker checks that its login cannot insert provider
+events directly, replay them administratively or exercise installation authority.
+The independent host Watchdog probe requires both a currently firing rule and a
+recent Watchdog accepted by the receiver. Stopping Alertmanager must make that
+receipt stale while Prometheus remains available; restarting it must produce a
+fresh receipt. A dedicated laboratory route repeats Watchdog every five seconds,
+without changing the production routing file. Waiters inspect the latest probe
+state, so an earlier successful state cannot satisfy recovery.
 
 TLS credentials are created outside artifact directories and removed during
 cleanup. Only the owning server receives its leaf private key. Clients receive

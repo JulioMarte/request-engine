@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -152,3 +153,21 @@ def test_example_environment_exposes_local_otel_defaults() -> None:
     )
     for setting in required:
         assert setting in env_example
+
+
+def test_operator_smoke_worker_receives_only_runtime_credentials() -> None:
+    script = _read(REPO_ROOT / "scripts" / "ci" / "operator_alerts_smoke.sh")
+    worker_command = script.split('docker run --detach --name "$WORKER_CONTAINER"', 1)[1].split(
+        "python /fixture/worker.py", 1
+    )[0]
+    # This is a deployment trust-boundary assertion: adding installation
+    # authority to the worker environment must break the isolation proof.
+    assert set(re.findall(r"--env ([A-Z_]+)", worker_command)) == {
+        "OPERATOR_ALERT_SMOKE_WORKER_DATABASE_URL",
+        "OPERATOR_ALERT_SMOKE_WORKER_ROLE",
+        "OPERATOR_ALERT_SMOKE_CONTROL_DIR",
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+    }
+    worker = _read(REPO_ROOT / "scripts" / "observability" / "operator_alerts_smoke_worker.py")
+    assert "ADMIN_DATABASE_URL" not in worker
+    assert "INSERT INTO" not in worker

@@ -41,7 +41,13 @@ application code or connect to PostgreSQL. The separately registered
 `smtp-provider-lab` E2E suite uses that provider with the black-box runner. Its
 worker path checks a governed accepted delivery against the independent
 receipt API, then sends once in `accept_then_drop` mode and verifies UNKNOWN
-plus idempotent replay with no second SMTP attempt. The older
+plus idempotent replay. It then retains receipt history, changes the provider to
+accepting mode, and creates a distinct governed delivery through HTTP. That case
+must reach delivered and have an independent provider receipt before the test
+rechecks the ambiguous message's exact Message-ID, unchanged receipt, and single
+DATA attempt. This proves no resend through the observed subsequent worker
+progress; it cannot exclude an arbitrary delayed retry after the observation.
+The older
 `platform-configuration` suite keeps its existing Mailpit scenarios.
 
 Run focused local evidence with:

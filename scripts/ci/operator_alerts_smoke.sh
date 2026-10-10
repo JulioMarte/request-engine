@@ -65,10 +65,8 @@ DB_COLLECTOR_CONTAINER="${PROJECT}-operator-metrics"
 PG_ADMIN_URL="postgresql://postgres:${PG_PASSWORD}@127.0.0.1:${PG_PORT}/request_engine_operator_smoke"
 MIGRATION_DATABASE_URL="postgresql+psycopg://postgres:${PG_PASSWORD}@127.0.0.1:${PG_PORT}/request_engine_operator_smoke"
 WORKER_DATABASE_URL="postgresql+asyncpg://${WORKER_ROLE}:${WORKER_PASSWORD}@postgres:5432/request_engine_operator_smoke"
-WORKER_ADMIN_URL="postgresql+asyncpg://postgres:${PG_PASSWORD}@postgres:5432/request_engine_operator_smoke"
 METRICS_DATABASE_URL="postgresql+asyncpg://${METRICS_ROLE}:${METRICS_PASSWORD}@postgres:5432/request_engine_operator_smoke"
 export OPERATOR_ALERT_SMOKE_ADMIN_URL="$PG_ADMIN_URL"
-export OPERATOR_ALERT_SMOKE_WORKER_ADMIN_URL="$WORKER_ADMIN_URL"
 export OPERATOR_ALERT_SMOKE_WORKER_ROLE="$WORKER_ROLE"
 export OPERATOR_ALERT_SMOKE_WORKER_DATABASE_URL="$WORKER_DATABASE_URL"
 WORKER_CONTROL_DIR="$TMP_DIR/worker-control"
@@ -82,7 +80,12 @@ cp "$OBS_DIR/prometheus.yaml" "$TMP_DIR/prometheus.yaml"
 cp "$OBS_DIR/alert-rules.yaml" "$TMP_DIR/alert-rules.yaml"
 sed "s#https://replace-with-operator-receiver.invalid/alerts#http://operator-alert-receiver:19188/alerts#" \
   "$OBS_DIR/alertmanager.yaml" | sed -e 's/group_wait: 30s/group_wait: 1s/' \
-    -e 's/group_interval: 5m/group_interval: 1s/' > "$TMP_DIR/alertmanager.yaml"
+    -e 's/group_interval: 5m/group_interval: 1s/' \
+    -e '/^  repeat_interval: 2h$/a\
+  routes:\
+    - matchers: [\x27alertname="Watchdog"\x27]\
+      receiver: operator-webhook\
+      repeat_interval: 5s' > "$TMP_DIR/alertmanager.yaml"
 cat > "$TMP_DIR/compose.override.yaml" <<EOF
 services:
   prometheus:
@@ -98,7 +101,7 @@ services:
     volumes:
       - "$TMP_DIR/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro"
 EOF
-COMPOSE_ARGS=(-p "$PROJECT" -f "$OBS_DIR/compose.otel.yaml" \
+COMPOSE_ARGS=(docker compose -p "$PROJECT" -f "$OBS_DIR/compose.otel.yaml" \
   -f "$OBS_DIR/compose.operator-smoke.yaml" -f "$TMP_DIR/compose.override.yaml")
 
 # Build once, then use the same optional image for worker, database collector and smoke tools.
@@ -129,7 +132,9 @@ MIGRATION_DATABASE_URL="$MIGRATION_DATABASE_URL" uv run alembic upgrade head \
     cat "$TMP_DIR/migration.log" >&2
     exit 1
   }
-uv run python scripts/observability/operator_alerts_smoke_setup.py
+uv run python scripts/observability/operator_alerts_smoke_setup.py provision
+uv run python scripts/observability/operator_alerts_smoke_setup.py create-event \
+  --state-file "$WORKER_CONTROL_DIR/worker-state.json"
 
 # Prometheus and Alertmanager rule/config fixtures are validated at their pinned versions.
 docker run --rm -v "$TMP_DIR:/etc/prometheus:ro" --entrypoint /bin/promtool \
@@ -222,7 +227,9 @@ wait_prom_metric_positive() {
 
 probe_file="$TMP_DIR/watchdog-monitor.txt"
 python3 "$ROOT_DIR/scripts/observability/operator_alerts_watchdog_monitor.py" \
-  --prometheus-url http://127.0.0.1:9090 --output "$probe_file" --poll-seconds 2 &
+  --prometheus-url http://127.0.0.1:9090 \
+  --receiver-url "http://127.0.0.1:${RECEIVER_PORT}" \
+  --heartbeat-max-age-seconds 15 --output "$probe_file" --poll-seconds 2 &
 PROBE_PID=$!
 wait_receiver_status firing Watchdog 90
 wait_for_watchdog_state() {
@@ -240,10 +247,17 @@ wait_for_watchdog_state() {
 }
 wait_for_watchdog_state present 30
 
+# A firing rule alone cannot prove that notifications reach the receiver.
+# The host probe also requires a recent Watchdog accepted by that receiver.
+"${COMPOSE_ARGS[@]}" stop alertmanager >/dev/null
+wait_for_watchdog_state heartbeat_stale 60
+"${COMPOSE_ARGS[@]}" start alertmanager >/dev/null
+wait_http http://127.0.0.1:9093/-/ready
+wait_for_watchdog_state present 60
+
 # Run the real provider-event store, router, fenced runtime and OTLP observer in the optional image.
 docker run --detach --name "$WORKER_CONTAINER" --network "${PROJECT}_default" \
   --env OPERATOR_ALERT_SMOKE_WORKER_DATABASE_URL \
-  --env OPERATOR_ALERT_SMOKE_WORKER_ADMIN_URL \
   --env OPERATOR_ALERT_SMOKE_WORKER_ROLE \
   --env OPERATOR_ALERT_SMOKE_CONTROL_DIR \
   --env OTEL_EXPORTER_OTLP_ENDPOINT \
@@ -261,6 +275,8 @@ wait_receiver_status rejected RequestEngineDeliveryFailures 30
 curl --connect-timeout 2 --max-time 5 --fail --silent --show-error \
   -X PUT "http://127.0.0.1:${RECEIVER_PORT}/control/accept" >/dev/null
 wait_receiver_status firing RequestEngineDeliveryFailures 60
+uv run python scripts/observability/operator_alerts_smoke_setup.py replay-event \
+  --state-file "$WORKER_CONTROL_DIR/worker-state.json"
 printf 'recover\n' > "$WORKER_CONTROL_DIR/recover-worker"
 wait_receiver_status resolved RequestEngineDeliveryFailures 90
 grep -Fq 'failure|dead' "$WORKER_CONTROL_DIR/worker-results.txt"
@@ -315,6 +331,8 @@ Prometheus RequestEngineDeliveryFailures rule, Alertmanager, and an independent 
 The event was replayed through the existing administrative function and processed; Alertmanager
 sent the resolved notification. A stopped SQL collector fired its stale rule and recovered.
 An independent host-side Watchdog probe recorded Prometheus unavailability and restoration.
+Stopping Alertmanager made the receiver Watchdog heartbeat stale even while Prometheus stayed
+healthy; restarting Alertmanager restored a recent accepted receiver heartbeat.
 A temporary removal of the Watchdog rule was independently reported as missing and its restoration as present.
 A stopped OpenTelemetry Collector fired RequestEngineCollectorMissing; the receiver returned
 503 and Alertmanager retried until the fixture accepted firing and resolved notifications.

@@ -17,6 +17,28 @@ build_images() {
     docker compose -f "$compose_file" --profile runner build api e2e-runner
 }
 
+build_infrastructure_images() {
+  local buildable
+  local services=()
+  # Inspect the topology in memory only: raw Compose config contains secrets
+  # and must never become an artifact. Optional image tags may already exist
+  # locally, so `up` alone cannot prove they reflect this checkout.
+  buildable="$("${compose[@]}" config --format json | python -c '
+import json, sys
+topology = json.load(sys.stdin)["services"]
+for name in sys.argv[1:]:
+    if name not in topology:
+        raise SystemExit("declared infrastructure service missing from topology")
+    if topology[name].get("build"):
+        print(name)
+' "${declared_infrastructure[@]}" "${ingress_services[@]}")"
+  if [[ -n "$buildable" ]]; then
+    mapfile -t services <<< "$buildable"
+    retry_docker "$suite_artifacts/phases/infrastructure-build.log" \
+      "${compose[@]}" build "${services[@]}"
+  fi
+}
+
 [[ "$requested" != "all" ]] || {
   echo "run_e2e_suite.sh executes exactly one suite; use run_e2e_platform.sh all" >&2
   exit 2
@@ -122,6 +144,7 @@ if ((${#tls_hosts[@]} > 0)); then
 fi
 
 if [[ "${E2E_IMAGES_READY:-0}" != "1" ]]; then build_images; fi
+build_infrastructure_images
 
 infra=(postgres)
 infra+=("${declared_infrastructure[@]}")
@@ -232,8 +255,8 @@ export E2E_RUNTIME_SERVICES="${runtime_services[*]}"
 bash scripts/ci/assert_reference_image_identity.sh 2>&1 | tee "$suite_artifacts/phases/image-identity.log"
 
 if ((${#ingress_services[@]} > 0)); then
-  "${compose[@]}" up -d --no-build --wait --wait-timeout 90 "${ingress_services[@]}" \
-    2>&1 | tee "$suite_artifacts/phases/ingress-start.log"
+  retry_docker "$suite_artifacts/phases/ingress-start.log" \
+    "${compose[@]}" up -d --no-build --wait --wait-timeout 90 "${ingress_services[@]}"
 fi
 
 if [[ "$driver" == network-boundary ]]; then

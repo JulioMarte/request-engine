@@ -912,6 +912,7 @@ def _run_f01_foundation(
     if phase == "main" or _active_suite in {
         "recovery-delivery",
         "platform-configuration",
+        "smtp-provider-lab",
         "clone-fence",
     }:
         recovery_login = "f01-recovery-operator@example.invalid"
@@ -3044,11 +3045,38 @@ def _run_smtp_provider_lab(checkpoints: list[dict[str, str]], phase: str) -> Non
         suffix="smtp-provider-ambiguous",
         destination="smtp-provider-ambiguous@example.test",
     )
+
+    def issue_progress_delivery() -> tuple[str, str]:
+        set_provider_behavior(
+            "accept",
+            provider_url=provider_url,
+            control_token=provider_control_token,
+            reset_history=False,
+        )
+        destination = "smtp-provider-progress@example.test"
+        progress_identity_id = _native_identity(
+            control_url,
+            "smtp-provider-progress-identity@example.invalid",
+            _derived_password(platform_password, "smtp-provider-progress"),
+            bearer=platform_token,
+            idempotency_key="smtp-provider-progress-identity-v1",
+        )
+        progress_case = _p7_issue_governed_recovery(
+            control_url,
+            platform_token=platform_token,
+            operator_token=operator_token,
+            target_identity_id=progress_identity_id,
+            suffix="smtp-provider-progress",
+            destination=destination,
+        )
+        return progress_case, destination
+
     ambiguity = verify_ambiguous_worker_delivery(
         control_url=control_url,
         bearer=platform_token,
         case_id=ambiguous_case,
         issue_idempotency_key="p7-config-recovery-issue-smtp-provider-ambiguous-v1",
+        issue_progress_delivery=issue_progress_delivery,
         provider_url=provider_url,
     )
     checkpoints.append(
@@ -3056,7 +3084,8 @@ def _run_smtp_provider_lab(checkpoints: list[dict[str, str]], phase: str) -> Non
             "smtp-provider-ambiguous-no-retry",
             "passed",
             "provider accepted DATA then dropped its final response; "
-            "worker stayed UNKNOWN after replay: " + json.dumps(ambiguity, sort_keys=True),
+            "worker stayed UNKNOWN after replay and a subsequent governed delivery completed: "
+            + json.dumps(ambiguity, sort_keys=True),
         )
     )
 

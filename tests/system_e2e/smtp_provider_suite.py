@@ -12,6 +12,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from typing import cast
 
 
@@ -266,20 +267,21 @@ def set_provider_behavior(
     *,
     provider_url: str = "http://smtp-provider:8091",
     control_token: str,
+    reset_history: bool = True,
 ) -> None:
-    _request_json(
-        "POST",
-        f"{provider_url}/control/reset",
-        payload={},
-        smtp_control_token=control_token,
-    )
-    if behavior != "accept":
+    if reset_history:
         _request_json(
             "POST",
-            f"{provider_url}/control/behavior",
-            payload={"behavior": behavior},
+            f"{provider_url}/control/reset",
+            payload={},
             smtp_control_token=control_token,
         )
+    _request_json(
+        "POST",
+        f"{provider_url}/control/behavior",
+        payload={"behavior": behavior},
+        smtp_control_token=control_token,
+    )
 
 
 def verify_ambiguous_worker_delivery(
@@ -288,10 +290,17 @@ def verify_ambiguous_worker_delivery(
     bearer: str,
     case_id: str,
     issue_idempotency_key: str,
+    issue_progress_delivery: Callable[[], tuple[str, str]],
     provider_url: str = "http://smtp-provider:8091",
     timeout_seconds: float = 60,
 ) -> dict[str, object]:
-    """Prove accept-then-drop is UNKNOWN and replay does not send again."""
+    """Observe UNKNOWN through replay and a subsequent completed worker delivery.
+
+    The progress callback creates a distinct governed delivery through HTTP and
+    returns its case ID and destination. It must retain provider receipt history.
+    This bounds the no-resend observation to that completed worker progress;
+    it does not claim that an arbitrary future delayed retry is impossible.
+    """
     deadline = time.monotonic() + timeout_seconds
     delivery_status: object = None
     while time.monotonic() < deadline:
@@ -338,10 +347,40 @@ def verify_ambiguous_worker_delivery(
         payload={"expected_revision": 2},
         expected=(202,),
     )
+    progress_case, progress_destination = issue_progress_delivery()
+    _wait_for_progress_delivery(
+        control_url=control_url,
+        bearer=bearer,
+        case_id=progress_case,
+        destination=progress_destination,
+        provider_url=provider_url,
+        timeout_seconds=timeout_seconds,
+    )
     _, attempts_after = _request_json("GET", f"{provider_url}/attempts")
     after_values = attempts_after.get("data_attempts")
-    if not isinstance(after_values, list) or cast(list[object], after_values) != attempt_values:
+    message_id = attempt.get("message_id")
+    if not isinstance(message_id, str) or not message_id:
+        raise RuntimeError("ambiguous SMTP attempt omitted its Message-ID")
+    if not isinstance(after_values, list):
+        raise RuntimeError("SMTP attempt evidence is not a list after worker progress")
+    matching_attempts = [
+        cast(dict[str, object], item)
+        for item in cast(list[object], after_values)
+        if isinstance(item, dict) and cast(dict[str, object], item).get("message_id") == message_id
+    ]
+    if matching_attempts != attempt_values:
         raise RuntimeError("idempotent replay caused another SMTP DATA attempt")
+    _, receipts_after = _request_json("GET", f"{provider_url}/messages")
+    after_receipts = receipts_after.get("messages")
+    if not isinstance(after_receipts, list):
+        raise RuntimeError("SMTP receipt evidence is not a list after worker progress")
+    matching_receipts = [
+        cast(dict[str, object], item)
+        for item in cast(list[object], after_receipts)
+        if isinstance(item, dict) and cast(dict[str, object], item).get("message_id") == message_id
+    ]
+    if matching_receipts != receipt_values:
+        raise RuntimeError("ambiguous SMTP receipt changed after worker progress")
     _, current = _request_json(
         "GET",
         f"{control_url}/v1/platform/identity-recovery-cases/{case_id}",
@@ -355,4 +394,40 @@ def verify_ambiguous_worker_delivery(
         "receipt_matches_message_id": True,
         "attempts_before_replay": 1,
         "attempts_after_replay": 1,
+        "subsequent_governed_delivery_completed": True,
+        "no_resend_observation": "through subsequent completed worker delivery; bounded",
     }
+
+
+def _wait_for_progress_delivery(
+    *,
+    control_url: str,
+    bearer: str,
+    case_id: str,
+    destination: str,
+    provider_url: str,
+    timeout_seconds: float,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        _, current = _request_json(
+            "GET",
+            f"{control_url}/v1/platform/identity-recovery-cases/{case_id}",
+            bearer=bearer,
+        )
+        status = current.get("delivery_status")
+        if status in {"failed", "unknown"}:
+            raise RuntimeError("SMTP worker progress delivery failed")
+        _, receipts = _request_json("GET", f"{provider_url}/messages")
+        values = receipts.get("messages")
+        if not isinstance(values, list):
+            raise RuntimeError("SMTP progress receipt evidence is not a list")
+        matching = [
+            cast(dict[str, object], item)
+            for item in cast(list[object], values)
+            if isinstance(item, dict) and cast(dict[str, object], item).get("to") == [destination]
+        ]
+        if status == "delivered" and len(matching) == 1 and matching[0].get("message_id"):
+            return
+        time.sleep(0.5)
+    raise RuntimeError("SMTP worker did not complete the independent progress delivery")
