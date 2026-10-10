@@ -4,6 +4,15 @@ Date: 2026-09-19
 Branch: `feature/platform-config-openbao-recovery`  
 Authority: ADR 0015
 
+Acceptance infrastructure (2026-10-09): the reference Compose PostgreSQL service
+and Python runtime/black-box runner now use Docker's official ECR Public
+publication, preserving PostgreSQL `18` and Python `3.13-slim`. This addresses
+Docker Hub quota failures without weakening isolation, fresh-target restoration,
+secret access or outbound fences. The existing provider versions remain intact;
+download/build and actual image provenance must still pass the candidate's CI.
+See [Docker E2E platform](docker-e2e-ci-plan.md). This does not certify off-host
+backup or real SMTP/network acceptance.
+
 > **P7 execution handoff (2026-09-20):**
 > `p7-platform-configuration-secrets-implementation-handoff.md` is the
 > executable continuation for the deferred P7 surface. This document remains the
@@ -259,6 +268,14 @@ There is intentionally no human `platform.secret.read_plaintext` capability.
 
 High-risk mutation requires the existing recent
 `PHISHING_RESISTANT` authentication guard.
+
+`login_handle` is optional on the native WebAuthn login surface: omitted or
+blank runs a discoverable, usernameless ceremony resolved from the presented
+credential id. A supplied handle uses the same empty-allow-list ceremony and
+must identify that credential's owner at completion (ADR 0014 §9); no credential
+counts or id lengths are disclosed. This does not change the `PHISHING_RESISTANT` requirement for
+high-risk mutation or the offline recovery hierarchy. Guarantee
+`INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001`.
 
 ## 10. Recovery hierarchy
 

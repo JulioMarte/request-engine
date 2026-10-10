@@ -3,6 +3,8 @@ from datetime import date
 from typing import Protocol
 from uuid import UUID
 
+from request_engine.modules.catalog.application.errors import CatalogInvalidInput
+
 
 @dataclass(frozen=True, slots=True)
 class OrganizationHolidayInput:
@@ -38,14 +40,14 @@ async def declare_organization_holidays(
     command: DeclareOrganizationHolidaysCommand,
 ) -> DeclaredOrganizationHolidaysState:
     if not command.idempotency_key:
-        raise ValueError("idempotency_key is required")
+        raise CatalogInvalidInput("idempotency_key is required")
     if not command.holidays:
-        raise ValueError("at least one holiday date is required")
+        raise CatalogInvalidInput("at least one holiday date is required")
     seen: set[date] = set()
     for holiday in command.holidays:
         if holiday.date in seen:
-            raise ValueError("holidays must not repeat a date")
+            raise CatalogInvalidInput("holidays must not repeat a date")
         seen.add(holiday.date)
         if holiday.reason is not None and not holiday.reason.strip():
-            raise ValueError("holiday reason cannot be blank")
+            raise CatalogInvalidInput("holiday reason cannot be blank")
     return await handler.declare_organization_holidays(command)

@@ -15,7 +15,7 @@ risk = ["security"]
 
 [[guarantees]]
 id = "INV-AUTHORITY-001"
-statement = "Every state-changing or party-scoped operation is authorized by explicit actor/representation authority and cannot gain authority from caller-supplied identifiers."
+statement = "Every state-changing or party-scoped operation is authorized by explicit actor/representation authority and cannot gain authority from caller-supplied identifiers. Scoped Catalog configuration and Booking supply commands revalidate their exact active Representation inside the owner transaction before returning a stored idempotency receipt, so withdrawing scope also denies later receipt replay; the check is serialized against supported authority changes and does not retroactively cancel an already-admitted transaction. Current regression coverage proves this replay denial for Booking assignment creation; per-command and both-order concurrency evidence remains incomplete."
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
@@ -378,6 +378,13 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["security", "provenance"]
 
 [[guarantees]]
+id = "INV-CONTROLLER-POLICY-ADOPTION-001"
+statement = "Legacy controller-policy adoption is opt-in and requires current HUMAN consent from the immutable original tenant root through its active bound native identity, followed by a distinct active platform HUMAN identity with the dedicated adoption capability and recent phishing-resistant proof. Both participants must be active on their configured native authority and in normal recovery posture at admission. Consent snapshots the controller native identity and recovery epoch; any subsequent recovery invalidates unapplied consent permanently, including after recovery completes, and requires withdrawal plus fresh consent. Apply checks both participants' current posture under authority/identity/recovery-state locks in canonical order. The platform operator can inspect bounded consent context and the exact proposed/revoked capability delta before applying. Application adds only currently missing target-policy grants, attributes them to the platform approver, records an immutable application fact whose tenant controller and binding are constrained to the same organization, and exact consent replay remains readable after the policy changes. The adoption-facts table is RLS-enabled and forced with a tenant-bound runtime policy but grants no direct application-role table access; its validated command/read paths remain the access boundary. A database provenance trigger rejects recording a tenant principal as the platform approver. Missing platform adoption authority and reuse of the root's same native identity are denied without applying grants. Apply and withdrawal serialize on the tenant authority locks: if withdrawal wins, apply fails without effects; if apply wins, a later withdrawal conflicts and the applied request, fact and grants remain. A synchronized same-actor/same-key concurrent apply replays the original fact without duplicate grant/fact effects, while a different-key/payload retry conflicts and does not duplicate the fact or grant delta. Apply serializes in both orders with the supported platform-owner lifecycle revocation: revocation-first denies apply, while apply-first commits the adoption before revocation. Apply also serializes in both orders with recovery of either participant, tenant-controller identity-binding suspension, actual controller staff-membership suspension, and supported global native disable of either participant; the winning transition determines whether adoption commits or is denied without effects. Native-authority suspension has no supported public lifecycle command and is not claimed as owner-command race evidence; direct concurrent revocation of a single platform capability is not a supported public command and is not covered."
+severity = "high"
+required_evidence = ["contract", "invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
 id = "INV-ONBOARDING-READINESS-001"
 statement = "The onboarding readiness projection is an advisory, tenant-scoped composition of owner-published facts: it exposes identity, tenant_control, staff_administration and recovery sections with an explicit ready/blocked/unknown status, never reports a section ready when its owner reader failed (unknown, ready=false, no fabricated blockers), never derives authority or identity from the response, and never leaks another tenant's or the platform's identities, secrets or global recovery configuration. Identity/control facts are read through a tenant-guarded least-privilege surface that refuses any organization other than the transaction's current tenant, and each command the projection suggests revalidates its own authority."
 severity = "high"
@@ -414,7 +421,14 @@ risk = ["security"]
 
 [[guarantees]]
 id = "INV-NATIVE-WEBAUTHN-LOGIN-001"
-statement = "A valid native WebAuthn assertion completes a bounded one-time challenge and issues a brand-new normal native session whose trusted evidence (initial authenticator, proven methods, user verification and derived assurance) reflects only the verified ceremony; the caller cannot supply assurance, user verification or methods, and a decoy options response for an unknown or credential-less login handle is indistinguishable in shape from a real ceremony so the endpoint is not a reliable account-enumeration oracle."
+statement = "A valid native WebAuthn assertion completes a bounded one-time challenge and issues a brand-new normal native session whose trusted evidence (initial authenticator, proven methods, user verification and derived assurance) reflects only the verified ceremony; the caller cannot supply assurance, user verification or methods. Supplied and omitted login handles receive the same discoverable unbound options with an empty allow-list, exposing neither credential count nor credential-id length; completion resolves the demonstrated active credential, accepts only the configured native identity authority, and any supplied handle must resolve to that same identity before session finalization. A discoverable assertion requires userHandle and it must match the handle persisted from server-issued registration options. Legacy non-discoverable keys are retained but use the documented password/recovery replacement journey rather than handle-login allow-list disclosure."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001"
+statement = "A usernameless (discoverable) native WebAuthn login accepts an authentication-options request with no login_handle, persists an unbound single-use challenge that pins no identity, and completes by resolving the owning native identity solely from the presented credential id (never from a caller-supplied identity); the resulting session carries only the verified ceremony's evidence and assurance. The credential must belong to the configured native authority, and the assertion's required userHandle must match the association persisted at registration (including the setup-session handle preserved when a passkey is promoted during instance claim). Unknown, revoked, foreign-authority, mismatched-handle or replayed credentials fail closed; no account handle is disclosed by options."
 severity = "critical"
 required_evidence = ["invariant", "adversarial", "contract"]
 risk = ["security"]
@@ -435,10 +449,24 @@ risk = ["security"]
 
 [[guarantees]]
 id = "INV-WEBAUTHN-CHALLENGE-SINGLE-USE-001"
-statement = "Authentication and step-up challenges are bounded, single-purpose and single-consumption: a completed or expired challenge cannot be replayed, a failed verification does not consume it, and concurrent completions of one challenge produce at most one authoritative effect with the loser failing closed."
+statement = "Registration (normal and setup), authentication and step-up challenges are bounded, single-purpose and single-consumption: a completed or expired challenge cannot be replayed; expiry remains binding through the atomic finalizer effect after all serialization locks and any insertion waits, immediately before challenge consumption (not the caller's later transaction commit); a failed verification or late expiry does not consume the challenge or mutate credential/session state; and concurrent completions of one challenge produce at most one authoritative effect with the loser failing closed."
 severity = "high"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-WEBAUTHN-CHALLENGE-RETENTION-001"
+statement = "WebAuthn challenge retention deletes only expired challenges eligible under the bounded retention policy, processes at most the configured bounded batch per invocation, and preserves recent consumed evidence; invocation is available only through a dedicated non-login caller role and a SECURITY DEFINER function whose non-login owner has only the challenge-table privileges and columns required for that deletion."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "availability"]
+
+[[guarantees]]
+id = "INV-HTTP-AUTH-ADMISSION-001"
+statement = "HTTP native-authentication mutations and initial-setup POST admission are bounded before body parsing, hashing or owner execution. The default PostgreSQL-backed mode shares one rolling-minute window across processes using the same database, preserves it across HTTP restarts, and fails closed on missing state, inconsistent configured limits or unavailable admission. The runtime can invoke only a narrow admission function and cannot directly alter its state. Exhaustion returns an opaque 429 with Retry-After without owner effects; GET introspection and health probes remain outside that window. Explicit local-only mode retains process-local monotonic admission and cannot support a shared-limit claim. Neither mode is per-account brute-force protection or proof of aggregate deployment capacity; ingress containment and productive acceptance remain required."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "availability"]
 
 [[guarantees]]
 id = "INV-PRIVILEGED-AUTH-FRESHNESS-001"
@@ -548,7 +576,7 @@ risk = ["security", "availability", "provenance"]
 
 [[guarantees]]
 id = "INV-RECOVERY-BUNDLE-001"
-statement = "Recovery tooling can create and restore a self-contained PostgreSQL + OpenBao package for non-Coolify deployments, drills and fallback recovery: it verifies exact bundle membership/checksums, encrypts retained material, requires explicit destructive restore confirmation plus the outbound fence, and emits completion evidence only after both authoritative restore steps succeed. In the Coolify reference deployment this bundle is not the primary PostgreSQL scheduler: Coolify owns engine-aware PostgreSQL backup/retention while Request Engine owns OpenBao snapshot/recovery coordination."
+statement = "Recovery tooling creates an encrypted PostgreSQL + OpenBao package for non-Coolify deployments, drills and fallback recovery: it verifies exact bundle membership/checksums and preserves PostgreSQL object owners, ACLs and RLS metadata. The target must independently provision matching accepted NOLOGIN roles from the candidate migrations and fresh runtime credentials before restore; source LOGIN secrets are not fabricated from a non-secret role catalog. A bundle without tool-generated privilege-topology preservation metadata is verifiable but rejected for restore. PostgreSQL restore is one transaction and fails on missing roles or ACL errors. Restore requires explicit destructive confirmation plus an operator-declared outbound fence and emits pending-verification evidence only after both authoritative restore steps succeed; the declaration is not proof of network isolation or final recovery. In the Coolify reference deployment this bundle is not the primary PostgreSQL scheduler: Coolify owns engine-aware PostgreSQL backup/retention while Request Engine owns OpenBao snapshot/recovery coordination."
 severity = "critical"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security", "availability", "provenance"]

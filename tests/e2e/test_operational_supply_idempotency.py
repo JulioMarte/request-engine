@@ -71,9 +71,26 @@ async def test_assignment_create_replays_once_and_rejects_conflicting_reuse(
             json={**body, "effective_from": "2026-02-01T00:00:00Z"},
         )
 
+    # A durable receipt is not authorization. Once the exact Representation
+    # has been withdrawn, the same actor/key may not read the old result back.
+    e2e_admin_conn.execute(
+        "UPDATE request_engine.representations SET status='revoked', revision=revision+1 "
+        "WHERE organization_id=%s AND principal_id=%s AND represented_party_id=%s "
+        "AND scope_key='operations.manage_supply' AND status='active'",
+        (sandbox.organization_id, sandbox.principal_id, sandbox.party_id),
+    )
+    async with operator_client(e2e_session_factory, sandbox) as client:
+        withdrawn_replay = await client.post(
+            "/v1/operations/resource-assignments",
+            headers=auth(sandbox, idempotency_key=key),
+            json=body,
+        )
+
     assert created.status_code == 200, created.text
     assert replay.json() == created.json()
     assert conflict.status_code == 409
+    assert withdrawn_replay.status_code == 403, withdrawn_replay.text
+    assert withdrawn_replay.json()["error"]["code"] == "operational_authority_required"
     assignment_id = UUID(created.json()["assignment_id"])
     assert e2e_admin_conn.execute(
         "SELECT count(*) FROM request_engine.resource_location_assignments WHERE id = %s",

@@ -1,7 +1,8 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from pydantic import AwareDatetime
 
 from request_engine.modules.delivery.adapters.db.live_service_operations import (
     PostgresLiveServiceOperations,
@@ -13,6 +14,13 @@ from request_engine.modules.delivery.api.live_models import (
     EndResourceActivityBody,
     ResourceActivityView,
     StartResourceActivityBody,
+)
+from request_engine.modules.delivery.api.resource_activity_pagination import (
+    ResourceActivityCursorParams,
+    ResourceActivityPageView,
+    activity_filter_key,
+    decode_activity_cursor,
+    encode_activity_cursor,
 )
 from request_engine.modules.delivery.application.resource_activity_commands import (
     EndResourceActivityCommand,
@@ -39,17 +47,63 @@ def create_resource_activity_router(
         return await actor_resolver.resolve_actor(request)
 
     async def list_activities(
+        request: Request,
         resource_id: UUID,
         current: Annotated[ActorContext, Depends(actor)],
         active_only: Annotated[bool, Query()] = True,
-    ) -> list[ResourceActivityView]:
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        cursor: Annotated[str | None, Query(max_length=2000)] = None,
+        started_after: AwareDatetime | None = None,
+        started_before: AwareDatetime | None = None,
+    ) -> ResourceActivityPageView:
         require_capability(current, "resource_activity.read")
+        if set(request.query_params) - {
+            "resource_id",
+            "active_only",
+            "limit",
+            "cursor",
+            "started_after",
+            "started_before",
+        }:
+            raise HTTPException(status_code=422, detail="unsupported activity filter")
+        if (
+            started_after is not None
+            and started_before is not None
+            and (started_after >= started_before)
+        ):
+            raise HTTPException(status_code=422, detail="activity window must be positive")
+        filter_key = activity_filter_key(
+            current.organization_id,
+            resource_id,
+            active_only,
+            started_after,
+            started_before,
+        )
+        position = decode_activity_cursor(cursor, filter_key) if cursor else None
         items = await reader.list_for_resource(
             current.organization_id,
             resource_id,
             active_only=active_only,
+            limit=limit + 1,
+            after_started_at=position.started_at if position else None,
+            after_id=position.activity_id if position else None,
+            started_after=started_after,
+            started_before=started_before,
         )
-        return [ResourceActivityView.from_contract(item) for item in items]
+        page = items[:limit]
+        next_cursor = None
+        if len(items) > limit:
+            next_cursor = encode_activity_cursor(
+                ResourceActivityCursorParams(
+                    filter_key=filter_key,
+                    started_at=page[-1].started_at,
+                    activity_id=page[-1].id,
+                )
+            )
+        return ResourceActivityPageView(
+            items=[ResourceActivityView.from_contract(item) for item in page],
+            next_cursor=next_cursor,
+        )
 
     async def start_activity(
         body: StartResourceActivityBody,
@@ -93,7 +147,7 @@ def create_resource_activity_router(
         list_activities,
         capability="resource_activity.read",
         methods=["GET"],
-        response_model=list[ResourceActivityView],
+        response_model=ResourceActivityPageView,
     )
     add_capability_route(
         router,

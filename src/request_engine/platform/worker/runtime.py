@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
@@ -40,6 +41,27 @@ class LeaseProcessor[TLease: WorkLease](Protocol):
 
 class LeaseRejecter[TLease: WorkLease](Protocol):
     async def __call__(self, lease: TLease, *, error_class: str) -> bool: ...
+
+
+class WorkerTelemetry(Protocol):
+    """Optional non-authoritative observer. Implementations must not do I/O."""
+
+    def claimed(self, count: int) -> None: ...
+
+    def cycle(self) -> None: ...
+
+    def outcome(self, state: str, detail: str) -> None: ...
+
+    def processing_seconds(self, seconds: float) -> None: ...
+
+
+def _observe(callback: Callable[..., None], *args: object) -> None:
+    """Keep an optional telemetry failure outside worker transaction behavior."""
+    try:
+        callback(*args)
+    except Exception:
+        # Telemetry is advisory; the worker's durable lease result remains authoritative.
+        return
 
 
 class RetryableWorkError(RuntimeError):
@@ -133,18 +155,27 @@ class FencedWorkerRuntime[TLease: WorkLease]:
         *,
         rejecter: LeaseRejecter[TLease] | None = None,
         config: WorkerRuntimeConfig | None = None,
+        telemetry: WorkerTelemetry | None = None,
     ) -> None:
         self._store = store
         self._processor = processor
         self._rejecter = rejecter
         self._config = config or WorkerRuntimeConfig()
+        self._telemetry = telemetry
 
     async def run_once(self) -> tuple[WorkerItemOutcome, ...]:
         limit = min(self._config.claim_batch_size, self._config.max_concurrency)
+        if self._telemetry is not None:
+            _observe(self._telemetry.cycle)
         leases = await self._store.claim(limit=limit, lease=self._config.lease_duration)
+        if self._telemetry is not None:
+            _observe(self._telemetry.claimed, len(leases))
         if not leases:
             return ()
         outcomes = await asyncio.gather(*(self._process_one(lease) for lease in leases))
+        if self._telemetry is not None:
+            for outcome in outcomes:
+                _observe(self._telemetry.outcome, outcome.state.value, outcome.detail)
         return tuple(outcomes)
 
     async def run_forever(self, stop_event: asyncio.Event) -> None:
@@ -164,13 +195,22 @@ class FencedWorkerRuntime[TLease: WorkLease]:
             self._heartbeat(lease, stop_heartbeat=stop_heartbeat, lost_lease=lost_lease)
         )
         failure: Exception | None = None
+        processing_started = asyncio.get_running_loop().time()
         try:
-            async with asyncio.timeout(self._config.processing_timeout.total_seconds()):
-                await self._processor.process(lease)
-        except TimeoutError:
-            failure = RetryableWorkError("processing_timeout")
-        except Exception as exc:
-            failure = exc
+            try:
+                try:
+                    async with asyncio.timeout(self._config.processing_timeout.total_seconds()):
+                        await self._processor.process(lease)
+                except TimeoutError:
+                    failure = RetryableWorkError("processing_timeout")
+                except Exception as exc:
+                    failure = exc
+            finally:
+                if self._telemetry is not None:
+                    _observe(
+                        self._telemetry.processing_seconds,
+                        asyncio.get_running_loop().time() - processing_started,
+                    )
         finally:
             stop_heartbeat.set()
             await heartbeat

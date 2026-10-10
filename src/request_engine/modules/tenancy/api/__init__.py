@@ -14,6 +14,9 @@ from request_engine.modules.tenancy.adapters.db.agent_policy_commands import (
 from request_engine.modules.tenancy.adapters.db.bootstrap_operational_authority_commands import (
     PostgresBootstrapOperationalAuthorityCommands,
 )
+from request_engine.modules.tenancy.adapters.db.controller_policy_adoption_commands import (
+    PostgresControllerPolicyAdoptionCommands,
+)
 from request_engine.modules.tenancy.adapters.db.controller_policy_commands import (
     PostgresControllerPolicyCommands,
 )
@@ -62,6 +65,15 @@ from request_engine.modules.tenancy.adapters.db.principal_contact_commands impor
 from request_engine.modules.tenancy.adapters.db.self_authority_reader import (
     PostgresSelfAuthorityReader,
 )
+from request_engine.modules.tenancy.adapters.db.self_organization_reader import (
+    PostgresSelfOrganizationReader,
+)
+from request_engine.modules.tenancy.adapters.db.staff_history_reader import (
+    PostgresStaffHistoryReader,
+)
+from request_engine.modules.tenancy.adapters.db.staff_invitation_commands import (
+    PostgresStaffInvitationCommands,
+)
 from request_engine.modules.tenancy.adapters.db.staff_membership_commands import (
     PostgresStaffMembershipCommands,
 )
@@ -82,6 +94,10 @@ from request_engine.modules.tenancy.api.agent_policy_routes import add_agent_pol
 from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
     bootstrap_authority_error_handler,
     create_bootstrap_authority_router,
+)
+from request_engine.modules.tenancy.api.controller_policy_adoption_routes import (
+    add_controller_policy_adoption_error_handlers,
+    add_controller_policy_adoption_tenant_routes,
 )
 from request_engine.modules.tenancy.api.controller_policy_routes import (
     add_controller_policy_error_handlers,
@@ -114,8 +130,11 @@ from request_engine.modules.tenancy.api.self_authority import (
     create_self_authority_router,
     self_authority_error_handler,
 )
+from request_engine.modules.tenancy.api.self_organizations import create_self_organization_router
 from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
+from request_engine.modules.tenancy.api.staff_history_reads import add_staff_history_reads
+from request_engine.modules.tenancy.api.staff_invitations import create_staff_invitation_router
 from request_engine.modules.tenancy.api.staff_membership_errors import (
     add_staff_membership_error_handlers,
 )
@@ -123,6 +142,9 @@ from request_engine.modules.tenancy.api.staff_membership_reads import add_staff_
 from request_engine.modules.tenancy.api.staff_membership_routes import add_staff_membership_routes
 from request_engine.modules.tenancy.application.commands.native_platform_provisioning import (
     NATIVE_INITIAL_CONTROLLER_POLICY as NATIVE_INITIAL_CONTROLLER_POLICY,
+)
+from request_engine.modules.tenancy.application.commands.staff_invitations import (
+    InvitationDeliveryIntent,
 )
 from request_engine.modules.tenancy.application.commands.staff_membership import (
     StaffMembershipCommands,
@@ -142,10 +164,12 @@ from request_engine.modules.tenancy.contracts.onboarding_readiness import (
 from request_engine.modules.tenancy.contracts.resource_authority import ResourceAuthorityInspector
 from request_engine.platform.db.native_human_auth_store import PostgresNativeHumanAuthStore
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.secrets.delivery import RecoverySecretStaging
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 from request_engine.platform.security.oidc_link import OidcLinkVerifier
 from request_engine.platform.security.principal_authority import PrincipalAuthorityReader
+from request_engine.platform.security.subject_http import HttpSubjectResolver
 
 
 def build_party_authority_reader(session_factory: SessionFactory) -> PartyAuthorityReader:
@@ -193,11 +217,22 @@ def install_http(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
+    subject_resolver: HttpSubjectResolver | None = None,
+    invitation_secret_delivery: RecoverySecretStaging | None = None,
+    invitation_delivery_recorder: InvitationDeliveryIntent | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
     resource_authority_inspectors: Sequence[ResourceAuthorityInspector] = (),
 ) -> None:
     """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
+
+    if subject_resolver is not None:
+        app.include_router(
+            create_self_organization_router(
+                reader=PostgresSelfOrganizationReader(session_factory),
+                subject_resolver=subject_resolver,
+            )
+        )
 
     app.add_exception_handler(BootstrapAuthorityPartyInvalid, bootstrap_authority_error_handler)
     app.add_exception_handler(AuthorityInspectionDenied, self_authority_error_handler)
@@ -237,11 +272,28 @@ def install_http(
     async def authenticated_actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
+    app.include_router(
+        create_staff_invitation_router(
+            commands=PostgresStaffInvitationCommands(
+                session_factory,
+                secret_delivery=invitation_secret_delivery,
+                delivery_recorder=invitation_delivery_recorder,
+            ),
+            authenticated_actor=authenticated_actor,
+            subject_resolver=subject_resolver,
+        )
+    )
+
     contact_commands = PostgresPrincipalContactCommands(session_factory)
     staff_router = APIRouter(prefix="/v1/staff", tags=["staff"])
     add_staff_membership_reads(
         staff_router,
         reader=PostgresStaffMembershipReader(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    add_staff_history_reads(
+        staff_router,
+        reader=PostgresStaffHistoryReader(session_factory),
         authenticated_actor=authenticated_actor,
     )
     add_staff_contact_routes(
@@ -327,6 +379,15 @@ def install_http(
         authenticated_actor=authenticated_actor,
     )
     app.include_router(controller_policy_router)
+
+    add_controller_policy_adoption_error_handlers(app)
+    controller_policy_adoption_router = APIRouter(tags=["controller policy adoption"])
+    add_controller_policy_adoption_tenant_routes(
+        controller_policy_adoption_router,
+        commands=PostgresControllerPolicyAdoptionCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(controller_policy_adoption_router)
 
 
 def install_operational_http(

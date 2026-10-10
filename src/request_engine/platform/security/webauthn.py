@@ -35,8 +35,11 @@ from fido2.webauthn import (
     PublicKeyCredentialType,
     PublicKeyCredentialUserEntity,
     RegistrationResponse,
+    ResidentKeyRequirement,
     UserVerificationRequirement,
 )
+
+_MAX_CHALLENGE_TTL_SECONDS = 900
 
 CHALLENGE_BYTES = 32
 
@@ -53,6 +56,7 @@ class _CeremonyServer(Protocol):
         user: PublicKeyCredentialUserEntity,
         credentials: Sequence[PublicKeyCredentialDescriptor] | None = None,
         *,
+        resident_key_requirement: ResidentKeyRequirement | None = None,
         user_verification: UserVerificationRequirement | None = None,
         challenge: bytes | None = None,
     ) -> tuple[CredentialCreationOptions, object]: ...
@@ -109,8 +113,12 @@ class WebAuthnPolicy:
             raise ValueError("WebAuthn rp_id is required")
         if not self.allowed_origins:
             raise ValueError("WebAuthn allowed_origins cannot be empty")
-        if self.challenge_ttl_seconds <= 0:
-            raise ValueError("WebAuthn challenge_ttl_seconds must be positive")
+        if type(self.challenge_ttl_seconds) is not int:
+            raise ValueError("WebAuthn challenge_ttl_seconds must be an exact integer")
+        if not 0 < self.challenge_ttl_seconds <= _MAX_CHALLENGE_TTL_SECONDS:
+            raise ValueError(
+                f"WebAuthn challenge_ttl_seconds must be between 1 and {_MAX_CHALLENGE_TTL_SECONDS}"
+            )
         if self.attestation not in {"none", "indirect", "direct", "enterprise"}:
             raise ValueError("Unsupported WebAuthn attestation preference")
         if self.attestation != "none":
@@ -149,6 +157,7 @@ class VerifiedAuthentication:
     user_verified: bool
     backup_eligible: bool
     backup_state: bool
+    user_handle: bytes | None
 
 
 def generate_challenge() -> bytes:
@@ -306,6 +315,7 @@ class WebAuthnService:
         options, _state = self._server.register_begin(
             user,
             credentials=exclude or None,
+            resident_key_requirement=ResidentKeyRequirement.REQUIRED,
             user_verification=_user_verification(self._policy),
             challenge=raw_challenge,
         )
@@ -385,7 +395,9 @@ class WebAuthnService:
                 CoseKey.parse(cast("Mapping[int, Any]", _decode_cbor(public_key))),
             )
             self._server.authenticate_complete(state, [stored], credential)
-            auth_data = AuthenticationResponse.from_dict(credential).response.authenticator_data
+            authentication_response = AuthenticationResponse.from_dict(credential).response
+            auth_data = authentication_response.authenticator_data
+            user_handle = authentication_response.user_handle
         except _VERIFICATION_ERRORS as exc:
             raise WebAuthnVerificationError(
                 "webauthn_verification_failed", "Authentication verification failed"
@@ -397,4 +409,5 @@ class WebAuthnService:
             user_verified=bool(auth_data.is_user_verified()),
             backup_eligible=bool(auth_data.is_backup_eligible()),
             backup_state=bool(auth_data.is_backed_up()),
+            user_handle=None if user_handle is None else bytes(user_handle),
         )

@@ -20,6 +20,7 @@ from request_engine.bootstrap.recovery_delivery import (
     has_recovery_secret_store_configuration,
 )
 from request_engine.bootstrap.recovery_delivery_worker import build_recovery_delivery_worker
+from request_engine.bootstrap.staff_invitation_delivery import build_staff_invitation_delivery
 from request_engine.bootstrap.worker import build_worker_process
 from request_engine.entrypoints.worker.app import WorkerProcess
 from request_engine.entrypoints.worker.outbox_runtime import (
@@ -159,6 +160,9 @@ def create_worker() -> WorkerProcess:
     else:
         delivery = build_recovery_secret_delivery(recovery_settings)
     delivery = outbound_fence.secret_delivery(delivery)
+    invitation_delivery = outbound_fence.secret_delivery(
+        build_staff_invitation_delivery(recovery_settings, resolver=platform_configuration_resolver)
+    )
     identity_recovery_delivery = (
         build_recovery_delivery_worker(worker_sessions, delivery) if delivery is not None else None
     )
@@ -198,5 +202,6 @@ def create_worker() -> WorkerProcess:
         ),
         identity_recovery_delivery=identity_recovery_delivery,
         native_recovery_delivery=native_recovery_delivery,
+        staff_invitation_secret_delivery=invitation_delivery,
         platform_configuration_invalidation=platform_configuration_invalidation,
     )

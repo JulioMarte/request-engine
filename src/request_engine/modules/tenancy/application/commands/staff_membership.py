@@ -45,7 +45,20 @@ class TransitionStaffMembershipCommand:
     idempotency_key: str
 
 
+@dataclass(frozen=True, slots=True)
+class UpdateStaffProfileCommand:
+    membership_id: UUID
+    display_name: str | None
+    expected_profile_revision: int
+    provenance_reference: str
+    idempotency_key: str
+
+
 class StaffMembershipCommands(Protocol):
+    async def update_staff_profile(
+        self, actor: ActorContext, command: UpdateStaffProfileCommand
+    ) -> int: ...
+
     async def invite_native_staff(
         self,
         actor: ActorContext,

@@ -4,7 +4,9 @@ import argparse
 import json
 import sys
 import tomllib
+from io import BufferedWriter, TextIOWrapper
 from pathlib import Path
+from typing import cast
 
 REGISTRY = Path("tests/system_e2e/suites.toml")
 POLICIES = frozenset({"pr", "merge", "nightly", "manual"})
@@ -15,7 +17,12 @@ def load_registry() -> dict[str, dict[str, object]]:
     suites = data.get("suites")
     if not isinstance(suites, dict):
         raise SystemExit("suite registry is missing [suites.*] entries")
-    return suites
+    entries = cast(dict[object, object], suites)
+    if any(
+        not isinstance(name, str) or not isinstance(spec, dict) for name, spec in entries.items()
+    ):
+        raise SystemExit("suite registry entries must be named tables")
+    return cast(dict[str, dict[str, object]], suites)
 
 
 def enabled_suites() -> list[str]:
@@ -68,4 +75,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # This CLI is a line-oriented Bash protocol, including on Windows hosts.
+    cast("TextIOWrapper[BufferedWriter]", sys.stdout).reconfigure(newline="\n")
     sys.exit(main())

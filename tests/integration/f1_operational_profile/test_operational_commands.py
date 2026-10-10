@@ -48,7 +48,7 @@ def _location_revision(conn: PgConnection, organization_id: UUID, location_id: U
     return cast(int, row[0])
 
 
-def _authority_fixture(
+def operational_authority_fixture(
     conn: PgConnection,
 ) -> tuple[UUID, UUID, UUID, UUID, UUID]:
     suffix = uuid4().hex
@@ -134,7 +134,7 @@ async def test_operational_profile_requires_exact_representation_scope(
         authorized_principal_id,
         unauthorized_principal_id,
         _,
-    ) = _authority_fixture(admin_conn)
+    ) = operational_authority_fixture(admin_conn)
     commands = PostgresOperationalProfileCommands(session_factory)
 
     profile = await profile_command.update_organization_operational_profile(
@@ -184,7 +184,7 @@ async def test_location_hours_command_rejects_stale_operational_revision(
         principal_id,
         _,
         location_id,
-    ) = _authority_fixture(admin_conn)
+    ) = operational_authority_fixture(admin_conn)
     commands = PostgresOperationalConfigCommands(session_factory)
     initial_revision = _location_revision(admin_conn, organization_id, location_id)
 

@@ -3,6 +3,14 @@ from typing import Protocol
 from uuid import UUID
 
 
+class CapabilityRequired(Exception):
+    """Current effective or standing authority does not satisfy a capability."""
+
+    def __init__(self, capability: str) -> None:
+        super().__init__(f"capability {capability!r} is required")
+        self.capability = capability
+
+
 class PrincipalAuthorityMaterializationError(RuntimeError):
     """Persisted Principal authority cannot be safely interpreted by this runtime."""
 

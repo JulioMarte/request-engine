@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from request_engine.entrypoints.http.native_auth_errors import (
@@ -157,11 +158,13 @@ class NativeRecoveryReadinessView(BaseModel):
 class NativeWebAuthnLoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    login_handle: str = Field(min_length=1, max_length=320)
+    login_handle: str | None = Field(default=None, max_length=320)
 
     @field_validator("login_handle")
     @classmethod
-    def validate_handle(cls, value: str) -> str:
+    def validate_handle(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
         return normalize_login_handle(value)
 
 
@@ -172,12 +175,14 @@ class NativeWebAuthnOptionsView(BaseModel):
 class NativeWebAuthnLoginBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    login_handle: str = Field(min_length=1, max_length=320)
+    login_handle: str | None = Field(default=None, max_length=320)
     credential: dict[str, Any]
 
     @field_validator("login_handle")
     @classmethod
-    def validate_handle(cls, value: str) -> str:
+    def validate_handle(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
         return normalize_login_handle(value)
 
 
@@ -739,6 +744,10 @@ def create_native_auth_router(
         operation_id="nativeSessionCreate",
         response_model=NativeSessionResponse,
         status_code=status.HTTP_201_CREATED,
+        responses={
+            401: {"model": ErrorEnvelope, "description": "Credential invalid or no longer usable"},
+            422: {"model": ErrorEnvelope, "description": "Invalid login input"},
+        },
     )
     router.add_api_route(
         "/sessions/current",
@@ -978,6 +987,32 @@ def create_native_auth_router(
             step_up_options=webauthn_step_up_options,
             step_up=webauthn_step_up,
         )
+    # These endpoints actually read a bearer session. Password/proof consumers
+    # and login/enrollment remain explicitly public; metadata is not a guard.
+    session_endpoints = (
+        revoke_current_session,
+        revoke_all_sessions,
+        reauthenticate_current_session,
+        read_current_session,
+        read_recovery_readiness,
+        complete_recovery,
+        issue_current_recovery_codes,
+        prepare_recovery_address,
+        list_recovery_addresses,
+        revoke_recovery_address,
+        webauthn_registration_options,
+        webauthn_register_current_identity,
+        webauthn_step_up_options,
+        webauthn_step_up,
+    )
+    for route in router.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        route.openapi_extra = dict(route.openapi_extra or {})
+        if route.endpoint in session_endpoints:
+            route.openapi_extra["x-request-engine-native-session"] = True
+        else:
+            route.openapi_extra["security"] = []
     return router
 
 
@@ -1029,11 +1064,14 @@ def _register_webauthn_routes(
         status_code=status.HTTP_200_OK,
         summary="Begin a native WebAuthn authentication ceremony",
         description=(
-            "Returns a bounded one-time challenge and a credential allow-list for "
-            "the supplied login handle. An unknown handle, a handle without an "
-            "active passkey and a handle with passkeys all return the same response "
-            "shape, so this endpoint is not a reliable account-enumeration oracle. "
-            "The challenge is single-use and expires; it must be completed with "
+            "Returns the same discoverable ceremony for every supplied or omitted "
+            "login handle: empty allow-list and an unbound one-time challenge. "
+            "No credential identifiers, their lengths or counts are disclosed. "
+            "Completion resolves the presented discoverable credential and, when "
+            "a handle is supplied, requires that it owns that credential. Legacy "
+            "non-discoverable keys must be replaced through password/recovery login "
+            "and current-session registration; they are not deleted. The challenge "
+            "is single-use and expires; it must be completed with "
             "POST /auth/native/webauthn/sessions."
         ),
         responses={
@@ -1051,10 +1089,11 @@ def _register_webauthn_routes(
         description=(
             "Verifies the assertion against the one-time challenge, the stored "
             "credential, the relying-party/origin policy and user verification. "
-            "Assurance, user verification and methods are derived only from the "
-            "verified ceremony and cannot be supplied by the caller. A successful "
-            "user-verified assertion issues a fresh session with "
-            "PHISHING_RESISTANT assurance."
+            "When login_handle is omitted, the owning identity is resolved solely "
+            "from the presented credential id. Assurance, user verification and "
+            "methods are derived only from the verified ceremony and cannot be "
+            "supplied by the caller. A successful user-verified assertion issues a "
+            "fresh session with PHISHING_RESISTANT assurance."
         ),
         responses={
             401: {"model": ErrorEnvelope, "description": "Assertion or credential is invalid"},

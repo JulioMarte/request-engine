@@ -7,20 +7,13 @@ from fastapi import Request
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.discovery import TenantCapabilityPolicy
 from request_engine.platform.security.execution_context import bind_actor_context
+from request_engine.platform.security.principal_authority import CapabilityRequired
 
 REQUEST_CORRELATION_STATE_KEY = "request_engine_correlation_id"
 
 
 class AuthenticationRequired(Exception):
     """Raised when an HTTP authentication adapter cannot resolve an actor."""
-
-
-class CapabilityRequired(Exception):
-    """Raised when an authenticated actor lacks a required effective capability."""
-
-    def __init__(self, capability: str) -> None:
-        super().__init__(f"capability {capability!r} is required")
-        self.capability = capability
 
 
 class ActorResolver(Protocol):

@@ -5,7 +5,10 @@ from uuid import UUID
 
 @dataclass(frozen=True, slots=True)
 class CatalogOnboardingSupply:
-    """Catalog-owned facts consumed by the onboarding readiness composition."""
+    """Active locations and latest bookable versions of active Offerings.
+
+    Structural configuration only, not resource eligibility or slot availability.
+    """
 
     location_count: int
     bookable_offering_version_count: int

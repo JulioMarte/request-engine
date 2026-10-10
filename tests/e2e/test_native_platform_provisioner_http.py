@@ -1,16 +1,15 @@
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from fido2.utils import websafe_decode
 from httpx import ASGITransport, AsyncClient
 from psycopg import Connection
-from psycopg.conninfo import make_conninfo
+from software_webauthn_authenticator import SoftwareAuthenticator
 
 from request_engine.entrypoints.http.app import create_native_app
 from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
-from request_engine.entrypoints.platform_bootstrap_cli import establish_root, issue_intent
 from request_engine.platform.db.session import SessionFactory
 
 from .agent_policy_support import provision_agent_policy
@@ -21,66 +20,127 @@ pytestmark = [pytest.mark.postgres, pytest.mark.e2e, pytest.mark.security, pytes
 
 
 @pytest.mark.asyncio
-async def test_bootstrapped_controller_provisions_native_human_without_sql_binding(
+async def test_claimed_owner_provisions_native_human_and_tenant_without_sql_binding(
     e2e_admin_conn: Connection[Any],
     e2e_session_factory: SessionFactory,
     platform_read_session_factory: SessionFactory,
     platform_control_session_factory: SessionFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(
-        "REQUEST_ENGINE_BOOTSTRAP_DSN",
-        make_conninfo(
-            host=e2e_admin_conn.info.host,
-            port=e2e_admin_conn.info.port,
-            dbname=e2e_admin_conn.info.dbname,
-            user=e2e_admin_conn.info.user,
-            password=os.environ.get("PGPASSWORD", "request_engine"),
-        ),
+    # Installation prerequisites only: no owner, binding or authority grant is
+    # manufactured. The supported first-run HTTP ceremony creates those facts.
+    authority_id = uuid4()
+    e2e_admin_conn.execute(
+        "INSERT INTO request_engine.identity_authorities(id,kind,issuer_or_environment) "
+        "VALUES(%s,'native',%s)",
+        (authority_id, f"native-provisioner-http-{authority_id}"),
     )
-    intent = dict(
-        line.split(": ", 1)
-        for line in issue_intent(
-            ttl_minutes=5,
-            provenance="http-platform-provisioner-proof",
-        ).splitlines()
-    )
-    authority_id = UUID(intent["Native authority"])
-    root_id = establish_root(
-        login_handle="root@example.test",
-        password="root platform proof password",
-        raw_token=intent["ONE-TIME BOOTSTRAP TOKEN"],
+    e2e_admin_conn.execute(
+        "INSERT INTO request_engine.platform_instance "
+        "(id,built_in_native_authority_id,built_in_workload_authority_id) VALUES(%s,%s,%s)",
+        (uuid4(), authority_id, uuid4()),
     )
     app = create_platform_control_app(
         auth_session_factory=e2e_session_factory,
         platform_read_session_factory=platform_read_session_factory,
         platform_write_session_factory=platform_control_session_factory,
         native_authority_id=authority_id,
+        webauthn_decoy_key=b"p" * 32,
     )
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="https://control.test"
     ) as client:
-        login = await client.post(
-            "/auth/native/sessions",
+        issued = await client.post("/v1/setup/sessions")
+        assert issued.status_code == 201, issued.text
+        setup_headers = {"Authorization": f"Setup {issued.json()['token']}"}
+        prepared = await client.post(
+            "/v1/setup/native-identity",
+            headers=setup_headers,
             json={
                 "login_handle": "root@example.test",
                 "password": "root platform proof password",
             },
         )
-        assert login.status_code == 201
+        assert prepared.status_code == 204, prepared.text
+        registration = await client.post(
+            "/v1/setup/webauthn/registration-options", headers=setup_headers
+        )
+        assert registration.status_code == 200, registration.text
+        options = registration.json()["public_key"]
+        authenticator = SoftwareAuthenticator(rp_id=options["rp"]["id"], origin="https://localhost")
+        credential = authenticator.registration_credential(
+            challenge=websafe_decode(options["challenge"]),
+            public_key=options,
+            user_verified=True,
+        )
+        registered = await client.post(
+            "/v1/setup/webauthn/registrations",
+            headers=setup_headers,
+            json={"credential": credential},
+        )
+        assert registered.status_code == 204, registered.text
+        recovery = await client.post("/v1/setup/recovery-codes", headers=setup_headers)
+        assert recovery.status_code == 201, recovery.text
+        claimed = await client.post(
+            "/v1/setup:finalize",
+            headers={**setup_headers, "Idempotency-Key": "native-provisioner-claim"},
+            json={"claim_provenance": "e2e:native-provisioner"},
+        )
+        assert claimed.status_code == 201, claimed.text
+        root_id = UUID(claimed.json()["owner_principal_id"])
+        authentication = await client.post(
+            "/auth/native/webauthn/authentication-options",
+            json={"login_handle": "root@example.test"},
+        )
+        assert authentication.status_code == 200, authentication.text
+        assertion = authenticator.authentication_credential(
+            challenge=websafe_decode(authentication.json()["public_key"]["challenge"]),
+            user_verified=True,
+        )
+        login = await client.post(
+            "/auth/native/webauthn/sessions",
+            json={"login_handle": "root@example.test", "credential": assertion},
+        )
+        assert login.status_code == 201, login.text
         headers = {
             "Authorization": f"Bearer {login.json()['access_token']}",
             "Idempotency-Key": "create-provisioner-1",
         }
         enrollment = await client.post(
             "/v1/platform/native-identities",
-            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+            headers={
+                "Authorization": f"Bearer {login.json()['access_token']}",
+                "Idempotency-Key": "native-provisioner-identity",
+            },
             json={
                 "login_handle": "provisioner@example.test",
                 "password": "new provisioner proof password",
             },
         )
-        assert enrollment.status_code == 201
+        assert enrollment.status_code == 201, enrollment.text
+        # Password and passkey bearer evidence both carry a session ID, not an
+        # authenticator UUID. A real password-session replay must use the same
+        # current owner operation without restoring or recreating identity state.
+        password_login = await client.post(
+            "/auth/native/sessions",
+            json={
+                "login_handle": "root@example.test",
+                "password": "root platform proof password",
+            },
+        )
+        assert password_login.status_code == 201, password_login.text
+        enrollment_replay = await client.post(
+            "/v1/platform/native-identities",
+            headers={
+                "Authorization": f"Bearer {password_login.json()['access_token']}",
+                "Idempotency-Key": "native-provisioner-identity",
+            },
+            json={
+                "login_handle": "provisioner@example.test",
+                "password": "new provisioner proof password",
+            },
+        )
+        assert enrollment_replay.status_code == 201, enrollment_replay.text
+        assert enrollment_replay.json() == enrollment.json()
         body = {
             "native_identity_id": enrollment.json()["native_identity_id"],
             "provenance_reference": "deployment:provisioner-http",
@@ -125,7 +185,10 @@ async def test_bootstrapped_controller_provisions_native_human_without_sql_bindi
         assert denied.json()["error"]["code"] == "platform_provisioning_forbidden"
         controller = await client.post(
             "/v1/platform/native-identities",
-            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+            headers={
+                "Authorization": f"Bearer {login.json()['access_token']}",
+                "Idempotency-Key": "native-controller-identity",
+            },
             json={
                 "login_handle": "controller@example.test",
                 "password": "controller proof password",
@@ -482,7 +545,7 @@ async def test_bootstrapped_controller_provisions_native_human_without_sql_bindi
         "SELECT initial_controller_policy_key "
         "FROM request_engine.organization_root_provisioning_facts WHERE organization_id=%s",
         (organization_id,),
-    ).fetchone() == ("tenant-controller-v3",)
+    ).fetchone() == ("tenant-controller-v6",)
     # A replay must not undo a later explicit revocation.
     e2e_admin_conn.execute(
         "UPDATE request_engine.principal_authority_grants SET status='revoked', "

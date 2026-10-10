@@ -21,6 +21,11 @@ class PostgresResourceActivityReader:
         resource_id: UUID,
         *,
         active_only: bool,
+        limit: int = 50,
+        after_started_at: datetime | None = None,
+        after_id: UUID | None = None,
+        started_after: datetime | None = None,
+        started_before: datetime | None = None,
     ) -> tuple[ResourceActivity, ...]:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             rows = (
@@ -34,13 +39,26 @@ class PostgresResourceActivityReader:
                              WHERE organization_id = :organization_id
                                AND resource_id = :resource_id
                                AND (:active_only = false OR ended_at IS NULL)
+                               AND (CAST(:after_id AS uuid) IS NULL OR
+                                    (started_at, id) < (CAST(:after_started_at AS timestamptz),
+                                                       CAST(:after_id AS uuid)))
+                               AND (CAST(:started_after AS timestamptz) IS NULL OR
+                                    started_at >= CAST(:started_after AS timestamptz))
+                               AND (CAST(:started_before AS timestamptz) IS NULL OR
+                                    started_at < CAST(:started_before AS timestamptz))
                              ORDER BY started_at DESC, id DESC
+                             LIMIT :limit
                             """
                         ),
                         {
                             "organization_id": organization_id,
                             "resource_id": resource_id,
                             "active_only": active_only,
+                            "limit": limit,
+                            "after_started_at": after_started_at,
+                            "after_id": after_id,
+                            "started_after": started_after,
+                            "started_before": started_before,
                         },
                     )
                 )

@@ -16,6 +16,7 @@ from request_engine.platform.security.oidc_auth import JwksFetcher
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
 from request_engine.platform.security.oidc_link import OidcIdentityLinkVerifier
 from request_engine.platform.security.subject_http import (
+    HttpSubjectResolver,
     ProviderNeutralHttpActorResolver,
     ProviderNeutralPlatformHttpActorResolver,
 )
@@ -39,6 +40,7 @@ class NativeAuthRuntime:
     actor_resolver: ProviderNeutralHttpActorResolver
     principal_resolver: IdentityPrincipalResolver
     platform_actor_resolver: ProviderNeutralPlatformHttpActorResolver | None
+    subject_resolver: HttpSubjectResolver
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +90,7 @@ def build_native_auth_runtime(
         service=NativeHumanAuthService(store=store),
         authenticator=authenticator,
         workload_authenticator=workload_authenticator,
+        subject_resolver=subject_resolver,
         actor_resolver=ProviderNeutralHttpActorResolver(
             subject_resolver=subject_resolver,
             principal_resolver=principal_resolver,

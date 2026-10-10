@@ -2,11 +2,22 @@ from typing import cast
 
 from request_engine.platform.security.capabilities import CapabilityDefinition
 
+from .http_surface_administrative_configuration import ADMINISTRATIVE_CONFIGURATION_OPERATION_IDS
+
 _OPERATION_ID_OVERRIDES = {
+    "staff.profile.update": "staff_profile_update",
+    "staff.history.list": "staff_history_list",
+    "staff.invitation.create": "staff_invitation_create",
+    "staff.invitation.list": "staff_invitation_list",
+    "staff.invitation.get": "staff_invitation_get",
+    "staff.invitation.resend": "staff_invitation_resend",
+    "staff.invitation.revoke": "staff_invitation_revoke",
     "agent.list": "agent_list",
     "agent.get": "agent_get",
     "staff.list": "staff_list",
     "staff.get": "staff_get",
+    "staff.overview": "staff_overview_get",
+    "staff.authority.plan": "staff_authority_plan",
     "identity_binding.list": "identity_binding_list",
     "identity_binding.get": "identity_binding_get",
     "identity_binding.suspend": "identity_binding_suspend",
@@ -44,6 +55,9 @@ _OPERATION_ID_OVERRIDES = {
     "staff.register_contact": "staff_manage_own_admin_contact_register",
     "staff.request_contact_verification": "staff_manage_own_admin_contact_request_verification",
     "organization.bootstrap": "tenancy_operational_authority_bootstrap",
+    "controller_policy.adoption_request_create": "controller_policy_adoption_request_create",
+    "controller_policy.adoption_request_get": "controller_policy_adoption_request_get",
+    "controller_policy.adoption_request_withdraw": "controller_policy_adoption_request_withdraw",
     "catalog.manage.resource_capability": "catalog_manage_resource_capabilities",
     "catalog.manage.offering": "catalog_manage_offerings",
     "catalog.manage.offering_booking_policy": ("catalog_manage_offering_version_booking_policy"),
@@ -81,6 +95,8 @@ def header_parameters(operation: dict[str, object]) -> dict[str, bool]:
 
 
 def expected_operation_id(name: str, definition: CapabilityDefinition) -> str:
+    if name in ADMINISTRATIVE_CONFIGURATION_OPERATION_IDS:
+        return name
     if name in {
         "integration.list",
         "integration.read",

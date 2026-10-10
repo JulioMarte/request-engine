@@ -8,11 +8,12 @@ challenges are single-use, and that unknown login handles are not an enumeration
 oracle.
 """
 
+import hashlib
 from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
-from fido2.utils import websafe_decode
+from fido2.utils import websafe_decode, websafe_encode
 from httpx import ASGITransport, AsyncClient
 from software_webauthn_authenticator import SoftwareAuthenticator
 
@@ -26,6 +27,7 @@ from request_engine.modules.platform_configuration.application.smtp import (
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.native_auth import parse_opaque_token
+from request_engine.platform.security.webauthn import WebAuthnPolicy, WebAuthnService
 
 from .conftest import PgConnection, RuntimeCredentials
 
@@ -94,7 +96,9 @@ async def _claim_owner(
     ).json()["public_key"]
     authenticator = SoftwareAuthenticator(rp_id=options["rp"]["id"], origin=ORIGIN)
     credential = authenticator.registration_credential(
-        challenge=websafe_decode(options["challenge"]), user_verified=True
+        challenge=websafe_decode(options["challenge"]),
+        public_key=options,
+        user_verified=True,
     )
     assert (
         await client.post(
@@ -279,7 +283,9 @@ async def test_current_identity_can_enroll_passkey_then_issue_offline_recovery_c
         ).json()["public_key"]
         authenticator = SoftwareAuthenticator(rp_id=options["rp"]["id"], origin=ORIGIN)
         credential = authenticator.registration_credential(
-            challenge=websafe_decode(options["challenge"]), user_verified=True
+            challenge=websafe_decode(options["challenge"]),
+            public_key=options,
+            user_verified=True,
         )
         registered = await client.post(
             "/auth/native/sessions/current/webauthn/registrations",
@@ -455,6 +461,7 @@ async def test_second_platform_owner_requires_prepared_identity_and_preserves_la
         )
         registration = candidate_authenticator.registration_credential(
             challenge=websafe_decode(registration_options["challenge"]),
+            public_key=registration_options,
             user_verified=True,
         )
         registered = await client.post(
@@ -505,6 +512,12 @@ async def test_second_platform_owner_requires_prepared_identity_and_preserves_la
         }
         assert "platform.owner.provision" in owner_caps
         assert "platform.owner.manage_lifecycle" in owner_caps
+        assert "platform.organization.adopt_initial_controller_policy" in owner_caps
+        assert e2e_admin_conn.execute(
+            "SELECT policy_key FROM request_engine.platform_owner_provisioning_facts "
+            "WHERE principal_id=%s",
+            (second_owner_id,),
+        ).fetchone() == ("platform-owner-v5",)
 
         invitation_state = e2e_admin_conn.execute(
             "SELECT status, native_identity_id FROM request_engine.platform_owner_invitations "
@@ -659,6 +672,28 @@ async def test_authentication_options_do_not_reveal_unknown_handles(
         ) as client,
     ):
         authenticator = await _claim_owner(client)
+        password_session = await client.post(
+            "/auth/native/sessions", json={"login_handle": LOGIN_HANDLE, "password": PASSWORD}
+        )
+        headers = {"Authorization": f"Bearer {password_session.json()['access_token']}"}
+        registration_options = (
+            await client.post(
+                "/auth/native/sessions/current/webauthn/registration-options", headers=headers
+            )
+        ).json()["public_key"]
+        second_authenticator = SoftwareAuthenticator(rp_id="localhost", origin=ORIGIN)
+        registered = await client.post(
+            "/auth/native/sessions/current/webauthn/registrations",
+            headers=headers,
+            json={
+                "credential": second_authenticator.registration_credential(
+                    challenge=websafe_decode(registration_options["challenge"]),
+                    public_key=registration_options,
+                    user_verified=True,
+                )
+            },
+        )
+        assert registered.status_code == 201, registered.text
         known = (
             await client.post(
                 "/auth/native/webauthn/authentication-options",
@@ -672,11 +707,28 @@ async def test_authentication_options_do_not_reveal_unknown_handles(
         assert unknown_response.status_code == 200
         unknown = unknown_response.json()["public_key"]
         assert set(known) == set(unknown)
-        assert len(known["allowCredentials"]) == 1
-        assert len(unknown["allowCredentials"]) == 1
-        known_credential_id = known["allowCredentials"][0]["id"]
-        unknown_credential_id = unknown["allowCredentials"][0]["id"]
-        assert unknown_credential_id != known_credential_id
+        assert not known.get("allowCredentials")
+        assert not unknown.get("allowCredentials")
+        assert {key: value for key, value in known.items() if key != "challenge"} == {
+            key: value for key, value in unknown.items() if key != "challenge"
+        }
+        for key in (authenticator, second_authenticator):
+            options = (
+                await client.post(
+                    "/auth/native/webauthn/authentication-options",
+                    json={"login_handle": LOGIN_HANDLE},
+                )
+            ).json()["public_key"]
+            authenticated = await client.post(
+                "/auth/native/webauthn/sessions",
+                json={
+                    "login_handle": LOGIN_HANDLE,
+                    "credential": key.authentication_credential(
+                        challenge=websafe_decode(options["challenge"]), user_verified=True
+                    ),
+                },
+            )
+            assert authenticated.status_code == 201, authenticated.text
 
         # A real assertion under an unknown handle fails closed and opaquely.
         forged = authenticator.authentication_credential(
@@ -687,6 +739,204 @@ async def test_authentication_options_do_not_reveal_unknown_handles(
             json={"login_handle": "does-not-exist@example.test", "credential": forged},
         )
         assert rejected.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_discoverable_usernameless_login_issues_session(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        authenticator = await _claim_owner(client)
+
+        # No login_handle at all: options must be discoverable (empty allow-list).
+        options_response = await client.post(
+            "/auth/native/webauthn/authentication-options", json={}
+        )
+        assert options_response.status_code == 200
+        public_key = options_response.json()["public_key"]
+        assert not public_key.get("allowCredentials")
+
+        credential = authenticator.authentication_credential(
+            challenge=websafe_decode(public_key["challenge"]), user_verified=True
+        )
+        created = await client.post(
+            "/auth/native/webauthn/sessions", json={"credential": credential}
+        )
+        assert created.status_code == 201
+        token = created.json()["access_token"]
+        assurance, verified, methods, recovery = _session_row(e2e_admin_conn, token)
+        assert assurance == "phishing_resistant"
+        assert verified is True
+        assert methods == ["webauthn"]
+        assert recovery is False
+
+
+@pytest.mark.asyncio
+async def test_discoverable_login_requires_the_credential_user_handle_association(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        authenticator = await _claim_owner(client)
+        identity_row = e2e_admin_conn.execute(
+            "SELECT id FROM request_engine.native_identities WHERE login_handle=%s",
+            (LOGIN_HANDLE,),
+        ).fetchone()
+        assert identity_row is not None
+        identity_id = UUID(str(identity_row[0]))
+
+        for mutation in ("omitted", "null", "mismatch"):
+            options = (
+                await client.post("/auth/native/webauthn/authentication-options", json={})
+            ).json()["public_key"]
+            assertion = authenticator.authentication_credential(
+                challenge=websafe_decode(options["challenge"]), user_verified=True
+            )
+            if mutation == "omitted":
+                del assertion["response"]["userHandle"]
+            elif mutation == "null":
+                assertion["response"]["userHandle"] = None
+            else:
+                assertion["response"]["userHandle"] = websafe_encode(b"x" * 32)
+
+            rejected = await client.post(
+                "/auth/native/webauthn/sessions", json={"credential": assertion}
+            )
+            assert rejected.status_code == 401, rejected.text
+            assert e2e_admin_conn.execute(
+                "SELECT count(*) FROM request_engine.native_sessions WHERE native_identity_id=%s",
+                (identity_id,),
+            ).fetchone() == (0,)
+            assert e2e_admin_conn.execute(
+                "SELECT c.sign_count,c.last_used_at FROM request_engine.webauthn_credentials c "
+                "WHERE c.credential_id=%s",
+                (authenticator.credential_id,),
+            ).fetchone() == (0, None)
+            digest = hashlib.sha256(websafe_decode(options["challenge"])).digest()
+            assert e2e_admin_conn.execute(
+                "SELECT status,consumed_at FROM request_engine.webauthn_challenges "
+                "WHERE challenge_digest=%s",
+                (digest,),
+            ).fetchone() == ("pending", None)
+
+        options = (
+            await client.post("/auth/native/webauthn/authentication-options", json={})
+        ).json()["public_key"]
+        valid = authenticator.authentication_credential(
+            challenge=websafe_decode(options["challenge"]), user_verified=True
+        )
+        accepted = await client.post("/auth/native/webauthn/sessions", json={"credential": valid})
+        assert accepted.status_code == 201, accepted.text
+        assert e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.native_sessions WHERE native_identity_id=%s",
+            (identity_id,),
+        ).fetchone() == (1,)
+
+
+@pytest.mark.asyncio
+async def test_discoverable_login_rejects_a_second_active_native_authority(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        await _claim_owner(client)
+        foreign_authority_id = uuid4()
+        foreign_identity_id = uuid4()
+        foreign_handle = f"foreign-{uuid4().hex}@example.test"
+        e2e_admin_conn.execute(
+            "INSERT INTO request_engine.identity_authorities(id,kind,issuer_or_environment) "
+            "VALUES(%s,'native',%s)",
+            (foreign_authority_id, f"webauthn-foreign-authority:{foreign_authority_id}"),
+        )
+        e2e_admin_conn.execute(
+            "INSERT INTO request_engine.native_identities(id,identity_authority_id,login_handle) "
+            "VALUES(%s,%s,%s)",
+            (foreign_identity_id, foreign_authority_id, foreign_handle),
+        )
+        service = WebAuthnService(
+            WebAuthnPolicy(
+                rp_id="localhost",
+                rp_name="Request Engine",
+                allowed_origins=frozenset({ORIGIN}),
+            )
+        )
+        user_handle = b"foreign-authority-user-handle"
+        registration = service.begin_registration(user_handle=user_handle, user_name=foreign_handle)
+        foreign_authenticator = SoftwareAuthenticator(rp_id="localhost", origin=ORIGIN)
+        registration_response = foreign_authenticator.registration_credential(
+            challenge=registration.challenge,
+            user_handle=user_handle,
+            user_verified=True,
+        )
+        verified = service.verify_registration(
+            credential=registration_response, expected_challenge=registration.challenge
+        )
+        credential_row_id = uuid4()
+        e2e_admin_conn.execute(
+            "INSERT INTO request_engine.webauthn_credentials("
+            "id,native_identity_id,credential_id,public_key,sign_count,aaguid,"
+            "backup_eligible,backup_state,user_verified,user_handle) "
+            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                credential_row_id,
+                foreign_identity_id,
+                verified.credential_id,
+                verified.public_key,
+                verified.sign_count,
+                verified.aaguid,
+                verified.backup_eligible,
+                verified.backup_state,
+                verified.user_verified,
+                user_handle,
+            ),
+        )
+
+        options = (
+            await client.post("/auth/native/webauthn/authentication-options", json={})
+        ).json()["public_key"]
+        assertion = foreign_authenticator.authentication_credential(
+            challenge=websafe_decode(options["challenge"]), user_verified=True
+        )
+        rejected = await client.post(
+            "/auth/native/webauthn/sessions", json={"credential": assertion}
+        )
+        assert rejected.status_code == 401, rejected.text
+        assert e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.native_sessions WHERE native_identity_id=%s",
+            (foreign_identity_id,),
+        ).fetchone() == (0,)
+        assert e2e_admin_conn.execute(
+            "SELECT sign_count,last_used_at FROM request_engine.webauthn_credentials WHERE id=%s",
+            (credential_row_id,),
+        ).fetchone() == (0, None)
+        digest = hashlib.sha256(websafe_decode(options["challenge"])).digest()
+        assert e2e_admin_conn.execute(
+            "SELECT status,consumed_at FROM request_engine.webauthn_challenges "
+            "WHERE challenge_digest=%s",
+            (digest,),
+        ).fetchone() == ("pending", None)
 
 
 @pytest.mark.asyncio
@@ -771,6 +1021,7 @@ async def test_offline_recovery_restricts_sensitive_authority_until_webauthn_com
         )
         credential = replacement_authenticator.registration_credential(
             challenge=websafe_decode(options["challenge"]),
+            public_key=options,
             user_verified=True,
         )
         registered = await client.post(

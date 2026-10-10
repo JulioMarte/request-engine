@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from request_engine.platform.db.execution_budget import PostgresExecutionBudget, PostgresPoolBudget
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.discovery_handoff_context import (
     current_discovery_handoff_id,
@@ -20,10 +22,41 @@ from request_engine.platform.security.platform_context import PlatformActorConte
 SessionFactory = async_sessionmaker[AsyncSession]
 
 
-def create_postgres_engine(database_url: str, *, echo: bool = False) -> AsyncEngine:
+def create_postgres_engine(
+    database_url: str,
+    *,
+    echo: bool = False,
+    budget: PostgresExecutionBudget | None = None,
+    pool_budget: PostgresPoolBudget | None = None,
+) -> AsyncEngine:
     """Create the process-level async PostgreSQL engine."""
 
-    return create_async_engine(database_url, echo=echo, pool_pre_ping=True)
+    pool_budget = pool_budget or PostgresPoolBudget.from_environment()
+    if budget is None:
+        return create_async_engine(
+            database_url,
+            echo=echo,
+            pool_pre_ping=True,
+            pool_size=pool_budget.size,
+            max_overflow=pool_budget.max_overflow,
+        )
+    driver = make_url(database_url).get_driver_name()
+    settings = budget.server_settings()
+    if driver == "asyncpg":
+        connect_args = {"server_settings": settings}
+    elif driver == "psycopg":
+        connect_args = {"options": " ".join(f"-c {key}={value}" for key, value in settings.items())}
+    else:
+        raise ValueError("Execution budget requires PostgreSQL asyncpg or psycopg")
+    return create_async_engine(
+        database_url,
+        echo=echo,
+        pool_pre_ping=True,
+        pool_timeout=budget.pool_seconds,
+        pool_size=pool_budget.size,
+        max_overflow=pool_budget.max_overflow,
+        connect_args=connect_args,
+    )
 
 
 def create_session_factory(engine: AsyncEngine) -> SessionFactory:
@@ -97,7 +130,8 @@ async def set_platform_actor_context(
                 set_config('request_engine.authentication_method', :authentication_method, true),
                 set_config('request_engine.correlation_id', :correlation_id, true),
                 set_config('request_engine.credential_id', :credential_id, true),
-                set_config('request_engine.authority_revision', :authority_revision, true)
+                set_config('request_engine.authority_revision', :authority_revision, true),
+                set_config('request_engine.identity_binding_id', :identity_binding_id, true)
             """
         ),
         {
@@ -107,6 +141,7 @@ async def set_platform_actor_context(
             "correlation_id": str(actor.correlation_id),
             "credential_id": actor.credential_id or "",
             "authority_revision": str(actor.authority_revision),
+            "identity_binding_id": str(actor.identity_binding_id or ""),
         },
     )
 

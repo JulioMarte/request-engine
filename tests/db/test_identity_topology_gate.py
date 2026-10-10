@@ -42,6 +42,7 @@ _GATE_EXCLUSIVE = "request_engine.acquire_identity_topology_exclusive()"
 # topology tables, plus the public integration wrappers that lock a Principal
 # before delegating to their gated ``*_state`` implementation.
 _GATED_DML_WRITERS: dict[tuple[str, str], str] = {
+    ("request_cmd", "materialize_invited_staff"): _GATE_SHARE,
     ("request_engine", "confirm_identity_link_intent"): _GATE_SHARE,
     ("request_engine", "confirm_identity_link_subject"): _GATE_SHARE,
     ("request_engine", "invite_native_staff"): _GATE_SHARE,
@@ -56,6 +57,7 @@ _GATED_DML_WRITERS: dict[tuple[str, str], str] = {
     ("request_engine", "transition_staff_membership"): _GATE_SHARE,
     ("request_engine", "upgrade_controller_policy"): _GATE_SHARE,
     ("request_platform", "establish_root"): _GATE_EXCLUSIVE,
+    ("request_platform", "apply_controller_policy_adoption"): _GATE_SHARE,
     ("request_platform", "finalize_instance_claim"): _GATE_EXCLUSIVE,
     ("request_platform", "provision_native_organization_root"): _GATE_SHARE,
     ("request_platform", "provision_native_platform_owner"): _GATE_SHARE,
@@ -90,6 +92,7 @@ _GATED_WRITERS = {
 # independently callable by runtime roles; they must not carry a late gate.
 _TRIGGER_WRITERS = {
     ("request_engine", "adopt_platform_owner_v3"),
+    ("request_engine", "adopt_platform_owner_v4"),
     ("request_engine", "seed_initial_controller_policy"),
     ("request_engine", "seed_root_staff_membership"),
     ("request_engine", "seed_root_staff_read_authority"),
@@ -106,6 +109,7 @@ _DIRECT_DML = re.compile(
 _BEGIN_LINE = re.compile(r"^[ \t]*BEGIN[ \t]*$", re.MULTILINE)
 
 _WRITER_CALLS: tuple[tuple[str, int], ...] = (
+    ("request_cmd.materialize_invited_staff", 8),
     ("request_engine.confirm_identity_link_intent", 5),
     ("request_engine.confirm_identity_link_subject", 5),
     ("request_engine.invite_native_staff", 7),
@@ -123,6 +127,7 @@ _WRITER_CALLS: tuple[tuple[str, int], ...] = (
     ("request_engine.transition_staff_membership", 4),
     ("request_engine.upgrade_controller_policy", 5),
     ("request_platform.establish_root", 9),
+    ("request_platform.apply_controller_policy_adoption", 4),
     ("request_platform.finalize_instance_claim", 6),
     ("request_platform.provision_native_organization_root", 8),
     ("request_platform.provision_native_platform_owner", 7),
@@ -143,7 +148,12 @@ _CONTROL_CAPABILITIES = (
 def _first_statement(prosrc: str) -> str:
     begin_match = _BEGIN_LINE.search(prosrc)
     assert begin_match is not None
-    return prosrc[begin_match.end() :].lstrip().split(";", 1)[0].strip()
+    body_lines = prosrc[begin_match.end() :].splitlines()
+    executable_lines = [
+        line for line in body_lines if line.strip() and not line.lstrip().startswith("--")
+    ]
+    assert executable_lines
+    return "\n".join(executable_lines).split(";", 1)[0].strip()
 
 
 def _backend_pid(conn: PgConnection) -> int:

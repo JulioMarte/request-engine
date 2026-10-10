@@ -34,6 +34,17 @@ The canonical product API is **resource-oriented HTTP with semantic custom metho
 
 Agent tools are projections of existing owner operations. They are not an independent execution architecture.
 
+The private admin console follows the same projection rule. It may add
+presentation metadata such as task-oriented navigation, human labels, guided
+journeys and an explicit workspace/advanced placement, but that metadata MUST
+NOT duplicate or override owner, capability, authorization, concurrency,
+idempotency or authentication policy. Those remain canonical operation metadata
+and are revalidated by the owner operation on every invocation. A generic
+OpenAPI-driven Advanced renderer is the reachability fallback; repository
+coverage evidence still requires each operator operation to receive an explicit
+presentation classification so new administrative surface cannot disappear into
+the catalog unnoticed.
+
 MCP is a supported future transport/projection for agents, not Request Engine's internal domain protocol and not the source of business truth.
 
 ## 2. Why this pattern

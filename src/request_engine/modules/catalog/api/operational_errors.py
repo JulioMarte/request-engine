@@ -1,12 +1,33 @@
-from fastapi import Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from request_engine.modules.catalog.application.errors import (
     CatalogConfigurationConflict,
+    CatalogInvalidInput,
     LocationOperationalRevisionConflict,
     OfferingBookingPolicyRevisionConflict,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+
+
+def register_input_error_handler(app: FastAPI) -> None:
+    app.add_exception_handler(CatalogInvalidInput, catalog_input_error_handler)
+
+
+async def catalog_input_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, CatalogInvalidInput):
+        raise exc
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content=ErrorEnvelope(
+            error=ErrorBody(
+                code="invalid_catalog_input",
+                message=str(exc),
+                retryable=False,
+                resolution=ErrorResolution.FIX_REQUEST,
+            )
+        ).model_dump(mode="json"),
+    )
 
 
 def _response(body: ErrorBody) -> JSONResponse:

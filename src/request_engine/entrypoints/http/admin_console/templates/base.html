@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Request Engine admin{% endblock %}</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <script defer src="/static/htmx.min.js"></script>
+    <script defer src="/static/admin.js"></script>
+  </head>
+  <body data-csrf="{{ csrf_token }}">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <div class="app-shell {% if not authenticated %}public{% endif %}">
+      {% if authenticated %}
+      <aside class="sidebar" id="admin-sidebar" aria-label="Primary navigation">
+        <a class="brand" href="/" aria-label="Request Engine overview">
+          <span class="brand-mark" aria-hidden="true">R</span>
+          <span><strong>Request Engine</strong><small>Control plane</small></span>
+        </a>
+        <nav class="side-nav">
+          <p class="nav-label">Operate</p>
+          <a href="/" class="{% if current_path == '/' %}active{% endif %}" {% if current_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true">⌂</span>Overview</a>
+          <a href="/resources" class="{% if current_path == '/resources' %}active{% endif %}" {% if current_path == '/resources' %}aria-current="page"{% endif %}><span aria-hidden="true">▦</span>Workspaces</a>
+          <p class="nav-label">People &amp; access</p>
+          <a href="/my-organizations" class="{% if current_path == '/my-organizations' or current_path.startswith('/tenants/') %}active{% endif %}" {% if current_path == '/my-organizations' %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>My organizations</a>
+          <a href="/resources/native-identities" class="{% if current_path.startswith('/resources/native-identities') %}active{% endif %}" {% if current_path.startswith('/resources/native-identities') %}aria-current="page"{% endif %}><span aria-hidden="true">◎</span>Native identities</a>
+          <a href="/resources/provisioners" class="{% if current_path.startswith('/resources/provisioners') %}active{% endif %}" {% if current_path.startswith('/resources/provisioners') %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>Provisioners</a>
+          <a href="/resources/recovery-cases" class="{% if current_path.startswith('/resources/recovery-cases') %}active{% endif %}" {% if current_path.startswith('/resources/recovery-cases') %}aria-current="page"{% endif %}><span aria-hidden="true">↻</span>Recovery cases</a>
+          <p class="nav-label">Platform</p>
+          <a href="/resources/configurations" class="{% if current_path.startswith('/resources/configurations') %}active{% endif %}" {% if current_path.startswith('/resources/configurations') %}aria-current="page"{% endif %}><span aria-hidden="true">◫</span>Configuration</a>
+          <a href="/resources/secrets" class="{% if current_path.startswith('/resources/secrets') %}active{% endif %}" {% if current_path.startswith('/resources/secrets') %}aria-current="page"{% endif %}><span aria-hidden="true">⌁</span>Secrets &amp; keys</a>
+          <p class="nav-label">Reliability</p>
+          <a href="/resources/deployment-recovery" class="{% if current_path.startswith('/resources/deployment-recovery') %}active{% endif %}" {% if current_path.startswith('/resources/deployment-recovery') %}aria-current="page"{% endif %}><span aria-hidden="true">◉</span>Deployment recovery</a>
+          <a href="/diagnostics" class="{% if current_path.startswith('/diagnostics') %}active{% endif %}" {% if current_path.startswith('/diagnostics') %}aria-current="page"{% endif %}><span aria-hidden="true">⌁</span>Diagnostics</a>
+          <p class="nav-label">Advanced</p>
+          <a href="/operations" class="{% if current_path.startswith('/operations') %}active{% endif %}" {% if current_path.startswith('/operations') %}aria-current="page"{% endif %}><span aria-hidden="true">⌘</span>All operations</a>
+        </nav>
+        <div class="environment-card"><span class="status-dot ok" aria-hidden="true"></span><div><strong>Admin console</strong><small>Private operator surface</small></div></div>
+      </aside>
+      <button class="nav-scrim" type="button" aria-label="Close navigation" tabindex="-1"></button>
+      {% endif %}
+      <div class="app-frame">
+        {% if authenticated %}
+        <header class="topbar">
+          <button class="menu-toggle" type="button" aria-controls="admin-sidebar" aria-expanded="false" aria-label="Toggle navigation">☰</button>
+          <form class="global-search" method="get" action="/operations" role="search">
+            <label class="sr-only" for="global-search">Search operations and workspaces</label>
+            <span aria-hidden="true">⌕</span>
+            <input id="global-search" name="q" type="search" placeholder="Search operations and workspaces…" value="{{ query | default('') }}" />
+          </form>
+          <div class="top-actions"><a href="/diagnostics">Status</a><form method="post" action="/logout" class="inline"><button type="submit" class="signout-button"><span aria-hidden="true">↪</span>Sign out</button></form></div>
+        </header>
+        {% endif %}
+        <main id="main-content" tabindex="-1">
+          {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+          {% if notice %}<div class="alert notice" role="status">{{ notice }}</div>{% endif %}
+          {% block content %}{% endblock %}
+        </main>
+        {% if authenticated %}
+        <footer class="foot"><span>Request Engine admin · {{ current_year }}</span><span>Control plane: {{ control_base_url }}</span></footer>
+        {% endif %}
+      </div>
+    </div>
+    <dialog class="confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <form method="dialog">
+        <span class="dialog-icon" aria-hidden="true">!</span>
+        <div><p class="eyebrow">Confirm action</p><h2 id="confirm-title">Check before continuing</h2><p id="confirm-message"></p></div>
+        <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="confirm" class="danger">Confirm</button></div>
+      </form>
+    </dialog>
+  </body>
+</html>

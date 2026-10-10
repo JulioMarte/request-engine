@@ -8,8 +8,12 @@ from request_engine.modules.catalog.application.commands.set_location_operationa
     LocationOperationalHoursInput,
     LocationOperationalHoursState,
     SetLocationOperationalHoursCommand,
+    validate_location_hours_windows,
 )
-from request_engine.modules.catalog.application.errors import LocationOperationalRevisionConflict
+from request_engine.modules.catalog.application.errors import (
+    CatalogConfigurationConflict,
+    LocationOperationalRevisionConflict,
+)
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -51,6 +55,13 @@ class PostgresOperationalConfigCommands:
             },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            authority = await require_operational_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                authority_party_id=command.authority_party_id,
+                scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
+            )
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -62,13 +73,6 @@ class PostgresOperationalConfigCommands:
             if replay is not None:
                 return _state_from_json(cast(dict[str, object], replay["state"]))
 
-            authority = await require_operational_authority(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                authority_party_id=command.authority_party_id,
-                scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
-            )
             row = (
                 (
                     await session.execute(
@@ -88,8 +92,10 @@ class PostgresOperationalConfigCommands:
                     )
                 )
                 .mappings()
-                .one()
+                .first()
             )
+            if row is None:
+                raise CatalogConfigurationConflict("Location is missing or foreign")
             current_revision = cast(int, row["operational_revision"])
             if current_revision != command.expected_operational_revision:
                 raise LocationOperationalRevisionConflict(
@@ -187,33 +193,10 @@ class PostgresOperationalConfigCommands:
 def _validated_windows(
     windows: tuple[LocationOperationalHoursInput, ...],
 ) -> tuple[LocationOperationalHoursInput, ...]:
-    seen: set[tuple[int, time, time, date | None, date | None]] = set()
-    result: list[LocationOperationalHoursInput] = []
-    for item in windows:
-        if item.weekday < 0 or item.weekday > 6:
-            raise ValueError("weekday must be between 0 and 6")
-        if item.local_start >= item.local_end:
-            raise ValueError("local_start must be before local_end")
-        if (
-            item.valid_from is not None
-            and item.valid_until is not None
-            and item.valid_until < item.valid_from
-        ):
-            raise ValueError("valid_until cannot be before valid_from")
-        key = (
-            item.weekday,
-            item.local_start,
-            item.local_end,
-            item.valid_from,
-            item.valid_until,
-        )
-        if key in seen:
-            raise ValueError("duplicate operational-hours window")
-        seen.add(key)
-        result.append(item)
+    validate_location_hours_windows(windows)
     return tuple(
         sorted(
-            result,
+            windows,
             key=lambda item: (
                 item.weekday,
                 item.local_start,

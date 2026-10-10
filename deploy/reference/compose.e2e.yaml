@@ -24,7 +24,7 @@ x-platform-env: &platform-env
 
 services:
   postgres:
-    image: postgres:18
+    image: public.ecr.aws/docker/library/postgres:18
     environment:
       POSTGRES_DB: request_engine
       POSTGRES_USER: postgres
@@ -37,7 +37,7 @@ services:
     networks: [backend]
 
   openbao:
-    image: openbao/openbao:2.6.1
+    image: ghcr.io/openbao/openbao:2.6.1
     profiles: [secrets]
     cap_add: [IPC_LOCK]
     environment:
@@ -52,7 +52,7 @@ services:
     networks: [backend]
 
   mailpit:
-    image: axllent/mailpit:v1.27
+    image: ghcr.io/axllent/mailpit:v1.27
     profiles: [delivery, managed-delivery]
     environment:
       # The delivery profile must be able to validate/serve a *credentialed*
@@ -78,7 +78,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment: *public-env
+    environment:
+      <<: *public-env
+      # Invitation HTTP only stages governed proofs; SMTP stays worker-owned.
+      REQUEST_ENGINE_OPENBAO_ADDR: ${REQUEST_ENGINE_OPENBAO_ADDR:-}
+      REQUEST_ENGINE_OPENBAO_TOKEN: ${REQUEST_ENGINE_OPENBAO_TOKEN:-}
+      REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL: ${REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL:-}
     command: [uvicorn, "request_engine.bootstrap.server:create_app", --factory, --host, "0.0.0.0", --port, "8000"]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=2)"]
@@ -150,6 +155,7 @@ services:
       REQUEST_ENGINE_OUTBOX_PUBLISH_URL: http://event-sink:8090/events
       REQUEST_ENGINE_OPENBAO_ADDR: ${REQUEST_ENGINE_OPENBAO_ADDR:-}
       REQUEST_ENGINE_OPENBAO_TOKEN: ${REQUEST_ENGINE_OPENBAO_TOKEN:-}
+      REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL: ${REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL:-}
       REQUEST_ENGINE_SMTP_HOST: ${REQUEST_ENGINE_SMTP_HOST:-}
       REQUEST_ENGINE_SMTP_PORT: ${REQUEST_ENGINE_SMTP_PORT:-587}
       REQUEST_ENGINE_SMTP_SENDER: ${REQUEST_ENGINE_SMTP_SENDER:-}

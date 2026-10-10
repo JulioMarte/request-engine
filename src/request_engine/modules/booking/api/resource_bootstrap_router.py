@@ -1,9 +1,10 @@
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from request_engine.modules.booking.api.configuration_models import ResourceBootstrapView
 from request_engine.modules.booking.api.operational_assignment_models import (
     AvailabilityWindowBody,
 )
@@ -37,6 +38,21 @@ class CreateResourceBody(BaseModel):
     capability_ids: tuple[UUID, ...] = ()
     weekly_availability: tuple[AvailabilityWindowBody, ...] = ()
 
+    @field_validator("resource_key", "display_name")
+    @classmethod
+    def nonblank_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def resource_contract(self) -> Self:
+        if self.capacity_model == "exclusive" and self.capacity_units != 1:
+            raise ValueError("exclusive Resources must have capacity_units=1")
+        if len(set(self.capability_ids)) != len(self.capability_ids):
+            raise ValueError("capability_ids must not contain duplicates")
+        return self
+
 
 def create_resource_bootstrap_router(
     *,
@@ -52,9 +68,9 @@ def create_resource_bootstrap_router(
         body: CreateResourceBody,
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> ResourceBootstrapView:
         require_capability(current, "booking.manage_supply")
-        return await create_resource(
+        result = await create_resource(
             handler,
             CreateResourceCommand(
                 organization_id=current.organization_id,
@@ -79,6 +95,7 @@ def create_resource_bootstrap_router(
                 idempotency_key=idempotency_key,
             ),
         )
+        return ResourceBootstrapView.model_validate(result)
 
     add_capability_route(
         router,
@@ -88,5 +105,6 @@ def create_resource_bootstrap_router(
         methods=["POST"],
         operation_id="booking_resource_create",
         status_code=status.HTTP_201_CREATED,
+        response_model=ResourceBootstrapView,
     )
     return router

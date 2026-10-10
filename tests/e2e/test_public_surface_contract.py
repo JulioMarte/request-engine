@@ -150,8 +150,9 @@ def test_public_http_operation_registry_has_complete_test_metadata() -> None:
     for operation in PUBLIC_HTTP_OPERATIONS:
         assert operation.probe.path.startswith("/v1/")
         if operation.mutates:
-            # A mutating operation is a POST/PUT that must carry network idempotency.
-            assert operation.method in {"POST", "PUT"}
+            # Resource PATCH commands have the same required network idempotency
+            # as semantic POST/PUT commands; method shape does not bypass it.
+            assert operation.method in {"POST", "PUT", "PATCH"}
             assert operation.idempotency_required
         else:
             # A read-only operation never requires idempotency; a semantic query

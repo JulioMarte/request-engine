@@ -18,6 +18,9 @@ from request_engine.modules.catalog.application.errors import (
 )
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
+from request_engine.platform.db.tenant_principal_authority_reader import (
+    require_current_tenant_capability,
+)
 from request_engine.platform.idempotency.postgres import (
     acquire_idempotency,
     command_fingerprint,
@@ -25,7 +28,7 @@ from request_engine.platform.idempotency.postgres import (
 )
 from request_engine.platform.security.operational_authority import (
     MANAGE_COMMERCIAL_TERMS_SCOPE,
-    require_operational_authority,
+    require_principal_serialized_operational_authority,
 )
 
 _CAPABILITY = "catalog.set_offering_version_booking_policy"
@@ -54,6 +57,19 @@ class PostgresOfferingBookingPolicyCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                await require_current_tenant_capability(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    capability="catalog.manage",
+                )
+                authority = await require_principal_serialized_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
+                )
                 idempotency_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -68,13 +84,6 @@ class PostgresOfferingBookingPolicyCommands:
                         cast(dict[str, object], replay["policy"]),
                     )
 
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
-                )
                 offering = (
                     (
                         await session.execute(
@@ -216,13 +225,13 @@ def _state_from_json(
     return policy_commands.OfferingVersionBookingPolicyState(
         offering_version_id=offering_version_id,
         booking_policy_revision=cast(int, value["booking_policy_revision"]),
-        policy=_policy_input_from_json(
+        policy=policy_input_from_json(
             cast(dict[str, object], value["booking_policy"]),
         ),
     )
 
 
-def _policy_input_from_json(policy: dict[str, object]) -> policy_commands.BookingPolicyInput:
+def policy_input_from_json(policy: dict[str, object]) -> policy_commands.BookingPolicyInput:
     attendance = cast(dict[str, object], policy.get("attendance", {}))
     communications = cast(dict[str, object], policy.get("communications", {}))
     recovery = cast(dict[str, object], policy.get("slot_recovery", {}))

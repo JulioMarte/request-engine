@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal
 
-HttpMethod = Literal["GET", "POST", "PUT"]
+HttpMethod = Literal["GET", "POST", "PUT", "PATCH"]
 PROBE_UUID = "00000000-0000-4000-8000-000000000001"
 PROBE_UUID_2 = "00000000-0000-4000-8000-000000000002"
 
@@ -265,7 +265,7 @@ PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         TenantIsolationMode.NOT_FOUND,
         HttpProbe(
             "/v1/requests/definitions/probe_request/submit",
-            body={"payload": {"message": "e2e probe"}},
+            body={"definition_version": 1, "payload": {"message": "e2e probe"}},
         ),
     ),
     PublicHttpOperation(

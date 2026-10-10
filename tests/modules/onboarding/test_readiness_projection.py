@@ -1,8 +1,12 @@
 from datetime import UTC, datetime
+from typing import cast
+from unittest.mock import Mock
 from uuid import UUID
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from request_engine.entrypoints.http.app import create_app
 from request_engine.modules.booking.contracts.onboarding import BookingOnboardingSupply
 from request_engine.modules.catalog.contracts.onboarding import CatalogOnboardingSupply
 from request_engine.modules.communications.contracts.onboarding import (
@@ -23,15 +27,6 @@ from request_engine.modules.tenancy.contracts.onboarding_readiness import (
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.contract]
-
-_VERIFIED_OPERATION_IDS = frozenset(
-    {
-        "staff_invite",
-        "staff_manage_membership",
-        "staff_manage_authority",
-        "controller_policy_upgrade",
-    }
-)
 
 _OBSERVED_AT = datetime(2026, 9, 16, 12, 0, tzinfo=UTC)
 
@@ -97,50 +92,64 @@ def test_missing_owner_facts_project_actionable_capability_guidance() -> None:
         )
     )
 
-    assert view.business_party.blockers[0].model_dump() == {
+    assert view.business_party.blockers[0].model_dump(exclude={"resolution_hint"}) == {
         "code": "business_party_missing",
         "owner": "tenancy",
-        "resolution_capabilities": (),
+        "resolution_capabilities": ("parties.register",),
         "requires_operator": False,
-        "operation_id": None,
+        "operation_id": "parties_register",
     }
-    assert view.locations.blockers[0].model_dump() == {
+    assert view.business_party.blockers[0].resolution_hint
+    assert (
+        "not provision a tenant root/controller" in view.business_party.blockers[0].resolution_hint
+    )
+    assert view.locations.blockers[0].model_dump(exclude={"resolution_hint"}) == {
         "code": "location_missing",
         "owner": "catalog",
         "resolution_capabilities": ("catalog.manage",),
         "requires_operator": False,
-        "operation_id": None,
+        "operation_id": "catalog_location_create",
     }
-    assert [blocker.model_dump() for blocker in view.appointments.blockers] == [
+    assert [
+        blocker.model_dump(exclude={"resolution_hint"}) for blocker in view.appointments.blockers
+    ] == [
         {
             "code": "no_bookable_offering",
             "owner": "catalog",
             "resolution_capabilities": ("catalog.manage",),
             "requires_operator": False,
-            "operation_id": None,
+            "operation_id": "catalog_manage_offerings",
         },
         {
             "code": "no_resource_supply",
             "owner": "booking",
             "resolution_capabilities": ("booking.manage_supply",),
             "requires_operator": False,
-            "operation_id": None,
+            "operation_id": "booking_resource_create",
         },
     ]
-    assert view.walk_in_queue.blockers[0].model_dump() == {
+    assert view.walk_in_queue.blockers[0].model_dump(exclude={"resolution_hint"}) == {
         "code": "service_queue_missing",
         "owner": "queue",
         "resolution_capabilities": ("queue.configure",),
         "requires_operator": False,
-        "operation_id": None,
+        "operation_id": "queue_service_queue_create",
     }
-    assert view.communications.blockers[0].model_dump() == {
+    assert view.communications.blockers[0].model_dump(exclude={"resolution_hint"}) == {
         "code": "channel_purpose_disabled",
         "owner": "communications",
         "resolution_capabilities": ("communications.configure",),
         "requires_operator": False,
-        "operation_id": None,
+        "operation_id": "communications_configure_channel_policy",
     }
+    for section in (
+        view.business_party,
+        view.locations,
+        view.appointments,
+        view.walk_in_queue,
+        view.communications,
+    ):
+        assert all(blocker.resolution_hint for blocker in section.blockers)
 
 
 def test_ready_owner_facts_have_no_synthetic_actions() -> None:
@@ -176,6 +185,7 @@ def test_onboarding_guidance_uses_only_verified_operation_ids() -> None:
                 recorded_policy_key=None,
                 staff_administration_available=False,
             ),
+            has_business_party=False,
             location_count=0,
             bookable_offering_version_count=0,
             resource_supply_count=0,
@@ -201,7 +211,27 @@ def test_onboarding_guidance_uses_only_verified_operation_ids() -> None:
         if blocker.operation_id is not None
     }
     assert found
-    assert found <= _VERIFIED_OPERATION_IDS
+    app = create_app(
+        session_factory=Mock(spec=async_sessionmaker),
+        actor_resolver=Mock(),
+        appointment_option_signing_key=b"a" * 32,
+    )
+    mounted = {
+        cast(str, operation["operationId"])
+        for path in app.openapi()["paths"].values()
+        for operation in path.values()
+        if isinstance(operation, dict) and "operationId" in operation
+    }
+    assert found <= mounted
+
+
+def test_authentication_blocker_does_not_suggest_creating_another_controller() -> None:
+    view = project_readiness(
+        _readiness(identity_facts=_identity_facts(authenticatable_controller=False))
+    )
+    blocker = view.identity.blockers[0]
+    assert blocker.requires_operator and blocker.operation_id is None
+    assert blocker.resolution_hint and "existing controller" in blocker.resolution_hint
 
 
 def test_unknown_identity_facts_are_never_ready() -> None:

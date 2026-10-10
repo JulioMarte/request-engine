@@ -34,6 +34,29 @@ The originating business transaction commits before provider I/O occurs. Communi
 
 `ScheduledAction` lease/retry/fencing mechanics belong to `platform/scheduling`; this module owns why a communication/reminder exists, its policy, delivery semantics and business acknowledgement.
 
+## Staff invitation email
+
+Tenancy records closed-purpose staff invitation delivery through
+`contracts/staff_invitations.py` in its own authoritative transaction. An
+unregistered email recipient is not fabricated as a Party or a verified contact.
+`staff_invitation_deliveries` stores only destination, bounded expiry and an
+opaque governed-secret reference/digest. Its dispatch action contains only the
+delivery identifier; raw acceptance proofs never enter PostgreSQL or audit.
+
+`StaffInvitationDeliveryScheduledHandler` commits `attempting` under the
+ScheduledAction fence and delivery-row lock, releases the transaction, then
+publishes through `RecoverySecretDelivery`. It renews and revalidates the fence
+before finalization. Reclaimed `attempting` or `unknown` work reconciles the
+same deterministic provider key and never blindly sends again. Definitive
+pre-transmission failures permit bounded retries; exhaustion becomes `failed`.
+Unresolvable SMTP uncertainty remains explicitly `unknown`, not delivered.
+
+Resend, revoke and acceptance cancel unfinished generations through the same
+contract/transaction. Cancellation and prepare serialize on the delivery row;
+finalization cannot replace `cancelled`. A send already prepared before
+cancellation may finish transport, but Tenancy invalidates its old proof. No
+claim of retracting in-flight email or exactly-once SMTP delivery is made.
+
 ## Baseline execution semantics
 
 - `CommunicationTask` is durable intent. Creating a new task and its first `dispatch_task` ScheduledAction is one tenant-scoped transaction.
@@ -90,6 +113,21 @@ creation of NEW intents for that purpose with the typed
 snapshot — keep delivering. `count_disabled_purposes` (via
 `contracts/onboarding.py`) backs the `channel_purpose_disabled` readiness
 blocker of `GET /v1/onboarding/readiness`.
+
+### Configure authorization and replay (2026-10-06)
+
+Pre-production disposition: strengthen admission without changing the HTTP path,
+operation ID, capability, typed command, receipt namespace or revision semantics.
+Configure requires current `communications.configure`, active authority Party and
+exact `operations.manage_profile` Representation inside its transaction BEFORE
+idempotency lookup. A completed receipt does not restore withdrawn authority.
+An admitted Command may finish before a later withdrawal; later replay is denied.
+Principal SHARE -> Party SHARE -> committed Representation read avoids the
+Representation trigger's lock inversion. No grant row lock follows Principal.
+See `docs/architecture/administrative-transaction-authority.md` for guarantees,
+restricted-role evidence and deliberate limits; this is not universal session,
+delegation or agent-policy linearization. Existing frozen delivery intents are
+unchanged. No new DB privileges, automatic grants or provider I/O are added.
 
 ## Delivery escalation (F7b, docs/v3/36 section 4)
 
@@ -164,3 +202,14 @@ The initial recurrence type is deliberately narrow:
 - Cancelling a ReminderPlan cancels its pending future reminder ScheduledActions. A concurrently leased occurrence rechecks plan status under the ReminderPlan lock and becomes a no-op if the plan is no longer active.
 
 Medication reminders execute an already-authorized ReminderPlan. This module does not infer dosage, alter treatment, or make clinical decisions.
+
+## Concurrent initial channel configuration
+
+Setting an absent organization/purpose policy requires `expected_revision=0`.
+Concurrent initial commands with different idempotency keys resolve through the
+unique organization/purpose constraint: one creates revision 1, and the loser
+raises the existing revision conflict (HTTP 409), not a technical 500. The loser
+does not overwrite the winner or retain an idempotency receipt/audit record.
+Current capability and Representation checks still precede creation and replay.
+Refresh configuration before proposing a new revision-sensitive intent; do not
+blindly retry with a replacement key. This does not alter delivery semantics.

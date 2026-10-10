@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE="${OPENBAO_IMAGE:-openbao/openbao:2.6.1}"
+IMAGE="${OPENBAO_IMAGE:-ghcr.io/openbao/openbao:2.6.1}"
 SOURCE_CONTAINER="p7-raft-source-${GITHUB_RUN_ID:-local}-$$"
 TARGET_CONTAINER="p7-raft-target-${GITHUB_RUN_ID:-local}-$$"
 SOURCE_VOLUME="${SOURCE_CONTAINER}-data"

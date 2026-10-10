@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from pydantic import SecretStr
 
@@ -7,11 +9,41 @@ from request_engine.bootstrap.recovery_delivery import (
     RecoveryDeliverySettings,
     build_native_recovery_messenger,
     build_recovery_secret_delivery,
+    build_recovery_secret_store,
 )
 from request_engine.platform.secrets.composed_delivery import ComposedRecoverySecretDelivery
+from request_engine.platform.secrets.durable_proof_inventory import DurableProofInventoryStore
 from request_engine.platform.secrets.smtp_delivery_channel import SmtpRecoveryDeliveryChannel
 
 pytestmark = [pytest.mark.unit]
+
+
+@pytest.mark.parametrize("field", ["backend", "dsn"])
+def test_inventory_partial_configuration_fails_closed(field: str) -> None:
+    settings = RecoveryDeliverySettings(
+        openbao_addr="http://provider.test",
+        temporary_proof_backend_id=uuid4() if field == "backend" else None,
+        temporary_proof_recorder_database_url=(
+            SecretStr("postgresql+asyncpg://recorder:private@db.test/receipts")
+            if field == "dsn"
+            else None
+        ),
+    )
+    with pytest.raises(RuntimeError, match="identity and recorder DSN"):
+        build_recovery_secret_store(settings)
+
+
+def test_inventory_uses_same_composed_staging_surface_without_connection() -> None:
+    store = build_recovery_secret_store(
+        RecoveryDeliverySettings(
+            openbao_addr="http://provider.test",
+            temporary_proof_backend_id=uuid4(),
+            temporary_proof_recorder_database_url=SecretStr(
+                "postgresql+asyncpg://recorder:private@db.test/receipts"
+            ),
+        )
+    )
+    assert isinstance(store, DurableProofInventoryStore)
 
 
 def _smtp_settings(**overrides: object) -> RecoveryDeliverySettings:
@@ -81,6 +113,30 @@ def test_native_recovery_messenger_supports_smtp_without_authentication() -> Non
     )
 
     assert isinstance(messenger, SmtpRecoveryDeliveryChannel)
+
+
+@pytest.mark.parametrize("url", [None, "", "   "])
+def test_empty_optional_invitation_url_disables_delivery_without_breaking_startup(
+    url: str | None,
+) -> None:
+    from request_engine.bootstrap.staff_invitation_delivery import (
+        build_staff_invitation_delivery,
+        build_staff_invitation_staging,
+    )
+
+    settings = RecoveryDeliverySettings(staff_invitation_accept_url=url)
+    assert build_staff_invitation_staging(settings) is None
+    assert build_staff_invitation_delivery(settings) is None
+
+
+@pytest.mark.parametrize(
+    "url", ["https://example.test/other", "http://example.test/staff-invitations"]
+)
+def test_nonempty_untrusted_invitation_url_still_fails_closed(url: str) -> None:
+    from request_engine.bootstrap.staff_invitation_delivery import build_staff_invitation_staging
+
+    with pytest.raises(RuntimeError, match="trusted console HTTPS"):
+        build_staff_invitation_staging(RecoveryDeliverySettings(staff_invitation_accept_url=url))
 
 
 @pytest.mark.parametrize(

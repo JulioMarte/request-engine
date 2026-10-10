@@ -13,7 +13,13 @@ on:
       - "src/request_engine/bootstrap/reference_worker_factory.py"
       - "src/request_engine/entrypoints/http/platform_control_app.py"
       - "src/request_engine/platform/security/oidc_auth.py"
-      - "src/request_engine/platform/observability/p7_metrics.py"
+      - "src/request_engine/platform/observability/**"
+      - "src/request_engine/platform/worker/runtime.py"
+      - "src/request_engine/bootstrap/worker.py"
+      - "migrations/versions/0039_operator_metrics_projection.py"
+      - "deploy/observability/**"
+      - "scripts/observability/**"
+      - "scripts/ci/operator_alerts_smoke.sh"
       - "scripts/operations/recovery_bundle.py"
       - "scripts/operations/openbao_operational_acceptance.py"
       - "scripts/operations/recovery_drill_evidence.py"
@@ -23,7 +29,7 @@ on:
       - "tests/modules/platform_configuration/**"
       - "tests/db/test_platform_configuration_*.py"
       - "tests/db/test_managed_oidc_projection.py"
-      - "tests/platform/observability/test_p7_metrics.py"
+      - "tests/platform/observability/**"
       - "tests/unit/operations/test_recovery_drill_evidence.py"
       - "tests/unit/operations/test_openbao_operational_acceptance.py"
       - "tests/unit/operations/test_smtp_production_acceptance.py"
@@ -49,7 +55,7 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:18
+        image: public.ecr.aws/docker/library/postgres:18
         env:
           POSTGRES_DB: request_engine_p7
           POSTGRES_USER: postgres
@@ -93,7 +99,7 @@ jobs:
           uv run pytest \
             tests/modules/platform_configuration \
             tests/unit/platform/secrets/test_platform_secret_administration.py \
-            tests/platform/observability/test_p7_metrics.py \
+            tests/platform/observability \
             tests/unit/operations/test_recovery_drill_evidence.py \
             tests/unit/operations/test_openbao_operational_acceptance.py \
             tests/unit/operations/test_smtp_production_acceptance.py \
@@ -103,6 +109,7 @@ jobs:
             tests/db/test_platform_configuration_governance.py \
             tests/db/test_platform_configuration_hot_reload.py \
             tests/db/test_managed_oidc_projection.py \
+            tests/db/test_operator_metrics_projection.py \
             'tests/e2e/test_platform_control_runtime_factory.py::test_private_runtime_rechecks_privileges_and_authority[membership]' \
             -q --tb=short --durations=20 \
             --junitxml=.ci/p7-platform-configuration.xml
@@ -112,7 +119,7 @@ jobs:
             --cap-add IPC_LOCK \
             -p 127.0.0.1:8200:8200 \
             -e VAULT_DEV_ROOT_TOKEN_ID=ci-root-token \
-            openbao/openbao:2.6.1 \
+            ghcr.io/openbao/openbao:2.6.1 \
             server -dev -dev-root-token-id=ci-root-token -dev-listen-address=0.0.0.0:8200
           for attempt in $(seq 1 30); do
             if docker exec p7-openbao bao status -address=http://127.0.0.1:8200 >/dev/null 2>&1; then
@@ -147,5 +154,35 @@ jobs:
             .ci/p7-platform-configuration.xml
             .ci/openbao-operational-acceptance.json
             .ci/openbao-raft-restore-smoke.json
+          if-no-files-found: error
+          retention-days: 90
+
+  operator-alerts:
+    name: Operator metrics export and alert evaluation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install project and pinned telemetry SDK
+        run: |
+          uv sync --all-groups --frozen
+          uv pip install -r deploy/observability/requirements.txt
+      - name: Check actual metric export and alert rules
+        run: bash scripts/ci/operator_alerts_smoke.sh
+      - name: Upload operator alert evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operator-alerts-proof
+          path: .ci/operator-alerts/
           if-no-files-found: error
           retention-days: 90

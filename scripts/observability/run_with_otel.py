@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
-import subprocess
 from pathlib import Path
 
 DEFAULT_COLLECTOR_ENDPOINT = "http://127.0.0.1:4318"
@@ -51,14 +51,34 @@ def _runtime_environment(args: argparse.Namespace) -> dict[str, str]:
     endpoint = args.collector_endpoint or env.get(
         "OTEL_EXPORTER_OTLP_ENDPOINT", DEFAULT_COLLECTOR_ENDPOINT
     )
-    resource_attributes = [f"service.version={args.service_version}"]
+    worker_instance = env.get("REQUEST_ENGINE_WORKER_INSTANCE_ID")
+    if worker_instance and not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", worker_instance):
+        raise ValueError("REQUEST_ENGINE_WORKER_INSTANCE_ID has an invalid format")
+
+    existing_attributes = env.get("OTEL_RESOURCE_ATTRIBUTES", "")
+    resource_attributes: dict[str, str] = {}
+    if existing_attributes:
+        for item in existing_attributes.split(","):
+            key, separator, value = item.partition("=")
+            if not separator or not key or not value:
+                raise ValueError("OTEL_RESOURCE_ATTRIBUTES has an invalid format")
+            if key in resource_attributes:
+                raise ValueError("OTEL_RESOURCE_ATTRIBUTES contains duplicate keys")
+            resource_attributes[key] = value
+    if worker_instance:
+        existing_instance = resource_attributes.get("service.instance.id")
+        if existing_instance and existing_instance != worker_instance:
+            raise ValueError(
+                "REQUEST_ENGINE_WORKER_INSTANCE_ID conflicts with OTEL_RESOURCE_ATTRIBUTES"
+            )
+        resource_attributes["service.instance.id"] = worker_instance
     deployment_environment = env.get("REQUEST_ENGINE_ENV")
+    resource_attributes.setdefault("service.version", args.service_version)
     if deployment_environment:
-        resource_attributes.append(f"deployment.environment.name={deployment_environment}")
+        resource_attributes.setdefault("deployment.environment.name", deployment_environment)
 
     defaults = {
         "OTEL_SERVICE_NAME": args.service_name,
-        "OTEL_RESOURCE_ATTRIBUTES": ",".join(resource_attributes),
         "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint,
         "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
         "OTEL_TRACES_EXPORTER": "otlp",
@@ -73,6 +93,9 @@ def _runtime_environment(args: argparse.Namespace) -> dict[str, str]:
     }
     for key, value in defaults.items():
         env.setdefault(key, value)
+    env["OTEL_RESOURCE_ATTRIBUTES"] = ",".join(
+        f"{key}={value}" for key, value in resource_attributes.items()
+    )
 
     return env
 
@@ -91,12 +114,7 @@ def main() -> int:
     if not command:
         raise SystemExit("a process command is required after --")
 
-    result = subprocess.run(
-        [executable, *command],
-        env=_runtime_environment(args),
-        check=False,
-    )
-    return result.returncode
+    os.execvpe(executable, [executable, *command], _runtime_environment(args))
 
 
 if __name__ == "__main__":

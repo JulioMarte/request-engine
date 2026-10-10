@@ -1,10 +1,13 @@
-from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from request_engine.modules.booking.api.configuration_models import (
+    AssignmentScheduleExceptionView,
+    ResourceScheduleExceptionView,
+)
 from request_engine.modules.booking.application.commands import (
     set_resource_location_schedule_exception as assignment_exception_command,
 )
@@ -22,24 +25,38 @@ IdempotencyKey = Annotated[
 
 
 class ExceptionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     authority_party_id: UUID
-    start_at: datetime
-    end_at: datetime
+    start_at: AwareDatetime
+    end_at: AwareDatetime
     exception_kind: Literal["available", "unavailable"]
-    expected_resource_availability_revision: int
+    expected_resource_availability_revision: int = Field(gt=0)
     exception_id: UUID | None = None
-    reason: str | None = None
+    reason: str | None = Field(default=None, pattern=r"\S")
     active: bool = True
+
+    @model_validator(mode="after")
+    def interval(self) -> Self:
+        if self.end_at <= self.start_at:
+            raise ValueError("end_at must be after start_at")
+        return self
 
 
 class ResourceExceptionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     authority_party_id: UUID
-    start_at: datetime
-    end_at: datetime
+    start_at: AwareDatetime
+    end_at: AwareDatetime
     exception_kind: Literal["available", "unavailable"]
-    expected_resource_availability_revision: int
+    expected_resource_availability_revision: int = Field(gt=0)
     exception_id: UUID | None = None
-    reason: str | None = None
+    reason: str | None = Field(default=None, pattern=r"\S")
+
+    @model_validator(mode="after")
+    def interval(self) -> Self:
+        if self.end_at <= self.start_at:
+            raise ValueError("end_at must be after start_at")
+        return self
 
 
 def create_operational_exception_router(
@@ -58,7 +75,7 @@ def create_operational_exception_router(
         body: ExceptionBody,
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> AssignmentScheduleExceptionView:
         command = assignment_exception_command.SetResourceLocationScheduleExceptionCommand(
             organization_id=current.organization_id,
             principal_id=current.principal_id,
@@ -66,17 +83,18 @@ def create_operational_exception_router(
             idempotency_key=key,
             **body.model_dump(),
         )
-        return await assignment_exception_command.set_resource_location_schedule_exception(
+        result = await assignment_exception_command.set_resource_location_schedule_exception(
             assignment_handler,
             command,
         )
+        return AssignmentScheduleExceptionView.model_validate(result)
 
     async def resource_exception(
         resource_id: UUID,
         body: ResourceExceptionBody,
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> ResourceScheduleExceptionView:
         command = resource_exception_command.SetResourceScheduleExceptionCommand(
             organization_id=current.organization_id,
             principal_id=current.principal_id,
@@ -84,10 +102,11 @@ def create_operational_exception_router(
             idempotency_key=key,
             **body.model_dump(),
         )
-        return await resource_exception_command.set_resource_schedule_exception(
+        result = await resource_exception_command.set_resource_schedule_exception(
             resource_handler,
             command,
         )
+        return ResourceScheduleExceptionView.model_validate(result)
 
     add_capability_route(
         router,
@@ -97,6 +116,7 @@ def create_operational_exception_router(
         capability="booking.manage_supply",
         operation_id="booking_resource_assignment_exception_set",
         owner="booking",
+        response_model=AssignmentScheduleExceptionView,
     )
     add_capability_route(
         router,
@@ -106,5 +126,6 @@ def create_operational_exception_router(
         capability="booking.manage_supply",
         operation_id="booking_resource_exception_set",
         owner="booking",
+        response_model=ResourceScheduleExceptionView,
     )
     return router

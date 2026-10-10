@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -19,6 +20,13 @@ from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import require_capability
 
 
+class AgentCredentialMetadataView(BaseModel):
+    credential_id: UUID
+    status: str
+    revision: int
+    expires_at: datetime
+
+
 class AgentView(BaseModel):
     principal_id: UUID
     display_name: str
@@ -31,6 +39,9 @@ class AgentView(BaseModel):
     authority_revision: int
     standing_capabilities: list[str] = Field(
         description="Active standing grants, not effective permission for every Party/resource."
+    )
+    credentials: list[AgentCredentialMetadataView] = Field(
+        description="Stored active credentials only; expiry/lifecycle/policy can still deny use."
     )
 
 
@@ -57,6 +68,15 @@ def _view(agent: AgentSummary) -> AgentView:
         profile_revision=agent.profile_revision,
         authority_revision=agent.authority_revision,
         standing_capabilities=list(agent.standing_capabilities),
+        credentials=[
+            AgentCredentialMetadataView(
+                credential_id=c.credential_id,
+                status=c.status,
+                revision=c.revision,
+                expires_at=c.expires_at,
+            )
+            for c in agent.credentials
+        ],
     )
 
 

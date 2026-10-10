@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from datetime import time as datetime_time
 from pathlib import Path
 from typing import cast
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fido2.utils import websafe_decode
 from software_webauthn_authenticator import SoftwareAuthenticator
@@ -256,7 +256,7 @@ def _claim_instance(
     challenge = _required_string(public_key, "challenge", "setup WebAuthn challenge")
     authenticator = SoftwareAuthenticator(rp_id=rp_id, origin=f"https://{rp_id}")
     credential = authenticator.registration_credential(
-        challenge=websafe_decode(challenge), user_verified=True
+        challenge=websafe_decode(challenge), public_key=public_key, user_verified=True
     )
     _http_request(
         "POST",
@@ -412,6 +412,7 @@ def _run_api_restart(checkpoints: list[dict[str, str]], phase: str) -> None:
             restart_login,
             restart_password,
             bearer=platform_token,
+            idempotency_key="f01-restart-staff-native-v1",
         )
         invite: dict[str, object] = {
             "identity_authority_id": native_authority_id,
@@ -574,11 +575,13 @@ def _native_identity(
     password: str,
     *,
     bearer: str,
+    idempotency_key: str,
 ) -> str:
     response = _http_json(
         "POST",
         f"{base_url}/v1/platform/native-identities",
         bearer=bearer,
+        idempotency_key=idempotency_key,
         payload={"login_handle": login, "password": password},
         expected_statuses=(201,),
     )
@@ -615,6 +618,7 @@ def _strong_native_session(
     authenticator = SoftwareAuthenticator(rp_id=rp_id, origin=f"https://{rp_id}")
     credential = authenticator.registration_credential(
         challenge=websafe_decode(challenge),
+        public_key=public_key,
         user_verified=True,
     )
     _http_json(
@@ -754,6 +758,7 @@ def _run_f01_foundation(
         provisioner_login,
         provisioner_password,
         bearer=platform_token,
+        idempotency_key="f01-security-operator-native-v1",
     )
     provisioner = _http_json(
         "POST",
@@ -778,6 +783,7 @@ def _run_f01_foundation(
         tenant_login,
         tenant_password,
         bearer=platform_token,
+        idempotency_key="f01-tenant-controller-native-v1",
     )
     organization = _http_json(
         "POST",
@@ -909,6 +915,7 @@ def _run_f01_foundation(
             recovery_login,
             recovery_password,
             bearer=platform_token,
+            idempotency_key="f01-recovery-operator-native-v1",
         )
         recovery_operator = _http_json(
             "POST",
@@ -962,6 +969,7 @@ def _run_f01_foundation(
         "worker_principal_id": integration_principal_id,
         "tenant_login": tenant_login,
         "tenant_native_identity_id": tenant_identity_id,
+        "workload_authority_id": workload_authority_id,
     }
     (state_dir / "f01-foundation.json").write_text(
         json.dumps(foundation, sort_keys=True) + "\n", encoding="utf-8"
@@ -1090,6 +1098,7 @@ def _exercise_staff_zero_authority(
         staff_login,
         staff_password,
         bearer=platform_token,
+        idempotency_key="f01-bounded-staff-native-v1",
     )
     invited = _http_json(
         "POST",
@@ -1221,6 +1230,234 @@ def _exercise_agent_zero_authority(
             "f01-06-agent-zero-authority",
             "passed",
             "agent workload activates but gains no operational authority implicitly",
+        )
+    )
+    _exercise_agent_positive_authority(
+        checkpoints,
+        api_url=api_url,
+        tenant_token=tenant_token,
+        organization_id=organization_id,
+        principal_id=principal_id,
+        workload_token=workload_token,
+        expires_at=expires_at,
+    )
+
+
+def _exercise_agent_positive_authority(
+    checkpoints: list[dict[str, str]],
+    *,
+    api_url: str,
+    tenant_token: str,
+    organization_id: str,
+    principal_id: str,
+    workload_token: str,
+    expires_at: str,
+) -> None:
+    target_url = f"{api_url}/v1/agents/{principal_id}"
+    before = _http_json("GET", target_url, bearer=tenant_token, organization_id=organization_id)
+    if before.get("standing_capabilities") != []:
+        raise RuntimeError("new agent unexpectedly inherited authority")
+    assigned = _http_json(
+        "PUT",
+        f"{target_url}/authority",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="f01-agent-positive-authority",
+        payload={
+            "expected_authority_revision": before["authority_revision"],
+            "desired_capabilities": ["parties.lookup", "parties.register"],
+            "provenance_reference": "e2e:agent:explicit-authority",
+        },
+    )
+    policy = _http_json(
+        "PUT",
+        f"{target_url}/policy",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="f01-agent-positive-policy",
+        payload={
+            "allowed_capabilities": ["parties.lookup", "parties.register"],
+            "denied_capabilities": [],
+            "risk_ceiling": "low_impact_write",
+            "max_mutations_per_minute": 10,
+            "provenance_reference": "e2e:agent:narrow-policy",
+        },
+    )
+    if policy.get("policy_revision") != 1:
+        raise RuntimeError("agent policy was not committed")
+    catalog = _http_json(
+        "GET",
+        f"{api_url}/v1/operation-catalog",
+        bearer=workload_token,
+        organization_id=organization_id,
+    )
+    operations = catalog.get("operations")
+    if not isinstance(operations, list):
+        raise RuntimeError("agent discovery is missing operations")
+    operation_capabilities: set[str] = set()
+    for item in cast(list[object], operations):
+        if not isinstance(item, dict):
+            raise RuntimeError("agent discovery returned a malformed operation")
+        operation_capabilities.add(
+            _required_string(
+                cast(dict[str, object], item), "capability", "agent operation discovery"
+            )
+        )
+    if operation_capabilities != {"parties.lookup", "parties.register"}:
+        raise RuntimeError("agent discovery ignored standing authority or current policy")
+    registered = _http_json(
+        "POST",
+        f"{api_url}/v1/parties",
+        bearer=workload_token,
+        organization_id=organization_id,
+        idempotency_key="f01-agent-positive-patient",
+        payload={"display_name": "Blackbox Agent Registered Patient"},
+        expected_statuses=(201,),
+    )
+    party_id = _required_string(registered, "party_id", "agent business subject registration")
+    lookup_query = urlencode({"mode": "name", "value": "Blackbox Agent Registered Patient"})
+    lookup_url = f"{api_url}/v1/parties/lookup?{lookup_query}"
+    matches = _http_json_array(
+        "GET",
+        lookup_url,
+        bearer=tenant_token,
+        organization_id=organization_id,
+    )
+    if len(matches) != 1 or matches[0].get("party_id") != party_id:
+        raise RuntimeError("agent registration did not create the independently visible subject")
+    denied = _http_json(
+        "POST",
+        f"{target_url}/credentials:rotate",
+        bearer=workload_token,
+        organization_id=organization_id,
+        idempotency_key="f01-agent-self-rotation-denied",
+        payload={
+            "expected_authority_revision": assigned["authority_revision"],
+            "credential_expires_at": expires_at,
+            "provenance_reference": "e2e:agent:self-denied",
+        },
+        expected_statuses=(403,),
+    )
+    if _error_code(denied, "agent self rotation") != "agent_risk_denied":
+        raise RuntimeError("agent self governance did not fail at the risk boundary")
+    rotation_body = {
+        "expected_authority_revision": assigned["authority_revision"],
+        "credential_expires_at": expires_at,
+        "provenance_reference": "e2e:agent:rotate",
+    }
+    rotated = _http_json(
+        "POST",
+        f"{target_url}/credentials:rotate",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="f01-agent-positive-rotation",
+        payload=rotation_body,
+    )
+    new_token = _required_string(rotated, "workload_token", "agent rotation response")
+    replayed = _http_json(
+        "POST",
+        f"{target_url}/credentials:rotate",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="f01-agent-positive-rotation",
+        payload=rotation_body,
+    )
+    if replayed.get("workload_token") is not None or any(
+        replayed.get(key) != rotated.get(key) for key in ("credential_id", "authority_revision")
+    ):
+        raise RuntimeError("agent rotation retry exposed a secret or duplicated the intent")
+    current = _http_json("GET", target_url, bearer=tenant_token, organization_id=organization_id)
+    credentials = current.get("credentials")
+    if (
+        not isinstance(credentials, list)
+        or len(cast(list[object], credentials)) != 1
+        or not isinstance(credentials[0], dict)
+        or cast(dict[str, object], credentials[0]).get("credential_id")
+        != rotated.get("credential_id")
+    ):
+        raise RuntimeError("agent credential metadata cannot reconcile a lost rotation response")
+    _http_json(
+        "GET",
+        lookup_url,
+        bearer=workload_token,
+        organization_id=organization_id,
+        expected_statuses=(401,),
+    )
+    matches = _http_json_array("GET", lookup_url, bearer=new_token, organization_id=organization_id)
+    if len(matches) != 1 or matches[0].get("party_id") != party_id:
+        raise RuntimeError("rotated agent cannot recover the registered subject")
+    narrowed_policy: dict[str, object] = {
+        "allowed_capabilities": ["parties.register"],
+        "denied_capabilities": ["parties.lookup"],
+        "risk_ceiling": "low_impact_write",
+        "max_mutations_per_minute": 10,
+        "provenance_reference": "e2e:agent:policy-withdrawal",
+    }
+    withdrawn = _http_json(
+        "PUT",
+        f"{target_url}/policy",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="f01-agent-policy-withdrawal",
+        payload=narrowed_policy,
+    )
+    if withdrawn.get("policy_revision") != 2:
+        raise RuntimeError("agent policy withdrawal did not advance its revision")
+    denied = _http_json(
+        "GET",
+        lookup_url,
+        bearer=new_token,
+        organization_id=organization_id,
+        expected_statuses=(403,),
+    )
+    # The policy intersects effective capabilities; the owner capability gate
+    # reports its normal denial. This is distinct from an unclassified risk.
+    if _error_code(denied, "agent policy withdrawal") != "capability_required":
+        raise RuntimeError("current agent policy did not deny the previously permitted operation")
+    unchanged = _http_json("GET", target_url, bearer=tenant_token, organization_id=organization_id)
+    if unchanged.get("standing_capabilities") != current.get("standing_capabilities"):
+        raise RuntimeError("policy withdrawal silently changed standing agent authority")
+    _http_json(
+        "PUT",
+        f"{target_url}/policy",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="f01-agent-policy-restore",
+        payload={
+            **narrowed_policy,
+            "allowed_capabilities": ["parties.lookup", "parties.register"],
+            "denied_capabilities": [],
+            "provenance_reference": "e2e:agent:policy-restore",
+        },
+    )
+    matches = _http_json_array("GET", lookup_url, bearer=new_token, organization_id=organization_id)
+    if len(matches) != 1 or matches[0].get("party_id") != party_id:
+        raise RuntimeError("restored agent policy did not restore the permitted operation")
+    _http_json(
+        "PUT",
+        f"{target_url}/status",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="f01-agent-positive-suspend",
+        payload={
+            "expected_revision": current["profile_revision"],
+            "target_status": "suspended",
+            "provenance_reference": "e2e:agent:suspend",
+        },
+    )
+    _http_json(
+        "GET",
+        lookup_url,
+        bearer=new_token,
+        organization_id=organization_id,
+        expected_statuses=(403,),
+    )
+    checkpoints.append(
+        _checkpoint(
+            "agent-http-positive-and-rotation",
+            "passed",
+            "explicit authority/policy enable work; rotation is one-shot; "
+            "policy withdrawal and suspension deny",
         )
     )
 
@@ -1837,6 +2074,326 @@ def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
     )
 
 
+def _invitation_mail_proof(body: str, invitation_id: str) -> str | None:
+    """Read the trusted mail link in memory; never log or persist its fragment."""
+    for line in body.splitlines():
+        link = urlsplit(line.strip())
+        if link.path != f"/staff-invitations/{invitation_id}/accept":
+            continue
+        if link.scheme != "https" or link.netloc != "admin.example.test" or link.query:
+            raise RuntimeError("invitation email did not use the configured trusted acceptance URL")
+        tokens = parse_qs(link.fragment).get("token", [])
+        if len(tokens) != 1 or not tokens[0].startswith(f"{invitation_id}."):
+            raise RuntimeError(
+                "invitation email did not contain one invitation-bound fragment proof"
+            )
+        return tokens[0]
+    return None
+
+
+def _wait_invitation_mail(
+    api_url: str, invitation_id: str, tenant_token: str, organization_id: str
+) -> str:
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        current = _http_json(
+            "GET",
+            f"{api_url}/v1/staff/invitations/{invitation_id}",
+            bearer=tenant_token,
+            organization_id=organization_id,
+        )
+        if current.get("delivery_status") in {"failed", "unknown"}:
+            raise RuntimeError("staff invitation delivery reached a terminal failure")
+        try:
+            body = _http_get("http://mailpit:8025/view/latest.txt")
+        except (RuntimeError, urllib.error.URLError):
+            body = ""
+        proof = _invitation_mail_proof(body, invitation_id)
+        if proof is not None and current.get("delivery_status") == "delivered":
+            return proof
+        time.sleep(1)
+    raise RuntimeError("staff invitation proof was not received and finalized by the real worker")
+
+
+def _exercise_staff_email_invitation(
+    checkpoints: list[dict[str, str]], *, platform_token: str, platform_password: str
+) -> None:
+    api_url, control_url = "http://api:8000", "http://control-plane:8001"
+    foundation, tenant_token = _tenant_session_from_foundation()
+    organization_id = _required_string(foundation, "organization_id", "foundation")
+    login = "delivery-staff@example.invalid"
+    password = _derived_password(platform_password, "delivery-staff")
+    _native_identity(
+        control_url,
+        login,
+        password,
+        bearer=platform_token,
+        idempotency_key="delivery-staff-native-v1",
+    )
+    recipient_token = _native_session(api_url, login, password)
+    invitations_url = f"{api_url}/v1/staff/invitations"
+    payload: dict[str, object] = {
+        "email": login,
+        "expires_in_hours": 1,
+        "provenance_reference": "e2e:staff-email-invitation",
+    }
+    revoked = _http_json(
+        "POST",
+        invitations_url,
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="delivery-staff-revoked-invite-v1",
+        payload=payload,
+        expected_statuses=(201,),
+    )
+    revoked_id = _required_string(revoked, "invitation_id", "revoked invitation")
+    revoked_proof = _wait_invitation_mail(api_url, revoked_id, tenant_token, organization_id)
+    revoked = _http_json(
+        "POST",
+        f"{invitations_url}/{revoked_id}:revoke",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="delivery-staff-revoke-v1",
+        payload={"expected_revision": revoked["revision"], "provenance_reference": "e2e:revoke"},
+    )
+    if revoked.get("status") != "revoked":
+        raise RuntimeError("staff invitation revoke did not persist")
+    denied = _http_json(
+        "POST",
+        f"{invitations_url}/{revoked_id}:accept",
+        bearer=recipient_token,
+        payload={"token": revoked_proof},
+        expected_statuses=(409,),
+    )
+    if _error_code(denied, "revoked invitation") != "staff_membership_conflict":
+        raise RuntimeError("revoked proof was rejected for an unexpected reason")
+    organizations = _http_json("GET", f"{api_url}/v1/me/organizations", bearer=recipient_token)
+    if organizations.get("items") != []:
+        raise RuntimeError("revoked invitation unexpectedly created a membership")
+    replay = _http_json(
+        "POST",
+        invitations_url,
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="delivery-staff-revoked-invite-v1",
+        payload=payload,
+        expected_statuses=(201,),
+    )
+    if replay.get("invitation_id") != revoked_id or replay.get("status") != "revoked":
+        raise RuntimeError("invitation retry did not retain its current revoked representation")
+    checkpoints.append(
+        _checkpoint(
+            "staff-email-revoked-proof",
+            "passed",
+            "real mailed proof cannot accept a revoked invitation; no membership was created",
+        )
+    )
+
+    invitation = _http_json(
+        "POST",
+        invitations_url,
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="delivery-staff-accepted-invite-v1",
+        payload=payload,
+        expected_statuses=(201,),
+    )
+    invitation_id = _required_string(invitation, "invitation_id", "staff invitation")
+    proof = _wait_invitation_mail(api_url, invitation_id, tenant_token, organization_id)
+    foreign_org = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/organizations",
+        bearer=platform_token,
+        idempotency_key="delivery-foreign-invitation-organization-v1",
+        payload={
+            "organization_key": "delivery-foreign-invitation-organization",
+            "display_name": "Invitation pagination foreign organization",
+            "controller_native_identity_id": foundation["tenant_native_identity_id"],
+            "provenance_reference": "e2e:invitation-tenant-opacity",
+        },
+        expected_statuses=(201,),
+    )
+    foreign_org_id = _required_string(foreign_org, "organization_id", "foreign organization")
+    foreign = _http_json(
+        "POST",
+        invitations_url,
+        bearer=tenant_token,
+        organization_id=foreign_org_id,
+        idempotency_key="delivery-foreign-staff-invite-v1",
+        payload=payload,
+        expected_statuses=(201,),
+    )
+    foreign_id = _required_string(foreign, "invitation_id", "foreign invitation")
+    _http_request(
+        "GET",
+        f"{invitations_url}/{foreign_id}",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        expected_statuses=(404,),
+    )
+    replay = _http_json(
+        "POST",
+        invitations_url,
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="delivery-staff-accepted-invite-v1",
+        payload=payload,
+        expected_statuses=(201,),
+    )
+    page = _http_json("GET", invitations_url, bearer=tenant_token, organization_id=organization_id)
+    if (
+        replay.get("invitation_id") != invitation_id
+        or replay.get("generation") != 1
+        or len(cast(list[object], page.get("items", []))) != 2
+    ):
+        raise RuntimeError(
+            "same invitation intent unexpectedly created another invitation/generation"
+        )
+    if proof in json.dumps([invitation, replay, page]):
+        raise RuntimeError("administrative invitation views exposed the private proof")
+    first_page = _http_json(
+        "GET",
+        f"{invitations_url}?limit=1",
+        bearer=tenant_token,
+        organization_id=organization_id,
+    )
+    first_cursor = _required_string(first_page, "next_after", "invitation page cursor")
+    second_page = _http_json(
+        "GET",
+        f"{invitations_url}?{urlencode({'limit': 1, 'after': first_cursor})}",
+        bearer=tenant_token,
+        organization_id=organization_id,
+    )
+    paged = [
+        *cast(list[dict[str, object]], first_page["items"]),
+        *cast(list[dict[str, object]], second_page["items"]),
+    ]
+    if (
+        len(paged) != 2
+        or {item.get("invitation_id") for item in paged} != {revoked_id, invitation_id}
+        or second_page.get("next_after") is not None
+    ):
+        raise RuntimeError("invitation pagination duplicated, lost or leaked a tenant invitation")
+    last_id = _required_string(paged[-1], "invitation_id", "last invitation")
+    empty_page = _http_json(
+        "GET",
+        f"{invitations_url}?{urlencode({'after': last_id})}",
+        bearer=tenant_token,
+        organization_id=organization_id,
+    )
+    if empty_page.get("items") != [] or empty_page.get("next_after") is not None:
+        raise RuntimeError("invitation pagination did not terminate after the final cursor")
+    checkpoints.append(
+        _checkpoint(
+            "staff-email-invitation-pagination",
+            "passed",
+            "default/null and non-null cursor reads work with production driver, bounded pages "
+            "terminate without duplication and cannot expose a real foreign invitation",
+        )
+    )
+    preview = _http_json(
+        "POST",
+        f"{invitations_url}/{invitation_id}:preview",
+        bearer=recipient_token,
+        payload={"token": proof},
+    )
+    if (
+        set(preview)
+        != {
+            "invitation_id",
+            "organization_id",
+            "organization_display_name",
+            "status",
+            "expires_at",
+            "requires_acceptance_validation",
+        }
+        or preview.get("requires_acceptance_validation") is not True
+    ):
+        raise RuntimeError("recipient preview violated its bounded privacy contract")
+    accepted = _http_json(
+        "POST",
+        f"{invitations_url}/{invitation_id}:accept",
+        bearer=recipient_token,
+        payload={"token": proof},
+    )
+    membership_id = _required_string(accepted, "membership_id", "accepted invitation")
+    if accepted.get("status") != "accepted":
+        raise RuntimeError("native invitation acceptance did not persist")
+    accepted_replay = _http_json(
+        "POST",
+        f"{invitations_url}/{invitation_id}:accept",
+        bearer=recipient_token,
+        payload={"token": proof},
+    )
+    for field in ("membership_id", "principal_id", "binding_id"):
+        if accepted_replay.get(field) != accepted.get(field):
+            raise RuntimeError("subject-bound acceptance replay changed its membership result")
+    organizations = _http_json("GET", f"{api_url}/v1/me/organizations", bearer=recipient_token)
+    items = cast(list[dict[str, object]], organizations.get("items", []))
+    if len(items) != 1 or items[0].get("membership_id") != membership_id:
+        raise RuntimeError("accepted member could not discover exactly its new organization")
+    member_url = f"{api_url}/v1/staff/members/{membership_id}"
+    member = _http_json("GET", member_url, bearer=tenant_token, organization_id=organization_id)
+    if member.get("standing_grants") != [] or member.get("status") != "active":
+        raise RuntimeError("staff acceptance conferred implicit authority")
+    _http_request(
+        "GET",
+        f"{api_url}/v1/me/authority",
+        bearer=recipient_token,
+        organization_id=organization_id,
+        expected_statuses=(403,),
+    )
+    desired: dict[str, object] = {
+        "expected_authority_revision": member["authority_revision"],
+        "desired_capabilities": ["authority.read_self"],
+    }
+    plan = _http_json(
+        "POST",
+        f"{member_url}/authority:plan",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        payload=desired,
+    )
+    if plan.get("can_apply") is not True or plan.get("added") != ["authority.read_self"]:
+        raise RuntimeError("explicit bounded staff authority plan was not applicable")
+    _http_json(
+        "PUT",
+        f"{member_url}/authority",
+        bearer=tenant_token,
+        organization_id=organization_id,
+        idempotency_key="delivery-staff-authority-v1",
+        payload={**desired, "provenance_reference": "e2e:bounded-self-read"},
+    )
+    member = _http_json("GET", member_url, bearer=tenant_token, organization_id=organization_id)
+    if member.get("standing_grants") != [{"capability": "authority.read_self", "delegable": False}]:
+        raise RuntimeError(
+            "authority command did not establish exactly the requested bounded grant"
+        )
+    authority = _http_json(
+        "GET",
+        f"{api_url}/v1/me/authority",
+        bearer=recipient_token,
+        organization_id=organization_id,
+    )
+    if authority.get("principal_id") != accepted.get("principal_id"):
+        raise RuntimeError("explicit authority read did not bind to the accepted principal")
+    _http_request(
+        "GET",
+        f"{api_url}/v1/staff/members",
+        bearer=recipient_token,
+        organization_id=organization_id,
+        expected_statuses=(403,),
+    )
+    checkpoints.append(
+        _checkpoint(
+            "staff-email-acceptance-bounded-authority",
+            "passed",
+            "real OpenBao/Mailpit worker proof accepted by native human without tenant selector; "
+            "same-key retry retains one invitation, zero initial grants, explicit self-read only",
+        )
+    )
+
+
 def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> None:
     if phase == "prepare-worker":
         _run_f01_foundation(checkpoints, phase)
@@ -1856,6 +2413,32 @@ def _run_recovery_delivery(checkpoints: list[dict[str, str]], phase: str) -> Non
         control_url,
         platform_login,
         platform_password,
+    )
+
+    _exercise_staff_email_invitation(
+        checkpoints,
+        platform_token=platform_token,
+        platform_password=platform_password,
+    )
+
+    agent_tenant_login = _required_string(foundation, "tenant_login", "F01 foundation state")
+    agent_tenant_token = _strong_native_session(
+        "http://api:8000",
+        agent_tenant_login,
+        _derived_password(platform_password, "f01-tenant-controller"),
+    )
+    _exercise_agent_zero_authority(
+        checkpoints,
+        api_url="http://api:8000",
+        tenant_token=agent_tenant_token,
+        organization_id=_required_string(foundation, "organization_id", "F01 foundation state"),
+        workload_authority_id=_required_string(
+            foundation, "workload_authority_id", "F01 foundation state"
+        ),
+        sponsor_principal_id=_required_string(
+            foundation, "tenant_controller_principal_id", "F01 foundation state"
+        ),
+        expires_at=(datetime.now(UTC) + timedelta(hours=1)).isoformat(),
     )
 
     recovery_login = "f01-recovery-operator@example.invalid"

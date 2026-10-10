@@ -3,6 +3,7 @@ import pytest
 from request_engine.platform.security.native_auth import (
     hash_password,
     hash_password_scrypt,
+    hash_provision_password_intent_v1,
     password_needs_rehash,
     verify_password,
 )
@@ -47,3 +48,12 @@ def test_argon2id_hashes_are_salted() -> None:
 def test_password_policy_is_still_enforced() -> None:
     with pytest.raises(ValueError):
         hash_password("short")
+
+
+def test_provision_intent_profile_is_pinned_and_operation_scoped() -> None:
+    first = hash_provision_password_intent_v1(PASSWORD, salt=b"a" * 16)
+    assert first == hash_provision_password_intent_v1(PASSWORD, salt=b"a" * 16)
+    assert first != hash_provision_password_intent_v1(PASSWORD, salt=b"b" * 16)
+    assert "$argon2id$v=19$m=19456,t=2,p=1$" in first
+    with pytest.raises(ValueError):
+        hash_provision_password_intent_v1("short", salt=b"a" * 16)

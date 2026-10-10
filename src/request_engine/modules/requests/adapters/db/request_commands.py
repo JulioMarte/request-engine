@@ -99,6 +99,7 @@ class PostgresRequestCommands:
                 session,
                 organization_id=command.organization_id,
                 version_id=command.request_definition_version_id,
+                lock_definition=True,
             )
             if not version.definition_active:
                 raise RequestDefinitionInactive(command.request_definition_version_id)
@@ -558,6 +559,7 @@ async def load_request_definition_version(
     *,
     organization_id: UUID,
     version_id: UUID,
+    lock_definition: bool = False,
 ) -> RequestDefinitionVersionData:
     row = (
         (
@@ -575,6 +577,7 @@ async def load_request_definition_version(
                     WHERE rdv.organization_id = :organization_id
                       AND rdv.id = :version_id
                     """
+                    + (" FOR SHARE OF rd" if lock_definition else "")
                 ),
                 {"organization_id": organization_id, "version_id": version_id},
             )

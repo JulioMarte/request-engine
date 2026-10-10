@@ -16,6 +16,28 @@ _TRUSTED_DEFINER_OWNERS = {
     "request_engine_schema_owner",
 }
 _EXACT_DEFINER_OWNERS = {
+    # Operator count projection is isolated behind a LOGIN-only monitor group.
+    ("request_admin", "read_operator_metrics", ""): "request_operator_metrics_definer",
+    # 0014 owner-only read projections need platform-plane RLS visibility.
+    # Approval is signature-scoped, never blanket trust in the control definer.
+    ("request_platform", "assert_owner_read_actor", ""): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_platform_owners",
+        "p_principal_id uuid, p_after uuid, p_limit integer",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_platform_owner_invitations",
+        "p_invitation_id uuid, p_after uuid, p_limit integer",
+    ): "request_platform_control_definer",
+    # 0017 supplies narrow FORCE-RLS receipt authority; 0019/0022 guard posture.
+    (
+        "request_platform",
+        "provision_native_identity",
+        "p_authority uuid, p_identity uuid, p_login text, p_credential uuid, "
+        "p_verifier text, p_key text, p_intent text",
+    ): "request_platform_control_definer",
     (
         "request_platform",
         "select_initial_controller_policy",
@@ -29,6 +51,32 @@ _EXACT_DEFINER_OWNERS = {
         "read_principal_authority",
         "p_principal_id uuid",
     ): "request_platform_definer",
+    (
+        "request_platform",
+        "read_platform_organizations",
+        "p_organization_id uuid, p_after uuid, p_limit integer",
+    ): "request_platform_definer",
+    # 0027 dual-consent adoption uses only these exact reviewed definer owners.
+    (
+        "request_platform",
+        "apply_controller_policy_adoption",
+        "p_request_id uuid, p_expected_revision bigint, p_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "list_controller_policy_adoptions",
+        "p_after uuid, p_limit integer, p_request_id uuid",
+    ): "request_platform_definer",
+    (
+        "request_platform",
+        "review_controller_policy_adoption",
+        "p_request_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_engine",
+        "adopt_platform_owner_v4",
+        "",
+    ): "request_platform_control_definer",
     (
         "request_platform",
         "read_platform_provisioners",
@@ -528,3 +576,62 @@ def test_security_definers_are_closed_across_all_runtime_schemas(
             violations.append(f"{function_name}: search_path={schemas!r}")
 
     assert violations == []
+
+
+@pytest.mark.postgres
+def test_native_provision_authentication_helpers_have_no_runtime_or_public_execution(
+    admin_conn: PgConnection,
+) -> None:
+    for function in (
+        "request_auth.lock_accepted_native_credential(uuid,uuid)",
+        "request_auth.lock_accepted_native_session(uuid,uuid)",
+    ):
+        row = admin_conn.execute(
+            "SELECT pg_get_userbyid(p.proowner),p.prosecdef,p.proconfig "
+            "FROM pg_proc p WHERE p.oid=%s::regprocedure",
+            (function,),
+        ).fetchone()
+        assert row == (
+            "request_engine_schema_owner",
+            True,
+            ["search_path=pg_catalog, request_engine, pg_temp"],
+        )
+        executors = admin_conn.execute(
+            "SELECT CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE r.rolname END "
+            "FROM pg_proc p CROSS JOIN LATERAL "
+            "aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a "
+            "LEFT JOIN pg_roles r ON r.oid=a.grantee "
+            "WHERE p.oid=%s::regprocedure AND a.privilege_type='EXECUTE' ORDER BY 1",
+            (function,),
+        ).fetchall()
+        assert executors == [
+            ("request_engine_schema_owner",),
+            ("request_platform_control_definer",),
+        ]
+        assert admin_conn.execute(
+            "SELECT has_function_privilege('request_engine_app',%s,'EXECUTE'),"
+            "has_function_privilege('request_platform_control',%s,'EXECUTE')",
+            (function, function),
+        ).fetchone() == (False, False)
+
+
+@pytest.mark.postgres
+def test_unknown_control_definer_function_is_still_rejected(admin_conn: PgConnection) -> None:
+    # Transaction rollback leaves no probe function or privilege behind.
+    with (
+        pytest.raises(AssertionError, match="unapproved_control_owner_probe"),
+        admin_conn.transaction(),
+    ):
+        admin_conn.execute(
+            "CREATE FUNCTION request_platform.unapproved_control_owner_probe() "
+            "RETURNS integer LANGUAGE sql SECURITY DEFINER "
+            "SET search_path=pg_catalog,request_engine,pg_temp AS 'SELECT 1'"
+        )
+        admin_conn.execute(
+            "ALTER FUNCTION request_platform.unapproved_control_owner_probe() "
+            "OWNER TO request_platform_control_definer"
+        )
+        admin_conn.execute(
+            "REVOKE ALL ON FUNCTION request_platform.unapproved_control_owner_probe() FROM PUBLIC"
+        )
+        test_security_definers_are_closed_across_all_runtime_schemas(admin_conn)

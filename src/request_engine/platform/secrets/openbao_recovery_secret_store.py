@@ -8,7 +8,6 @@ local OpenBao Agent may inject authentication when token is omitted.
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -20,6 +19,13 @@ from request_engine.platform.secrets.delivery import (
     RecoveryDeliveryPermanent,
     RecoveryDeliveryRetryable,
     StagedRecoverySecret,
+)
+from request_engine.platform.secrets.kv_v2_retention import (
+    configure_version_retention,
+    retained_proof_version,
+    validate_temporary_namespace,
+    validate_temporary_reference,
+    verify_version_retention,
 )
 
 
@@ -44,7 +50,8 @@ class OpenBaoRecoverySecretStore:
         self._address = address.rstrip("/")
         self._token = token
         self._mount = mount.strip("/")
-        self._path_prefix = path_prefix.strip("/")
+        validate_temporary_namespace(path_prefix)
+        self._path_prefix = path_prefix
         self._timeout_seconds = timeout_seconds
         self._namespace = namespace
         self._transport = transport
@@ -66,6 +73,8 @@ class OpenBaoRecoverySecretStore:
         )
 
     def _path(self, case_id: UUID, generation: int) -> str:
+        if isinstance(generation, bool) or generation < 1:
+            raise ValueError("temporary proof generation must be a positive integer")
         return f"{self._path_prefix}/{case_id}/{generation}"
 
     async def stage(
@@ -80,6 +89,7 @@ class OpenBaoRecoverySecretStore:
         digest = hashlib.sha256(secret.encode("utf-8")).hexdigest()
         try:
             async with self._client() as client:
+                await self._set_delete_version_after(client, path, expires_at)
                 response = await client.post(
                     f"/v1/{self._mount}/data/{path}",
                     headers=self._headers(),
@@ -93,12 +103,17 @@ class OpenBaoRecoverySecretStore:
                     },
                 )
                 if response.is_success:
-                    await self._set_delete_version_after(client, path, expires_at)
+                    try:
+                        metadata = response.json().get("data")
+                    except (ValueError, AttributeError):
+                        metadata = None
+                    verify_version_retention(metadata, expires_at=expires_at)
                     return StagedRecoverySecret(
                         reference=path,
                         digest=digest,
                         expires_at=expires_at,
                         created=True,
+                        retention_version=retained_proof_version(metadata),
                     )
                 if response.status_code == 400 and _mentions_cas(response.text):
                     return await self._read_staged(client, path)
@@ -109,24 +124,16 @@ class OpenBaoRecoverySecretStore:
             raise RecoveryDeliveryRetryable("OpenBao secret staging transport failure") from exc
 
     async def discard(self, *, case_id: UUID, generation: int) -> None:
-        path = self._path(case_id, generation)
-        try:
-            async with self._client() as client:
-                response = await client.delete(
-                    f"/v1/{self._mount}/metadata/{path}",
-                    headers=self._headers(),
-                )
-        except httpx.TransportError as exc:
-            raise RecoveryDeliveryRetryable("OpenBao secret discard transport failure") from exc
-        if response.status_code == 404 or response.is_success:
-            return
-        if response.status_code >= 500:
-            raise RecoveryDeliveryRetryable("OpenBao secret store is unavailable")
-        raise RecoveryDeliveryPermanent("OpenBao rejected recovery secret discard")
+        # Creation does not prove exclusive ownership: another issuer may have
+        # retained this same CAS winner while our database transaction failed.
+        # Keep the verified TTL and metadata tombstone; only an expiry janitor
+        # with retained-version evidence may destroy the bearer proof later.
+        self._path(case_id, generation)
 
     async def read(self, *, reference: str) -> str:
         if not reference.startswith(f"{self._path_prefix}/"):
             raise RecoveryDeliveryPermanent("recovery secret reference is outside OpenBao scope")
+        validate_temporary_reference(reference, prefix=self._path_prefix)
         try:
             async with self._client() as client:
                 response = await client.get(
@@ -177,11 +184,17 @@ class OpenBaoRecoverySecretStore:
             raise RecoveryDeliveryPermanent("OpenBao returned malformed staged secret")
         expires_at = _parse_expires_at(expires_at_raw)
         try:
+            metadata = response.json()["data"].get("metadata")
+        except (ValueError, TypeError, KeyError, AttributeError):
+            metadata = None
+        verify_version_retention(metadata, expires_at=expires_at)
+        try:
             return StagedRecoverySecret(
                 reference=path,
                 digest=digest,
                 expires_at=expires_at,
                 created=False,
+                retention_version=retained_proof_version(metadata),
             )
         except ValueError as exc:
             raise RecoveryDeliveryPermanent("OpenBao returned malformed staged secret") from exc
@@ -192,13 +205,13 @@ class OpenBaoRecoverySecretStore:
         path: str,
         expires_at: datetime,
     ) -> None:
-        with contextlib.suppress(Exception):
-            seconds = max(0, int((expires_at - datetime.now(UTC)).total_seconds()))
-            await client.post(
-                f"/v1/{self._mount}/metadata/{path}",
-                headers=self._headers(),
-                json={"delete_version_after": f"{seconds}s"},
-            )
+        await configure_version_retention(
+            client,
+            endpoint=f"/v1/{self._mount}/metadata/{path}",
+            headers=self._headers(),
+            expires_at=expires_at,
+            timeout_seconds=self._timeout_seconds,
+        )
 
 
 def _mentions_cas(body: str) -> bool:

@@ -49,7 +49,7 @@ async def test_runtime_factory_starts_under_real_app_login(
                         await serving
                         pytest.fail("HTTP server exited before startup")
                     await asyncio.sleep(0.01)
-            async with AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
+            async with AsyncClient(base_url=f"http://127.0.0.1:{port}", trust_env=False) as client:
                 assert (await client.get("/health/ready")).json() == {"status": "ready"}
                 assert (await client.get("/health/live")).status_code == 200
                 schema = await client.get("/openapi.json")

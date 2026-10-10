@@ -68,6 +68,13 @@ class PostgresContextualSupplyLifecycleCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
+                )
                 idempotency_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -79,13 +86,6 @@ class PostgresContextualSupplyLifecycleCommands:
                 if replay is not None:
                     return _retired_state_from_json(cast(dict[str, object], replay["assignment"]))
 
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
-                )
                 assignment = await _lock_assignment_roots(
                     session,
                     organization_id=command.organization_id,
@@ -199,6 +199,13 @@ class PostgresContextualSupplyLifecycleCommands:
             },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            authority = await require_operational_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                authority_party_id=command.authority_party_id,
+                scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
+            )
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -212,13 +219,6 @@ class PostgresContextualSupplyLifecycleCommands:
                     cast(dict[str, object], replay["availability"])
                 )
 
-            authority = await require_operational_authority(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                authority_party_id=command.authority_party_id,
-                scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
-            )
             assignment = await _lock_assignment_roots(
                 session,
                 organization_id=command.organization_id,
@@ -344,6 +344,13 @@ class PostgresContextualSupplyLifecycleCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
+                )
                 idempotency_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -355,13 +362,6 @@ class PostgresContextualSupplyLifecycleCommands:
                 if replay is not None:
                     return _exception_state_from_json(cast(dict[str, object], replay["exception"]))
 
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
-                )
                 assignment = await _lock_assignment_roots(
                     session,
                     organization_id=command.organization_id,

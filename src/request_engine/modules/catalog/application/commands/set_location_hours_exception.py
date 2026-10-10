@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Literal, Protocol
 from uuid import UUID
 
+from request_engine.modules.catalog.application.errors import CatalogInvalidInput
+
 LocationHoursExceptionKind = Literal["available", "unavailable"]
 
 
@@ -45,17 +47,17 @@ async def set_location_hours_exception(
     command: SetLocationHoursExceptionCommand,
 ) -> LocationHoursExceptionState:
     if not command.idempotency_key:
-        raise ValueError("idempotency_key is required")
+        raise CatalogInvalidInput("idempotency_key is required")
     if command.expected_operational_revision <= 0:
-        raise ValueError("expected_operational_revision must be positive")
+        raise CatalogInvalidInput("expected_operational_revision must be positive")
     if command.exception_kind not in ("available", "unavailable"):
-        raise ValueError("exception_kind must be available or unavailable")
+        raise CatalogInvalidInput("exception_kind must be available or unavailable")
     if command.start_at.tzinfo is None or command.start_at.utcoffset() is None:
-        raise ValueError("start_at must be timezone-aware")
+        raise CatalogInvalidInput("start_at must be timezone-aware")
     if command.end_at.tzinfo is None or command.end_at.utcoffset() is None:
-        raise ValueError("end_at must be timezone-aware")
+        raise CatalogInvalidInput("end_at must be timezone-aware")
     if command.end_at <= command.start_at:
-        raise ValueError("end_at must be after start_at")
+        raise CatalogInvalidInput("end_at must be after start_at")
     if command.reason is not None and not command.reason.strip():
-        raise ValueError("reason cannot be blank")
+        raise CatalogInvalidInput("reason cannot be blank")
     return await handler.set_location_hours_exception(command)

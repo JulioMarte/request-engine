@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE="${POSTGRES_IMAGE:-postgres:18}"
+IMAGE="${POSTGRES_IMAGE:-public.ecr.aws/docker/library/postgres:18}"
 SOURCE="p7-pg-source-${GITHUB_RUN_ID:-local}-$$"
 TARGET="p7-pg-target-${GITHUB_RUN_ID:-local}-$$"
 SOURCE_PORT="${P7_PG_SOURCE_PORT:-15432}"
@@ -24,7 +24,9 @@ trap cleanup EXIT
 wait_pg() {
   local container="$1"
   for _ in $(seq 1 60); do
-    if docker exec "$container" pg_isready -U postgres -d "$DATABASE" >/dev/null 2>&1; then
+    # The image's initialization server accepts Unix sockets before it restarts.
+    # TCP is available only on the final server used by migrations and restore.
+    if docker exec "$container" pg_isready -h 127.0.0.1 -U postgres -d "$DATABASE" >/dev/null 2>&1; then
       return 0
     fi
     sleep 1
@@ -85,6 +87,15 @@ if password_roles:
 with psycopg.connect("") as connection:
     with connection.cursor() as cursor:
         for role in catalog["roles"]:
+            exists = cursor.execute(
+                "SELECT 1 FROM pg_roles WHERE rolname = %s",
+                (role["role_name"],),
+            ).fetchone()
+            if exists:
+                # The target candidate migrations should already provision the
+                # accepted NOLOGIN service/definer roles. The later catalog
+                # comparison proves they match the source attributes.
+                continue
             attributes = [
                 "SUPERUSER" if role["superuser"] else "NOSUPERUSER",
                 "INHERIT" if role["inherit"] else "NOINHERIT",
@@ -155,13 +166,39 @@ test "$source_head" = "$expected_head"
 # pg_dump. Capture the complete managed topology as a non-secret sidecar. The
 # clean target reconstructs this topology before database objects (notably RLS
 # policies and SECURITY DEFINER ownership references) are restored.
+docker exec -i "$SOURCE" psql -U postgres -d "$DATABASE" -v ON_ERROR_STOP=1 <<'SQL'
+CREATE ROLE request_engine_p7_restore_owner NOLOGIN NOSUPERUSER NOCREATEDB
+  NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+CREATE ROLE request_engine_p7_restore_executor NOLOGIN NOSUPERUSER NOCREATEDB
+  NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+CREATE SCHEMA p7_restore_privilege_probe AUTHORIZATION request_engine_p7_restore_owner;
+CREATE TABLE p7_restore_privilege_probe.payload (marker text PRIMARY KEY);
+ALTER TABLE p7_restore_privilege_probe.payload OWNER TO request_engine_p7_restore_owner;
+ALTER TABLE p7_restore_privilege_probe.payload ENABLE ROW LEVEL SECURITY;
+ALTER TABLE p7_restore_privilege_probe.payload FORCE ROW LEVEL SECURITY;
+CREATE POLICY executor_select ON p7_restore_privilege_probe.payload
+  FOR SELECT TO request_engine_p7_restore_executor USING (true);
+REVOKE ALL ON SCHEMA p7_restore_privilege_probe FROM PUBLIC;
+GRANT USAGE ON SCHEMA p7_restore_privilege_probe TO request_engine_p7_restore_executor;
+REVOKE ALL ON p7_restore_privilege_probe.payload FROM PUBLIC;
+GRANT SELECT ON p7_restore_privilege_probe.payload TO request_engine_p7_restore_executor;
+INSERT INTO p7_restore_privilege_probe.payload VALUES ('restore-proof');
+CREATE FUNCTION p7_restore_privilege_probe.owner_identity() RETURNS text
+  LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog
+  AS $$ SELECT current_user::text $$;
+ALTER FUNCTION p7_restore_privilege_probe.owner_identity()
+  OWNER TO request_engine_p7_restore_owner;
+REVOKE ALL ON FUNCTION p7_restore_privilege_probe.owner_identity() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION p7_restore_privilege_probe.owner_identity()
+  TO request_engine_p7_restore_executor;
+SQL
 export_role_catalog "$SOURCE_PORT" "$SOURCE_ROLES"
 
 # Add a restore oracle that cannot be recreated by migrations alone.
 docker exec "$SOURCE" psql -U postgres -d "$DATABASE" -v ON_ERROR_STOP=1 -c \
   "CREATE TABLE public.p7_restore_oracle(marker text PRIMARY KEY); INSERT INTO public.p7_restore_oracle VALUES ('p7-postgres-restored');" >/dev/null
 docker exec "$SOURCE" pg_dump -U postgres -d "$DATABASE" \
-  --format=custom --no-owner --no-privileges --file=/tmp/request-engine.dump
+  --format=custom --file=/tmp/request-engine.dump
 docker cp "$SOURCE:/tmp/request-engine.dump" "$DUMP"
 test -s "$DUMP"
 
@@ -169,6 +206,14 @@ test -s "$DUMP"
 # come from the dump, not from a shared volume or still-running source database.
 docker rm -f "$SOURCE" >/dev/null
 start_pg "$TARGET" "$TARGET_PORT"
+
+# Apply candidate migrations to a disposable bootstrap database. Roles are
+# cluster-global, so they remain when this database is dropped; the restore DB
+# stays empty until the custom dump is applied.
+docker exec "$TARGET" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
+  'CREATE DATABASE request_engine_role_bootstrap' >/dev/null
+export MIGRATION_DATABASE_URL="postgresql+psycopg://postgres:${PASSWORD}@127.0.0.1:${TARGET_PORT}/request_engine_role_bootstrap"
+uv run alembic upgrade head
 
 restore_role_catalog "$TARGET_PORT" "$SOURCE_ROLES"
 export_role_catalog "$TARGET_PORT" "$TARGET_ROLES"
@@ -179,16 +224,24 @@ if ! uv run python scripts/db/compare_role_catalogs.py \
   persist_role_diagnostics
   exit 1
 fi
+docker exec "$TARGET" dropdb -U postgres request_engine_role_bootstrap
 
 docker cp "$DUMP" "$TARGET:/tmp/request-engine.dump"
 docker exec "$TARGET" pg_restore -U postgres -d "$DATABASE" \
-  --clean --if-exists --no-owner --no-privileges --exit-on-error \
+  --clean --if-exists --exit-on-error --single-transaction \
   /tmp/request-engine.dump
 
 target_head="$(docker exec "$TARGET" psql -U postgres -d "$DATABASE" -Atc 'SELECT version_num FROM alembic_version')"
 marker="$(docker exec "$TARGET" psql -U postgres -d "$DATABASE" -Atc 'SELECT marker FROM public.p7_restore_oracle')"
 test "$target_head" = "$expected_head"
 test "$marker" = "p7-postgres-restored"
+
+# Owner metadata, ACLs, RLS policy and SECURITY DEFINER behavior must survive
+# restore. These assertions are independent SQL observations on the clean DB.
+PRIVILEGE_FACTS="$(docker exec "$TARGET" psql -U postgres -d "$DATABASE" -AtF '|' -c \
+  "SELECT pg_get_userbyid(c.relowner), has_table_privilege('request_engine_p7_restore_executor', 'p7_restore_privilege_probe.payload', 'SELECT'), c.relrowsecurity, EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname='p7_restore_privilege_probe' AND p.tablename='payload' AND p.policyname='executor_select'), pg_get_userbyid(f.proowner), has_function_privilege('request_engine_p7_restore_executor', 'p7_restore_privilege_probe.owner_identity()', 'EXECUTE'), p7_restore_privilege_probe.owner_identity() FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN pg_proc f JOIN pg_namespace fn ON fn.oid=f.pronamespace WHERE n.nspname='p7_restore_privilege_probe' AND c.relname='payload' AND fn.nspname='p7_restore_privilege_probe' AND f.proname='owner_identity'")"
+EXPECTED_PRIVILEGE_FACTS="request_engine_p7_restore_owner|t|t|t|request_engine_p7_restore_owner|t|request_engine_p7_restore_owner"
+test "$PRIVILEGE_FACTS" = "$EXPECTED_PRIVILEGE_FACTS"
 
 # Verify the database restore did not mutate the cluster-global role topology.
 export_role_catalog "$TARGET_PORT" "$TARGET_ROLES"
@@ -199,6 +252,17 @@ if ! uv run python scripts/db/compare_role_catalogs.py \
   persist_role_diagnostics
   exit 1
 fi
+
+# The clean target gets a fresh least-privilege runtime LOGIN after NOLOGIN
+# object-owner topology is restored. The source-side credential is neither
+# exported nor needed; this target-only secret is ephemeral smoke-test data.
+TARGET_RUNTIME_PASSWORD="restore-target-only-$$"
+docker exec "$TARGET" psql -U postgres -d "$DATABASE" -v ON_ERROR_STOP=1 -c \
+  "CREATE ROLE request_engine_p7_restore_runtime LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '$TARGET_RUNTIME_PASSWORD' IN ROLE request_engine_app" >/dev/null
+docker exec -e PGPASSWORD="$TARGET_RUNTIME_PASSWORD" "$TARGET" psql \
+  -h 127.0.0.1 -U request_engine_p7_restore_runtime -d "$DATABASE" -v ON_ERROR_STOP=1 -Atc \
+  "SELECT current_user, pg_has_role(current_user, 'request_engine_app', 'member'), (SELECT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls FROM pg_roles WHERE rolname=current_user)" \
+  | grep -qx 'request_engine_p7_restore_runtime|t|t'
 
 persist_role_diagnostics
 cat >"$OUTPUT" <<EOF
@@ -211,6 +275,8 @@ cat >"$OUTPUT" <<EOF
   "cluster_role_topology_sidecar_restored": true,
   "cluster_role_topology_equivalent": true,
   "custom_format_dump_restored": true,
+  "postgres_object_owner_acl_and_rls_preserved": true,
+  "target_only_runtime_login_verified": true,
   "alembic_head_preserved": true,
   "restore_oracle_verified": true,
   "credentials_persisted_in_evidence": false

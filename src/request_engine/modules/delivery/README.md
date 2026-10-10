@@ -133,6 +133,25 @@ It reports persisted occupation rather than projecting future availability.
 
 Parallel/group execution requires a future explicit policy change.
 
+### Bounded ResourceActivity reconstruction
+
+`GET /v1/resource-activities` remains the Delivery-owned tenant-scoped Query
+authorized by `resource_activity.read`, not a mutation or a capacity promise.
+Its pre-production array contract is replaced with `{items, next_cursor}`;
+in-repository clients migrate in the same change. `resource_id` is required;
+`active_only=true` remains the default. `limit` is 1..200 (default 50).
+Optional timezone-aware `started_after` / `started_before` select a positive
+half-open start-time window. History is never materialized without a SQL limit.
+
+Order is `(started_at, id)` descending with keyset continuation and one extra
+row for truthful continuation. Cursor binding includes trusted organization,
+Resource, active/history filter and window; it is not an authority grant.
+Unsupported filters, malformed/incompatible cursors and invalid windows fail
+422 before DB reads. Reads revalidate ActorContext normally; no new capability,
+tool projection, revision guard, idempotency, migration or write authority is
+introduced. Concurrent history changes remain factual observations rather than
+a snapshot spanning multiple requests.
+
 ## Live execution capabilities
 
 ```text

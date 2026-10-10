@@ -3,15 +3,65 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.platform.db.session import SessionFactory, set_tenant_context
 from request_engine.platform.security.capabilities import capability_definition
 from request_engine.platform.security.capability_types import AuthorityPlane
+from request_engine.platform.security.execution_context import current_actor_context
 from request_engine.platform.security.principal_authority import (
+    CapabilityRequired,
     PrincipalAuthorityMaterializationError,
     PrincipalAuthorityReader,
     PrincipalAuthoritySnapshot,
 )
+
+
+async def require_current_tenant_capability(
+    session: AsyncSession, *, organization_id: UUID, principal_id: UUID, capability: str
+) -> None:
+    """Serialize a current standing-grant check on the Principal before owner effects.
+
+    Grant mutation bumps this Principal's revision. Do not lock grant rows after
+    this root: a grant-update trigger may already hold that row and wait for it.
+    A second statement observes committed grants after any winning root updater.
+    """
+    definition = capability_definition(capability)
+    actor = current_actor_context()
+    if (
+        definition is None
+        or definition.authority_plane is AuthorityPlane.PLATFORM
+        or (
+            actor is not None
+            and (actor.organization_id != organization_id or actor.principal_id != principal_id)
+        )
+    ):
+        raise CapabilityRequired(capability)
+    principal = await session.execute(
+        text("""
+            SELECT id FROM request_engine.principals
+            WHERE organization_id=:org AND id=:principal
+              AND principal_plane='tenant' AND active FOR SHARE
+        """),
+        {"org": organization_id, "principal": principal_id},
+    )
+    if principal.scalar_one_or_none() is None:
+        raise CapabilityRequired(capability)
+    granted = await session.execute(
+        text("""
+            SELECT EXISTS(SELECT 1 FROM request_engine.principal_authority_grants
+                WHERE organization_id=:org AND principal_id=:principal
+                  AND principal_plane='tenant' AND authority_plane='operational'
+                  AND status='active' AND capability_key=ANY(CAST(:keys AS text[])))
+        """),
+        {
+            "org": organization_id,
+            "principal": principal_id,
+            "keys": [capability, *definition.legacy_aliases],
+        },
+    )
+    if not granted.scalar_one():
+        raise CapabilityRequired(capability)
 
 
 def materialize_tenant_authority(

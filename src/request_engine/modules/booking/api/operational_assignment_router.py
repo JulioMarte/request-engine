@@ -3,6 +3,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
 
+from request_engine.modules.booking.api.configuration_models import (
+    ResourceAssignmentView,
+    ResourceAvailabilityView,
+    RetiredResourceAssignmentView,
+)
 from request_engine.modules.booking.api.operational_assignment_models import (
     AssignmentBody,
     AvailabilityBody,
@@ -51,7 +56,7 @@ def create_operational_assignment_router(
         body: AssignmentBody,
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> ResourceAssignmentView:
         require_capability(current, "booking.manage_supply")
         command = AssignResourceToLocationCommand(
             organization_id=current.organization_id,
@@ -64,14 +69,16 @@ def create_operational_assignment_router(
             expected_resource_availability_revision=(body.expected_resource_availability_revision),
             idempotency_key=key,
         )
-        return await assign_resource_to_location(assign_handler, command)
+        return ResourceAssignmentView.model_validate(
+            await assign_resource_to_location(assign_handler, command)
+        )
 
     async def retire(
         assignment_id: UUID,
         body: RetireAssignmentBody,
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> RetiredResourceAssignmentView:
         require_capability(current, "booking.manage_supply")
         command = retire_assignment.RetireResourceLocationAssignmentCommand(
             organization_id=current.organization_id,
@@ -83,17 +90,18 @@ def create_operational_assignment_router(
             expected_resource_availability_revision=(body.expected_resource_availability_revision),
             idempotency_key=key,
         )
-        return await retire_assignment.retire_resource_location_assignment(
+        result = await retire_assignment.retire_resource_location_assignment(
             retire_handler,
             command,
         )
+        return RetiredResourceAssignmentView.model_validate(result)
 
     async def availability(
         assignment_id: UUID,
         body: AvailabilityBody,
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> ResourceAvailabilityView:
         require_capability(current, "booking.manage_supply")
         windows = tuple(
             ResourceLocationAvailabilityWindow(
@@ -114,7 +122,9 @@ def create_operational_assignment_router(
             expected_resource_availability_revision=(body.expected_resource_availability_revision),
             idempotency_key=key,
         )
-        return await set_resource_location_availability(availability_handler, command)
+        return ResourceAvailabilityView.model_validate(
+            await set_resource_location_availability(availability_handler, command)
+        )
 
     add_capability_route(
         router,
@@ -123,6 +133,7 @@ def create_operational_assignment_router(
         capability="booking.manage_supply",
         methods=["POST"],
         operation_id="booking_resource_assignment_create",
+        response_model=ResourceAssignmentView,
     )
     add_capability_route(
         router,
@@ -131,6 +142,7 @@ def create_operational_assignment_router(
         capability="booking.manage_supply",
         methods=["POST"],
         operation_id="booking_resource_assignment_retire",
+        response_model=RetiredResourceAssignmentView,
     )
     add_capability_route(
         router,
@@ -139,5 +151,6 @@ def create_operational_assignment_router(
         capability="booking.manage_supply",
         methods=["PUT"],
         operation_id="booking_resource_assignment_availability_replace",
+        response_model=ResourceAvailabilityView,
     )
     return router

@@ -169,7 +169,8 @@ async def test_private_control_runtime_serves_real_tcp(
                         pytest.fail("Private HTTP server exited before startup")
                     await asyncio.sleep(0.01)
             async with AsyncClient(
-                base_url=f"http://127.0.0.1:{listener.getsockname()[1]}"
+                base_url=f"http://127.0.0.1:{listener.getsockname()[1]}",
+                trust_env=False,
             ) as client:
                 assert (await client.get("/health/ready")).status_code == 200
                 schema = (await client.get("/openapi.json")).json()

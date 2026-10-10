@@ -36,6 +36,9 @@ class SearchOfferingsQuery:
     location_id: UUID | None = None
     effective_at: datetime | None = None
     limit: int = 50
+    after_display_name: str | None = None
+    after_id: UUID | None = None
+    include_page_probe: bool = False
 
 
 class OfferingCatalogReader(Protocol):

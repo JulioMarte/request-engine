@@ -25,6 +25,7 @@ build_images() {
 spec_json="$(python "$registry" resolve "$requested")"
 readarray -t resolved < <(python - "$spec_json" <<'PY'
 import json, sys
+sys.stdout.reconfigure(newline="\n")
 spec=json.loads(sys.argv[1])
 print(spec["selector"])
 print(spec["artifact_namespace"])
@@ -169,10 +170,17 @@ fi
 artifact_abs="$(cd "$suite_artifacts" && pwd)"
 state_abs="$(cd "$state_dir" && pwd)"
 secret_abs="$(cd "$secret_dir" && pwd)"
+# Native Docker on Windows needs host paths, but container paths such as /state
+# must not be rewritten by Git Bash's automatic argument conversion.
+if command -v cygpath >/dev/null 2>&1; then
+  artifact_abs="$(cygpath -m "$artifact_abs")"
+  state_abs="$(cygpath -m "$state_abs")"
+  secret_abs="$(cygpath -m "$secret_abs")"
+fi
 run_runner() {
   phase="$1"; phase_artifacts="$artifact_abs"
   if [[ "$phase" != "main" ]]; then phase_artifacts="$artifact_abs/$phase"; mkdir -p "$phase_artifacts"; chmod 0777 "$phase_artifacts"; fi
-  "${compose[@]}" run --rm --no-deps --user "$(id -u):$(id -g)" \
+  MSYS_NO_PATHCONV=1 "${compose[@]}" run --rm --no-deps --user "$(id -u):$(id -g)" \
     -e E2E_STATE_DIR=/state -e E2E_SECRET_DIR=/secrets \
     -v "$phase_artifacts:/artifacts" -v "$state_abs:/state" -v "$secret_abs:/secrets:ro" \
     e2e-runner run "$selector" --phase "$phase" --artifact-dir /artifacts
@@ -185,6 +193,7 @@ if ((${#deferred_services[@]} > 0)); then
     [[ "$variable" =~ ^[A-Z][A-Z0-9_]*$ && "$file" != "$source_ref" ]] || { echo "invalid runtime state mapping: $mapping" >&2; exit 2; }
     value="$(python - "$state_dir/$file" "$key" <<'PY'
 import json, pathlib, sys
+sys.stdout.reconfigure(newline="\n")
 obj=json.loads(pathlib.Path(sys.argv[1]).read_text()); value=obj.get(sys.argv[2])
 if not isinstance(value,str) or not value: raise SystemExit("runtime state value missing")
 print(value)

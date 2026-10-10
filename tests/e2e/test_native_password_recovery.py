@@ -213,6 +213,7 @@ async def test_native_human_can_prepare_and_complete_offline_recovery_without_pl
         )
         registration = authenticator.registration_credential(
             challenge=websafe_decode(registration_options["challenge"]),
+            public_key=registration_options,
             user_verified=True,
         )
         registered = await client.post(

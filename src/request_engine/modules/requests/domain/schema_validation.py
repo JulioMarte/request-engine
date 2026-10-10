@@ -1,7 +1,9 @@
 import math
-import re
-from collections.abc import Sequence
-from typing import cast
+from collections.abc import Hashable, Sequence
+from dataclasses import dataclass, field
+from typing import Protocol, cast
+
+import re2
 
 from request_engine.modules.requests.domain.errors import (
     RequestPayloadInvalid,
@@ -34,6 +36,73 @@ _ASSERTION_KEYWORDS = {
 _SUPPORTED_KEYWORDS = _ANNOTATION_KEYWORDS | _ASSERTION_KEYWORDS
 
 
+class _CompiledPattern(Protocol):
+    def search(self, text: str) -> object | None: ...
+
+
+@dataclass(slots=True)
+class _SchemaPatterns:
+    compiled: dict[str, _CompiledPattern] = field(
+        default_factory=lambda: dict[str, _CompiledPattern]()
+    )
+    source_bytes: int = 0
+
+    def admit(self, pattern: str, *, path: str) -> _CompiledPattern:
+        existing = self.compiled.get(pattern)
+        if existing is not None:
+            return existing
+        size = _utf8_size(pattern, path=path)
+        if size > 2048 or len(self.compiled) >= 32 or self.source_bytes + size > 16384:
+            raise UnsupportedRequestSchema(path, "pattern")
+        options = re2.Options()
+        options.max_mem = 1048576
+        options.log_errors = False
+        try:
+            compiled = re2.compile(pattern, options=options)
+        except re2.error:
+            raise UnsupportedRequestSchema(path, "pattern") from None
+        self.compiled[pattern] = compiled
+        self.source_bytes += size
+        return compiled
+
+
+def _utf8_size(value: str, *, path: str) -> int:
+    if len(value) > 1048576:
+        raise RequestPayloadInvalid(path, "JSON text exceeds safety limit")
+    try:
+        return len(value.encode("utf-8"))
+    except UnicodeEncodeError:
+        raise RequestPayloadInvalid(path, "JSON strings must be valid UTF-8") from None
+
+
+def _bound_json_tree(value: object, *, path: str) -> None:
+    """Bound legacy schemas and owner documents before any recursive traversal."""
+    pending: list[tuple[object, int]] = [(value, 0)]
+    visited = 0
+    text_bytes = 0
+    while pending:
+        item, depth = pending.pop()
+        visited += 1
+        if depth > 64 or visited > 4096:
+            raise RequestPayloadInvalid(path, "JSON nesting or node count exceeds safety limit")
+        if isinstance(item, str):
+            text_bytes += _utf8_size(item, path=path)
+        elif isinstance(item, dict):
+            if len(cast(dict[object, object], item)) + visited + len(pending) > 4096:
+                raise RequestPayloadInvalid(path, "JSON node count exceeds safety limit")
+            for key, child in cast(dict[object, object], item).items():
+                if not isinstance(key, str):
+                    raise RequestPayloadInvalid(path, "JSON object keys must be strings")
+                text_bytes += _utf8_size(key, path=path)
+                pending.append((child, depth + 1))
+        elif isinstance(item, list):
+            if len(cast(list[object], item)) + visited + len(pending) > 4096:
+                raise RequestPayloadInvalid(path, "JSON node count exceeds safety limit")
+            pending.extend((child, depth + 1) for child in cast(list[object], item))
+        if text_bytes > 1048576:
+            raise RequestPayloadInvalid(path, "aggregate JSON text exceeds safety limit")
+
+
 def validate_request_document(document: object, schema: dict[str, object]) -> None:
     """Validate JSON data against the deliberately small V3 schema subset.
 
@@ -41,16 +110,30 @@ def validate_request_document(document: object, schema: dict[str, object]) -> No
     unimplemented keyword instead of silently accepting a broader dialect.
     """
 
-    _validate_value(document, schema, data_path="$", schema_path="$")
+    patterns = _SchemaPatterns()
+    try:
+        _bound_json_tree(schema, path="$")
+        _validate_schema(schema, schema_path="$", patterns=patterns)
+    except RequestPayloadInvalid as exc:
+        # The document caller cannot repair an already-published definition.
+        # Publication validates its caller-owned schema via validate_request_schema,
+        # which deliberately keeps the normal input-error classification.
+        raise UnsupportedRequestSchema(exc.path, "schema") from None
+    _bound_json_tree(document, path="$")
+    _ensure_json_value(document, path="$")
+    _validate_value(document, schema, data_path="$", schema_path="$", patterns=patterns)
 
 
 def validate_request_schema(schema: dict[str, object]) -> None:
     """Validate that a stored Request schema uses only the supported V3 subset."""
 
-    _validate_schema(schema, schema_path="$")
+    _bound_json_tree(schema, path="$")
+    _validate_schema(schema, schema_path="$", patterns=_SchemaPatterns())
 
 
-def _validate_schema(schema: dict[str, object], *, schema_path: str) -> None:
+def _validate_schema(
+    schema: dict[str, object], *, schema_path: str, patterns: _SchemaPatterns
+) -> None:
     for keyword in schema:
         if keyword not in _SUPPORTED_KEYWORDS:
             raise UnsupportedRequestSchema(schema_path, keyword)
@@ -73,6 +156,7 @@ def _validate_schema(schema: dict[str, object], *, schema_path: str) -> None:
             _validate_schema(
                 cast(dict[str, object], raw_child),
                 schema_path=f"{schema_path}.properties.{raw_name}",
+                patterns=patterns,
             )
 
     required = schema.get("required")
@@ -96,6 +180,7 @@ def _validate_schema(schema: dict[str, object], *, schema_path: str) -> None:
         _validate_schema(
             cast(dict[str, object], additional),
             schema_path=f"{schema_path}.additionalProperties",
+            patterns=patterns,
         )
 
     items = schema.get("items")
@@ -105,6 +190,7 @@ def _validate_schema(schema: dict[str, object], *, schema_path: str) -> None:
         _validate_schema(
             cast(dict[str, object], items),
             schema_path=f"{schema_path}.items",
+            patterns=patterns,
         )
 
     enum_values = schema.get("enum")
@@ -133,13 +219,10 @@ def _validate_schema(schema: dict[str, object], *, schema_path: str) -> None:
             )
 
     pattern = schema.get("pattern")
-    if pattern is not None:
+    if "pattern" in schema:
         if not isinstance(pattern, str):
             raise RequestPayloadInvalid(schema_path, "schema pattern must be a string")
-        try:
-            re.compile(pattern)
-        except re.error as exc:
-            raise RequestPayloadInvalid(schema_path, f"schema pattern is invalid: {exc}") from exc
+        patterns.admit(pattern, path=schema_path)
 
     for keyword in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
         value = schema.get(keyword)
@@ -160,9 +243,8 @@ def _validate_value(
     *,
     data_path: str,
     schema_path: str,
+    patterns: _SchemaPatterns,
 ) -> None:
-    _validate_schema(schema, schema_path=schema_path)
-    _ensure_json_value(value, path=data_path)
 
     raw_type = schema.get("type")
     if raw_type is not None:
@@ -186,6 +268,7 @@ def _validate_value(
             schema,
             data_path=data_path,
             schema_path=schema_path,
+            patterns=patterns,
         )
     elif isinstance(value, list):
         _validate_array(
@@ -193,9 +276,10 @@ def _validate_value(
             schema,
             data_path=data_path,
             schema_path=schema_path,
+            patterns=patterns,
         )
     elif isinstance(value, str):
-        _validate_string(value, schema, data_path=data_path)
+        _validate_string(value, schema, data_path=data_path, patterns=patterns)
     elif _is_number(value):
         _validate_number(value, schema, data_path=data_path)
 
@@ -206,6 +290,7 @@ def _validate_object(
     *,
     data_path: str,
     schema_path: str,
+    patterns: _SchemaPatterns,
 ) -> None:
     required = schema.get("required", [])
     if isinstance(required, list):
@@ -235,6 +320,7 @@ def _validate_object(
                 cast(dict[str, object], child_schema),
                 data_path=f"{data_path}.{name}",
                 schema_path=f"{schema_path}.properties.{name}",
+                patterns=patterns,
             )
             continue
         if additional is False:
@@ -245,6 +331,7 @@ def _validate_object(
                 cast(dict[str, object], additional),
                 data_path=f"{data_path}.{name}",
                 schema_path=f"{schema_path}.additionalProperties",
+                patterns=patterns,
             )
 
 
@@ -254,6 +341,7 @@ def _validate_array(
     *,
     data_path: str,
     schema_path: str,
+    patterns: _SchemaPatterns,
 ) -> None:
     minimum = schema.get("minItems")
     maximum = schema.get("maxItems")
@@ -263,9 +351,12 @@ def _validate_array(
         raise RequestPayloadInvalid(data_path, f"allows at most {maximum} items")
 
     if schema.get("uniqueItems") is True:
-        for index, item in enumerate(value):
-            if any(_json_equal(item, previous) for previous in value[:index]):
+        seen: set[Hashable] = set()
+        for item in value:
+            identity = _json_fingerprint(item)
+            if identity in seen:
                 raise RequestPayloadInvalid(data_path, "array items must be unique")
+            seen.add(identity)
 
     items = schema.get("items")
     if isinstance(items, dict):
@@ -276,10 +367,13 @@ def _validate_array(
                 item_schema,
                 data_path=f"{data_path}[{index}]",
                 schema_path=f"{schema_path}.items",
+                patterns=patterns,
             )
 
 
-def _validate_string(value: str, schema: dict[str, object], *, data_path: str) -> None:
+def _validate_string(
+    value: str, schema: dict[str, object], *, data_path: str, patterns: _SchemaPatterns
+) -> None:
     minimum = schema.get("minLength")
     maximum = schema.get("maxLength")
     if isinstance(minimum, int) and not isinstance(minimum, bool) and len(value) < minimum:
@@ -287,7 +381,7 @@ def _validate_string(value: str, schema: dict[str, object], *, data_path: str) -
     if isinstance(maximum, int) and not isinstance(maximum, bool) and len(value) > maximum:
         raise RequestPayloadInvalid(data_path, f"string is longer than {maximum}")
     pattern = schema.get("pattern")
-    if isinstance(pattern, str) and re.search(pattern, value) is None:
+    if isinstance(pattern, str) and patterns.compiled[pattern].search(value) is None:
         raise RequestPayloadInvalid(data_path, f"string does not match pattern {pattern!r}")
 
 
@@ -398,3 +492,31 @@ def _json_equal(left: object, right: object) -> bool:
             return False
         return all(_json_equal(left_map[key], right_map[key]) for key in left_map)
     return False
+
+
+def _json_fingerprint(value: object) -> Hashable:
+    """Structural JSON identity, not a digest; numeric equality retains 1 == 1.0.
+
+    Type tags keep bool distinct from number. Object order is irrelevant while
+    list order remains significant. The public boundary already bounded and
+    validated the tree, so constructing identities cannot recurse unboundedly.
+    """
+    if value is None:
+        return ("null",)
+    if isinstance(value, bool):
+        return ("boolean", value)
+    if _is_number(value):
+        return ("number", cast(int | float, value))
+    if isinstance(value, str):
+        return ("string", value)
+    if isinstance(value, list):
+        return ("array", tuple(_json_fingerprint(item) for item in cast(list[object], value)))
+    if isinstance(value, dict):
+        return (
+            "object",
+            frozenset(
+                (key, _json_fingerprint(item))
+                for key, item in cast(dict[str, object], value).items()
+            ),
+        )
+    raise RequestPayloadInvalid("$", f"value of type {type(value).__name__} is not JSON")

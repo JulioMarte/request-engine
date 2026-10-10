@@ -1,4 +1,15 @@
+import math
 import time
+
+
+def _require_finite_non_negative(value: float, name: str) -> None:
+    try:
+        valid = type(value) in (int, float) and math.isfinite(value) and value >= 0
+    except OverflowError:
+        valid = False
+    if not valid:
+        raise ValueError(f"{name} must be finite and non-negative")
+
 
 _METRIC_NAMES = (
     "active_revision",
@@ -108,12 +119,11 @@ class P7AlertThresholds:
         max_backup_age_seconds: float = 90_000.0,
         max_restore_drill_age_seconds: float = 2_678_400.0,
     ) -> None:
-        if max_config_propagation_lag_seconds < 0:
-            raise ValueError("max_config_propagation_lag_seconds must be non-negative")
-        if max_backup_age_seconds < 0:
-            raise ValueError("max_backup_age_seconds must be non-negative")
-        if max_restore_drill_age_seconds < 0:
-            raise ValueError("max_restore_drill_age_seconds must be non-negative")
+        _require_finite_non_negative(
+            max_config_propagation_lag_seconds, "max_config_propagation_lag_seconds"
+        )
+        _require_finite_non_negative(max_backup_age_seconds, "max_backup_age_seconds")
+        _require_finite_non_negative(max_restore_drill_age_seconds, "max_restore_drill_age_seconds")
         self.max_config_propagation_lag_seconds = max_config_propagation_lag_seconds
         self.max_backup_age_seconds = max_backup_age_seconds
         self.max_restore_drill_age_seconds = max_restore_drill_age_seconds
@@ -332,5 +342,4 @@ class P7OperationalMetrics:
 
     @staticmethod
     def _require_non_negative(seconds: float) -> None:
-        if seconds < 0:
-            raise ValueError("metric observations must be non-negative")
+        _require_finite_non_negative(seconds, "metric observations")

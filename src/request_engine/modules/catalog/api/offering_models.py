@@ -45,3 +45,8 @@ class OfferingView(BaseModel):
             ),
             eligible_location_ids=offering.eligible_location_ids,
         )
+
+
+class OfferingPageView(BaseModel):
+    items: tuple[OfferingView, ...]
+    next_cursor: str | None = None

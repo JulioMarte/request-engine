@@ -19,6 +19,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from sqlalchemy import create_engine
 
 EXPECTED_VERSIONS = {
@@ -87,7 +88,8 @@ def _verify_sdk_signals() -> None:
     resource = Resource.create({"service.name": "request-engine-otel-smoke"})
 
     span_exporter = InMemorySpanExporter()
-    tracer_provider = TracerProvider(resource=resource)
+    # This deterministic SDK/exporter proof is independent of deployment sampling.
+    tracer_provider = TracerProvider(resource=resource, sampler=ALWAYS_ON)
     tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
     tracer = tracer_provider.get_tracer(__name__)
     with tracer.start_as_current_span("request-engine.observability.smoke") as span:

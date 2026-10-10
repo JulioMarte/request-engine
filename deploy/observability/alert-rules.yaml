@@ -1,0 +1,104 @@
+groups:
+  - name: request-engine-operator
+    interval: 30s
+    rules:
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: informational
+        annotations:
+          summary: Monitoring pipeline dead-man heartbeat
+      # A scrape failure and a stopped rule evaluator must be detected by an
+      # independent monitoring deployment; these rules cannot alert on their own loss.
+      - alert: RequestEngineCollectorMissing
+        expr: absent(up{job="request-engine-collector"}) or up{job="request-engine-collector"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Request Engine telemetry collector is missing
+      - alert: RequestEngineWorkerSignalsMissing
+        expr: absent(request_engine_worker_cycles_total{worker="scheduled_action"}) or absent(request_engine_worker_cycles_total{worker="outbox"}) or absent(request_engine_worker_cycles_total{worker="provider_event"})
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Worker cycle telemetry is missing
+      - alert: RequestEngineWorkerCycleStalled
+        expr: increase(request_engine_worker_cycles_total[10m]) == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Worker cycle counter has not advanced for ten minutes
+      - alert: RequestEngineWorkerProgressStalled
+        expr: (request_engine_scheduled_action_backlog > 0 and on() (sum(increase(request_engine_worker_outcomes_total{worker="scheduled_action",outcome=~"completed|dead|rejected"}[10m])) or vector(0)) == 0) or (request_engine_outbox_backlog > 0 and on() (sum(increase(request_engine_worker_outcomes_total{worker="outbox",outcome=~"completed|dead|rejected"}[10m])) or vector(0)) == 0) or (request_engine_provider_event_backlog > 0 and on() (sum(increase(request_engine_worker_outcomes_total{worker="provider_event",outcome=~"completed|dead|rejected"}[10m])) or vector(0)) == 0)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: A non-empty worker backlog is making no progress
+      - alert: RequestEngineWorkerLeaseLoss
+        expr: increase(request_engine_worker_lease_lost_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Worker lease ownership was lost
+      - alert: RequestEngineBacklogSignalsMissing
+        expr: absent(request_engine_scheduled_action_backlog) or absent(request_engine_scheduled_action_oldest_age_seconds) or absent(request_engine_outbox_backlog) or absent(request_engine_outbox_oldest_age_seconds) or absent(request_engine_provider_event_backlog) or absent(request_engine_provider_event_oldest_age_seconds)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: One or more operational backlog gauges are missing
+      - alert: RequestEngineOperatorMetricsCollectorStale
+        expr: time() - request_engine_operator_metrics_collector_last_success_timestamp > 60 or absent(request_engine_operator_metrics_collector_last_success_timestamp)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Operator metrics database collector has stopped reporting
+      - alert: RequestEngineDeliverySignalsMissing
+        expr: absent(request_engine_provider_event_failures_10m) or absent(request_engine_communication_failures_10m) or absent(request_engine_communication_ambiguous_10m)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Delivery failure or ambiguity telemetry is missing
+      - alert: RequestEngineBacklogOldestAge
+        expr: request_engine_scheduled_action_oldest_age_seconds > 900 or request_engine_outbox_oldest_age_seconds > 900 or request_engine_provider_event_oldest_age_seconds > 900
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Oldest operational work exceeds 15 minutes
+      - alert: RequestEngineDeliveryFailures
+        expr: request_engine_provider_event_failures_10m > 0 or request_engine_communication_failures_10m > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Provider or communication delivery failures occurred
+      - alert: RequestEngineAmbiguousDelivery
+        expr: request_engine_communication_ambiguous_10m > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Communication delivery has an ambiguous outcome; reconcile before retry
+      - alert: RequestEngineRecoveryEvidenceUnverified
+        expr: >-
+          request_engine_backup_evidence_verified == 0 or
+          request_engine_restore_drill_verified == 0 or
+          absent(request_engine_backup_evidence_verified) or
+          absent(request_engine_restore_drill_verified) or
+          request_engine_backup_evidence_age_seconds > 2592000 or
+          request_engine_restore_drill_evidence_age_seconds > 15552000 or
+          absent(request_engine_backup_evidence_age_seconds) or
+          absent(request_engine_restore_drill_evidence_age_seconds)
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: Backup or restore-drill evidence is unknown, missing, or unverified

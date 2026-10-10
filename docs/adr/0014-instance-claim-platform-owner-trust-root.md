@@ -148,6 +148,74 @@ No mode may implement a second privileged SQL business path.
 Exact environment variable names and deployment UX are implementation details
 until the implementation plan is executed.
 
+### 9. Native login options never disclose credential metadata
+
+The current pre-production correction (2026-10-03) uses the same discoverable,
+unbound, TTL-bounded one-time challenge for supplied and omitted login handles.
+Options have an empty allow-list: unknown accounts and accounts with one or many
+keys expose neither credential count nor credential-id lengths. Completion
+resolves the presented credential; a supplied handle must resolve to that same
+active native identity **before** session finalization. The PostgreSQL finalizer
+still independently enforces credential/identity activity and single use.
+
+This deliberately replaces the earlier one-decoy-versus-all-real-keys shape,
+which disclosed accounts with multiple keys. Fixed-count padding alone is not a
+complete repair because real credential-id lengths can still disclose accounts;
+arbitrary truncation can exclude legitimate keys.
+
+Compatibility disposition: ADAPT the handle-first ceremony, not authority or
+recovery guarantees. All newly registered passkeys require resident/discoverable
+credentials and user verification. Existing non-discoverable credentials are
+not deleted, but cannot perform this login ceremony. A user with such a key must
+use supported password login, or offline/verified-channel/governed recovery to
+restore a password, then register a discoverable replacement with the current
+session. Existing authenticated-session step-up remains available. The accepted
+replacement-key recovery journey is preserved. Operators must communicate this
+pre-production compatibility change rather than promise all legacy keys still
+work for login. Timing resistance and provider/browser compatibility are separate
+claims requiring their own evidence.
+
+### 10. WebAuthn deadlines govern the atomic finalizer effect
+
+Registration (normal and setup), bound and discoverable authentication, and
+session step-up share a strict deadline contract. A challenge must remain live
+after all authority/identity/credential/session serialization locks have been
+acquired and through the effect block immediately before challenge consumption.
+Setup registration also requires a live SetupSession; authentication requires a
+live new-session expiry; step-up requires a live existing session.
+
+Checking only on entry is insufficient: an identity lock can delay admission,
+and a structural uniqueness wait during credential/session insertion can delay
+the writes after admission. Finalizers therefore check before writing and before
+consumption. The effect block is a PostgreSQL subtransaction: deadline failure
+rolls back its credential counter/evidence, registration and session changes.
+It returns the same opaque failure as an invalid/expired ceremony, preserving
+the challenge's pending status and its null consumption time. Only the private
+deadline exception is handled; other database errors retain their existing
+transaction/error semantics. Serialization lock order and runtime ACLs do not
+change. No provider I/O occurs under these locks.
+
+This deadline belongs to the atomic finalizer's admission/effect boundary, not
+to the caller's later transaction COMMIT or HTTP response delivery. A caller
+that has already completed a live ceremony cannot reverse that completion merely
+by holding the transaction open past TTL. Production transaction budgets bound
+that separate risk. The migration is roll-forward only: application rollback
+retains the stronger database guard, rather than restoring expired admission.
+
+The migration replaces function bodies in one Alembic transaction without
+changing signatures, table data, OIDs, owners, ACLs or lock ordering. Old callers
+remain compatible. A missing/ambiguous replacement anchor aborts the migration,
+rather than silently leaving one ceremony unguarded. During deployment, drain
+authentication transactions before applying the migration: an invocation already
+running an old function body is not retroactively upgraded. Reopen admission
+only after migration and candidate validation; no live-provider calls or data
+backfill are required by this change.
+
+The current-product PostgreSQL lane executes the owner-lock and insertion-lock
+regressions in `tests/db/test_webauthn_concurrency.py`; their independent runtime
+connections prove rejection plus absence of durable partial effects. They do
+not certify browser/RP deployment configuration or actual HTTP timing budgets.
+
 ## Relationship to ADR 0013
 
 ADR 0013 remains accepted except where this ADR narrows/supersedes its older

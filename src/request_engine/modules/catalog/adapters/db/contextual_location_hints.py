@@ -47,8 +47,8 @@ async def eligible_location_ids(
                       FROM request_engine.offering_resource_requirements req
                       WHERE req.organization_id = l.organization_id
                         AND req.offering_version_id = :offering_version_id
-                        AND (
-                            SELECT count(DISTINCT r.id)
+                        AND NOT EXISTS (
+                            SELECT 1
                             FROM request_engine.resources r
                             JOIN request_engine.resource_capability_assignments rca
                               ON rca.organization_id = r.organization_id
@@ -62,7 +62,10 @@ async def eligible_location_ids(
                              AND a.effective_during @> CAST(:effective_at AS timestamptz)
                             WHERE r.organization_id = l.organization_id
                               AND r.active
-                        ) < req.quantity
+                                    AND ((r.capacity_model = 'exclusive' AND req.quantity = 1)
+                                         OR (r.capacity_model = 'units'
+                                             AND r.capacity_units >= req.quantity))
+                        )
                   )
                 ORDER BY l.id
                 """

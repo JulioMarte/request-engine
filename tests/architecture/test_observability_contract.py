@@ -7,6 +7,7 @@ MODULES_DIR = REPO_ROOT / "src" / "request_engine" / "modules"
 EXPECTED_REQUIREMENTS = {
     "opentelemetry-distro==0.65b0",
     "opentelemetry-sdk==1.44.0",
+    "opentelemetry-api==1.44.0",
     "opentelemetry-exporter-otlp-proto-http==1.44.0",
     "opentelemetry-instrumentation-fastapi==0.65b0",
     "opentelemetry-instrumentation-sqlalchemy==0.65b0",
@@ -40,21 +41,68 @@ def test_collector_configs_keep_required_otlp_safety_components() -> None:
         assert "health_check:" in config
         assert "traces:" in config
         assert "metrics:" in config
+        assert "translation_strategy: UnderscoreEscapingWithSuffixes" in config
+        assert "resource_to_telemetry_conversion:" in config
 
     assert "debug:" in local
+    assert "      exporters: [debug, prometheus]" in local
     assert "otlphttp/backend:" in production
     assert "${env:REQUEST_ENGINE_OTEL_BACKEND_ENDPOINT}" in production
     assert "${env:REQUEST_ENGINE_OTEL_BACKEND_AUTHORIZATION}" in production
     assert "insecure: true" not in production.lower()
+    assert 'endpoint: "0.0.0.0:9464"' in production
+
+
+def test_operator_alert_stack_has_private_scrape_and_missing_signal_coverage() -> None:
+    compose = _read(OBSERVABILITY_DIR / "compose.otel.yaml")
+    prometheus = _read(OBSERVABILITY_DIR / "prometheus.yaml")
+    rules = _read(OBSERVABILITY_DIR / "alert-rules.yaml")
+    receiver = _read(OBSERVABILITY_DIR / "alertmanager.yaml")
+    assert '"127.0.0.1:9090:9090"' in compose
+    assert '"127.0.0.1:9093:9093"' in compose
+    assert 'targets: ["otel-collector:9464"]' in prometheus
+    for signal in (
+        "worker_cycles_total",
+        "scheduled_action_backlog",
+        "outbox_backlog",
+        "provider_event_backlog",
+        "communication_ambiguous_10m",
+        "backup_evidence_verified",
+        "restore_drill_verified",
+        "backup_evidence_age_seconds",
+        "restore_drill_evidence_age_seconds",
+    ):
+        assert signal in rules
+    for worker in ("scheduled_action", "outbox", "provider_event"):
+        assert f'worker="{worker}"' in rules
+    assert "WorkerProgressStalled" in rules
+    assert "and on()" in rules
+    assert 'outcome=~"completed|dead|rejected"' in rules
+    assert "replace-with-operator-receiver.invalid" in receiver
+    assert "send_resolved: true" in receiver
 
 
 def test_collector_image_is_release_pinned_and_loopback_bound_locally() -> None:
     compose = _read(OBSERVABILITY_DIR / "compose.otel.yaml")
-    assert "otel/opentelemetry-collector-contrib:0.157.0" in compose
+    assert "opentelemetry-collector-contrib:0.157.0" in compose
+    assert "quay.io/prometheus/prometheus:v3.8.1" in compose
+    assert "quay.io/prometheus/alertmanager:v0.31.1" in compose
     assert '"127.0.0.1:4317:4317"' in compose
     assert '"127.0.0.1:4318:4318"' in compose
     assert '"127.0.0.1:13133:13133"' in compose
     assert "no-new-privileges:true" in compose
+
+
+def test_reference_image_can_install_observability_at_immutable_build_time() -> None:
+    dockerfile = _read(REPO_ROOT / "deploy" / "reference" / "Dockerfile")
+    dockerignore = _read(REPO_ROOT / ".dockerignore")
+    assert "ARG REQUEST_ENGINE_ENABLE_OBSERVABILITY=0" in dockerfile
+    assert "REQUEST_ENGINE_ENABLE_OBSERVABILITY" in dockerfile
+    assert "COPY deploy/observability/requirements.txt" in dockerfile
+    assert "scripts/observability/run_with_otel.py" in dockerfile
+    assert "scripts/observability/operator_metrics_collector.py" in dockerfile
+    assert "!deploy/observability/requirements.txt" in dockerignore
+    assert "!scripts/observability/**" in dockerignore
 
 
 def test_zero_code_launcher_has_safe_release_defaults() -> None:
@@ -68,9 +116,10 @@ def test_zero_code_launcher_has_safe_release_defaults() -> None:
         '"OTEL_TRACES_SAMPLER": "parentbased_traceidratio"',
         '"OTEL_PYTHON_LOG_CORRELATION": "true"',
         '"OTEL_PYTHON_LOG_AUTO_INSTRUMENTATION": "false"',
-        '"OTEL_RESOURCE_ATTRIBUTES": ",".join(resource_attributes)',
-        'f"service.version={args.service_version}"',
-        'f"deployment.environment.name={deployment_environment}"',
+        'env["OTEL_RESOURCE_ATTRIBUTES"] = ",".join(',
+        'resource_attributes.setdefault("service.version", args.service_version)',
+        'resource_attributes.setdefault("deployment.environment.name", deployment_environment)',
+        "os.execvpe(executable, [executable, *command]",
     )
     for fragment in required_fragments:
         assert fragment in launcher

@@ -31,7 +31,9 @@ class PostgresPlatformProvisionerReader:
         _authorize(actor)
         if not 1 <= query.limit <= 100:
             raise ValueError("limit must be between 1 and 100")
-        rows = await self._read(principal_id=None, after=query.after, limit=query.limit)
+        rows = await self._read(
+            principal_id=None, after=query.after, limit=query.limit, lookahead=True
+        )
         return tuple(_materialize(row) for row in rows)
 
     async def get_provisioner(
@@ -51,12 +53,14 @@ class PostgresPlatformProvisionerReader:
         principal_id: UUID | None,
         after: UUID | None,
         limit: int,
+        lookahead: bool = False,
     ) -> list[Mapping[str, Any]]:
         async with self._session_factory() as session, session.begin():
             rows = (
                 (
                     await session.execute(
                         text("""
+                        WITH page AS MATERIALIZED (
                         SELECT principal_id,
                                principal_kind,
                                active,
@@ -72,9 +76,22 @@ class PostgresPlatformProvisionerReader:
                               CAST(:principal_id AS uuid),
                               CAST(:after AS uuid),
                               CAST(:limit AS integer)
-                          )
+                          ))
+                        SELECT * FROM page
+                        UNION ALL
+                        SELECT * FROM request_platform.read_platform_provisioners(
+                            NULL,
+                            (SELECT principal_id FROM page
+                             ORDER BY principal_id DESC LIMIT 1), 1
+                        ) WHERE :lookahead AND (SELECT count(*) FROM page) = :limit
+                        ORDER BY principal_id
                         """),
-                        {"principal_id": principal_id, "after": after, "limit": limit},
+                        {
+                            "principal_id": principal_id,
+                            "after": after,
+                            "limit": limit,
+                            "lookahead": lookahead,
+                        },
                     )
                 )
                 .mappings()
