@@ -249,6 +249,10 @@ wait_prom_metric_positive() {
   return 1
 }
 
+# Require a real successful database read through OTLP and the scrape before
+# inducing failures. Container startup alone is not collector readiness.
+wait_prom_metric_positive request_engine_operator_metrics_collector_last_success_timestamp 90
+
 probe_file="$TMP_DIR/watchdog-monitor.txt"
 python3 "$ROOT_DIR/scripts/observability/operator_alerts_watchdog_monitor.py" \
   --prometheus-url http://127.0.0.1:9090 \

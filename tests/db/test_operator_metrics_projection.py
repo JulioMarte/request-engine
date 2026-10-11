@@ -1,6 +1,8 @@
 """The independent operator read path returns capped aggregates, never row data."""
 
+import asyncio
 import os
+import runpy
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -13,10 +15,86 @@ import pytest
 from psycopg import Connection, sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.errors import InsufficientPrivilege
+from sqlalchemy import text
 from sqlalchemy.engine import URL
+from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.ext.asyncio import create_async_engine
 
 pytestmark = [pytest.mark.postgres, pytest.mark.integration, pytest.mark.security]
 ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize("poison", [None, "superuser", "membership", "table_select"])
+def test_actual_monitor_login_verifier_preserves_aggregate_only_authority(
+    admin_conn: Connection[Any], pg_conninfo: str, poison: str | None
+) -> None:
+    collector = runpy.run_path(str(ROOT / "scripts/observability/operator_metrics_collector.py"))
+    login = f"re_monitor_{uuid4().hex[:12]}"
+    password = uuid4().hex
+    admin_conn.execute(
+        sql.SQL(
+            "CREATE ROLE {} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE "
+            "NOREPLICATION NOBYPASSRLS PASSWORD {}"
+        ).format(sql.Identifier(login), sql.Literal(password))
+    )
+    try:
+        admin_conn.execute(
+            sql.SQL("GRANT request_operator_metrics TO {} WITH INHERIT TRUE, SET FALSE").format(
+                sql.Identifier(login)
+            )
+        )
+        if poison == "superuser":
+            admin_conn.execute(sql.SQL("ALTER ROLE {} SUPERUSER").format(sql.Identifier(login)))
+        elif poison == "membership":
+            admin_conn.execute(
+                sql.SQL("GRANT request_engine_worker TO {}").format(sql.Identifier(login))
+            )
+        elif poison == "table_select":
+            admin_conn.execute(
+                sql.SQL("GRANT SELECT ON request_engine.scheduled_actions TO {}").format(
+                    sql.Identifier(login)
+                )
+            )
+        parameters = conninfo_to_dict(pg_conninfo)
+        url = URL.create(
+            "postgresql+asyncpg",
+            username=login,
+            password=password,
+            host=str(parameters["host"]),
+            port=int(str(parameters["port"])),
+            database=str(parameters["dbname"]),
+        )
+
+        async def verify() -> None:
+            engine = create_async_engine(url)
+            try:
+                if poison is not None:
+                    with pytest.raises(RuntimeError, match="read-only contract|unexpected role"):
+                        await collector["_verify_monitor_role"](engine)
+                    return
+                # Execute the production startup verifier as the real LOGIN.
+                # Name lookup must not require USAGE on the forbidden schema.
+                await collector["_verify_monitor_role"](engine)
+                async with engine.connect() as connection:
+                    row = (
+                        await connection.execute(
+                            text("SELECT * FROM request_admin.read_operator_metrics()")
+                        )
+                    ).one()
+                    assert len(row) == 9
+                    assert all(value >= 0 for value in row)
+                async with engine.connect() as connection:
+                    with pytest.raises(ProgrammingError, match="permission denied"):
+                        await connection.execute(
+                            text("SELECT id FROM request_engine.scheduled_actions LIMIT 1")
+                        )
+            finally:
+                await engine.dispose()
+
+        asyncio.run(verify())
+    finally:
+        admin_conn.execute(sql.SQL("DROP OWNED BY {} CASCADE").format(sql.Identifier(login)))
+        admin_conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(login)))
 
 
 def _plan_nodes(value: object) -> Iterator[dict[str, object]]:

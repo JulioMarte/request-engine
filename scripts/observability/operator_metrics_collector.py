@@ -173,7 +173,12 @@ async def _verify_monitor_role(engine: Any) -> None:
                                current_user, 'request_admin.read_operator_metrics()', 'EXECUTE'
                            ),
                            has_table_privilege(
-                               current_user, 'request_engine.scheduled_actions', 'SELECT'
+                               current_user,
+                               (SELECT relation.oid FROM pg_class relation
+                                JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+                                WHERE namespace.nspname = 'request_engine'
+                                  AND relation.relname = 'scheduled_actions'),
+                               'SELECT'
                            )
                       FROM pg_roles WHERE rolname = current_user
                     """

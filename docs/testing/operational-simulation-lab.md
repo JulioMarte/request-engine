@@ -43,6 +43,10 @@ source volumes, create targets or inject actual service failures. They do not
 grant that authority to a normal black-box runner. Monitoring fixture setup and
 administrative replay are distinct from the restricted worker and collector
 connections. These probes do not certify business capability authorization.
+Before fault injection, monitoring requires the collector's successful database
+read timestamp to reach Prometheus through OTLP and a real scrape. Its permission
+verification runs as the actual aggregate-only login; privileged catalog checks
+alone cannot prove that the collector can start.
 
 The monitoring worker receives only its restricted runtime database login. The
 outer host creates the disposable event and administratively replays it before
