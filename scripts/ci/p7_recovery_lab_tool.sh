@@ -36,8 +36,14 @@ case "$tool" in
       shift
     done
     [[ -n "$output" ]] || { echo 'pg_dump wrapper requires --file' >&2; exit 2; }
+    # pg_dump's custom archive treats --file=- as a literal filename. Its
+    # default (no --file) streams the archive to stdout for host redirection.
     docker exec "$P7_PG_SOURCE_CONTAINER" pg_dump \
-      --username=postgres --dbname="$P7_PG_DATABASE" "${options[@]}" --file=- >"$output"
+      --username=postgres --dbname="$P7_PG_DATABASE" "${options[@]}" >"$output"
+    [[ -s "$output" ]] || { echo 'pg_dump produced an empty archive' >&2; exit 1; }
+    # Parse with the real matching PostgreSQL client before a bundle containing
+    # an invalid archive can be uploaded and its disposable source destroyed.
+    docker exec -i "$P7_PG_SOURCE_CONTAINER" pg_restore --list <"$output" >/dev/null
     ;;
   pg_restore)
     : "${P7_PG_TARGET_CONTAINER:?P7_PG_TARGET_CONTAINER is required}"

@@ -18,6 +18,13 @@ artifacts. The HTTP API must be reachable only from the isolated E2E networks.
 
 The provider supports four DATA outcomes:
 
+The registered suite first creates only the invalid SMTP credential binding,
+proves all advertised authentication attempts are rejected before DATA, and
+revokes that binding through the public API using its returned revision and
+backend version. It then creates the valid binding and validates the managed
+configuration. This respects the product guarantee of one active secret binding
+per purpose; simultaneous valid and invalid bindings are an impossible setup.
+
 | Mode | SMTP behavior | Expected client meaning | Independent receipt |
 | --- | --- | --- | --- |
 | `accept` | Accept DATA and return 250 | Delivered/submission accepted | Present |

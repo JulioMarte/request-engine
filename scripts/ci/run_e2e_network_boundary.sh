@@ -57,7 +57,9 @@ state="$("${compose[@]}" exec -T -e PGPASSWORD=ci-postgres-only postgres \
 python - "$state" "$E2E_NETWORK_ARTIFACT_DIR/admission-state.json" <<'PY'
 import json,pathlib,sys
 actual=json.loads(sys.argv[1])
-expected=dict(configured_limit=3,accepted_attempts=3,challenges=0,sessions=0)
+# The three admitted options requests each persist one discoverable challenge.
+# Both later 429 responses must add neither a challenge nor a session.
+expected=dict(configured_limit=3,accepted_attempts=3,challenges=3,sessions=0)
 if actual != expected: raise SystemExit(f'authoritative admission oracle failed: {actual}')
 pathlib.Path(sys.argv[2]).write_text(json.dumps(dict(actual,replica_restart_survived=True,production_certified=False),indent=2)+'\n')
 PY

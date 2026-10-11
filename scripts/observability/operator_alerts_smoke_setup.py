@@ -51,11 +51,18 @@ def _provision() -> None:
 
 def _create_event(database_url: str, state_file: Path) -> None:
     organization_id = uuid4()
+    actor_id = uuid4()
     with psycopg.connect(database_url) as connection:
         connection.execute(
             "INSERT INTO request_engine.organizations (id, organization_key, display_name) "
             "VALUES (%s, %s, 'Operator alert integration probe')",
             (organization_id, f"operator-smoke-{organization_id}"),
+        )
+        connection.execute(
+            "INSERT INTO request_engine.principals "
+            "(id, organization_id, principal_kind, external_subject) "
+            "VALUES (%s, %s, 'human', %s)",
+            (actor_id, organization_id, f"operator-smoke-{actor_id}"),
         )
         row = connection.execute(
             "INSERT INTO request_engine.provider_events (organization_id, provider_key, "
@@ -66,7 +73,13 @@ def _create_event(database_url: str, state_file: Path) -> None:
         if row is None:
             raise RuntimeError("event fixture creation returned no event")
     state_file.write_text(
-        json.dumps({"organization_id": str(organization_id), "event_id": str(row[0])}),
+        json.dumps(
+            {
+                "organization_id": str(organization_id),
+                "event_id": str(row[0]),
+                "actor_id": str(actor_id),
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -77,7 +90,7 @@ def _replay_event(database_url: str, state_file: Path) -> None:
         connection.execute(
             "SELECT set_config('request_engine.organization_id', %s, true), "
             "set_config('request_engine.authenticated_principal_id', %s, true)",
-            (fixture["organization_id"], str(uuid4())),
+            (fixture["organization_id"], fixture["actor_id"]),
         )
         row = connection.execute(
             "SELECT request_admin.replay_provider_event(%s, %s, 1, "

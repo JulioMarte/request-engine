@@ -137,18 +137,18 @@ uv run python scripts/observability/operator_alerts_smoke_setup.py create-event 
   --state-file "$WORKER_CONTROL_DIR/worker-state.json"
 
 # Prometheus and Alertmanager rule/config fixtures are validated at their pinned versions.
-docker run --rm -v "$TMP_DIR:/etc/prometheus:ro" --entrypoint /bin/promtool \
+docker run --rm --user "$(id -u):$(id -g)" -v "$TMP_DIR:/etc/prometheus:ro" --entrypoint /bin/promtool \
   "$PROM_IMAGE" check config /etc/prometheus/prometheus.yaml \
   | tee -a "$ARTIFACT_DIR/operator-alerts-smoke.txt"
-docker run --rm -v "$TMP_DIR:/etc/prometheus:ro" --entrypoint /bin/promtool \
+docker run --rm --user "$(id -u):$(id -g)" -v "$TMP_DIR:/etc/prometheus:ro" --entrypoint /bin/promtool \
   -v "$OBS_DIR/tests:/etc/prometheus/tests:ro" "$PROM_IMAGE" check rules \
   /etc/prometheus/alert-rules.yaml \
   | tee -a "$ARTIFACT_DIR/operator-alerts-smoke.txt"
-docker run --rm -v "$TMP_DIR:/etc/prometheus:ro" \
+docker run --rm --user "$(id -u):$(id -g)" -v "$TMP_DIR:/etc/prometheus:ro" \
   -v "$OBS_DIR/tests:/etc/prometheus/tests:ro" --entrypoint /bin/promtool \
   "$PROM_IMAGE" test rules /etc/prometheus/tests/alert-rules.test.yaml \
   | tee -a "$ARTIFACT_DIR/operator-alerts-smoke.txt"
-docker run --rm -v "$TMP_DIR:/etc/alertmanager:ro" --entrypoint /bin/amtool \
+docker run --rm --user "$(id -u):$(id -g)" -v "$TMP_DIR:/etc/alertmanager:ro" --entrypoint /bin/amtool \
   "$AM_IMAGE" check-config /etc/alertmanager/alertmanager.yaml \
   | tee -a "$ARTIFACT_DIR/operator-alerts-smoke.txt"
 

@@ -54,21 +54,19 @@ def _request_json(
     return status, cast(dict[str, object], decoded)
 
 
-def run_provider_outcome_matrix(
+def verify_invalid_credentials(
     *,
     control_url: str,
     provider_url: str = "http://smtp-provider:8091",
     provider_control_token: str,
     bearer: str,
-    revision: int,
     idempotency_prefix: str,
 ) -> dict[str, object]:
-    """Exercise real STARTTLS SMTP outcomes through managed-provider HTTP.
+    """Reject invalid credentials, then revoke their sole active purpose binding.
 
-    The caller supplies a valid, already validated `email.delivery` revision
-    that points to the SMTP lab service. Every case performs one provider-test
-    command. The external receipt API is the oracle for accepted versus
-    rejected DATA, including accept-then-drop ambiguity.
+    Run before creating the valid SMTP binding: the public secret contract
+    allows one active binding for each purpose. Cleanup uses its returned
+    concurrency fences rather than bypassing that structural guarantee.
     """
     _, secret = _request_json(
         "POST",
@@ -84,6 +82,10 @@ def run_provider_outcome_matrix(
     binding_id = secret.get("binding_id")
     if not isinstance(binding_id, str):
         raise RuntimeError("SMTP negative credential fixture omitted its secret binding")
+    binding_revision = secret.get("revision")
+    backend_version = secret.get("backend_version")
+    if type(binding_revision) is not int or type(backend_version) is not int:
+        raise RuntimeError("SMTP negative credential fixture omitted its concurrency fences")
     _, staged = _request_json(
         "POST",
         f"{control_url}/v1/platform/configurations/email.delivery/revisions",
@@ -127,14 +129,54 @@ def run_provider_outcome_matrix(
     if not isinstance(auth_value, list) or not isinstance(invalid_data_value, list):
         raise RuntimeError("invalid SMTP credential attempt evidence has an invalid shape")
     auth_attempts = cast(list[object], auth_value)
-    if len(auth_attempts) != 1 or not isinstance(auth_attempts[0], dict):
+    if not auth_attempts or any(not isinstance(item, dict) for item in auth_attempts):
         raise RuntimeError("invalid SMTP credential attempt evidence has an invalid shape")
-    auth_attempt = cast(dict[str, object], auth_attempts[0])
-    if auth_attempt.get("accepted") is not False or invalid_data_value:
+    # smtplib may try more than one advertised mechanism (e.g. PLAIN then
+    # LOGIN) after a refusal. Every attempt must be rejected before DATA.
+    if (
+        any(cast(dict[str, object], item).get("accepted") is not False for item in auth_attempts)
+        or invalid_data_value
+    ):
         raise RuntimeError("invalid SMTP credentials were not rejected before DATA")
     _, invalid_receipts = _request_json("GET", f"{provider_url}/messages")
     if invalid_receipts.get("messages") != []:
         raise RuntimeError("invalid SMTP credentials produced an accepted message")
+
+    _, revoked = _request_json(
+        "POST",
+        f"{control_url}/v1/platform/secrets/{binding_id}:revoke",
+        bearer=bearer,
+        idempotency_key=f"{idempotency_prefix}-invalid-secret-revoke",
+        payload={
+            "expected_revision": binding_revision,
+            "expected_backend_version": backend_version,
+        },
+    )
+    if revoked.get("binding_id") != binding_id or revoked.get("status") != "revoked":
+        raise RuntimeError("SMTP invalid credential fixture was not revoked")
+    return {
+        "validation_rejected": True,
+        "data_attempts": 0,
+        "accepted_messages": 0,
+        "invalid_binding_revoked": True,
+    }
+
+
+def run_provider_outcome_matrix(
+    *,
+    control_url: str,
+    provider_url: str = "http://smtp-provider:8091",
+    provider_control_token: str,
+    bearer: str,
+    revision: int,
+    idempotency_prefix: str,
+) -> dict[str, object]:
+    """Exercise real STARTTLS DATA outcomes through managed-provider HTTP.
+
+    The caller supplies a valid, already validated `email.delivery` revision.
+    Provider receipts independently distinguish accepted versus rejected DATA,
+    including accept-then-drop ambiguity.
+    """
 
     cases: list[dict[str, object]] = []
     for index, (behavior, expected_outcome, expected_detail) in enumerate(
@@ -219,14 +261,7 @@ def run_provider_outcome_matrix(
         payload={},
         smtp_control_token=provider_control_token,
     )
-    return {
-        "invalid_credentials": {
-            "validation_rejected": True,
-            "data_attempts": 0,
-            "accepted_messages": 0,
-        },
-        "cases": cases,
-    }
+    return {"cases": cases}
 
 
 def wait_for_accepted_sender(

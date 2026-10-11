@@ -22,6 +22,7 @@ from smtp_provider_suite import (
     run_provider_outcome_matrix,
     set_provider_behavior,
     verify_ambiguous_worker_delivery,
+    verify_invalid_credentials,
     wait_for_accepted_sender,
 )
 from software_webauthn_authenticator import SoftwareAuthenticator
@@ -2959,6 +2960,13 @@ def _run_smtp_provider_lab(checkpoints: list[dict[str, str]], phase: str) -> Non
         foundation, "tenant_native_identity_id", "F01 foundation state"
     )
 
+    invalid_credentials = verify_invalid_credentials(
+        control_url=control_url,
+        provider_url=provider_url,
+        provider_control_token=provider_control_token,
+        bearer=platform_token,
+        idempotency_prefix="smtp-provider-lab-outcome-v1",
+    )
     created = _http_json(
         "POST",
         f"{control_url}/v1/platform/secrets",
@@ -2992,6 +3000,7 @@ def _run_smtp_provider_lab(checkpoints: list[dict[str, str]], phase: str) -> Non
         revision=revision,
         idempotency_prefix="smtp-provider-lab-outcome-v1",
     )
+    matrix["invalid_credentials"] = invalid_credentials
     checkpoints.append(
         _checkpoint(
             "smtp-provider-outcome-matrix",
