@@ -697,13 +697,14 @@ async def test_secrets_workspace_states_it_cannot_list() -> None:
 
 
 @pytest.mark.asyncio
-async def test_owners_workspace_states_it_cannot_list() -> None:
+async def test_owners_workspace_without_canonical_read_fails_closed() -> None:
     app = create_admin_console_app(_settings(), client=FakeControl())
     async with _client(app) as client:
         await _login(client)
         response = await client.get("/resources/owners")
-    assert response.status_code == 200
-    assert "no owner enumeration operation" in response.text
+    assert response.status_code == 503
+    assert "Owner information is temporarily unavailable" in response.text
+    assert "No owner information or action forms are shown" in response.text
 
 
 @pytest.mark.asyncio

@@ -112,6 +112,7 @@ def test_policy_catalog_is_not_runtime_table(admin_conn: Connection[Any], role: 
         "tenant-controller-v4",
         "tenant-controller-v5",
         "tenant-controller-v6",
+        "tenant-controller-v7",
     ],
 )
 def test_policy_is_immutable_and_unknown_selection_fails(
@@ -216,12 +217,12 @@ async def test_competing_creations_materialize_exactly_one_initial_policy(
     assert admin_conn.execute(
         "SELECT initial_controller_policy_key "
         "FROM request_engine.organization_root_provisioning_facts"
-    ).fetchall() == [("tenant-controller-v6",)]
+    ).fetchall() == [("tenant-controller-v7",)]
     assert admin_conn.execute(
         "SELECT count(*), count(DISTINCT capability_key) "
         "FROM request_engine.principal_authority_grants WHERE principal_id=%s AND status='active'",
         (result.controller_principal_id,),
-    ).fetchone() == (50, 50)
+    ).fetchone() == (51, 51)
     # The older staff-root trigger replaces seven non-delegable grants and
     # retains their revoked provenance; those are not duplicate active grants.
     assert admin_conn.execute(
@@ -231,10 +232,10 @@ async def test_competing_creations_materialize_exactly_one_initial_policy(
     ).fetchone() == (7,)
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.principal_authority_grants "
-        "WHERE principal_id=%s AND provenance_reference LIKE 'policy:tenant-controller-v6;root:%%' "
+        "WHERE principal_id=%s AND provenance_reference LIKE 'policy:tenant-controller-v7;root:%%' "
         "AND granted_by_principal_id=%s AND status='active'",
         (result.controller_principal_id, creator),
-    ).fetchone() == (42,)
+    ).fetchone() == (43,)
 
 
 def test_v2_adds_only_explicit_agent_read(admin_conn: Connection[Any]) -> None:
@@ -349,8 +350,10 @@ def test_v6_adds_only_reviewed_configuration_operations(admin_conn: Connection[A
     ).fetchone() == (6,)
 
 
+@pytest.mark.parametrize("prior_policy", ["tenant-controller-v3", "tenant-controller-v6"])
 @pytest.mark.asyncio
-async def test_http_fresh_v6_and_old_v3_replay_never_upgrade_existing_authority(
+async def test_http_fresh_v7_and_legacy_replay_never_upgrade_existing_authority(
+    prior_policy: str,
     admin_conn: Connection[Any],
     command_session_factory: SessionFactory,
     platform_control_session_factory: SessionFactory,
@@ -379,7 +382,7 @@ async def test_http_fresh_v6_and_old_v3_replay_never_upgrade_existing_authority(
     )
     before = admin_conn.execute(
         "SELECT policy_key,revision,grants FROM request_engine.initial_controller_policies "
-        "WHERE revision<=5 ORDER BY revision"
+        "WHERE revision<=6 ORDER BY revision"
     ).fetchall()
 
     class Resolver:
@@ -408,22 +411,24 @@ async def test_http_fresh_v6_and_old_v3_replay_never_upgrade_existing_authority(
             "SELECT capability_key,authority_plane,delegable "
             "FROM request_engine.principal_authority_grants "
             "WHERE principal_id=%s AND capability_key=ANY(%s) AND status='active'",
-            (principal, list(_V6_CONFIGURATION_CAPABILITIES)),
+            (principal, [*_V6_CONFIGURATION_CAPABILITIES, "queue.read_configuration"]),
         ).fetchall()
         assert set(new_grants) == {
-            (key, "operational", True) for key in _V6_CONFIGURATION_CAPABILITIES
+            (key, "operational", True)
+            for key in (*_V6_CONFIGURATION_CAPABILITIES, "queue.read_configuration")
         }
         admin_conn.execute(
             "UPDATE request_engine.principal_authority_grants SET status='revoked', "
             "revision=revision+1,revoked_at=clock_timestamp(),revoked_by_principal_id=principal_id "
-            "WHERE principal_id=%s AND capability_key='requests.read_inbox'",
+            "WHERE principal_id=%s AND capability_key='queue.read_configuration'",
             (principal,),
         )
         replay = await client.post("/v1/platform/organizations", json=body, headers=headers)
         assert replay.status_code == 201 and replay.json() == original.json()
         assert admin_conn.execute(
             "SELECT count(*) FROM request_engine.principal_authority_grants "
-            "WHERE principal_id=%s AND capability_key='requests.read_inbox' AND status='active'",
+            "WHERE principal_id=%s AND capability_key='queue.read_configuration' "
+            "AND status='active'",
             (principal,),
         ).fetchone() == (0,)
 
@@ -432,7 +437,7 @@ async def test_http_fresh_v6_and_old_v3_replay_never_upgrade_existing_authority(
         # Same owner command with the earlier deployment's server-selected default.
         # This creates a historical-policy precondition on current HEAD; it is
         # not proof of a physical migration or of native authentication.
-        initial_controller_policy: str = field(default="tenant-controller-v3", init=False)
+        initial_controller_policy: str = field(default=prior_policy, init=False)
 
     current_command = ProvisionNativeOrganizationCommand(
         organization_key="v3-existing",
@@ -482,16 +487,44 @@ async def test_http_fresh_v6_and_old_v3_replay_never_upgrade_existing_authority(
         "FROM request_engine.organization_root_provisioning_facts "
         "WHERE organization_id=%s",
         (prior.organization_id,),
-    ).fetchone() == ("tenant-controller-v3",)
+    ).fetchone() == (prior_policy,)
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.principal_authority_grants "
         "WHERE principal_id=%s AND capability_key=ANY(%s) AND status='active'",
-        (prior.controller_principal_id, list(_V6_CONFIGURATION_CAPABILITIES)),
+        (
+            prior.controller_principal_id,
+            list(_V6_CONFIGURATION_CAPABILITIES)
+            if prior_policy == "tenant-controller-v3"
+            else ["queue.read_configuration"],
+        ),
     ).fetchone() == (0,)
     assert (
         admin_conn.execute(
             "SELECT policy_key,revision,grants FROM request_engine.initial_controller_policies "
-            "WHERE revision<=5 ORDER BY revision"
+            "WHERE revision<=6 ORDER BY revision"
         ).fetchall()
         == before
     )
+
+
+def test_v7_adds_only_explicit_queue_configuration_read(admin_conn: Connection[Any]) -> None:
+    policies = dict(
+        admin_conn.execute(
+            "SELECT policy_key,grants FROM request_engine.initial_controller_policies"
+        ).fetchall()
+    )
+    assert policies["tenant-controller-v7"] == [
+        *policies["tenant-controller-v6"],
+        {
+            "capability_key": "queue.read_configuration",
+            "authority_plane": "operational",
+            "delegable": True,
+        },
+    ]
+    assert len(policies["tenant-controller-v6"]) == 42
+    assert admin_conn.execute(
+        "SELECT revision FROM request_engine.initial_controller_policies "
+        "WHERE policy_key='tenant-controller-v7'"
+    ).fetchone() == (7,)
+    definition = capability_definition("queue.read_configuration")
+    assert definition is not None and definition.authority_plane.value == "operational"

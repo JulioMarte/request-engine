@@ -117,10 +117,10 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
                 item = as_mapping(value)
                 try:
                     invitation_id = str(UUID(str(item["invitation_id"])))
-                    revision = int(item["revision"])
+                    revision = item["revision"]
                 except (KeyError, ValueError, TypeError):
                     return Response("Invalid invitation API response", status_code=502)
-                if revision < 1:
+                if type(revision) is not int or revision < 1:
                     return Response("Invalid invitation API revision", status_code=502)
                 if item.get("membership_id") is not None:
                     try:
@@ -164,6 +164,7 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
                 invitations=rows,
                 next_after=next_after,
                 page_limit=limit,
+                after=after,
                 loaded=result.ok,
                 error=""
                 if result.ok

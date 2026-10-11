@@ -30,6 +30,26 @@ same-tenant Location with an optional Offering link. Selection stays FIFO only
 only: it admits nobody. `read_queue_supply` (via `contracts/onboarding.py`)
 backs the `walk_in_queue` readiness fact of `GET /v1/onboarding/readiness`.
 
+Operator configuration inventory uses `queue.read_configuration`, a Query distinct
+from public `queue.list` and creation Command `queue.configure`. It exposes:
+
+- `GET /v1/queues/configuration` (`queue_service_queue_configuration_list`);
+- `GET /v1/queues/configuration/{queue_id}` (`queue_service_queue_configuration_read`).
+
+Both require an explicit `authority_party_id`, the actor's current tenant standing
+capability and current exact `operations.manage_supply` Representation, resolved
+inside the read transaction under Principal/Party serialization. The Party is an
+authority anchor; it does not manufacture tenant identity. No new default grant
+is implied by these routes. List includes inactive queues and uses UUID keyset
+pagination (`limit` 1–100, optional UUID `cursor`, `next_cursor` null at observed
+end). This is a live read, not a snapshot. Detail returns the current queue ID,
+key, display label, Location/Offering links, FIFO policy, active state and queue
+revision. Missing and foreign IDs have the same 404 response. Responses are
+`no-store`; unknown filters and malformed/beyond-bound inputs fail with 422.
+These read operations require neither idempotency key nor expected revision,
+admit no subjects and do not expose QueueEntry identities. No tool projection is
+needed: curated dashboard navigation invokes these same owner HTTP operations.
+
 F3 keeps arrival and admission as separate facts:
 
 ```text

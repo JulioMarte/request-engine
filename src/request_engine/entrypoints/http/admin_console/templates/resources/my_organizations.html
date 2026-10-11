@@ -21,7 +21,7 @@
     <tbody>{% for organization in organizations %}<tr>
       <td><strong>{{ organization.display_name }}</strong><br /><small><code>{{ organization.organization_id }}</code></small></td>
       <td><code>{{ organization.principal_id }}</code></td>
-      <td><a class="button secondary" href="/tenants/{{ organization.organization_id }}/staff" aria-label="Open people and permissions for {{ organization.display_name }}">People &amp; permissions →</a></td>
+      <td><a class="button secondary" href="/tenants/{{ organization.organization_id }}/staff" aria-label="Open people and permissions for {{ organization.display_name }}">People &amp; permissions →</a> <a class="button secondary" href="/tenants/{{ organization.organization_id }}/configuration" aria-label="Open business configuration for {{ organization.display_name }}">Business configuration →</a></td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {% else %}

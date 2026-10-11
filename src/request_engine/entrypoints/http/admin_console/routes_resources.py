@@ -30,7 +30,6 @@ from request_engine.entrypoints.http.admin_console.json_types import as_mapping
 from request_engine.entrypoints.http.admin_console.resources import (
     CONFIGURATION_OPERATION_IDS,
     DEPLOYMENT_OPERATION_IDS,
-    OWNER_OPERATION_IDS,
     PROVISIONING_OPERATION_IDS,
     RESOURCE_SPECS,
     SECRET_OPERATION_IDS,
@@ -45,6 +44,7 @@ from request_engine.entrypoints.http.admin_console.resources import (
     spec_by_key,
     workspace_by_key,
 )
+from request_engine.entrypoints.http.admin_console.routes_owners import install_owner_routes
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 _CONFIG_ACTIONS = {
@@ -63,14 +63,6 @@ _SECRET_ACTIONS = {
 _DEPLOYMENT_ACTIONS = {
     "configure": DEPLOYMENT_OPERATION_IDS["configure"],
     "reconcile": DEPLOYMENT_OPERATION_IDS["reconcile"],
-}
-_OWNER_ACTIONS = {
-    "invite": OWNER_OPERATION_IDS["invite"],
-    "revoke-invitation": OWNER_OPERATION_IDS["revoke_invitation"],
-    "activate-invitation": OWNER_OPERATION_IDS["activate_invitation"],
-    "suspend": OWNER_OPERATION_IDS["suspend"],
-    "reactivate": OWNER_OPERATION_IDS["reactivate"],
-    "revoke": OWNER_OPERATION_IDS["revoke"],
 }
 _PROVISIONING_ACTIONS = {
     "recovery-operator": PROVISIONING_OPERATION_IDS["recovery_operator_create"],
@@ -685,47 +677,6 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
             return RedirectResponse("/resources/deployment-recovery", status_code=303)
         return await _run_action(request, operation_id, form_id=action_key)
 
-    # ---------------------------------------------------------------- owners
-
-    async def owners(request: Request) -> Response:
-        if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
-        catalog = await _catalog()
-        try:
-            resolved = {
-                key: resolve_operation(catalog, operation_id)
-                for key, operation_id in _OWNER_ACTIONS.items()
-            }
-        except MissingOperation as exc:
-            return _drift(request, exc.operation_id)
-        forms = {
-            key: _action_context(
-                request,
-                operation,
-                action_url=f"/resources/owners/actions/{key}",
-                form_id=f"owner-{key}",
-                submit_label=_owner_label(key),
-                danger=key in {"revoke-invitation", "suspend", "revoke"},
-                confirm=f"{_owner_label(key)}?",
-            )
-            for key, operation in resolved.items()
-        }
-        return state.templates.TemplateResponse(
-            request,
-            "resources/owners.html",
-            state.context(
-                request,
-                note=_note("owners"),
-                forms=forms,
-            ),
-        )
-
-    async def owners_action(request: Request, action_key: str) -> Response:
-        operation_id = _OWNER_ACTIONS.get(action_key)
-        if operation_id is None:
-            return RedirectResponse("/resources/owners", status_code=303)
-        return await _run_action(request, operation_id, form_id=f"owner-{action_key}")
-
     # ---------------------------------------------------------- provisioning
 
     async def provisioning(request: Request) -> Response:
@@ -823,8 +774,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         deployment_action,
         methods=["POST"],
     )
-    app.add_api_route("/resources/owners", owners, methods=["GET"], response_class=HTMLResponse)
-    app.add_api_route("/resources/owners/actions/{action_key}", owners_action, methods=["POST"])
+    install_owner_routes(app, state)
     app.add_api_route(
         "/resources/provisioning",
         provisioning,
@@ -864,10 +814,6 @@ def _error_text(response: Any) -> str:
     if isinstance(code, str):
         return code
     return f"control_error_{response.status_code}"
-
-
-def _owner_label(key: str) -> str:
-    return key.replace("-", " ").title()
 
 
 def _note(key: str) -> str:

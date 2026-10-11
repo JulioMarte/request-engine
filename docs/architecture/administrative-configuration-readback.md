@@ -72,17 +72,19 @@ Command retains `communications_configure_channel_policy`.
   exposed by these configuration Queries.
 - Queries have no idempotency key: they do not persist business changes. Subsequent
   Commands retain their own revision and idempotency policies.
-- No migration is needed for these read surfaces. They read owner facts rather
-  than maintaining a second configuration model.
+- The read surfaces use existing owner facts rather than a second configuration
+  model. Migration `0040_tenant_controller_v7` separately versions the explicit
+  initial-controller permission manifest and governed adoption path for the new
+  Queue Query capability; it does not backfill permissions.
 - New capabilities are not silently appended to immutable initial-controller
   policy versions. A reviewed new default can supply them to future organizations;
   existing staff delegation can grant only capabilities already inside the
   actor's delegable ceiling. Existing v3 controllers cannot obtain these absent
-  capabilities through that command or self-upgrade. Their adoption journey is
-  proposed, not implemented: see ADR 0016. OpenAPI visibility is not a grant.
-- These Booking/Communications Queries belong to the tenant runtime API, not the
-  platform-control API. This contract does not claim that the existing admin
-  console already exposes a task-oriented screen for each of them.
+  capabilities through that command or self-upgrade. Their adoption journey requires
+  the governed review/consent/apply operations: see ADR 0016. OpenAPI visibility is not a grant.
+- These Queries belong to the tenant runtime API, not the platform-control API.
+  The admin console projects them in the tenant business configuration workspace
+  through the same canonical operation catalog and executor.
 - Booking monetary HTTP values use precision-preserving decimal strings. This is
   a deliberate pre-production contract adaptation, not a float conversion.
 
@@ -96,3 +98,24 @@ in the canonical current-product lane. The database proof must run under the
 restricted application role: privileged fixture setup alone is not proof of
 runtime authorization. Execution status belongs to the remediation evidence log,
 not this contract.
+
+## Catalog and service-queue inventory
+
+Catalog exposes `catalog_location_configuration_list/read` and
+`catalog_offering_configuration_list/read` under `/v1/catalog`. Locations require
+`catalog.read_configuration` and `operations.manage_profile` Party authority;
+offerings require the same capability and `operations.manage_terms`. Readback
+includes current operational/booking-policy revisions and the latest offering
+version reference.
+
+Queue exposes `queue_service_queue_configuration_list/read` under
+`/v1/queues/configuration`, using the explicit `queue.read_configuration` Query
+capability and `operations.manage_supply` Party authority. Inventory includes
+active and inactive queues. These administrative Queries do not reuse public
+active-queue discovery as proof of administration permission.
+
+All six operations require `authority_party_id`, enforce current tenant actor
+and Party authority in a restricted application-role transaction, return typed
+HTTP Views, reject unsupported query fields, and use bounded keyset collection
+pages. Detail reads do not expose another tenant's configuration. No business
+state is written by these Queries.

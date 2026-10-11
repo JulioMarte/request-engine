@@ -10,6 +10,7 @@ form. Execution is delegated to the shared ``execution.execute_operation`` path.
 from __future__ import annotations
 
 from asyncio import gather
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -22,13 +23,35 @@ from request_engine.entrypoints.http.admin_console.execution import (
     local_error,
 )
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs, summarize_payload
-from request_engine.entrypoints.http.admin_console.json_types import as_mapping
+from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
 from request_engine.entrypoints.http.admin_console.resources import RESOURCE_SPECS, WORKSPACE_SPECS
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 _FORM_ID = "operation-form"
 
 _GOOD_STATES = frozenset({"active", "available", "configured", "healthy", "ok", "ready"})
+_READINESS_CHECKS = (
+    ("secret_store", "Secret store", "/resources/secrets", {"configured"}),
+    (
+        "recovery_delivery_source",
+        "Recovery delivery",
+        "/resources/configurations",
+        {"managed", "bootstrap"},
+    ),
+    ("backup_evidence", "Backup evidence", "/resources/deployment-recovery", {"verified"}),
+    ("restore_drill", "Restore drill", "/resources/deployment-recovery", {"verified"}),
+    ("clone_fence", "Clone isolation", "/resources/deployment-recovery", {"fenced"}),
+)
+
+
+def _valid_alerts(payload: dict[str, Any]) -> bool:
+    alerts = payload.get("alerts")
+    return isinstance(alerts, list) and all(
+        isinstance(alert, dict)
+        and isinstance(as_mapping(alert).get("code"), str)
+        and isinstance(as_mapping(alert).get("metric"), str)
+        for alert in as_list(alerts)
+    )
 
 
 def _probe_view(
@@ -53,7 +76,7 @@ def _probe_view(
     elif state:
         label = state.replace("_", " ").title()
     else:
-        label = "Available"
+        label = "Available" if healthy else "Incomplete"
     return {
         "title": title,
         "label": label,
@@ -102,7 +125,7 @@ def _attention_items(
                     "action": "Review",
                 }
             )
-    for alert in observability.get("alerts", []):
+    for alert in as_list(observability.get("alerts")) if _valid_alerts(observability) else []:
         alert_body = as_mapping(alert)
         code = str(alert_body.get("code") or "Operational alert")
         metric = str(alert_body.get("metric") or "A monitored threshold was crossed")
@@ -114,17 +137,12 @@ def _attention_items(
                 "action": "Inspect diagnostics",
             }
         )
-    readiness_checks = (
-        ("secret_store", "Secret store", "/resources/secrets"),
-        ("recovery_delivery_source", "Recovery delivery", "/resources/configurations"),
-        ("restore_drill", "Restore drill", "/resources/deployment-recovery"),
-    )
-    for field, title, href in readiness_checks:
+    for field, title, href, good_states in _READINESS_CHECKS:
         value = readiness.get(field)
         if value is None:
             continue
         normalized = str(value).lower()
-        if normalized in _GOOD_STATES or normalized in {"managed", "bootstrap", "current"}:
+        if normalized in good_states:
             continue
         items.append(
             {
@@ -195,6 +213,10 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             _probe(session, "GET", "/v1/platform/readiness"),
             _probe(session, "GET", "/v1/platform/observability"),
         )
+        if readiness_status == 401 or observability_status == 401:
+            response = RedirectResponse("/login", status_code=303)
+            state.clear_session(response, request)
+            return response
         deployment_status = readiness_status
         deployment = {
             key: readiness[key]
@@ -219,22 +241,28 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             deployment,
             deployment_error,
         )
-        readiness_fields = ("secret_store", "recovery_delivery_source", "restore_drill")
-        readiness_good = readiness_status in range(200, 300) and (
-            str(readiness.get("status", "")).lower() in _GOOD_STATES
-            or all(
-                field in readiness
-                and str(readiness[field]).lower()
-                in (_GOOD_STATES | {"managed", "bootstrap", "current"})
-                for field in readiness_fields
+        readiness_good = readiness_status in range(200, 300) and all(
+            isinstance(readiness.get(field), str) and readiness[field] in good_states
+            for field, _, _, good_states in _READINESS_CHECKS
+        )
+        counter_fields = (
+            "validation_success_total",
+            "validation_failure_total",
+            "provider_test_failures_total",
+            "secret_backend_failures_total",
+        )
+        observability_good = (
+            observability_status in range(200, 300)
+            and _valid_alerts(observability)
+            and not observability["alerts"]
+            and all(
+                type(observability.get(field)) is int and observability[field] >= 0
+                for field in counter_fields
             )
         )
-        observability_good = observability_status in range(200, 300) and not observability.get(
-            "alerts", []
-        )
         deployment_good = deployment_status in range(200, 300) and all(
-            str(deployment.get(field, "")).lower() in (_GOOD_STATES | {"current"})
-            for field in ("backup_evidence", "restore_drill", "clone_fence")
+            isinstance(deployment.get(field), str) and deployment[field] in good_states
+            for field, _, _, good_states in _READINESS_CHECKS[2:]
         )
         services = (
             _probe_view(
@@ -294,6 +322,11 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 services=services,
                 attention=attention,
                 overall_state=overall_state,
+                checked_at=datetime.now(UTC).isoformat(timespec="seconds"),
+                readiness_checks=[
+                    {"title": title, "value": readiness.get(field, "Not reported"), "href": href}
+                    for field, title, href, _ in _READINESS_CHECKS
+                ],
                 configuration_counters=configuration_counters,
                 readiness_status=readiness_status,
                 readiness_detail=summarize_payload(readiness) if readiness else ([], []),

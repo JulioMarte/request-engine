@@ -14,10 +14,10 @@
       {% if authenticated %}
       <aside class="sidebar" id="admin-sidebar" aria-label="Primary navigation">
         <a class="brand" href="/" aria-label="Request Engine overview">
-          <span class="brand-mark" aria-hidden="true">R</span>
+          <span class="brand-mark" aria-hidden="true">RE</span>
           <span><strong>Request Engine</strong><small>Control plane</small></span>
         </a>
-        <nav class="side-nav">
+        <nav class="side-nav" aria-label="Administration">
           <p class="nav-label">Operate</p>
           <a href="/" class="{% if current_path == '/' %}active{% endif %}" {% if current_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true">⌂</span>Overview</a>
           <a href="/resources" class="{% if current_path == '/resources' %}active{% endif %}" {% if current_path == '/resources' %}aria-current="page"{% endif %}><span aria-hidden="true">▦</span>Workspaces</a>
@@ -26,29 +26,32 @@
           <a href="/resources/native-identities" class="{% if current_path.startswith('/resources/native-identities') %}active{% endif %}" {% if current_path.startswith('/resources/native-identities') %}aria-current="page"{% endif %}><span aria-hidden="true">◎</span>Native identities</a>
           <a href="/resources/provisioners" class="{% if current_path.startswith('/resources/provisioners') %}active{% endif %}" {% if current_path.startswith('/resources/provisioners') %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>Provisioners</a>
           <a href="/resources/recovery-cases" class="{% if current_path.startswith('/resources/recovery-cases') %}active{% endif %}" {% if current_path.startswith('/resources/recovery-cases') %}aria-current="page"{% endif %}><span aria-hidden="true">↻</span>Recovery cases</a>
+          <a href="/resources/owners" class="{% if current_path.startswith('/resources/owners') %}active{% endif %}" {% if current_path.startswith('/resources/owners') %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>Platform owners</a>
+          <a href="/resources/recovery-operators" class="{% if current_path.startswith('/resources/recovery-operators') %}active{% endif %}" {% if current_path.startswith('/resources/recovery-operators') %}aria-current="page"{% endif %}><span aria-hidden="true">◎</span>Recovery operators</a>
           <p class="nav-label">Platform</p>
           <a href="/resources/configurations" class="{% if current_path.startswith('/resources/configurations') %}active{% endif %}" {% if current_path.startswith('/resources/configurations') %}aria-current="page"{% endif %}><span aria-hidden="true">◫</span>Configuration</a>
           <a href="/resources/secrets" class="{% if current_path.startswith('/resources/secrets') %}active{% endif %}" {% if current_path.startswith('/resources/secrets') %}aria-current="page"{% endif %}><span aria-hidden="true">⌁</span>Secrets &amp; keys</a>
+          <a href="/resources/controller-policy-adoptions" class="{% if current_path.startswith('/resources/controller-policy-adoptions') %}active{% endif %}" {% if current_path.startswith('/resources/controller-policy-adoptions') %}aria-current="page"{% endif %}><span aria-hidden="true">◫</span>Controller policy</a>
           <p class="nav-label">Reliability</p>
           <a href="/resources/deployment-recovery" class="{% if current_path.startswith('/resources/deployment-recovery') %}active{% endif %}" {% if current_path.startswith('/resources/deployment-recovery') %}aria-current="page"{% endif %}><span aria-hidden="true">◉</span>Deployment recovery</a>
           <a href="/diagnostics" class="{% if current_path.startswith('/diagnostics') %}active{% endif %}" {% if current_path.startswith('/diagnostics') %}aria-current="page"{% endif %}><span aria-hidden="true">⌁</span>Diagnostics</a>
           <p class="nav-label">Advanced</p>
           <a href="/operations" class="{% if current_path.startswith('/operations') %}active{% endif %}" {% if current_path.startswith('/operations') %}aria-current="page"{% endif %}><span aria-hidden="true">⌘</span>All operations</a>
         </nav>
-        <div class="environment-card"><span class="status-dot ok" aria-hidden="true"></span><div><strong>Admin console</strong><small>Private operator surface</small></div></div>
+        <div class="environment-card"><span class="environment-mark" aria-hidden="true">◆</span><div><strong>Admin console</strong><small>Private operator surface</small></div></div>
       </aside>
       <button class="nav-scrim" type="button" aria-label="Close navigation" tabindex="-1"></button>
       {% endif %}
-      <div class="app-frame">
+      <div class="app-frame" id="admin-frame">
         {% if authenticated %}
         <header class="topbar">
           <button class="menu-toggle" type="button" aria-controls="admin-sidebar" aria-expanded="false" aria-label="Toggle navigation">☰</button>
           <form class="global-search" method="get" action="/operations" role="search">
-            <label class="sr-only" for="global-search">Search operations and workspaces</label>
+            <label class="sr-only" for="global-search">Search platform operations and workspaces</label>
             <span aria-hidden="true">⌕</span>
-            <input id="global-search" name="q" type="search" placeholder="Search operations and workspaces…" value="{{ query | default('') }}" />
+            <input id="global-search" name="q" type="search" placeholder="Find a platform task…" value="{{ query | default('') }}" />
           </form>
-          <div class="top-actions"><a href="/diagnostics">Status</a><form method="post" action="/logout" class="inline"><button type="submit" class="signout-button"><span aria-hidden="true">↪</span>Sign out</button></form></div>
+          <div class="top-actions"><a href="/account/security">Account security</a><a href="/diagnostics">Status</a><form method="post" action="/logout" class="inline"><button type="submit" class="signout-button"><span aria-hidden="true">↪</span>Sign out</button></form></div>
         </header>
         {% endif %}
         <main id="main-content" tabindex="-1">
@@ -57,7 +60,7 @@
           {% block content %}{% endblock %}
         </main>
         {% if authenticated %}
-        <footer class="foot"><span>Request Engine admin · {{ current_year }}</span><span>Control plane: {{ control_base_url }}</span></footer>
+        <footer class="foot"><span>Request Engine admin · {{ current_year }}</span><a href="/resources">Browse administrative workspaces</a></footer>
         {% endif %}
       </div>
     </div>
@@ -65,7 +68,7 @@
       <form method="dialog">
         <span class="dialog-icon" aria-hidden="true">!</span>
         <div><p class="eyebrow">Confirm action</p><h2 id="confirm-title">Check before continuing</h2><p id="confirm-message"></p></div>
-        <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="confirm" class="danger">Confirm</button></div>
+        <div class="dialog-actions"><button value="cancel" class="secondary" autofocus>Cancel</button><button value="confirm" class="danger">Confirm</button></div>
       </form>
     </dialog>
   </body>

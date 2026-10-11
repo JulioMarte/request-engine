@@ -1,12 +1,13 @@
 # Native initial controller policy
 
-> **Current scope (2026-10-04):** this document governs **tenant** initial-controller
+> **Current scope (2026-10-11):** this document governs **tenant** initial-controller
 > policy only. It does not define the new platform-owner policy from ADR 0014.
-> Current application code selects `tenant-controller-v6` for new organizations.
-> Immutable v1–v5 remain historical authority manifests, not rewritten defaults.
+> Current application code selects `tenant-controller-v7` for new organizations.
+> Immutable v1–v6 remain historical authority manifests, not rewritten defaults.
 
-Current migration: `0021_tenant_controller_v6` appends v6 after
-`0020_retention_recorder_role`. Historical 0036/0037/0038/0053 labels below are
+Current migration: `0040_tenant_controller_v7` appends v7 after
+`0039_operator_metrics_projection`. The accepted `0021_tenant_controller_v6`
+manifest remains unchanged. Historical 0036/0037/0038/0053 labels below are
 provenance from the pre-rebaseline design chain, not current Alembic revisions
 or current release certification. Exact-head CI remains authoritative.
 Owner: Tenancy. Scope: new native organizations created by the private owner command.
@@ -16,7 +17,7 @@ This does not define a core administrator role or make platform authority tenant
 
 The accepted [ADR 0016](../adr/0016-existing-controller-policy-adoption.md)
 adds a separate dual-consent journey for organizations whose immutable initial
-policy is v1 through v5. The original active HUMAN root requests adoption through
+policy is v1 through v6. The original active HUMAN root requests adoption through
 `POST /v1/controller-policy-adoptions`; a current HUMAN platform operator with
 the dedicated `platform.organization.adopt_initial_controller_policy` grant may
 apply only that durable, unexpired consent through
@@ -25,7 +26,9 @@ withdraw consent and inspect only its own request. A separately authorized
 platform reader can list bounded pending requests, exposing only organization,
 controller and policy/revision metadata needed to complete the handoff.
 
-The command adds only missing tenant grants from the approved v1-v5 to v6 delta.
+The command adds only missing tenant grants from the approved v1-v6 to v7 delta. Previously committed pending v1-v5 to v6
+consent remains target-bound and can still be applied to v6; migration never
+retargets consent.
 It never backfills existing roots, restores a revoked grant, rewrites the original
 root fact, grants platform authority to a tenant, or turns a platform operator
 into tenant staff. Root consent requires the immutable root relationship, current
@@ -46,7 +49,7 @@ HTTP/adversarial proofs pass; deployment/publication evidence remains separate.
 
 ## Decision
 
-The application selects `tenant-controller-v6` only while creating a new native
+The application selects `tenant-controller-v7` only while creating a new native
 organization. A private transaction-local policy selection primitive validates
 that exact approved policy exists before the existing atomic root command runs.
 The root provisioning fact records the selected immutable policy key on INSERT;
@@ -64,7 +67,14 @@ Five already-existing capabilities complete these selected public journeys:
 and `requests.party_override`. The last is an explicit tenant-bound operator
 authority override, not requester impersonation or a capacity/lifecycle bypass.
 No registry wildcard or all-operator grant is used. v6 has 42 policy grants;
-the existing root control grants produce 50 active grants on a fresh native root.
+under that historical default, existing root control grants produced 50 active
+grants on a fresh native root.
+
+v7 is the immutable v6 manifest plus exactly one delegable operational Query:
+`queue.read_configuration`. It permits bounded service-queue configuration
+inventory under current Party `operations.manage_supply` scope; it grants no
+queue mutation or platform authority. v7 contains 43 policy grants; together
+with eight existing root-control grants a fresh root has 51 active grants.
 
 This is a pre-production ADAPT of the creation default, not an authority backfill.
 No existing principal receives these grants from migration or provisioning replay.
@@ -129,7 +139,7 @@ staff Principal now has a separate governed command
 (`POST /v1/controller-policy-upgrades`, revision 0053) that adds only the target
 policy's missing capabilities within the actor's current delegable ceiling; it is
 never a silent authorization and it never restores a revoked grant. A root with no
-recorded policy selection remains outside the v1-v5 transition contract and needs
+recorded policy selection remains outside the v1-v6 transition contract and needs
 a separately accepted governance operation. Deploy the
 additive migration before the new application. The
 private process must check the selection function is callable and the owner-selected
@@ -199,3 +209,22 @@ not retry stale revisions blindly or treat creation replay as a refresh.
 
 This contract does not certify completion of all required validation or production
 acceptance. Track executed evidence in `auth-implementation-status.md`.
+
+
+## v7 additive transition and local proof
+
+Migration `0040_tenant_controller_v7` appends one private manifest row and expands
+the two adoption target constraints to accept v6/v7. It preserves historical
+functions' identity/recovery checks, authority revisions, lock ordering, revoked
+grant rejection, receipt replay and existing ACLs. Function edits require unique
+anchors and abort the transactional migration if the installed definition differs.
+No principal, grant, root fact, pending request or adoption fact is backfilled.
+Normal new consent targets v7; exact replay returns its previously recorded target.
+Apply accepts only v1-v5 to v6 or v1-v6 to v7. V7 self-adoption is rejected.
+
+Local PostgreSQL 18.6 evidence covers immutable v6/v7 manifests, fresh v7
+provisioning, revocation-safe replay, all six legacy source policies, existing
+native-auth adoption and physical populated 0039-to-head transition preserving
+old authority and applying an original v6 consent. The populated transition
+executes restricted database primitives; it does not prove WebAuthn admission.
+Exact-head CI and deployed schema/application compatibility remain separate.

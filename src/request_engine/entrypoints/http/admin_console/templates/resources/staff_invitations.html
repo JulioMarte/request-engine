@@ -3,7 +3,7 @@
 {% block content %}
 <header class="page-heading">
   <div><p class="eyebrow">People &amp; permissions</p><h1>Email invitations</h1><p>Invite someone to this organization. Acceptance creates membership, not permissions.</p></div>
-  <a class="button secondary" href="/tenants/{{ organization_id }}/staff">Back to members</a>
+  <div class="top-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/configuration">Business configuration</a><a class="button secondary" href="/tenants/{{ organization_id }}/staff">Back to members</a></div>
 </header>
 {% if loaded %}
 <div class="split-layout">
@@ -38,7 +38,13 @@
         </tr>
       {% else %}<tr><td colspan="5">No invitations on this page.</td></tr>{% endfor %}</tbody>
     </table></div>
+    {% if after or next_after %}<nav aria-label="Invitation pages">
+    {% if after %}<a href="/tenants/{{ organization_id }}/staff-invitations?limit={{ page_limit }}">← First page</a>{% endif %}
     {% if next_after %}<a href="/tenants/{{ organization_id }}/staff-invitations?after={{ next_after }}&amp;limit={{ page_limit }}">Next page →</a>{% endif %}
+    </nav>{% endif %}
   </section>
-</div>{% endif %}
+</div>{% else %}
+<section class="card"><h2>Invitations could not be checked</h2><p>Existing invitations are not being shown. No change has been made.</p>
+<a class="button secondary" href="/tenants/{{ organization_id }}/staff-invitations">Reload invitations</a>
+<a class="button secondary" href="/login">Sign in again</a></section>{% endif %}
 {% endblock %}

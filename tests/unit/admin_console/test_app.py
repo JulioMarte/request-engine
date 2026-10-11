@@ -463,6 +463,101 @@ async def test_dashboard_does_not_claim_health_from_incomplete_success_payload()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("telemetry", [{}, {"alerts": None}, {"alerts": {}}, {"alerts": [None]}])
+async def test_dashboard_missing_or_malformed_alerts_never_claim_health(
+    telemetry: dict[str, Any],
+) -> None:
+    class ReportedChecks(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if path == "/v1/platform/readiness":
+                return ControlResponse(
+                    200,
+                    {
+                        "secret_store": "configured",
+                        "recovery_delivery_source": "managed",
+                        "backup_evidence": "verified",
+                        "restore_drill": "verified",
+                        "clone_fence": "fenced",
+                    },
+                    {},
+                )
+            if path == "/v1/platform/observability":
+                return ControlResponse(200, telemetry, {})
+            return await super().request(method, path, **kwargs)
+
+    async with _client(create_admin_console_app(_settings(), client=ReportedChecks())) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        page = await client.get("/")
+    assert page.status_code == 200
+    assert "Operational status is incomplete" in page.text
+    assert "Checks are incomplete" in page.text
+    assert "Core operational checks are healthy" not in page.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fence", ["fenced", "open", []])
+async def test_dashboard_interprets_canonical_readiness_and_refreshes_only_reads(
+    fence: Any,
+) -> None:
+    class ActualShape(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            self.calls.append(f"{method} {path}")
+            if path == "/v1/platform/readiness":
+                return ControlResponse(
+                    200,
+                    {
+                        "secret_store": "configured",
+                        "recovery_delivery_source": "managed",
+                        "backup_evidence": "verified",
+                        "restore_drill": "verified",
+                        "clone_fence": fence,
+                    },
+                    {},
+                )
+            if path == "/v1/platform/observability":
+                return ControlResponse(
+                    200,
+                    {
+                        "alerts": [],
+                        "validation_success_total": 0,
+                        "validation_failure_total": 0,
+                        "provider_test_failures_total": 0,
+                        "secret_backend_failures_total": 0,
+                    },
+                    {},
+                )
+            return await super().request(method, path, **kwargs)
+
+    api = ActualShape()
+    async with _client(create_admin_console_app(_settings(), client=api)) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        api.calls.clear()
+        page = await client.get("/")
+        assert page.status_code == 200
+        assert ("Core operational checks are healthy" in page.text) is (fence == "fenced")
+        assert 'datetime="' in page.text
+        assert "Reported readiness evidence" in page.text
+        assert "production certification" in page.text
+    assert api.calls == ["GET /v1/platform/readiness", "GET /v1/platform/observability"]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_expired_upstream_session_clears_local_cookie() -> None:
+    class RevokedSession(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if path == "/v1/platform/readiness":
+                return ControlResponse(401, {"error": {"code": "unauthorized"}}, {})
+            return await super().request(method, path, **kwargs)
+
+    async with _client(create_admin_console_app(_settings(), client=RevokedSession())) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": "pw"})
+        page = await client.get("/")
+        assert page.status_code == 303
+        assert page.headers["location"] == "/login"
+        assert _settings().session_cookie_name not in client.cookies
+
+
+@pytest.mark.asyncio
 async def test_logout_clears_browser_session_when_upstream_revocation_fails() -> None:
     class BrokenLogout(FakeControl):
         async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:

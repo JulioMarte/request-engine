@@ -416,3 +416,72 @@ async def test_existing_member_needs_access_review_not_another_invitation() -> N
     assert "another invitation will not restore access" in response.json()["error"]
     assert TOKEN not in response.text
     assert "must-never-be-echoed" not in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revision", [True, "7", 0, None])
+async def test_invitation_invalid_revision_never_offers_mutation(revision: object) -> None:
+    api = InvitationApi()
+    original = api.request
+
+    async def malformed(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        result = await original(method, path, **kwargs)
+        if path == "/v1/staff/invitations" and method == "GET":
+            payload = {**result.payload}
+            payload["items"] = [{**payload["items"][0], "revision": revision}]
+            return ControlResponse(200, payload, {})
+        return result
+
+    api.request = malformed  # type: ignore[method-assign]
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff-invitations")
+    assert page.status_code == 502
+    assert "Create invitation" not in page.text
+    assert f"/{INVITATION}/resend" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_invitation_page_keeps_tenant_and_page_size_when_returning_to_first_page() -> None:
+    api = InvitationApi()
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff-invitations?after={INVITATION}&limit=2")
+    assert page.status_code == 200
+    assert f'href="/tenants/{ORG}/staff-invitations?limit=2"' in page.text
+    call = next(call for call in api.calls if call[:2] == ("GET", "/v1/staff/invitations"))
+    assert call[2]["params"] == {"limit": "2", "after": INVITATION}
+    assert call[2]["extra_headers"] == {"X-RE-Organization-ID": ORG}
+
+
+@pytest.mark.asyncio
+async def test_invitation_denied_read_has_recovery_links_and_no_empty_success_state() -> None:
+    api = InvitationApi()
+    api.list_status = 403
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff-invitations")
+    assert page.status_code == 403
+    assert "Invitations could not be checked" in page.text
+    assert "Reload invitations" in page.text
+    assert "Sign in again" in page.text
+    assert "No invitations on this page" not in page.text
+    assert "Create invitation" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_invitation_business_configuration_navigation_uses_validated_tenant_only() -> None:
+    api = InvitationApi()
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(
+            f"/tenants/{ORG}/staff-invitations?organization_id={INVITATION}"
+            f"&authority_party_id={INVITATION}",
+            headers={"X-RE-Organization-ID": INVITATION},
+        )
+    assert page.status_code == 200
+    assert f'href="/tenants/{ORG}/configuration"' in page.text
+    assert f'href="/tenants/{INVITATION}/configuration"' not in page.text
+    call = next(call for call in api.calls if call[:2] == ("GET", "/v1/staff/invitations"))
+    assert call[2]["params"] == {"limit": "50"}
+    assert call[2]["extra_headers"] == {"X-RE-Organization-ID": ORG}

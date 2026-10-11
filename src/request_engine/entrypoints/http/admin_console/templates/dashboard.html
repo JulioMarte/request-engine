@@ -3,8 +3,9 @@
 {% block content %}
 <header class="page-heading">
   <div><p class="eyebrow">Dashboard / Overview</p><h1>Overview</h1><p>See what is healthy, what needs attention, and where to act.</p></div>
-  <a class="button secondary" href="/diagnostics">View diagnostics <span aria-hidden="true">→</span></a>
+  <div class="page-actions"><a class="button secondary" href="/">Refresh checks</a><a class="button quiet" href="/diagnostics">View diagnostics <span aria-hidden="true">→</span></a></div>
 </header>
+<p class="muted small">Checked <time datetime="{{ checked_at }}">{{ checked_at }}</time>. This is a snapshot of reported control-plane facts, not continuous monitoring or production certification.</p>
 {% if catalog_error %}<div class="alert error" role="alert">The operation catalog is unavailable. {{ catalog_error }}</div>{% endif %}
 
 <section class="health-banner {% if overall_state != 'healthy' %}{{ overall_state }}{% endif %}" aria-labelledby="health-title">
@@ -30,7 +31,7 @@
       {% for item in attention %}
       <article class="attention-item"><span aria-hidden="true">!</span><div><strong>{{ item.title }}</strong><p>{{ item.detail }}</p></div><a class="button quiet" href="{{ item.href }}">{{ item.action }}</a></article>
       {% else %}
-      <div class="empty-state compact"><span aria-hidden="true">✓</span><div><strong>Nothing needs immediate attention</strong><p>No alerts or unavailable operational surfaces were reported.</p></div></div>
+      <div class="empty-state compact {% if overall_state != 'healthy' %}neutral{% endif %}"><span aria-hidden="true">{% if overall_state == 'healthy' %}✓{% else %}i{% endif %}</span><div><strong>{% if overall_state == 'healthy' %}No issues reported by these checks{% else %}Checks are incomplete{% endif %}</strong><p>{% if overall_state == 'healthy' %}No alerts or unavailable operational surfaces were reported.{% else %}Missing facts cannot establish a healthy state. Review the reported evidence below.{% endif %}</p></div></div>
       {% endfor %}
     </div>
   </section>
@@ -40,6 +41,8 @@
     <div class="quick-grid">
       <a href="/my-organizations"><span aria-hidden="true">♧</span><span><strong>People &amp; permissions</strong><small>Choose your organization, invite people, and review access</small></span><b aria-hidden="true">→</b></a>
       <a href="/resources/native-identities"><span aria-hidden="true">◎</span><span><strong>Manage identities</strong><small>Provision and disable native identities</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/owners"><span aria-hidden="true">◇</span><span><strong>Platform owners</strong><small>Review owners, invitations, and access lifecycle</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/controller-policy-adoptions"><span aria-hidden="true">◫</span><span><strong>Controller policy adoption</strong><small>Review legacy policy and apply governed changes</small></span><b aria-hidden="true">→</b></a>
       <a href="/resources/configurations"><span aria-hidden="true">◫</span><span><strong>Configure platform</strong><small>Stage, validate, test, and activate</small></span><b aria-hidden="true">→</b></a>
       <a href="/resources/secrets"><span aria-hidden="true">⌁</span><span><strong>Manage secrets</strong><small>Use governed bindings and keyrings</small></span><b aria-hidden="true">→</b></a>
       <a href="/resources/recovery-cases"><span aria-hidden="true">↻</span><span><strong>Recovery cases</strong><small>Review assisted identity recovery</small></span><b aria-hidden="true">→</b></a>
@@ -48,6 +51,13 @@
     </div>
   </section>
 </div>
+
+<section class="panel" aria-labelledby="readiness-evidence-title">
+  <div class="panel-heading"><div><h2 id="readiness-evidence-title">Reported readiness evidence</h2><p>Each value comes from the control plane. Follow its workspace to investigate or update the underlying configuration.</p></div></div>
+  <div class="table-scroll"><table class="ops"><caption class="sr-only">Current readiness checks and their workspaces</caption><thead><tr><th scope="col">Check</th><th scope="col">Reported value</th><th scope="col">Workspace</th></tr></thead><tbody>
+    {% for check in readiness_checks %}<tr><th scope="row">{{ check.title }}</th><td>{{ check.value }}</td><td><a href="{{ check.href }}">Review {{ check.title | lower }} →</a></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
 
 <section class="panel" aria-labelledby="configuration-counters-title">
   <div class="panel-heading"><div><h2 id="configuration-counters-title">Configuration activity</h2><p>Counters reported by this control-plane process since its last restart. Not 24-hour totals or installation-wide user activity. Missing data is shown as —.</p></div><a href="/diagnostics">Inspect diagnostics →</a></div>

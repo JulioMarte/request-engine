@@ -80,6 +80,8 @@ uv run pytest \
   tests/integration/f1_operational_profile/test_contextual_configuration_races.py \
   tests/integration/f1_operational_profile/test_configuration_command_authority_matrix.py \
   tests/integration/f1_operational_profile/test_supply_configuration_reads.py \
+  tests/integration/f1_operational_profile/test_catalog_administration_reads.py \
+  tests/integration/f1_operational_profile/test_queue_configuration_reads.py \
   tests/db/test_catalog_booking_policy_override.py \
   tests/db/test_organization_channel_policies.py \
   tests/db/test_channel_policy_creation_race.py \
@@ -119,6 +121,7 @@ uv run pytest \
   tests/db/test_native_platform_provisioning.py \
   tests/db/test_native_identity_admin_provision.py \
   tests/db/test_initial_controller_policy.py \
+  tests/db/test_tenant_controller_v7_populated_upgrade.py \
   tests/db/test_native_tenant_root_bootstrap.py \
   tests/db/test_native_identity_actor_runtime.py \
   tests/db/test_native_human_auth_runtime.py \
