@@ -19,6 +19,22 @@ cleanup() {
   else
     printf 'result: failed (exit %s)\n' "$result" >> "$ARTIFACT_DIR/operator-alerts-smoke.txt"
   fi
+  # Collect only explicit fixture observations/configs, never environment or
+  # SQL connection material. Preserve diagnostics even on a causal-check failure.
+  for observation in receiver-statuses.txt watchdog-monitor.txt alertmanager.yaml prometheus.yaml; do
+    if [[ -f "$TMP_DIR/$observation" ]]; then
+      cp "$TMP_DIR/$observation" "$ARTIFACT_DIR/$observation" 2>/dev/null || true
+    fi
+  done
+  if [[ -f "${WORKER_CONTROL_DIR:-}/worker-results.txt" ]]; then
+    cp "$WORKER_CONTROL_DIR/worker-results.txt" "$ARTIFACT_DIR/worker-outcomes.txt" 2>/dev/null || true
+  fi
+  if (( result != 0 && ${#COMPOSE_ARGS[@]} > 0 )); then
+    # These two services contain only lab HTTP targets and alert labels;
+    # worker/database logs are intentionally excluded from this projection.
+    "${COMPOSE_ARGS[@]}" logs --no-color --timestamps prometheus alertmanager \
+      > "$ARTIFACT_DIR/monitoring-services.log" 2>&1 || true
+  fi
   for container in "${RECEIVER_CONTAINER:-}" "${WORKER_CONTAINER:-}" "${DB_COLLECTOR_CONTAINER:-}"; do
     if [[ -n "$container" ]]; then docker rm -f "$container" >/dev/null 2>&1 || true; fi
   done
@@ -95,6 +111,10 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=7d"
       - "--web.enable-lifecycle"
+      # A restart loses Alertmanager's in-memory alert set. Prometheus normally
+      # resends only after >1m, evaluated on the 30s rule-group boundary (up to
+      # 90s). Shorten only lab resend cadence; retain the real fresh-receipt proof.
+      - "--rules.alert.resend-delay=5s"
     volumes:
       - "$TMP_DIR/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro"
       - "$TMP_DIR/alert-rules.yaml:/etc/prometheus/alert-rules.yaml:ro"

@@ -54,6 +54,11 @@ receipt stale while Prometheus remains available; restarting it must produce a
 fresh receipt. A dedicated laboratory route repeats Watchdog every five seconds,
 without changing the production routing file. Waiters inspect the latest probe
 state, so an earlier successful state cannot satisfy recovery.
+The laboratory also sets Prometheus alert resend delay to five seconds, so an
+Alertmanager restart can receive active alerts on the next rule-group evaluation.
+The receiver freshness bound remains fifteen seconds and restart recovery must
+arrive within sixty seconds. These accelerated test settings do not certify
+production notification timing.
 
 TLS credentials are created outside artifact directories and removed during
 cleanup. Only the owning server receives its leaf private key. Clients receive
