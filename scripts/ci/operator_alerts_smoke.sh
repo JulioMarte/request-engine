@@ -185,7 +185,8 @@ docker run --detach --name "$DB_COLLECTOR_CONTAINER" --network "${PROJECT}_defau
 
 # Every waiter has a finite deadline and every HTTP call has a finite timeout.
 wait_receiver_status() {
-  local wanted="$1" alert="$2" seconds="$3" deadline=$((SECONDS + seconds))
+  local wanted="$1" alert="$2" seconds="$3"
+  local deadline=$((SECONDS + seconds))
   while (( SECONDS < deadline )); do
     if grep -Fq "${wanted}|${alert}" "$TMP_DIR/receiver-statuses.txt" 2>/dev/null; then
       return 0
@@ -196,7 +197,8 @@ wait_receiver_status() {
   return 1
 }
 wait_prom_alert() {
-  local alert="$1" seconds="$2" deadline=$((SECONDS + seconds)) response
+  local alert="$1" seconds="$2" response
+  local deadline=$((SECONDS + seconds))
   while (( SECONDS < deadline )); do
     response="$(curl --connect-timeout 2 --max-time 5 --fail --silent --get \
       --data-urlencode "query=ALERTS{alertname=\"${alert}\",alertstate=\"firing\"}" \
@@ -211,7 +213,8 @@ wait_prom_alert() {
   return 1
 }
 wait_prom_metric_positive() {
-  local metric="$1" seconds="$2" deadline=$((SECONDS + seconds)) response
+  local metric="$1" seconds="$2" response
+  local deadline=$((SECONDS + seconds))
   while (( SECONDS < deadline )); do
     response="$(curl --connect-timeout 2 --max-time 5 --fail --silent --get \
       --data-urlencode "query=${metric}>0" \
@@ -234,7 +237,8 @@ python3 "$ROOT_DIR/scripts/observability/operator_alerts_watchdog_monitor.py" \
 PROBE_PID=$!
 wait_receiver_status firing Watchdog 90
 wait_for_watchdog_state() {
-  local state="$1" seconds="$2" deadline=$((SECONDS + seconds)) current
+  local state="$1" seconds="$2" current
+  local deadline=$((SECONDS + seconds))
   while (( SECONDS < deadline )); do
     current="$(python3 "$ROOT_DIR/scripts/observability/operator_alerts_watchdog_monitor.py" \
       --read-latest --output "$probe_file")"
