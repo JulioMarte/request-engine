@@ -214,8 +214,40 @@ queue / waitlist.expire_slot_offer
 communications / reminder occurrence
 communications / dispatch_task
 communications / reconcile_delivery
+communications / dispatch_staff_invitation (version 1)
 operational_recovery / reassess_recovery_scope
 ```
+
+### Staff invitation delivery
+
+Staff invitation delivery uses the existing ScheduledAction runtime, not a new
+worker stream. Tenancy records the invitation and Communications records its
+delivery intent plus the action atomically through an injected, transaction-local
+port. The action subject is `StaffInvitationDelivery`; its closed payload contains
+only `delivery_id`, never the proof, email address or a caller-supplied tenant.
+
+`build_worker_process` always registers the handler, even without a configured
+secret transport. It uses `domain_session_factory` for tenant-local delivery
+state, and the existing worker-control scheduler for claims and renewal. Prepare
+locks the exact claim and delivery row, commits `attempting`, then performs
+secret-store/SMTP I/O outside database locks. Finalization renews and revalidates
+the same unexpired claim in the authoritative transaction. A lost claim cannot
+publish a durable result, and finalization cannot overwrite a cancelled intent.
+
+The provider key is `staff-invitation-delivery:{delivery_id}:v1`. Only a definite
+non-transmission failure permits another send; reclaimed `attempting` or `unknown`
+work performs reconciliation instead. The ScheduledAction attempt budget is
+eight. Exhausted definite failures remain failed; unresolved ambiguity remains
+visible as unknown, not an invented success. Missing transport records a failed
+delivery rather than an unknown-action poison item. Revocation cancels unfinished
+intents and invalidates their proof, but cannot recall a send already in flight.
+
+The HTTP process stages the proof through the store-only boundary without reading
+installation-wide SMTP configuration. The reference worker resolves governed
+SMTP or an explicitly configured fallback, with the closed `staff_invitation`
+purpose and trusted console acceptance URL. SMTP acceptance does not prove inbox
+receipt. See [the current invitation owner contract](../architecture/staff-email-invitations.md)
+for API authority, staging retention, acceptance and configuration requirements.
 
 `operational_recovery / reassess_recovery_scope` uses `ServiceQueue` as its subject and carries the target `recovery_source_revision`. The business mutation that advances that revision must durably insert the corresponding ScheduledAction in the same database transaction, so commit cannot publish new recovery truth while losing its wake-up request. The per-revision dedupe identity is immutable and deterministic.
 

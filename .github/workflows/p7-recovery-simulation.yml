@@ -5,7 +5,14 @@ on:
     branches: [development]
     paths:
       - "scripts/ci/postgres_clean_restore_smoke.sh"
+      - "scripts/db/export_role_catalog.py"
+      - "scripts/operations/recovery_bundle.py"
+      - "scripts/operations/recovery_drill_evidence.py"
       - "scripts/ci/openbao_raft_restore_smoke.sh"
+      - "scripts/ci/offhost_*"
+      - "scripts/ci/p7_recovery_*"
+      - "scripts/ci/create_lab_tls.sh"
+      - "scripts/ci/Dockerfile.p7-age-cli"
       - "scripts/ci/run_e2e_*.sh"
       - "tests/system_e2e/**"
       - "deploy/reference/**"
@@ -66,13 +73,18 @@ jobs:
         run: |
           bash scripts/ci/openbao_raft_restore_smoke.sh \
             .ci/p7-recovery-simulation/openbao-raft-restore.json
+      - name: Prove encrypted HTTPS backup survives destruction of source volumes
+        run: |
+          bash scripts/ci/offhost_recovery_restore_smoke.sh \
+            .ci/p7-recovery-simulation/offhost-recovery-restore.json
       - name: Write simulation scope
         if: always()
         run: |
           cat > .ci/p7-recovery-simulation/EVIDENCE_SCOPE.txt <<'EOF'
           P7 production-shaped recovery simulation.
           This lane proves real container/TCP/HTTP journeys, clean-target PostgreSQL restore,
-          clean-target OpenBao Raft restore, managed SMTP delivery through Mailpit, offline
+          clean-target OpenBao Raft restore, encrypted HTTPS fixture backup retrieved after
+          destruction of source volumes, managed SMTP delivery through Mailpit, offline
           recovery behavior exercised by the registered recovery suite, and clone fencing.
           It is NOT production certification: it does not prove the real SMTP provider,
           real off-host object store, production TLS/ingress, production OpenBao HA topology,

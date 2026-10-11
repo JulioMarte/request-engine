@@ -218,6 +218,7 @@ class IdentityPrincipalResolver:
             recovery_derived=_metadata_flag(subject, "recovery_derived"),
             recovery_restricted=recovery_restricted,
             authenticated_at=_authenticated_at(subject),
+            identity_binding_id=binding.binding_id,
         )
 
 

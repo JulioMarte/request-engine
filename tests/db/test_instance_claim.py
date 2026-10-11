@@ -83,9 +83,9 @@ def _pending_webauthn(admin_conn: PgConnection, *, setup_session_id: UUID) -> by
     digest = secrets.token_bytes(32)
     admin_conn.execute(
         "INSERT INTO request_engine.webauthn_challenges "
-        "(id, purpose, setup_session_id, challenge_digest, expires_at) "
-        "VALUES (%s, 'registration', %s, %s, clock_timestamp() + interval '5 minutes')",
-        (uuid4(), setup_session_id, digest),
+        "(id, purpose, setup_session_id, challenge_digest, expires_at, user_handle) "
+        "VALUES (%s, 'registration', %s, %s, clock_timestamp() + interval '5 minutes', %s)",
+        (uuid4(), setup_session_id, digest, secrets.token_bytes(32)),
     )
     return digest
 
@@ -203,6 +203,23 @@ async def test_finalize_claims_instance_atomically(
         "WHERE native_identity_id = %s AND status = 'active'",
         (identity_id,),
     ).fetchone() == (1,)
+    credential_handles = admin_conn.execute(
+        "SELECT credential.user_handle, pending.user_handle "
+        "FROM request_engine.webauthn_credentials credential "
+        "JOIN request_engine.setup_pending_webauthn_credential pending "
+        "  ON pending.credential_id=credential.credential_id "
+        "WHERE credential.native_identity_id=%s AND pending.setup_session_id=%s",
+        (identity_id, setup_session_id),
+    ).fetchone()
+    assert credential_handles is not None and credential_handles[0] is not None
+    assert admin_conn.execute(
+        "SELECT credential.user_handle=pending.user_handle "
+        "FROM request_engine.webauthn_credentials credential "
+        "JOIN request_engine.setup_pending_webauthn_credential pending "
+        "  ON pending.credential_id=credential.credential_id "
+        "WHERE credential.native_identity_id=%s AND pending.setup_session_id=%s",
+        (identity_id, setup_session_id),
+    ).fetchone() == (True,)
     # Platform principal + active binding.
     assert admin_conn.execute(
         "SELECT principal_plane, principal_kind, active FROM request_engine.principals "
@@ -245,6 +262,7 @@ async def test_finalize_claims_instance_atomically(
         "platform.owner.read",
         "platform.owner.provision",
         "platform.owner.manage_lifecycle",
+        "platform.organization.read",
         "platform.provisioner.read",
         "platform.provisioner.manage_lifecycle",
     }
@@ -424,9 +442,16 @@ def test_concurrent_finalize_has_exactly_one_winner(
     )
     admin_conn.execute(
         "INSERT INTO request_engine.setup_pending_webauthn_credential "
-        "(id, setup_session_id, credential_id, public_key, aaguid) "
-        "VALUES (%s, %s, %s, %s, %s)",
-        (uuid4(), setup_session_id, secrets.token_bytes(32), secrets.token_bytes(77), "00" * 16),
+        "(id, setup_session_id, credential_id, public_key, aaguid, user_handle) "
+        "VALUES (%s, %s, %s, %s, %s, %s)",
+        (
+            uuid4(),
+            setup_session_id,
+            secrets.token_bytes(32),
+            secrets.token_bytes(77),
+            "00" * 16,
+            secrets.token_bytes(32),
+        ),
     )
     admin_conn.execute(
         "INSERT INTO request_engine.recovery_code_sets(id, setup_session_id) VALUES (%s, %s)",

@@ -6,6 +6,7 @@ from uuid import UUID
 
 from request_engine.modules.booking.application.commands.configure_booking_context_terms import (
     BookingContextTermsState,
+    validate_context_terms_amount,
 )
 from request_engine.modules.booking.domain.availability import require_aware_utc
 
@@ -42,8 +43,7 @@ async def supersede_booking_context_terms(
     require_aware_utc(command.effective_from, "effective_from")
     if (command.amount is None) != (command.currency is None):
         raise ValueError("amount and currency must be present together")
-    if command.amount is not None and command.amount < 0:
-        raise ValueError("amount must be non-negative")
+    validate_context_terms_amount(command.amount)
     if command.currency is not None and (
         len(command.currency) != 3
         or not command.currency.isalpha()

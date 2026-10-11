@@ -8,6 +8,11 @@ from request_engine.modules.catalog.api.operational_profile_models import (
     LocationContactsBody,
     LocationUpdateBody,
 )
+from request_engine.modules.catalog.api.operational_views import (
+    CreatedLocationView,
+    LocationOperationalInfoView,
+    LocationPublicContactsView,
+)
 from request_engine.modules.catalog.application.commands.create_location import (
     CreateLocationCommand,
     CreateLocationHandler,
@@ -50,9 +55,9 @@ def create_operational_profile_router(
         body: LocationBody,
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> CreatedLocationView:
         require_capability(current, "catalog.manage")
-        return await create_location(
+        result = await create_location(
             create_handler,
             CreateLocationCommand(
                 organization_id=current.organization_id,
@@ -61,15 +66,16 @@ def create_operational_profile_router(
                 **body.model_dump(),
             ),
         )
+        return CreatedLocationView.model_validate(result)
 
     async def update(
         location_id: UUID,
         body: LocationUpdateBody,
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> LocationOperationalInfoView:
         require_capability(current, "catalog.manage")
-        return await update_location_operational_info(
+        result = await update_location_operational_info(
             update_handler,
             UpdateLocationOperationalInfoCommand(
                 organization_id=current.organization_id,
@@ -79,19 +85,20 @@ def create_operational_profile_router(
                 **body.model_dump(),
             ),
         )
+        return LocationOperationalInfoView.model_validate(result)
 
     async def contacts(
         location_id: UUID,
         body: LocationContactsBody,
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> LocationPublicContactsView:
         require_capability(current, "catalog.manage")
         values = tuple(
             LocationPublicContactInput(item.channel, item.value, item.label)
             for item in body.contacts
         )
-        return await set_location_public_contacts(
+        result = await set_location_public_contacts(
             contacts_handler,
             SetLocationPublicContactsCommand(
                 organization_id=current.organization_id,
@@ -102,6 +109,7 @@ def create_operational_profile_router(
                 idempotency_key=key,
             ),
         )
+        return LocationPublicContactsView.model_validate(result)
 
     add_capability_route(
         router,
@@ -110,6 +118,7 @@ def create_operational_profile_router(
         capability="catalog.manage",
         methods=["POST"],
         operation_id="catalog_location_create",
+        response_model=CreatedLocationView,
     )
     add_capability_route(
         router,
@@ -118,6 +127,7 @@ def create_operational_profile_router(
         capability="catalog.manage",
         methods=["PATCH"],
         operation_id="catalog_location_update",
+        response_model=LocationOperationalInfoView,
     )
     add_capability_route(
         router,
@@ -126,5 +136,6 @@ def create_operational_profile_router(
         capability="catalog.manage",
         methods=["PUT"],
         operation_id="catalog_location_contacts_update",
+        response_model=LocationPublicContactsView,
     )
     return router

@@ -5,11 +5,20 @@ from sqlalchemy import text
 from request_engine.modules.tenancy.application.errors import (
     StaffMembershipForbidden,
     StaffMembershipNotFound,
+    StaffMembershipRevisionConflict,
 )
 from request_engine.modules.tenancy.application.queries.staff_membership import (
     ListStaffMembershipsQuery,
+    PlanStaffAuthorityQuery,
     StaffAuthorityGrant,
+    StaffAuthorityPlan,
+    StaffMembershipPage,
+    StaffMembershipStatus,
     StaffMembershipSummary,
+    StaffOverview,
+)
+from request_engine.modules.tenancy.application.staff_authority import (
+    validate_staff_capabilities,
 )
 from request_engine.platform.db.session import SessionFactory, actor_transaction
 from request_engine.platform.security.context import ActorContext, PrincipalKind
@@ -21,12 +30,95 @@ class PostgresStaffMembershipReader:
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
+    async def read_overview(self, actor: ActorContext) -> StaffOverview:
+        if actor.principal_kind is not PrincipalKind.HUMAN:
+            raise StaffMembershipForbidden("staff inspection requires a HUMAN actor")
+        async with actor_transaction(self._session_factory, actor) as session:
+            row = (
+                (
+                    await session.execute(
+                        text("""
+                    SELECT access.permitted,
+                           count(m.id) AS total,
+                           count(m.id) FILTER (WHERE m.status = 'active') AS active,
+                           count(m.id) FILTER (WHERE m.status = 'invited') AS invited,
+                           count(m.id) FILTER (WHERE m.status = 'suspended') AS suspended,
+                           count(m.id) FILTER (WHERE m.status = 'revoked') AS revoked,
+                           ARRAY(
+                               SELECT g.capability_key
+                                 FROM request_engine.principal_authority_grants g
+                                WHERE g.organization_id = :organization_id
+                                  AND g.principal_id = :actor_id
+                                  AND g.status = 'active'
+                                ORDER BY g.capability_key
+                           ) AS effective_capabilities,
+                           ARRAY(
+                               SELECT g.capability_key
+                                 FROM request_engine.principal_authority_grants g
+                                WHERE g.organization_id = :organization_id
+                                  AND g.principal_id = :actor_id
+                                  AND g.status = 'active' AND g.delegable
+                                ORDER BY g.capability_key
+                           ) AS delegable_ceiling
+                      FROM (SELECT EXISTS (
+                          SELECT 1 FROM request_engine.principals actor
+                          JOIN request_engine.staff_memberships membership
+                            ON membership.organization_id = actor.organization_id
+                           AND membership.principal_id = actor.id
+                           AND membership.status = 'active'
+                          JOIN request_engine.principal_authority_grants grant_row
+                            ON grant_row.organization_id = actor.organization_id
+                           AND grant_row.principal_id = actor.id
+                           AND grant_row.capability_key = 'staff.read'
+                           AND grant_row.authority_plane = 'tenant_control'
+                           AND grant_row.status = 'active'
+                         WHERE actor.organization_id = :organization_id
+                           AND actor.id = :actor_id AND actor.active
+                           AND actor.principal_kind = 'human'
+                      ) AS permitted) access
+                      LEFT JOIN request_engine.staff_memberships m
+                        ON access.permitted AND m.organization_id = :organization_id
+                     GROUP BY access.permitted
+                    """),
+                        {
+                            "organization_id": actor.organization_id,
+                            "actor_id": actor.principal_id,
+                        },
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            if not row["permitted"]:
+                raise StaffMembershipForbidden("staff inspection authority was denied")
+            return StaffOverview(
+                total=int(row["total"]),
+                active=int(row["active"]),
+                invited=int(row["invited"]),
+                suspended=int(row["suspended"]),
+                revoked=int(row["revoked"]),
+                effective_capabilities=tuple(row["effective_capabilities"]),
+                delegable_ceiling=tuple(row["delegable_ceiling"]),
+            )
+
     async def list_memberships(
         self, actor: ActorContext, query: ListStaffMembershipsQuery
-    ) -> tuple[StaffMembershipSummary, ...]:
+    ) -> StaffMembershipPage:
         if not 1 <= query.limit <= 100:
             raise ValueError("limit must be between 1 and 100")
-        return await self._read(actor, membership_id=None, after=query.after, limit=query.limit)
+        rows = await self._read(
+            actor,
+            membership_id=None,
+            after=query.after,
+            limit=query.limit + 1,
+            status=query.status,
+            search=query.search.strip() if query.search is not None else None,
+        )
+        items = rows[: query.limit]
+        return StaffMembershipPage(
+            items=items,
+            next_cursor=items[-1].membership_id if len(rows) > query.limit else None,
+        )
 
     async def read_membership(
         self, actor: ActorContext, membership_id: UUID
@@ -36,8 +128,178 @@ class PostgresStaffMembershipReader:
             raise StaffMembershipNotFound("staff membership is not visible in this tenant")
         return rows[0]
 
+    async def plan_authority(
+        self, actor: ActorContext, query: PlanStaffAuthorityQuery
+    ) -> StaffAuthorityPlan:
+        may_plan = actor.allows("staff.plan_authority") or actor.allows("staff.manage_authority")
+        if actor.principal_kind is not PrincipalKind.HUMAN or not may_plan:
+            raise StaffMembershipForbidden("staff authority planning requires a HUMAN actor")
+        if query.expected_authority_revision <= 0:
+            raise ValueError("expected_authority_revision must be positive")
+        desired = validate_staff_capabilities(query.desired_capabilities)
+        async with actor_transaction(self._session_factory, actor) as session:
+            row = (
+                (
+                    await session.execute(
+                        text("""
+                    WITH access AS (
+                        SELECT EXISTS (
+                            SELECT 1 FROM request_engine.principals actor
+                            JOIN request_engine.staff_memberships membership
+                              ON membership.organization_id = actor.organization_id
+                             AND membership.principal_id = actor.id
+                             AND membership.status = 'active'
+                            JOIN request_engine.principal_authority_grants grant_row
+                              ON grant_row.organization_id = actor.organization_id
+                             AND grant_row.principal_id = actor.id
+                             AND grant_row.capability_key IN (
+                                 'staff.plan_authority', 'staff.manage_authority'
+                             )
+                             AND grant_row.authority_plane = 'tenant_control'
+                             AND grant_row.status = 'active'
+                           WHERE actor.organization_id = :organization_id
+                             AND actor.id = :actor_id AND actor.active
+                             AND actor.principal_kind = 'human'
+                        ) AS permitted
+                    ), target AS (
+                        SELECT m.id AS membership_id, m.principal_id,
+                               m.status AS membership_status, p.active AS principal_active,
+                               p.authority_revision
+                          FROM request_engine.staff_memberships m
+                          JOIN request_engine.principals p
+                            ON p.organization_id = m.organization_id
+                           AND p.id = m.principal_id
+                         WHERE (SELECT permitted FROM access)
+                           AND m.organization_id = :organization_id
+                           AND m.id = :membership_id
+                    ), ceiling AS (
+                        SELECT g.capability_key
+                          FROM request_engine.principal_authority_grants g
+                         WHERE g.organization_id = :organization_id
+                           AND g.principal_id = :actor_id
+                           AND g.status = 'active' AND g.delegable
+                           AND g.authority_plane IN ('tenant_control', 'operational')
+                    )
+                    SELECT (SELECT permitted FROM access) AS permitted,
+                           EXISTS (
+                               SELECT 1
+                                 FROM request_engine.principal_authority_grants manager_grant
+                                WHERE manager_grant.organization_id = :organization_id
+                                  AND manager_grant.principal_id = :actor_id
+                                  AND manager_grant.capability_key = 'staff.manage_authority'
+                                  AND manager_grant.authority_plane = 'tenant_control'
+                                  AND manager_grant.status = 'active'
+                           ) AS may_apply,
+                           target.membership_id, target.principal_id,
+                           target.membership_status, target.principal_active,
+                           target.authority_revision,
+                           COALESCE(ARRAY(
+                               SELECT grant_row.capability_key
+                                 FROM request_engine.principal_authority_grants grant_row
+                                 JOIN ceiling
+                                   ON ceiling.capability_key = grant_row.capability_key
+                                WHERE grant_row.organization_id = :organization_id
+                                  AND grant_row.principal_id = target.principal_id
+                                  AND grant_row.status = 'active'
+                                ORDER BY grant_row.capability_key
+                           ), ARRAY[]::text[]) AS current_capabilities,
+                           COALESCE(ARRAY(
+                               SELECT requested
+                                 FROM unnest(CAST(:desired AS text[])) requested
+                                WHERE NOT EXISTS (
+                                    SELECT 1 FROM ceiling
+                                     WHERE ceiling.capability_key = requested
+                                )
+                                ORDER BY requested
+                           ), ARRAY[]::text[]) AS blocked_capabilities,
+                           CASE
+                               WHEN target.principal_id IS NULL THEN false
+                               WHEN request_read.staff_controller_is_effective(
+                                   target.principal_id
+                               )
+                               AND EXISTS (
+                                   SELECT 1
+                                     FROM ceiling controller_ceiling
+                                    WHERE controller_ceiling.capability_key IN (
+                                        'staff.manage_membership',
+                                        'staff.manage_authority',
+                                        'identity.bind'
+                                    )
+                                      AND NOT (
+                                          controller_ceiling.capability_key = ANY(
+                                              CAST(:desired AS text[])
+                                          )
+                                      )
+                               )
+                               AND NOT EXISTS (
+                                   SELECT 1
+                                     FROM request_engine.staff_memberships other_membership
+                                    WHERE other_membership.organization_id = :organization_id
+                                      AND other_membership.status = 'active'
+                                      AND other_membership.principal_id <> target.principal_id
+                                      AND request_read.staff_controller_is_effective(
+                                          other_membership.principal_id
+                                      )
+                               )
+                               THEN true
+                               ELSE false
+                           END AS last_controller_blocked
+                      FROM access LEFT JOIN target ON true
+                    """),
+                        {
+                            "organization_id": actor.organization_id,
+                            "actor_id": actor.principal_id,
+                            "membership_id": query.membership_id,
+                            "desired": list(desired),
+                        },
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        if not row["permitted"]:
+            raise StaffMembershipForbidden("staff authority planning was denied")
+        if row["membership_id"] is None:
+            raise StaffMembershipNotFound("staff membership is not visible in this tenant")
+        authority_revision = int(row["authority_revision"])
+        if authority_revision != query.expected_authority_revision:
+            raise StaffMembershipRevisionConflict("staff authority revision is stale")
+        current = tuple(row["current_capabilities"])
+        blocked = tuple(row["blocked_capabilities"])
+        blockers_list: list[str] = []
+        if not row["may_apply"]:
+            blockers_list.append("missing_apply_authority")
+        if row["principal_id"] == actor.principal_id:
+            blockers_list.append("self_change")
+        if row["membership_status"] != "active" or not bool(row["principal_active"]):
+            blockers_list.append("lifecycle_state")
+        if bool(row["last_controller_blocked"]):
+            blockers_list.append("last_controller")
+        blockers = tuple(blockers_list)
+        current_set = set(current)
+        desired_set = set(desired)
+        return StaffAuthorityPlan(
+            membership_id=query.membership_id,
+            authority_revision=authority_revision,
+            current=current,
+            desired=desired,
+            added=tuple(sorted(desired_set - current_set)),
+            removed=tuple(sorted(current_set - desired_set)),
+            assignable=not blocked,
+            blocked_capabilities=blocked,
+            can_apply=not blocked and not blockers,
+            blockers=blockers,
+        )
+
     async def _read(
-        self, actor: ActorContext, *, membership_id: UUID | None, after: UUID | None, limit: int
+        self,
+        actor: ActorContext,
+        *,
+        membership_id: UUID | None,
+        after: UUID | None,
+        limit: int,
+        status: StaffMembershipStatus | None = None,
+        search: str | None = None,
     ) -> tuple[StaffMembershipSummary, ...]:
         if actor.principal_kind is not PrincipalKind.HUMAN:
             raise StaffMembershipForbidden("staff inspection requires a HUMAN actor")
@@ -67,6 +329,7 @@ class PostgresStaffMembershipReader:
                       SELECT m.id AS membership_id, m.principal_id, m.status,
                              m.revision AS membership_revision, p.authority_revision,
                              p.active AS principal_active, m.authority_anchor_party_id,
+                             profile.display_name, COALESCE(profile.revision,0) AS profile_revision,
                              ARRAY(SELECT g.capability_key
                                FROM request_engine.principal_authority_grants g
                               WHERE g.organization_id = m.organization_id
@@ -80,9 +343,17 @@ class PostgresStaffMembershipReader:
                         FROM request_engine.staff_memberships m
                         JOIN request_engine.principals p
                           ON p.organization_id = m.organization_id AND p.id = m.principal_id
+                        LEFT JOIN request_engine.staff_member_profiles profile
+                          ON profile.organization_id=m.organization_id
+                         AND profile.membership_id=m.id
                        WHERE access.permitted AND m.organization_id = :organization_id
                          AND (CAST(:membership_id AS uuid) IS NULL OR m.id = :membership_id)
                          AND (CAST(:after AS uuid) IS NULL OR m.id > :after)
+                         AND (CAST(:status AS text) IS NULL OR m.status = :status)
+                         AND (CAST(:search AS text) IS NULL OR
+                              strpos(lower(profile.display_name COLLATE pg_catalog.pg_unicode_fast),
+                                     lower(CAST(:search AS text)
+                                         COLLATE pg_catalog.pg_unicode_fast)) > 0)
                        ORDER BY m.id LIMIT :limit
                   ) member ON true
                  ORDER BY member.membership_id
@@ -93,6 +364,8 @@ class PostgresStaffMembershipReader:
                             "membership_id": membership_id,
                             "after": after,
                             "limit": limit,
+                            "status": status,
+                            "search": search,
                         },
                     )
                 )
@@ -114,6 +387,8 @@ class PostgresStaffMembershipReader:
                         StaffAuthorityGrant(key, key in row["delegable_capabilities"])
                         for key in row["capabilities"]
                     ),
+                    display_name=row["display_name"],
+                    profile_revision=int(row["profile_revision"]),
                 )
                 for row in rows
                 if row["membership_id"] is not None

@@ -72,6 +72,12 @@ class PlatformProvisionerPageView(BaseModel):
     next_after: UUID | None
 
 
+class PlatformProvisionerListParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    after: UUID | None = None
+    limit: int = Field(default=50, ge=1, le=100)
+
+
 class PlatformProvisionerLifecycleView(BaseModel):
     fact_id: UUID
     principal_id: UUID
@@ -156,19 +162,19 @@ def install_native_platform_provisioner_management_http(
         return await actor_resolver.resolve_platform_actor(request)
 
     async def list_provisioners(
+        params: Annotated[PlatformProvisionerListParams, Query()],
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
         response: Response,
         _bearer: _NativeBearer,
-        after: Annotated[UUID | None, Query()] = None,
-        limit: Annotated[int, Query(ge=1, le=100)] = 50,
     ) -> PlatformProvisionerPageView:
         rows = await reader.list_provisioners(
-            actor, ListPlatformProvisionersQuery(after=after, limit=limit)
+            actor, ListPlatformProvisionersQuery(after=params.after, limit=params.limit)
         )
         response.headers["Cache-Control"] = "no-store"
+        page = rows[: params.limit]
         return PlatformProvisionerPageView(
-            items=[_view(row) for row in rows],
-            next_after=rows[-1].principal_id if len(rows) == limit else None,
+            items=[_view(row) for row in page],
+            next_after=page[-1].principal_id if len(rows) > params.limit else None,
         )
 
     async def get_provisioner(

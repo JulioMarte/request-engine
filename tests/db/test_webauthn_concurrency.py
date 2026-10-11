@@ -7,6 +7,7 @@ partial consequence, fail-closed against revocation/disable.
 
 import secrets
 import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, LiteralString
@@ -37,6 +38,14 @@ _FINALIZE_AUTHENTICATION: LiteralString = (
 )
 _FINALIZE_STEP_UP: LiteralString = (
     "SELECT request_auth.finalize_webauthn_step_up(%s, %s, %s, %s, %s, %s, %s)"
+)
+_FINALIZE_SETUP: LiteralString = (
+    "SELECT request_auth.finalize_setup_webauthn_registration("
+    "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+)
+_FINALIZE_DISCOVERABLE: LiteralString = (
+    "SELECT native_identity_id FROM request_auth.finalize_discoverable_webauthn_authentication("
+    "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
 )
 
 
@@ -94,9 +103,16 @@ def _world(admin_conn: PgConnection) -> tuple[UUID, UUID, bytes]:
     )
     admin_conn.execute(
         "INSERT INTO request_engine.webauthn_credentials "
-        "(id, native_identity_id, credential_id, public_key, aaguid) "
-        "VALUES (%s, %s, %s, %s, %s)",
-        (uuid4(), identity_id, credential_id, secrets.token_bytes(77), "00" * 16),
+        "(id, native_identity_id, credential_id, public_key, aaguid, user_handle,user_verified) "
+        "VALUES (%s, %s, %s, %s, %s, %s,false)",
+        (
+            uuid4(),
+            identity_id,
+            credential_id,
+            secrets.token_bytes(77),
+            "00" * 16,
+            secrets.token_bytes(32),
+        ),
     )
     return authority_id, identity_id, credential_id
 
@@ -114,12 +130,20 @@ def _pending_challenge(
     admin_conn: PgConnection, identity_id: UUID, purpose: str = "authentication"
 ) -> bytes:
     digest = secrets.token_bytes(32)
-    admin_conn.execute(
-        "INSERT INTO request_engine.webauthn_challenges "
-        "(id, purpose, native_identity_id, challenge_digest, expires_at) "
-        "VALUES (%s, %s, %s, %s, clock_timestamp() + interval '5 minutes')",
-        (uuid4(), purpose, identity_id, digest),
-    )
+    if purpose == "registration":
+        admin_conn.execute(
+            "INSERT INTO request_engine.webauthn_challenges "
+            "(id, purpose, native_identity_id, challenge_digest, expires_at, user_handle) "
+            "VALUES (%s, %s, %s, %s, clock_timestamp() + interval '5 minutes', %s)",
+            (uuid4(), purpose, identity_id, digest, secrets.token_bytes(32)),
+        )
+    else:
+        admin_conn.execute(
+            "INSERT INTO request_engine.webauthn_challenges "
+            "(id, purpose, native_identity_id, challenge_digest, expires_at) "
+            "VALUES (%s, %s, %s, %s, clock_timestamp() + interval '5 minutes')",
+            (uuid4(), purpose, identity_id, digest),
+        )
     return digest
 
 
@@ -160,12 +184,13 @@ def test_concurrent_challenge_finalization_has_exactly_one_winner(
     admin_conn: PgConnection,
     app_role_conn_factory: AppConnFactory,
 ) -> None:
-    _authority, identity_id, credential_id = _world(admin_conn)
+    _authority, identity_id, _existing_credential_id = _world(admin_conn)
+    credential_id = secrets.token_bytes(32)
     digest = _pending_challenge(admin_conn, identity_id, "registration")
     args = _registration_args(digest, credential_id)
 
     winner = app_role_conn_factory()
-    winner.execute(_FINALIZE_REGISTRATION, args)
+    assert winner.execute(_FINALIZE_REGISTRATION, args).fetchone() == (True,)
     winner_pid = _backend_pid(winner)
 
     contender = _Contender(app_role_conn_factory(), _FINALIZE_REGISTRATION, args)
@@ -176,6 +201,11 @@ def test_concurrent_challenge_finalization_has_exactly_one_winner(
 
     assert "error" not in outcome
     assert outcome["result"] == (False,)
+    assert admin_conn.execute(
+        "SELECT status,consumed_at IS NOT NULL FROM request_engine.webauthn_challenges "
+        "WHERE challenge_digest=%s",
+        (digest,),
+    ).fetchone() == ("consumed", True)
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.webauthn_credentials WHERE credential_id = %s",
         (credential_id,),
@@ -347,3 +377,467 @@ def test_step_up_racing_credential_revoke_does_not_deadlock(
         "WHERE native_identity_id = %s AND status = 'active'",
         (identity_id,),
     ).fetchone() == (0,)
+
+
+def test_discoverable_finalization_rechecks_expiry_after_identity_lock_wait(
+    admin_conn: PgConnection,
+    app_role_conn_factory: AppConnFactory,
+) -> None:
+    authority_id, identity_id, credential_id = _world(admin_conn)
+    row_id = _credential_row(admin_conn, credential_id)
+    handle_row = admin_conn.execute(
+        "SELECT user_handle FROM request_engine.webauthn_credentials WHERE id=%s", (row_id,)
+    ).fetchone()
+    assert handle_row is not None and handle_row[0] is not None
+    challenge_digest = secrets.token_bytes(32)
+    challenge_id = uuid4()
+    expiry = admin_conn.execute(
+        "INSERT INTO request_engine.webauthn_challenges "
+        "(id,purpose,challenge_digest,expires_at) "
+        "VALUES(%s,'authentication_discoverable',%s,clock_timestamp()+interval '1 second') "
+        "RETURNING expires_at",
+        (challenge_id, challenge_digest),
+    ).fetchone()
+    assert expiry is not None
+    token = issue_opaque_token()
+    args: tuple[object, ...] = (
+        challenge_digest,
+        row_id,
+        7,
+        False,
+        False,
+        True,
+        token.token_id,
+        token.digest,
+        token.fingerprint,
+        datetime.now(UTC) + timedelta(hours=1),
+        authority_id,
+        bytes(handle_row[0]),
+    )
+
+    admin_conn.execute("BEGIN")
+    admin_conn.execute(
+        "SELECT id FROM request_engine.native_identities WHERE id=%s FOR UPDATE",
+        (identity_id,),
+    )
+    blocker_pid = _backend_pid(admin_conn)
+    finalizer = _Contender(app_role_conn_factory(), _FINALIZE_DISCOVERABLE, args)
+    finalizer.start()
+    assert wait_for_lock_wait(admin_conn, finalizer.pid, blocker_pid=blocker_pid)
+
+    deadline = time.monotonic() + 10
+    while True:
+        expired = admin_conn.execute(
+            "SELECT clock_timestamp() >= expires_at FROM request_engine.webauthn_challenges "
+            "WHERE id=%s",
+            (challenge_id,),
+        ).fetchone()
+        assert expired is not None
+        if expired[0]:
+            break
+        assert time.monotonic() < deadline, "database challenge did not expire while blocked"
+        time.sleep(0.01)
+
+    admin_conn.execute("COMMIT")
+    assert finalizer.join()["result"] is None
+    assert admin_conn.execute(
+        "SELECT status,consumed_at FROM request_engine.webauthn_challenges WHERE id=%s",
+        (challenge_id,),
+    ).fetchone() == ("pending", None)
+    assert admin_conn.execute(
+        "SELECT sign_count,last_used_at FROM request_engine.webauthn_credentials WHERE id=%s",
+        (row_id,),
+    ).fetchone() == (0, None)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.native_sessions WHERE id=%s", (token.token_id,)
+    ).fetchone() == (0,)
+
+
+def _wait_until_challenge_expired(admin_conn: PgConnection, digest: bytes) -> None:
+    """Observe DB time only after the contender is proven blocked on a real lock."""
+    deadline = time.monotonic() + 10
+    while True:
+        row = admin_conn.execute(
+            "SELECT clock_timestamp() >= expires_at FROM request_engine.webauthn_challenges "
+            "WHERE challenge_digest=%s",
+            (digest,),
+        ).fetchone()
+        assert row is not None
+        if row[0]:
+            return
+        assert time.monotonic() < deadline, "challenge did not expire while blocked"
+        time.sleep(0.01)
+
+
+def _shorten_challenge(admin_conn: PgConnection, digest: bytes) -> None:
+    admin_conn.execute(
+        "UPDATE request_engine.webauthn_challenges "
+        "SET expires_at=clock_timestamp()+interval '1 second' WHERE challenge_digest=%s",
+        (digest,),
+    )
+
+
+def _assert_challenge_pending(admin_conn: PgConnection, digest: bytes) -> None:
+    assert admin_conn.execute(
+        "SELECT status,consumed_at FROM request_engine.webauthn_challenges "
+        "WHERE challenge_digest=%s",
+        (digest,),
+    ).fetchone() == ("pending", None)
+
+
+def _password_session(
+    admin_conn: PgConnection, app_role_conn_factory: AppConnFactory, identity_id: UUID
+) -> UUID:
+    password_id = uuid4()
+    admin_conn.execute(
+        "INSERT INTO request_engine.native_credentials(id,native_identity_id,verifier) "
+        "VALUES(%s,%s,%s)",
+        (password_id, identity_id, "scrypt$" + "a" * 64),
+    )
+    token = issue_opaque_token()
+    with app_role_conn_factory() as conn:
+        assert conn.execute(
+            "SELECT request_auth.create_native_session(%s,%s,%s,%s,%s,%s)",
+            (
+                identity_id,
+                password_id,
+                token.token_id,
+                token.digest,
+                token.fingerprint,
+                datetime.now(UTC) + timedelta(hours=1),
+            ),
+        ).fetchone() == (True,)
+    return token.token_id
+
+
+@pytest.mark.parametrize("ceremony", ["registration", "authentication", "step_up"])
+def test_finalization_rechecks_challenge_expiry_after_owner_lock_wait(
+    admin_conn: PgConnection,
+    app_role_conn_factory: AppConnFactory,
+    ceremony: str,
+) -> None:
+    """Regression: challenge passes entry check, then expires behind owner lock."""
+    _authority, identity_id, credential_id = _world(admin_conn)
+    row_id = _credential_row(admin_conn, credential_id)
+    session_id = _password_session(admin_conn, app_role_conn_factory, identity_id)
+    if ceremony == "step_up":
+        digest = secrets.token_bytes(32)
+        admin_conn.execute(
+            "INSERT INTO request_engine.webauthn_challenges "
+            "(id,purpose,session_id,challenge_digest,expires_at) "
+            "VALUES(%s,'step_up',%s,%s,clock_timestamp()+interval '5 minutes')",
+            (uuid4(), session_id, digest),
+        )
+        statement = _FINALIZE_STEP_UP
+        args = (digest, row_id, session_id, identity_id, 7, False, True)
+    elif ceremony == "registration":
+        digest = _pending_challenge(admin_conn, identity_id, ceremony)
+        statement = _FINALIZE_REGISTRATION
+        args = _registration_args(digest, secrets.token_bytes(32))
+    else:
+        digest = _pending_challenge(admin_conn, identity_id)
+        statement = _FINALIZE_AUTHENTICATION
+        args = _authentication_args(digest, row_id, identity_id, 7)
+    before = admin_conn.execute(
+        "SELECT authentication_methods,user_verified,last_authenticated_at,last_seen_at "
+        "FROM request_engine.native_sessions WHERE id=%s",
+        (session_id,),
+    ).fetchone()
+    _shorten_challenge(admin_conn, digest)
+    admin_conn.execute("BEGIN")
+    admin_conn.execute(
+        "SELECT id FROM request_engine.native_identities WHERE id=%s FOR UPDATE",
+        (identity_id,),
+    )
+    finalizer_conn = app_role_conn_factory()
+    finalizer = _Contender(finalizer_conn, statement, args)
+    finalizer.start()
+    assert wait_for_lock_wait(admin_conn, finalizer.pid, blocker_pid=_backend_pid(admin_conn))
+    _wait_until_challenge_expired(admin_conn, digest)
+    admin_conn.execute("COMMIT")
+    outcome = finalizer.join()
+    finalizer_conn.commit()
+    assert outcome == {"result": (False,)}
+    _assert_challenge_pending(admin_conn, digest)
+    assert admin_conn.execute(
+        "SELECT sign_count,last_used_at FROM request_engine.webauthn_credentials WHERE id=%s",
+        (row_id,),
+    ).fetchone() == (0, None)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.webauthn_credentials WHERE native_identity_id=%s",
+        (identity_id,),
+    ).fetchone() == (1,)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.native_sessions WHERE native_identity_id=%s",
+        (identity_id,),
+    ).fetchone() == (1,)
+    assert (
+        admin_conn.execute(
+            "SELECT authentication_methods,user_verified,last_authenticated_at,last_seen_at "
+            "FROM request_engine.native_sessions WHERE id=%s",
+            (session_id,),
+        ).fetchone()
+        == before
+    )
+
+
+def _setup_challenge(admin_conn: PgConnection) -> tuple[UUID, bytes]:
+    native_id, workload_id, instance_id, setup_id = uuid4(), uuid4(), uuid4(), uuid4()
+    for authority_id, kind in ((native_id, "native"), (workload_id, "workload")):
+        admin_conn.execute(
+            "INSERT INTO request_engine.identity_authorities(id,kind,issuer_or_environment) "
+            "VALUES(%s,%s,%s)",
+            (authority_id, kind, f"setup-race-{uuid4().hex}"),
+        )
+    admin_conn.execute(
+        "INSERT INTO request_engine.platform_instance "
+        "(id,built_in_native_authority_id,built_in_workload_authority_id) VALUES(%s,%s,%s)",
+        (instance_id, native_id, workload_id),
+    )
+    token = issue_opaque_token(token_id=setup_id)
+    admin_conn.execute(
+        "INSERT INTO request_engine.setup_sessions "
+        "(id,instance_id,token_digest,token_fingerprint,mode,expires_at) "
+        "VALUES(%s,%s,%s,%s,'interactive',clock_timestamp()+interval '20 minutes')",
+        (setup_id, instance_id, token.digest, token.fingerprint),
+    )
+    digest = secrets.token_bytes(32)
+    admin_conn.execute(
+        "INSERT INTO request_engine.webauthn_challenges "
+        "(id,purpose,setup_session_id,challenge_digest,user_handle,expires_at) "
+        "VALUES(%s,'registration',%s,%s,%s,clock_timestamp()+interval '5 minutes')",
+        (uuid4(), setup_id, digest, secrets.token_bytes(32)),
+    )
+    return setup_id, digest
+
+
+def test_setup_registration_rechecks_expiry_after_setup_session_lock_wait(
+    admin_conn: PgConnection,
+    app_role_conn_factory: AppConnFactory,
+) -> None:
+    setup_id, digest = _setup_challenge(admin_conn)
+    args = (*_registration_args(digest, secrets.token_bytes(32)), setup_id)
+    _shorten_challenge(admin_conn, digest)
+    admin_conn.execute("BEGIN")
+    admin_conn.execute(
+        "SELECT id FROM request_engine.setup_sessions WHERE id=%s FOR UPDATE",
+        (setup_id,),
+    )
+    finalizer_conn = app_role_conn_factory()
+    contender = _Contender(finalizer_conn, _FINALIZE_SETUP, args)
+    contender.start()
+    assert wait_for_lock_wait(admin_conn, contender.pid, blocker_pid=_backend_pid(admin_conn))
+    _wait_until_challenge_expired(admin_conn, digest)
+    admin_conn.execute("COMMIT")
+    outcome = contender.join()
+    finalizer_conn.commit()
+    assert outcome == {"result": (False,)}
+    _assert_challenge_pending(admin_conn, digest)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.setup_pending_webauthn_credential "
+        "WHERE setup_session_id=%s",
+        (setup_id,),
+    ).fetchone() == (0,)
+    assert admin_conn.execute(
+        "SELECT status,consumed_at FROM request_engine.setup_sessions WHERE id=%s",
+        (setup_id,),
+    ).fetchone() == ("pending", None)
+
+
+@pytest.mark.parametrize("setup", [False, True], ids=["normal", "setup"])
+def test_registration_rolls_back_when_uniqueness_wait_outlives_challenge(
+    admin_conn: PgConnection,
+    app_role_conn_factory: AppConnFactory,
+    setup: bool,
+) -> None:
+    """A rolled-back rival releases its credential id only after TTL expired."""
+    credential_id = secrets.token_bytes(32)
+    other_setup_id: UUID | None = None
+    other_identity_id: UUID | None = None
+    if setup:
+        setup_id, digest = _setup_challenge(admin_conn)
+        other_setup_id = uuid4()
+        token = issue_opaque_token(token_id=other_setup_id)
+        admin_conn.execute(
+            "INSERT INTO request_engine.setup_sessions "
+            "(id,instance_id,token_digest,token_fingerprint,mode,expires_at) "
+            "SELECT %s,instance_id,%s,%s,mode,expires_at "
+            "FROM request_engine.setup_sessions WHERE id=%s",
+            (other_setup_id, token.digest, token.fingerprint, setup_id),
+        )
+        statement = _FINALIZE_SETUP
+        args = (*_registration_args(digest, credential_id), setup_id)
+    else:
+        _authority, identity_id, _credential = _world(admin_conn)
+        _other_authority, other_identity_id, _other_credential = _world(admin_conn)
+        digest = _pending_challenge(admin_conn, identity_id, "registration")
+        statement = _FINALIZE_REGISTRATION
+        args = _registration_args(digest, credential_id)
+    _shorten_challenge(admin_conn, digest)
+    admin_conn.execute("BEGIN")
+    if setup:
+        assert other_setup_id is not None
+        admin_conn.execute(
+            "INSERT INTO request_engine.setup_pending_webauthn_credential "
+            "(id,setup_session_id,credential_id,public_key,aaguid,user_handle) "
+            "VALUES(%s,%s,%s,%s,%s,%s)",
+            (
+                uuid4(),
+                other_setup_id,
+                credential_id,
+                secrets.token_bytes(77),
+                "00" * 16,
+                secrets.token_bytes(32),
+            ),
+        )
+    else:
+        assert other_identity_id is not None
+        admin_conn.execute(
+            "INSERT INTO request_engine.webauthn_credentials "
+            "(id,native_identity_id,credential_id,public_key,aaguid,user_handle) "
+            "VALUES(%s,%s,%s,%s,%s,%s)",
+            (
+                uuid4(),
+                other_identity_id,
+                credential_id,
+                secrets.token_bytes(77),
+                "00" * 16,
+                secrets.token_bytes(32),
+            ),
+        )
+    finalizer_conn = app_role_conn_factory()
+    contender = _Contender(finalizer_conn, statement, args)
+    contender.start()
+    assert wait_for_lock_wait(admin_conn, contender.pid, blocker_pid=_backend_pid(admin_conn))
+    _wait_until_challenge_expired(admin_conn, digest)
+    admin_conn.execute("ROLLBACK")
+    outcome = contender.join()
+    finalizer_conn.commit()
+    assert outcome == {"result": (False,)}
+    _assert_challenge_pending(admin_conn, digest)
+    for table in ("webauthn_credentials", "setup_pending_webauthn_credential"):
+        # Fixed names only; this is an authoritative absence oracle, not fixture setup.
+        query: LiteralString = (
+            "SELECT count(*) FROM request_engine.webauthn_credentials WHERE credential_id=%s"
+            if table == "webauthn_credentials"
+            else "SELECT count(*) FROM request_engine.setup_pending_webauthn_credential "
+            "WHERE credential_id=%s"
+        )
+        assert admin_conn.execute(query, (credential_id,)).fetchone() == (0,)
+
+
+@pytest.mark.parametrize("discoverable", [False, True], ids=["bound", "discoverable"])
+def test_authentication_rolls_back_counter_when_token_uniqueness_wait_outlives_challenge(
+    admin_conn: PgConnection,
+    app_role_conn_factory: AppConnFactory,
+    discoverable: bool,
+) -> None:
+    authority_id, identity_id, credential_id = _world(admin_conn)
+    row_id = _credential_row(admin_conn, credential_id)
+    _other_authority, other_identity_id, other_credential_id = _world(admin_conn)
+    other_row_id = _credential_row(admin_conn, other_credential_id)
+    if discoverable:
+        digest = secrets.token_bytes(32)
+        admin_conn.execute(
+            "INSERT INTO request_engine.webauthn_challenges "
+            "(id,purpose,challenge_digest,expires_at) "
+            "VALUES(%s,'authentication_discoverable',%s,clock_timestamp()+interval '5 minutes')",
+            (uuid4(), digest),
+        )
+    else:
+        digest = _pending_challenge(admin_conn, identity_id)
+    token = issue_opaque_token()
+    expires = datetime.now(UTC) + timedelta(hours=1)
+    if discoverable:
+        handle = admin_conn.execute(
+            "SELECT user_handle FROM request_engine.webauthn_credentials WHERE id=%s",
+            (row_id,),
+        ).fetchone()
+        assert handle is not None
+        statement = _FINALIZE_DISCOVERABLE
+        args = (
+            digest,
+            row_id,
+            7,
+            False,
+            False,
+            True,
+            token.token_id,
+            token.digest,
+            token.fingerprint,
+            expires,
+            authority_id,
+            bytes(handle[0]),
+        )
+    else:
+        statement = _FINALIZE_AUTHENTICATION
+        args = (
+            digest,
+            row_id,
+            identity_id,
+            7,
+            False,
+            False,
+            True,
+            token.token_id,
+            token.digest,
+            token.fingerprint,
+            expires,
+        )
+    _shorten_challenge(admin_conn, digest)
+    admin_conn.execute("BEGIN")
+    admin_conn.execute(
+        "INSERT INTO request_engine.native_sessions "
+        "(id,native_identity_id,webauthn_credential_id,token_digest,token_fingerprint,"
+        "session_epoch,expires_at,authentication_methods) "
+        "SELECT %s,id,%s,%s,%s,session_epoch,%s,ARRAY['webauthn']::text[] "
+        "FROM request_engine.native_identities WHERE id=%s",
+        (uuid4(), other_row_id, token.digest, token.fingerprint, expires, other_identity_id),
+    )
+    finalizer_conn = app_role_conn_factory()
+    contender = _Contender(finalizer_conn, statement, args)
+    contender.start()
+    assert wait_for_lock_wait(admin_conn, contender.pid, blocker_pid=_backend_pid(admin_conn))
+    _wait_until_challenge_expired(admin_conn, digest)
+    admin_conn.execute("ROLLBACK")
+    expected = None if discoverable else (False,)
+    outcome = contender.join()
+    finalizer_conn.commit()
+    assert outcome == {"result": expected}
+    _assert_challenge_pending(admin_conn, digest)
+    assert admin_conn.execute(
+        "SELECT sign_count,last_used_at,user_verified,last_regression_at "
+        "FROM request_engine.webauthn_credentials WHERE id=%s",
+        (row_id,),
+    ).fetchone() == (0, None, False, None)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.native_sessions WHERE token_digest=%s",
+        (token.digest,),
+    ).fetchone() == (0,)
+
+
+def test_live_finalizer_completion_is_not_reversed_by_later_commit_after_ttl(
+    admin_conn: PgConnection,
+    app_role_conn_factory: AppConnFactory,
+) -> None:
+    """The contract is finalizer admission/effect, not delivery or caller COMMIT."""
+    _authority, identity_id, _existing_credential = _world(admin_conn)
+    digest = _pending_challenge(admin_conn, identity_id, "registration")
+    credential_id = secrets.token_bytes(32)
+    _shorten_challenge(admin_conn, digest)
+    finalizer_conn = app_role_conn_factory()
+    assert finalizer_conn.execute(
+        _FINALIZE_REGISTRATION,
+        _registration_args(digest, credential_id),
+    ).fetchone() == (True,)
+    _wait_until_challenge_expired(admin_conn, digest)
+    finalizer_conn.commit()
+    assert admin_conn.execute(
+        "SELECT status,consumed_at < expires_at FROM request_engine.webauthn_challenges "
+        "WHERE challenge_digest=%s",
+        (digest,),
+    ).fetchone() == ("consumed", True)
+    assert admin_conn.execute(
+        "SELECT native_identity_id FROM request_engine.webauthn_credentials WHERE credential_id=%s",
+        (credential_id,),
+    ).fetchone() == (identity_id,)

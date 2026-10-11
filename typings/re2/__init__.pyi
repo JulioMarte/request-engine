@@ -1,0 +1,13 @@
+"""Narrow public API used from google-re2 1.1; not an alternative implementation."""
+
+class error(Exception): ...
+
+class Options:
+    max_mem: int
+    log_errors: bool
+    def __init__(self) -> None: ...
+
+class _Regexp:
+    def search(self, text: str) -> object | None: ...
+
+def compile(pattern: str, options: Options | None = None) -> _Regexp: ...

@@ -73,6 +73,15 @@ async def _enroll_identity(
     return enrollment.native_identity_id
 
 
+def _identity_authority_id(admin_conn: PgConnection, identity_id: UUID) -> UUID:
+    row = admin_conn.execute(
+        "SELECT identity_authority_id FROM request_engine.native_identities WHERE id=%s",
+        (identity_id,),
+    ).fetchone()
+    assert row is not None
+    return UUID(str(row[0]))
+
+
 def _insert_credential(admin_conn: PgConnection, identity_id: UUID) -> tuple[UUID, bytes]:
     row_id = uuid4()
     credential_id = secrets.token_bytes(32)
@@ -93,7 +102,9 @@ async def _register_passkey(
     authenticator: SoftwareAuthenticator,
 ) -> UUID:
     options = await service.begin_registration(native_identity_id=identity_id)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, public_key=options.public_key
+    )
     return await service.complete_registration(credential=credential)
 
 
@@ -131,6 +142,7 @@ async def test_challenge_is_single_use_and_finalization_is_atomic(
         challenge_digest=digest,
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
         native_identity_id=identity_id,
+        user_handle=secrets.token_bytes(32),
     )
     credential_id = secrets.token_bytes(32)
     row_id = uuid4()
@@ -244,6 +256,7 @@ async def test_credential_id_binds_to_at_most_one_identity(
             challenge_digest=digest,
             expires_at=datetime.now(UTC) + timedelta(minutes=5),
             native_identity_id=identity_id,
+            user_handle=secrets.token_bytes(32),
         )
         return await store.finalize_registration(
             challenge_digest=digest,
@@ -366,6 +379,68 @@ async def test_passkey_ceremony_issues_phishing_resistant_session(
     assert subject.metadata["authentication_methods"] == "webauthn"
     assert subject.metadata["user_verified"] == "true"
     assert subject.metadata["recovery_derived"] == "false"
+
+
+@pytest.mark.asyncio
+async def test_discoverable_login_resolves_identity_from_credential(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    identity_id = await _enroll_identity(
+        admin_conn, command_session_factory, login_handle="discoverable-login@example.test"
+    )
+    store = PostgresWebAuthnStore(command_session_factory)
+    service = _service(store)
+    authenticator = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
+    await _register_passkey(store, service, identity_id, authenticator)
+
+    options = await service.begin_authentication_discoverable()
+    assert not options.public_key.get("allowCredentials")
+    assertion = authenticator.authentication_credential(challenge=options.challenge)
+    issued = await service.complete_discoverable_authentication(
+        credential=assertion,
+        expected_authority_id=_identity_authority_id(admin_conn, identity_id),
+    )
+
+    assert issued.native_identity_id == identity_id
+    subject = await _session_authenticator(command_session_factory).authenticate(
+        NativeSessionEvidence(issued.raw_token)
+    )
+    assert subject.subject_id == str(identity_id)
+    assert subject.metadata["authentication_assurance"] == (
+        AuthenticationAssurance.PHISHING_RESISTANT.value
+    )
+    assert subject.metadata["authentication_methods"] == "webauthn"
+
+    # Replay: the consumed unbound challenge cannot be finalized again.
+    with pytest.raises(WebAuthnCeremonyError):
+        await service.complete_discoverable_authentication(
+            credential=assertion,
+            expected_authority_id=_identity_authority_id(admin_conn, identity_id),
+        )
+
+
+@pytest.mark.asyncio
+async def test_discoverable_login_rejects_unknown_credential(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    identity_id = await _enroll_identity(
+        admin_conn, command_session_factory, login_handle="discoverable-unknown@example.test"
+    )
+    store = PostgresWebAuthnStore(command_session_factory)
+    service = _service(store)
+    registered = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
+    await _register_passkey(store, service, identity_id, registered)
+    stranger = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
+
+    options = await service.begin_authentication_discoverable()
+    assertion = stranger.authentication_credential(challenge=options.challenge)
+    with pytest.raises(WebAuthnCeremonyError):
+        await service.complete_discoverable_authentication(
+            credential=assertion,
+            expected_authority_id=_identity_authority_id(admin_conn, identity_id),
+        )
 
 
 @pytest.mark.asyncio
@@ -575,7 +650,9 @@ async def test_suspended_authority_cannot_register_credential(
     service = _service(store)
     authenticator = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
     options = await service.begin_registration(native_identity_id=identity_id)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, public_key=options.public_key
+    )
 
     admin_conn.execute(
         "UPDATE request_engine.identity_authorities "
@@ -588,9 +665,12 @@ async def test_suspended_authority_cannot_register_credential(
 
 
 _LEAST_PRIVILEGE_FUNCTIONS = (
-    "create_webauthn_challenge(uuid, text, uuid, uuid, uuid, bytea, timestamptz)",
+    (
+        "create_webauthn_challenge_with_user_handle(uuid, text, uuid, uuid, uuid, "
+        "bytea, timestamptz, bytea)"
+    ),
     "read_webauthn_challenge(bytea, text)",
-    "read_webauthn_credential(bytea)",
+    "read_webauthn_credential_for_assertion(bytea)",
     "read_webauthn_credentials(uuid)",
     "read_active_webauthn_identity(uuid, text)",
     (
@@ -598,10 +678,18 @@ _LEAST_PRIVILEGE_FUNCTIONS = (
         "boolean, boolean, boolean)"
     ),
     (
+        "finalize_setup_webauthn_registration(bytea, uuid, bytea, bytea, bigint, text, "
+        "boolean, boolean, boolean, uuid)"
+    ),
+    (
         "finalize_webauthn_authentication(bytea, uuid, uuid, bigint, boolean, boolean, "
         "boolean, uuid, bytea, text, timestamptz)"
     ),
     "finalize_webauthn_step_up(bytea, uuid, uuid, uuid, bigint, boolean, boolean)",
+    (
+        "finalize_discoverable_webauthn_authentication(bytea, uuid, bigint, boolean, boolean, "
+        "boolean, uuid, bytea, text, timestamptz, uuid, bytea)"
+    ),
     "revoke_webauthn_credential(uuid, uuid, text)",
 )
 
@@ -625,6 +713,11 @@ def test_webauthn_functions_are_least_privilege(admin_conn: PgConnection) -> Non
         assert row[2] == ["search_path=pg_catalog, request_engine"], signature
         assert row[3] is True, signature
         assert row[4] is False, signature
+    assert admin_conn.execute(
+        "SELECT has_function_privilege('request_engine_app', "
+        "'request_auth.create_webauthn_challenge(uuid,text,uuid,uuid,uuid,bytea,timestamptz)', "
+        "'EXECUTE')"
+    ).fetchone() == (False,)
 
 
 @pytest.mark.asyncio
@@ -688,6 +781,8 @@ async def test_complete_registration_rejects_unknown_challenge(
     store = PostgresWebAuthnStore(command_session_factory)
     service = _service(store)
     authenticator = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
-    credential = authenticator.registration_credential(challenge=secrets.token_bytes(32))
+    credential = authenticator.registration_credential(
+        challenge=secrets.token_bytes(32), user_handle=authenticator.user_handle
+    )
     with pytest.raises(WebAuthnCeremonyError):
         await service.complete_registration(credential=credential)

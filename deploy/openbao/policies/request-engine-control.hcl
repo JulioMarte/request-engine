@@ -12,7 +12,13 @@ path "secret/data/request-engine/identity-recovery/*" {
 }
 
 path "secret/metadata/request-engine/identity-recovery/*" {
-  capabilities = ["read", "delete", "update"]
+  capabilities = ["create", "read", "update"]
+}
+
+# Metadata delete is intentionally absent; do not combine this token with a
+# policy granting it. Destroy is denied even if another policy grants it.
+path "secret/destroy/request-engine/identity-recovery/*" {
+  capabilities = ["deny"]
 }
 
 

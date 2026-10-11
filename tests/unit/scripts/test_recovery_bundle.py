@@ -61,6 +61,58 @@ def test_offsite_command_requires_artifact_placeholder(
         module._copy_offsite(tmp_path / "bundle.age", "rclone copy remote:path")  # type: ignore[attr-defined]
 
 
+def test_new_backup_retains_postgres_owner_and_privilege_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    output_dir = tmp_path / "backups"
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], *, env: dict[str, str] | None = None) -> None:
+        del env
+        commands.append(command)
+        if command[0] == "pg_dump":
+            Path(command[command.index("--file") + 1]).write_bytes(b"pg-dump")
+        elif command[0] == "bao":
+            Path(command[-1]).write_bytes(b"bao-snapshot")
+        elif command[0] == "age":
+            Path(command[command.index("-o") + 1]).write_bytes(Path(command[-1]).read_bytes())
+
+    monkeypatch.setenv(
+        "REQUEST_ENGINE_BACKUP_DATABASE_URL",
+        "postgresql://backup@db/request_engine",
+    )
+
+    def fake_require_program(name: str) -> str:
+        return name
+
+    monkeypatch.setattr(module, "_require_program", fake_require_program)
+    monkeypatch.setattr(module, "_run", fake_run)
+
+    result = module.create_backup(  # type: ignore[attr-defined]
+        Namespace(
+            postgres_dsn_env="REQUEST_ENGINE_BACKUP_DATABASE_URL",
+            output_dir=str(output_dir),
+            bao_command="bao",
+            age_recipient="age1test",
+            age_recipient_env="REQUEST_ENGINE_BACKUP_AGE_RECIPIENT",
+            offsite_command=None,
+            offsite_command_env="REQUEST_ENGINE_BACKUP_OFFSITE_COMMAND",
+            local_only=True,
+            local_retention_days=None,
+        )
+    )
+    pg_dump = next(command for command in commands if command[0] == "pg_dump")
+    assert "--no-owner" not in pg_dump
+    assert "--no-privileges" not in pg_dump
+    with module.tarfile.open(result, "r:gz") as archive:  # type: ignore[attr-defined]
+        manifest_stream = archive.extractfile("manifest.json")
+        assert manifest_stream is not None
+        manifest = json.loads(manifest_stream.read())
+    assert manifest["postgres_topology_preserved"] is True
+
+
 def test_restore_fails_closed_without_outbound_fence(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     error = cast(type[RuntimeError], module.RecoveryBundleError)  # type: ignore[attr-defined]
@@ -144,7 +196,10 @@ def test_clean_restore_forces_openbao_snapshot_across_seal_boundary(
         extracted.mkdir()
         (extracted / "postgres.dump").write_bytes(b"pg")
         (extracted / "openbao.snap").write_bytes(b"bao")
-        return {"schema": "request-engine/recovery-bundle/v1"}
+        return {
+            "schema": "request-engine/recovery-bundle/v1",
+            "postgres_topology_preserved": True,
+        }
 
     monkeypatch.setattr(module, "_extract_verified", fake_extract)
     module.restore_backup(  # type: ignore[attr-defined]
@@ -158,6 +213,10 @@ def test_clean_restore_forces_openbao_snapshot_across_seal_boundary(
         )
     )
     assert calls[0][0] == "pg_restore"
+    assert "--no-owner" not in calls[0]
+    assert "--no-privileges" not in calls[0]
+    assert "--exit-on-error" in calls[0]
+    assert "--single-transaction" in calls[0]
     assert calls[1][:6] == ["bao", "operator", "raft", "snapshot", "restore", "-force"]
 
 
@@ -167,11 +226,92 @@ def test_manifest_contains_only_expected_recovery_files(tmp_path: Path) -> None:
     (tmp_path / "openbao.snap").write_bytes(b"bao")
     manifest_path = module._write_manifest(tmp_path)  # type: ignore[attr-defined]
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["postgres_topology_preserved"] is True
     assert {item["name"] for item in manifest["files"]} == {
         "postgres.dump",
         "openbao.snap",
     }
     assert "password" not in manifest_path.read_text(encoding="utf-8").lower()
+
+
+def test_legacy_manifest_remains_verifiable_without_topology_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    root = tmp_path / "source"
+    root.mkdir()
+    (root / "postgres.dump").write_bytes(b"pg")
+    (root / "openbao.snap").write_bytes(b"bao")
+    manifest_path = module._write_manifest(root)  # type: ignore[attr-defined]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("postgres_topology_preserved")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    archive = tmp_path / "legacy.tar.gz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        for name in ("manifest.json", "postgres.dump", "openbao.snap"):
+            bundle.add(root / name, arcname=name)
+
+    def fake_decrypt(_bundle: Path, output: Path, _identity: Path) -> None:
+        output.write_bytes(archive.read_bytes())
+
+    monkeypatch.setattr(module, "_decrypt", fake_decrypt)
+    verified = tmp_path / "verified"
+    verified.mkdir()
+    result = module._extract_verified(  # type: ignore[attr-defined]
+        tmp_path / "legacy.age", tmp_path / "identity", verified
+    )
+    assert "postgres_topology_preserved" not in result
+
+
+def test_legacy_bundle_is_refused_for_restore(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    error = cast(type[RuntimeError], module.RecoveryBundleError)  # type: ignore[attr-defined]
+    bundle = tmp_path / "legacy.age"
+    bundle.write_bytes(b"encrypted")
+    identity = tmp_path / "identity.txt"
+    identity.write_text("AGE-SECRET-KEY-TEST\n", encoding="utf-8")
+    monkeypatch.setenv("REQUEST_ENGINE_OUTBOUND_FENCED", "true")
+    monkeypatch.setenv(
+        "REQUEST_ENGINE_RESTORE_DATABASE_URL",
+        "postgresql://restore-user:restore-pass@db/request_engine",
+    )
+    monkeypatch.setenv("REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE", str(identity))
+
+    def fake_require_program(name: str) -> str:
+        return name
+
+    monkeypatch.setattr(module, "_require_program", fake_require_program)
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> None:
+        calls.append(command)
+
+    monkeypatch.setattr(module, "_run", fake_run)
+
+    def legacy_bundle(_bundle: Path, _identity: Path, root: Path) -> dict[str, object]:
+        extracted = root / "extracted"
+        extracted.mkdir()
+        (extracted / "postgres.dump").write_bytes(b"pg")
+        (extracted / "openbao.snap").write_bytes(b"bao")
+        return {"schema": "request-engine/recovery-bundle/v1"}
+
+    monkeypatch.setattr(module, "_extract_verified", legacy_bundle)
+    with pytest.raises(error, match="legacy bundle"):
+        module.restore_backup(  # type: ignore[attr-defined]
+            Namespace(
+                bundle=str(bundle),
+                postgres_dsn_env="REQUEST_ENGINE_RESTORE_DATABASE_URL",
+                bao_command="bao",
+                age_identity_file_env="REQUEST_ENGINE_BACKUP_AGE_IDENTITY_FILE",
+                confirm_destructive=True,
+                evidence_output=None,
+            )
+        )
+    assert calls == []
 
 
 def test_restore_evidence_is_written_only_after_both_restore_steps(
@@ -214,6 +354,7 @@ def test_restore_evidence_is_written_only_after_both_restore_steps(
         return {
             "schema": "request-engine/recovery-bundle/v1",
             "created_at": "2026-09-24T00:00:00+00:00",
+            "postgres_topology_preserved": True,
         }
 
     monkeypatch.setattr(module, "_require_program", fake_require_program)
@@ -233,14 +374,22 @@ def test_restore_evidence_is_written_only_after_both_restore_steps(
 
     assert result == evidence.resolve()
     assert [call[0] for call in calls] == ["pg_restore", "bao"]
+    assert "--no-owner" not in calls[0]
+    assert "--no-privileges" not in calls[0]
+    assert "--exit-on-error" in calls[0]
+    assert "--single-transaction" in calls[0]
     payload = json.loads(evidence.read_text(encoding="utf-8"))
     assert payload["schema"] == "request-engine/restore-evidence/v1"
     assert payload["outcome"] == "restore_applied_pending_verification"
-    assert payload["outbound_fenced"] is True
+    assert payload["outbound_fence_environment_declared"] is True
+    assert payload["outbound_isolation_independently_proven"] is False
+    assert payload["postgres_topology_preserved"] is True
+    assert payload["postgres_owner_acl_topology_applied"] is True
     assert payload["bundle_manifest_created_at"] == "2026-09-24T00:00:00+00:00"
     assert payload["completed_steps"] == [
         "bundle_integrity_verified",
         "postgres_restore_applied",
+        "postgres_owner_acl_topology_applied",
         "openbao_raft_force_restore_applied",
     ]
     assert payload["post_restore_verification_required"] is True
@@ -283,7 +432,10 @@ def test_restore_failure_does_not_write_false_evidence(
         extracted.mkdir()
         (extracted / "postgres.dump").write_bytes(b"pg")
         (extracted / "openbao.snap").write_bytes(b"bao")
-        return {"schema": "request-engine/recovery-bundle/v1"}
+        return {
+            "schema": "request-engine/recovery-bundle/v1",
+            "postgres_topology_preserved": True,
+        }
 
     monkeypatch.setattr(module, "_require_program", fake_require_program)
     monkeypatch.setattr(module, "_run", fake_run)

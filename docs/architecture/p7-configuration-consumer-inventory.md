@@ -164,8 +164,10 @@ REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY
 REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY
 ```
 
-The WebAuthn decoy key is not a product signing key; it is deployment secret
-material used to produce stable non-enumerating decoys.
+The WebAuthn decoy key is not a product signing key. It remains a deployment
+configuration compatibility input; current discoverable login options do not
+produce decoy identifiers (ADR 0014 §9). Removing the obsolete input is separate
+deployment-configuration cleanup, not product key rotation.
 
 The appointment signing key and identity-exchange fingerprint key are real
 cryptographic consumers and must be reviewed before P7-I can be closed. P7-I

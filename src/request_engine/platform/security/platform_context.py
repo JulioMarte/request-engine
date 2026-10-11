@@ -33,6 +33,7 @@ class PlatformActorContext:
     recovery_derived: bool = False
     recovery_restricted: bool = False
     authenticated_at: datetime | None = None
+    identity_binding_id: UUID | None = None
 
     def __post_init__(self) -> None:
         if self.authority_revision <= 0:
@@ -43,6 +44,8 @@ class PlatformActorContext:
             raise ValueError("credential_id cannot be blank")
         if self.interaction_id is not None and not self.interaction_id.strip():
             raise ValueError("interaction_id cannot be blank")
+        if self.identity_binding_id is not None and self.identity_binding_id.int == 0:
+            raise ValueError("identity_binding_id cannot be the nil UUID")
         for capability in self.capabilities:
             definition = capability_definition(capability)
             if definition is None:

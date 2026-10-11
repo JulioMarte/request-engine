@@ -4,6 +4,7 @@ root="${1:-.ci/docker-e2e}"
 services_dir="$root/services"; docker_dir="$root/docker"
 mkdir -p "$services_dir" "$docker_dir" "$root/phases"
 compose=(docker compose -f deploy/reference/compose.e2e.yaml --profile runner --profile worker --profile secrets --profile delivery)
+if [[ -n "${E2E_TLS_OVERLAY:-}" ]]; then compose+=(-f "$E2E_TLS_OVERLAY"); fi
 
 "${compose[@]}" ps -a >"$docker_dir/compose-ps.txt" 2>&1 || true
 "${compose[@]}" config --services >"$docker_dir/compose-services.txt" 2>&1 || true
@@ -51,7 +52,8 @@ PY
 cat >"$root/EVIDENCE_SCOPE.txt" <<'EOF'
 SYSTEM/E2E EVIDENCE FOR THE SELECTED SUITE ONLY.
 Vault dev mode and Mailpit do not certify production secret handling or email deliverability.
-External TLS/ingress, production-shaped backup/restore and restore-fencing, human break-glass, RPO/RTO, and SLOs remain outside this CI evidence.
+Selected laboratory suites may prove verified TLS, SMTP outcomes and container network isolation.
+Real production providers, deployed ingress/firewalls, human break-glass, production RPO/RTO and SLOs remain outside this evidence.
 Raw Compose configuration and raw Docker inspect output are intentionally excluded because they may contain credentials.
 EOF
 

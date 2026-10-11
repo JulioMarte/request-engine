@@ -1,9 +1,14 @@
+from dataclasses import asdict
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from request_engine.modules.catalog.api.bootstrap_models import (
+    OfferingBootstrapView,
+    ResourceCapabilityView,
+)
 from request_engine.modules.catalog.application.commands import (
     set_offering_version_booking_policy as policy_commands,
 )
@@ -122,6 +127,12 @@ class SetBookingPolicyBody(BaseModel):
     booking_policy: BookingPolicyBody
 
 
+class OfferingVersionBookingPolicyView(BaseModel):
+    offering_version_id: UUID
+    booking_policy_revision: int
+    policy: BookingPolicyBody
+
+
 def _policy_input(policy: BookingPolicyBody) -> policy_commands.BookingPolicyInput:
     channels = policy.communications.channel_policy
     channel_policy = (
@@ -170,9 +181,9 @@ def create_bootstrap_router(
         body: ResourceCapabilityBody,
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> ResourceCapabilityView:
         require_capability(current, "catalog.manage")
-        return await create_resource_capability(
+        result = await create_resource_capability(
             handler,
             CreateResourceCapabilityCommand(
                 organization_id=current.organization_id,
@@ -183,12 +194,13 @@ def create_bootstrap_router(
                 idempotency_key=idempotency_key,
             ),
         )
+        return ResourceCapabilityView.model_validate(result)
 
     async def offering(
         body: OfferingBody,
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> OfferingBootstrapView:
         require_capability(current, "catalog.manage")
         policy = body.reservation_policy
         channel_policy = (
@@ -201,7 +213,7 @@ def create_bootstrap_router(
             if policy.channel_policy is not None
             else None
         )
-        return await create_offering(
+        result = await create_offering(
             handler,
             CreateOfferingCommand(
                 organization_id=current.organization_id,
@@ -232,15 +244,24 @@ def create_bootstrap_router(
                 idempotency_key=idempotency_key,
             ),
         )
+        return OfferingBootstrapView.model_validate(result)
 
     async def booking_policy(
         offering_version_id: UUID,
         body: SetBookingPolicyBody,
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> OfferingVersionBookingPolicyView:
+        """Append a policy override for future reservations, preserving existing snapshots.
+
+        Read exact version configuration first; bootstrap policy uses revision 0.
+        Current catalog.manage and exact operations.manage_terms Party authority
+        are checked inside the owner transaction before every idempotency lookup.
+        Retry an uncertain result with the same key/body; withdrawn authority
+        denies even completed-result replay. Admission before withdrawal may finish.
+        """
         require_capability(current, "catalog.manage")
-        return await policy_commands.set_offering_version_booking_policy(
+        result = await policy_commands.set_offering_version_booking_policy(
             policy_handler,
             policy_commands.SetOfferingVersionBookingPolicyCommand(
                 organization_id=current.organization_id,
@@ -252,6 +273,11 @@ def create_bootstrap_router(
                 idempotency_key=idempotency_key,
             ),
         )
+        return OfferingVersionBookingPolicyView(
+            offering_version_id=result.offering_version_id,
+            booking_policy_revision=result.booking_policy_revision,
+            policy=BookingPolicyBody.model_validate(asdict(result.policy)),
+        )
 
     add_capability_route(
         router,
@@ -260,6 +286,7 @@ def create_bootstrap_router(
         capability="catalog.manage",
         methods=["POST"],
         operation_id="catalog_manage_resource_capabilities",
+        response_model=ResourceCapabilityView,
         status_code=status.HTTP_201_CREATED,
     )
     add_capability_route(
@@ -269,6 +296,7 @@ def create_bootstrap_router(
         capability="catalog.manage",
         methods=["POST"],
         operation_id="catalog_manage_offerings",
+        response_model=OfferingBootstrapView,
         status_code=status.HTTP_201_CREATED,
     )
     add_capability_route(
@@ -278,5 +306,6 @@ def create_bootstrap_router(
         capability="catalog.manage",
         methods=["PUT"],
         operation_id="catalog_manage_offering_version_booking_policy",
+        response_model=OfferingVersionBookingPolicyView,
     )
     return router

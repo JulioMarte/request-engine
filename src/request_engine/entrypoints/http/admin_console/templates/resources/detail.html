@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% import "partials/action_form.html" as action_form %}
+{% block title %}{{ spec.title }} &middot; Request Engine admin{% endblock %}
+{% block content %}
+{% if not item_error %}<section class="card">
+  <p><a href="/resources/{{ spec.key }}">&larr; {{ spec.title }}</a></p>
+  <h1>{{ spec.title }} <code class="small">{{ item_id }}</code></h1>
+  {% if spec.key == "organizations" %}<p><a class="button primary" href="/tenants/{{ item_id | urlencode }}/staff">Manage people &amp; permissions</a></p>{% endif %}
+  {% if item_error %}<div class="alert error">{{ item_error }}</div>{% endif %}
+  {% if detail[0] %}
+  <dl class="detail">
+    {% for key, value in detail[0] %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}
+  </dl>
+  {% endif %}
+  {% for key, value in detail[1] %}
+    <details><summary>{{ key }}</summary><pre class="payload">{{ value }}</pre></details>
+  {% endfor %}
+</section>
+{% if actions %}
+<section class="card">
+  <h2>Actions</h2>
+  <div id="result"></div>
+  {% for action in actions %}{{ action_form.render(action) }}{% endfor %}
+</section>
+{% endif %}
+{% else %}<section class="card error-state"><h2>Item unavailable</h2><p>Reload the item before making changes. No action can run without current authoritative state.</p><a class="button secondary" href="/resources/{{ spec.key }}/{{ item_id | urlencode }}">Try again</a></section>{% endif %}
+{% endblock %}

@@ -3,16 +3,37 @@
 # TRIGGER) privilege tuples; every entry tracks an accepted, reviewed migration.
 
 PRIVATE_GLOBAL_TABLES = {
+    # 0015: private immutable administrative enrollment receipt; no runtime CRUD.
+    "native_identity_provision_receipts",
+    # 0013: technical retained-version evidence, isolated recorder definer only.
+    "temporary_proof_retention_receipts",
+    # 0024: isolated cleanup lease/result primitives, no ordinary runtime CRUD.
+    "temporary_proof_cleanup_work",
+    "temporary_proof_cleanup_results",
     "initial_controller_policies",
     "global_identities",
     "identity_recovery_issuance_reservations",
+    # Accepted 0001: private native authentication provenance, definer writes only.
+    "native_identity_recovery_facts",
+    "native_identity_recovery_state",
+    "native_recovery_address_facts",
+    "native_recovery_address_verifications",
+    "native_recovery_addresses",
+    "native_recovery_delivery_facts",
+    "native_recovery_delivery_requests",
     "platform_authority_lifecycle_facts",
     "platform_identity_disable_facts",
     "platform_configuration_facts",
     "platform_configuration_revisions",
     "platform_installation_claim_facts",
     "platform_instance",
+    # 0038: transport-admission state is accessible only through its narrow definer function.
+    "http_auth_admission_state",
     "platform_owner_policies",
+    # Accepted 0001: platform control definer only, never tenant app CRUD.
+    "platform_owner_invitation_facts",
+    "platform_owner_invitations",
+    "platform_owner_provisioning_facts",
     "platform_recovery_code_facts",
     "platform_secret_bindings",
     "platform_secret_mutations",
@@ -33,8 +54,14 @@ PRIVATE_GLOBAL_TABLES = {
 # registered/adjusted by the app but read through definer lookups; the
 # authority-event ledger and handoffs are fully definer-mediated.
 EXPECTED_TABLE_EXCEPTIONS = {
+    # 0011: only four reviewed column SELECTs; profile writes are definer-mediated.
+    "staff_member_profiles": (False,) * 7,
     "discovery_booking_handoffs": (False,) * 7,
     "service_classification_authority_events": (False,) * 7,
+    # 0027 adoption requests expose only an exact column SELECT list; immutable
+    # application facts remain fully mediated by reviewed definer operations.
+    "controller_policy_adoption_requests": (False,) * 7,
+    "controller_policy_adoption_facts": (False,) * 7,
     "service_classifications": (False,) * 7,
     # F4 recomputes assignment availability, legitimately deleting stale rows.
     "resource_location_availability": (True, True, True, True, False, False, False),

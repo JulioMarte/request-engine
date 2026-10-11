@@ -167,3 +167,76 @@ def test_certification_rejects_openbao_evidence_that_could_contain_secret_value(
             max_evidence_age_hours=24,
             now=NOW,
         )
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "observed_rpo_seconds",
+        "observed_rto_seconds",
+        "accepted_max_rpo_seconds",
+        "accepted_max_rto_seconds",
+    ),
+)
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), -1, True, 10**400])
+def test_certification_rejects_invalid_recovery_numbers(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    openbao, smtp, recovery = _evidence(tmp_path)
+    payload = json.loads(recovery.read_text(encoding="utf-8"))
+    payload[field] = value
+    _write(recovery, payload)
+    output = tmp_path / "certification.json"
+
+    with pytest.raises(module.CertificationError, match="RPO/RTO"):
+        module.certify(
+            openbao_path=openbao,
+            smtp_path=smtp,
+            recovery_path=recovery,
+            expected_openbao_topology="prod-raft-v1",
+            max_evidence_age_hours=24,
+            output=output,
+            now=NOW,
+        )
+    assert not output.exists()
+
+
+def test_certification_accepts_zero_recovery_times_and_limits(tmp_path: Path) -> None:
+    openbao, smtp, recovery = _evidence(tmp_path)
+    payload = json.loads(recovery.read_text(encoding="utf-8"))
+    for field in (
+        "observed_rpo_seconds",
+        "observed_rto_seconds",
+        "accepted_max_rpo_seconds",
+        "accepted_max_rto_seconds",
+    ):
+        payload[field] = 0
+    _write(recovery, payload)
+    result = module.certify(
+        openbao_path=openbao,
+        smtp_path=smtp,
+        recovery_path=recovery,
+        expected_openbao_topology="prod-raft-v1",
+        max_evidence_age_hours=24,
+        now=NOW,
+    )
+    assert result["outcome"] == "accepted"
+    assert result["observed_rpo_seconds"] == 0
+    assert result["accepted_max_rto_seconds"] == 0
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), True, 1e308])
+def test_certification_rejects_invalid_freshness_budget(tmp_path: Path, value: float) -> None:
+    openbao, smtp, recovery = _evidence(tmp_path)
+    output = tmp_path / "certification.json"
+    with pytest.raises(module.CertificationError, match="evidence age"):
+        module.certify(
+            openbao_path=openbao,
+            smtp_path=smtp,
+            recovery_path=recovery,
+            expected_openbao_topology="prod-raft-v1",
+            max_evidence_age_hours=value,
+            output=output,
+            now=NOW,
+        )
+    assert not output.exists()

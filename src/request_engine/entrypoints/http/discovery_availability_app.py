@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 
+from request_engine.entrypoints.http.error_handlers import add_technical_error_handlers
 from request_engine.entrypoints.http.errors import (
     authentication_required_handler,
     capability_required_handler,
@@ -16,6 +17,7 @@ from request_engine.modules.booking.api.discovery_gateway import (
     create_discovery_availability_router,
 )
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.http.request_budget import install_request_budget
 from request_engine.platform.security.http import (
     AuthenticationRequired,
     CapabilityRequired,
@@ -51,7 +53,9 @@ def create_discovery_availability_app(
         version="0.1.0",
         description="Internal publication-fenced access to authoritative Booking availability.",
     )
+    install_request_budget(app, session_factory=domain_session_factory)
     app.middleware("http")(_request_context)
+    add_technical_error_handlers(app)
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)

@@ -13,10 +13,10 @@ Keep at least one unused Platform Owner offline recovery code outside PostgreSQL
 1. Record `backup_completed_at` from the backup being tested.
 2. Retrieve the encrypted bundle from the off-host destination and verify it with `scripts/operations/recovery_bundle.py verify`.
 3. Record `failure_declared_at`. Destroy or detach the drill source state. Do not reuse its PostgreSQL volume or OpenBao Raft volume.
-4. Start empty PostgreSQL and empty production-mode OpenBao Raft storage on the isolated target. Initialize that **disposable target** OpenBao and unseal it with temporary target-only keys so an authenticated operator can apply the snapshot. Do not overwrite or replace the separately custodied **original** OpenBao unseal shares from the source snapshot.
+4. Start clean PostgreSQL and empty production-mode OpenBao Raft storage on the isolated target. Run the reviewed migrations to the accepted head against a disposable bootstrap database on the target cluster to provision NOLOGIN roles/memberships, drop that bootstrap database, then create a new empty restore database. Do not copy source LOGIN passwords. Initialize the **disposable target** OpenBao and unseal it with temporary target-only keys so an authenticated operator can apply the snapshot. Do not overwrite or replace the separately custodied **original** OpenBao unseal shares from the source snapshot.
 5. Set `REQUEST_ENGINE_OUTBOUND_FENCED=true` and run `recovery_bundle.py restore ... --confirm-destructive --evidence-output ...`. The tool uses OpenBao's forced Raft restore because a clean target has different Shamir/auto-unseal material. Its restore evidence intentionally says `restore_applied_pending_verification`; it is not the final recovery certification.
 6. Restart OpenBao after the forced snapshot restore and unseal it with the **original source/snapshot unseal shares**, not the disposable target initialization keys. Verify OpenBao reports the expected restored cluster state. Then recreate Proxy/AppRole machine credentials from retained operator material; do not restore a permanent root token into Request Engine.
-7. Start Request Engine against the restored stores. Verify representative PostgreSQL reads and resolve a known governed secret through the runtime `PlatformSecretStore` boundary.
+7. Start Request Engine against the restored stores using freshly rotated least-privilege LOGIN credentials. Verify representative PostgreSQL reads, object owners/grants/RLS on critical application objects, and resolve a known governed secret through the runtime `PlatformSecretStore` boundary.
 8. While still fenced, create work that would normally cause SMTP/webhook/outbox traffic. Prove no side effect reaches the sink/provider.
 9. Stop or make OpenBao unreachable and make SMTP unreachable. Consume one unused offline Platform Owner recovery code to set a new password. Prove the old password fails, old sessions fail, the new password works, the same recovery code cannot be reused, and setup remains closed.
 10. Record `service_recovered_at` only after the application reads and governed secret-resolution checks have passed.
@@ -36,6 +36,15 @@ python scripts/operations/p7_production_certification.py \
 ```
 
 This final gate does not perform or simulate production operations. It proves that all three independent operational acceptances exist, are accepted and fresh, that the OpenBao artifact belongs to the intended topology, that SMTP includes mailbox/throttling references, and that recovery contains both measured and explicitly operator-approved RPO/RTO limits. It hashes every input artifact into the final certification so the evidence set is immutable/auditable. CI tests the gate's fail-closed semantics but cannot generate a production certification.
+
+Measured recovery times and approved limits must be finite, non-negative numbers;
+zero is valid. Booleans, NaN, infinity and numbers too large to represent are
+invalid evidence. The final gate also requires a finite, positive freshness
+budget that fits the supported duration range. These checks apply before writing
+a certification; the control-plane recovery parser rejects non-finite values
+before they can appear in verified readiness diagnostics. A measurement with
+no approved limits remains usable for diagnostics, but the final production
+gate requires both approved limits.
 
 ## Required evidence schema
 
@@ -65,6 +74,33 @@ This final gate does not perform or simulate production operations. It proves th
   }
 }
 ```
+
+The drill record must also include the path to the actual restore evidence file,
+the off-host retrieval audit/record, and independent egress-fence evidence:
+
+```json
+{
+  "restore_evidence_reference": "restore-2026-09-26.json",
+  "off_host_retrieval_evidence_reference": "storage-audit-678",
+  "outbound_fence_evidence_reference": "firewall-change-456"
+}
+```
+
+The certification tool reads the restore evidence file (a relative path is
+resolved from the drill evidence file's directory) and checks that its bundle
+hash matches the drill and that it records both restore operations as pending
+post-restore verification, lists bundle integrity plus PostgreSQL and OpenBao
+restore as completed steps, records PostgreSQL owner/ACL topology application,
+and timestamps the restore interval entirely within the drill window:
+`failure_declared_at <= restore.started_at <= restore.completed_at <= service_recovered_at`.
+It rejects a missing restore start time, a restore started before failure declaration,
+a reversed interval, or a restore completed after service recovery. It checks the other evidence references only as
+non-empty strings: it does not fetch or validate external records, inspect the
+restored host/network, or prove the truth of operator-entered proof booleans. The restore command likewise
+records only the operator's fence environment declaration; it cannot certify
+network isolation. Preserve these records with the certification for human or
+deployment-specific independent review. Off-host retrieval must still be done
+from a machine/location independent of the failed source host.
 
 `recovery_bundle.py` does not certify recovery by itself. A successful forced Raft restore can still require restart/unseal and post-restore application checks. Only the completed drill evidence below may be promoted to `request-engine/recovery-certification/v1`.
 

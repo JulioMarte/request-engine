@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "partials/action_form.html" as action_form %}
+{% block title %}Platform configuration &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card">
+  <p><a href="/resources">&larr; Workspaces</a></p>
+  <h1>Platform configuration</h1>
+  <p class="muted">Staged, validated and active configuration revisions by kind.</p>
+  {% if list_error %}<div class="alert error">{{ list_error }}</div>{% endif %}
+  <div class="workspace-grid">
+    {% for kind, count in kinds %}
+    <a class="workspace" href="/resources/configurations/{{ kind | urlencode }}">
+      <strong>{{ kind }}</strong>
+      <span class="muted small">{{ count }} revision(s)</span>
+    </a>
+    {% else %}{% if not list_error %}
+    <p class="muted">No configuration revisions yet. Open a kind to stage the first one.</p>
+    {% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% if stage %}<details class="card create-disclosure"{% if not kinds and not list_error %} open{% endif %}>
+  <summary>Stage a new configuration revision</summary>
+  <div class="create-form"><p class="muted">Choose a configuration kind and provider, then enter its provider-specific settings.</p><div id="result"></div>{{ action_form.render(stage) }}</div>
+</details>{% endif %}
+<section class="card">
+  <h2>Recovery policy</h2>
+  {% if policy_error %}<div class="error-state" role="alert"><span aria-hidden="true">!</span><div><strong>Could not load recovery policy</strong><p>{{ policy_error }}. No missing policy is being assumed.</p></div></div>
+  {% elif policy %}
+  <dl class="detail">
+    {% for key, value in policy_detail[0] %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}
+  </dl>
+  {% for key, value in policy_detail[1] %}
+    <details><summary>{{ key }}</summary><pre class="payload">{{ value }}</pre></details>
+  {% endfor %}
+  {% else %}
+  <p class="muted">No recovery policy reported.</p>
+  {% endif %}
+</section>
+{% endblock %}

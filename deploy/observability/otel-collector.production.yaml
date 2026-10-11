@@ -20,6 +20,14 @@ processors:
     send_batch_size: 2048
 
 exporters:
+  prometheus:
+    endpoint: "0.0.0.0:9464"
+    namespace: request_engine
+    translation_strategy: UnderscoreEscapingWithSuffixes
+    resource_to_telemetry_conversion:
+      enabled: true
+    send_timestamps: true
+    metric_expiration: 5m
   otlphttp/backend:
     endpoint: "${env:REQUEST_ENGINE_OTEL_BACKEND_ENDPOINT}"
     headers:
@@ -35,4 +43,4 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/backend]
+      exporters: [otlphttp/backend, prometheus]

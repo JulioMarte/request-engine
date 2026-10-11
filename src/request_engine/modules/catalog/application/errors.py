@@ -1,6 +1,10 @@
 from uuid import UUID
 
 
+class CatalogInvalidInput(ValueError):
+    """Caller-controlled catalog input violates an owner command contract."""
+
+
 class LocationOperationalRevisionConflict(RuntimeError):
     def __init__(self, location_id: UUID, expected: int, actual: int) -> None:
         super().__init__(

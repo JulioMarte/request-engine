@@ -68,6 +68,9 @@ class _ChallengeOwnerStore:
     async def finalize_step_up(self, **_: object) -> bool:
         raise AssertionError("finalize_step_up must not be called")
 
+    async def finalize_discoverable_authentication(self, **_: object) -> UUID | None:
+        raise AssertionError("finalize_discoverable_authentication must not be called")
+
     async def finalize_setup_registration(
         self,
         *,
@@ -97,7 +100,9 @@ def _service(store: _ChallengeOwnerStore) -> NativeWebAuthnAuthService:
 
 def _credential() -> Mapping[str, Any]:
     authenticator = SoftwareAuthenticator(rp_id=RP_ID, origin=ORIGIN)
-    return authenticator.registration_credential(challenge=b"\x42" * 32, user_verified=True)
+    return authenticator.registration_credential(
+        challenge=b"\x42" * 32, user_handle=authenticator.user_handle, user_verified=True
+    )
 
 
 @pytest.mark.asyncio

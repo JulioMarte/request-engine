@@ -10,7 +10,11 @@
 !deploy/
 !deploy/reference/
 !deploy/reference/**
+!deploy/observability/
+!deploy/observability/requirements.txt
 !scripts/
+!scripts/observability/
+!scripts/observability/**
 !scripts/ci/
 !scripts/ci/Dockerfile.local-ci
 !tests/

@@ -46,6 +46,13 @@ class PostgresCatalogBootstrapCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
+                )
                 idem, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -61,13 +68,6 @@ class PostgresCatalogBootstrapCommands:
                         capability_key=cast(str, payload["capability_key"]),
                         display_name=cast(str, payload["display_name"]),
                     )
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
-                )
                 row = (
                     (
                         await session.execute(
@@ -149,6 +149,13 @@ class PostgresCatalogBootstrapCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
+                )
                 idem, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -159,13 +166,6 @@ class PostgresCatalogBootstrapCommands:
                 )
                 if replay is not None:
                     return _offering_state(cast(dict[str, object], replay["offering"]))
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
-                )
                 await _validate_capabilities(session, command)
                 offering_id = cast(
                     UUID,

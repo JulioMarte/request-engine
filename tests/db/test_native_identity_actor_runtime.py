@@ -201,6 +201,7 @@ async def test_native_platform_http_actor_uses_current_binding_and_authority(
             "platform.owner.read",
             "platform.owner.provision",
             "platform.owner.manage_lifecycle",
+            "platform.organization.read",
             "platform.provisioner.read",
             "platform.provisioner.manage_lifecycle",
             "platform.recovery_operator.provision",

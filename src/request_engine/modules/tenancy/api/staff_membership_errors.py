@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from request_engine.modules.tenancy.application.errors import (
+    StaffInvitationIdentityAlreadyLinked,
     StaffMembershipConflict,
     StaffMembershipError,
     StaffMembershipForbidden,
@@ -27,6 +28,16 @@ async def staff_membership_error_handler(_: Request, exc: Exception) -> JSONResp
 
 
 def _staff_membership_error(exc: StaffMembershipError) -> tuple[int, ErrorBody]:
+    if isinstance(exc, StaffInvitationIdentityAlreadyLinked):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="staff_invitation_identity_already_linked",
+            message=(
+                "This identity is already linked to this organization. "
+                "Ask an administrator to review your existing membership and permissions; "
+                "resending an invitation will not restore access."
+            ),
+            resolution=ErrorResolution.REQUEST_AUTHORITY,
+        )
     if isinstance(exc, StaffMembershipForbidden):
         return status.HTTP_403_FORBIDDEN, ErrorBody(
             code="staff_membership_forbidden",

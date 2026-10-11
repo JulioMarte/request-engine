@@ -62,7 +62,7 @@ async def test_contextual_public_journey_persists_exact_provenance(
             headers=auth(sandbox),
         )
         assert catalog.status_code == 200
-        assert str(sandbox.offering_id) in {item["id"] for item in catalog.json()}
+        assert str(sandbox.offering_id) in {item["id"] for item in catalog.json()["items"]}
         details = await client.get(
             f"/v1/catalog/offerings/{sandbox.offering_key}",
             headers=auth(sandbox),

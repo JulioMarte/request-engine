@@ -46,6 +46,7 @@ async def seed_foreign_objects(
     submitted = await client.post(
         f"/v1/requests/definitions/{foreign_tenant.request_key}/submit",
         json={
+            "definition_version": 1,
             "payload": {"message": "foreign request"},
             "requester_party_id": str(foreign_tenant.party_id),
         },

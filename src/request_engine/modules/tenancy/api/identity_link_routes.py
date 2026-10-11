@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import secrets
 from collections.abc import Awaitable, Callable, Mapping
@@ -42,6 +41,7 @@ from request_engine.platform.security.native_session import (
     NativeIdentityStatus,
 )
 from request_engine.platform.security.oidc_link import OidcLinkVerifier
+from request_engine.platform.security.password_work import run_password_work
 
 _IDENTITY_LINK_TTL_SECONDS = 300
 
@@ -140,7 +140,7 @@ async def _verify_native_proof(
         or snapshot.native_identity_id != proof.native_identity_id
     ):
         raise CredentialInvalid("native identity link proof is invalid")
-    if not await asyncio.to_thread(verify_password, proof.password, snapshot.verifier):
+    if not await run_password_work(verify_password, proof.password, snapshot.verifier):
         raise CredentialInvalid("native identity link proof is invalid")
 
 

@@ -22,6 +22,7 @@ Key references:
 - `docs/testing/repository-governance-contract.md` — HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification.
 - `docs/testing/evidence-authoring-guide.md` — falsifiable proof workflow.
 - `docs/architecture/docker-e2e-ci-plan.md` — **canonical reusable Docker platform for clean-install black-box system/E2E suites**.
+- `docs/testing/operational-simulation-lab.md` — SMTP/TLS, shared replica limits, network isolation, encrypted off-host restore and alert fault simulations, with explicit evidence limits.
 - `docs/architecture/pre-production-evolution-policy.md` — KEEP / ADAPT / REPLACE / REMOVE / HISTORICAL policy.
 - `docs/testing/current-proof-map.toml` — representative proof mapping.
 - `docs/testing/test-architecture-migration.md` — test-taxonomy/disposition ledger.
@@ -60,6 +61,17 @@ When PostgreSQL semantics are part of the claim, use real PostgreSQL 18 and the 
 ## Canonical CI ownership
 
 `.github/workflows/ci.yml` owns the general quality/current-product lanes. Specialized current-product PostgreSQL orchestration lives in `scripts/ci/run_current_product.sh`.
+
+The baseline-integrity runner defaults to a separate `postgres:18` Docker
+cluster. For a Docker-free local PostgreSQL proof, explicitly set
+`REQUEST_ENGINE_BASELINE_PG_BIN` to a directory containing PostgreSQL 18's
+`initdb`, `pg_ctl`, `postgres` and `createdb`. Run as a user supported by those
+binaries, with the usual `PG*` installation credentials. This mode initializes
+and destroys a separate temporary cluster with SCRAM authentication and loopback
+TCP only, installs immutable 0001 twice, and runs the same catalog, identity and
+integrity checks. It does not fall back automatically or replace Docker/system
+acceptance. Port acquisition is fail-closed if another process takes the selected
+port before startup.
 
 System/E2E installation and black-box execution is governed by `docs/architecture/docker-e2e-ci-plan.md` and the Docker E2E workflow/orchestrator that implements it.
 

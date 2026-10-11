@@ -9,13 +9,19 @@ configuration errors.
 
 import importlib
 from typing import Any, cast
+from uuid import UUID
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from request_engine.platform.db.session import create_postgres_engine, create_session_factory
 from request_engine.platform.secrets.composed_delivery import ComposedRecoverySecretDelivery
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
-from request_engine.platform.secrets.delivery_parts import RecoveryDeliveryChannel
+from request_engine.platform.secrets.delivery_parts import (
+    RecoveryDeliveryChannel,
+    RecoverySecretStore,
+)
+from request_engine.platform.secrets.durable_proof_inventory import DurableProofInventoryStore
 from request_engine.platform.secrets.openbao_recovery_secret_store import (
     OpenBaoRecoverySecretStore,
 )
@@ -33,7 +39,10 @@ class RecoveryDeliverySettings(BaseSettings):
         env_prefix="REQUEST_ENGINE_", extra="ignore", hide_input_in_errors=True
     )
     recovery_delivery_factory: str | None = None
+    temporary_proof_backend_id: UUID | None = None
+    temporary_proof_recorder_database_url: SecretStr | None = None
     recovery_reset_url: str | None = None
+    staff_invitation_accept_url: str | None = None
     openbao_addr: str | None = None
     openbao_token: SecretStr | None = None
     openbao_namespace: str | None = None
@@ -108,12 +117,20 @@ def build_recovery_secret_delivery(
 
     resolved = settings or RecoveryDeliverySettings()
     if resolved.recovery_delivery_factory is not None:
+        if resolved.temporary_proof_backend_id is not None or _has_secret(
+            resolved.temporary_proof_recorder_database_url
+        ):
+            raise RuntimeError(
+                "temporary proof inventory cannot bypass the composed provider store"
+            )
         if channel_override is not None:
             raise RuntimeError(
                 "managed SMTP channel cannot be combined with "
                 "REQUEST_ENGINE_RECOVERY_DELIVERY_FACTORY"
             )
         return _factory_delivery(resolved.recovery_delivery_factory)
+
+    _validate_inventory_configuration(resolved)
 
     openbao_configured = _has_text(resolved.openbao_addr) or _has_secret(resolved.openbao_token)
     vault_configured = _has_text(resolved.vault_addr) or _has_secret(resolved.vault_token)
@@ -138,28 +155,8 @@ def build_recovery_secret_delivery(
             "missing: " + ", ".join(missing)
         )
 
-    if openbao_configured:
-        store = OpenBaoRecoverySecretStore(
-            address=_required_text("REQUEST_ENGINE_OPENBAO_ADDR", resolved.openbao_addr),
-            token=(
-                resolved.openbao_token.get_secret_value()
-                if resolved.openbao_token is not None
-                else None
-            ),
-            mount=resolved.openbao_mount,
-            path_prefix=resolved.openbao_path_prefix,
-            timeout_seconds=resolved.openbao_timeout_seconds,
-            namespace=resolved.openbao_namespace,
-        )
-    else:
-        store = VaultRecoverySecretStore(
-            address=_required_text("REQUEST_ENGINE_VAULT_ADDR", resolved.vault_addr),
-            token=_required_secret("REQUEST_ENGINE_VAULT_TOKEN", resolved.vault_token),
-            mount=resolved.vault_mount,
-            path_prefix=resolved.vault_path_prefix,
-            timeout_seconds=resolved.vault_timeout_seconds,
-            namespace=resolved.vault_namespace,
-        )
+    store = build_recovery_secret_store(resolved)
+    assert store is not None
     channel = channel_override
     if channel is None:
         channel = SmtpRecoveryDeliveryChannel(
@@ -178,6 +175,93 @@ def build_recovery_secret_delivery(
             reset_url=resolved.recovery_reset_url,
         )
     return ComposedRecoverySecretDelivery(store=store, channel=channel)
+
+
+def build_recovery_secret_store(
+    settings: RecoveryDeliverySettings,
+) -> RecoverySecretStore | None:
+    """Compose governed retention independently of optional SMTP transport.
+
+    This is the same store used by recovery delivery; no additional secret path
+    or provider mechanism exists for issuing an asynchronously delivered proof.
+    """
+    _validate_inventory_configuration(settings)
+    openbao_configured = _has_text(settings.openbao_addr) or _has_secret(settings.openbao_token)
+    vault_configured = _has_text(settings.vault_addr) or _has_secret(settings.vault_token)
+    if openbao_configured and vault_configured:
+        raise RuntimeError("configure exactly one recovery secret-store backend: OpenBao or Vault")
+    if not openbao_configured and not vault_configured:
+        if settings.temporary_proof_backend_id is not None or _has_secret(
+            settings.temporary_proof_recorder_database_url
+        ):
+            raise RuntimeError("temporary proof inventory requires a composed provider store")
+        return None
+    if openbao_configured:
+        return _with_inventory(
+            settings,
+            OpenBaoRecoverySecretStore(
+                address=_required_text("REQUEST_ENGINE_OPENBAO_ADDR", settings.openbao_addr),
+                token=(
+                    None
+                    if settings.openbao_token is None
+                    else settings.openbao_token.get_secret_value()
+                ),
+                mount=settings.openbao_mount,
+                path_prefix=settings.openbao_path_prefix,
+                timeout_seconds=settings.openbao_timeout_seconds,
+                namespace=settings.openbao_namespace,
+            ),
+            settings.openbao_mount,
+        )
+    return _with_inventory(
+        settings,
+        VaultRecoverySecretStore(
+            address=_required_text("REQUEST_ENGINE_VAULT_ADDR", settings.vault_addr),
+            token=_required_secret("REQUEST_ENGINE_VAULT_TOKEN", settings.vault_token),
+            mount=settings.vault_mount,
+            path_prefix=settings.vault_path_prefix,
+            timeout_seconds=settings.vault_timeout_seconds,
+            namespace=settings.vault_namespace,
+        ),
+        settings.vault_mount,
+    )
+
+
+def _with_inventory(
+    settings: RecoveryDeliverySettings,
+    store: RecoverySecretStore,
+    mount: str,
+) -> RecoverySecretStore:
+    configured = _has_secret(settings.temporary_proof_recorder_database_url)
+    if not configured and settings.temporary_proof_backend_id is None:
+        return store
+    if not configured or settings.temporary_proof_backend_id is None:
+        raise RuntimeError(
+            "temporary proof inventory requires explicit backend identity and recorder DSN"
+        )
+    assert settings.temporary_proof_recorder_database_url is not None
+    sessions = create_session_factory(
+        create_postgres_engine(
+            settings.temporary_proof_recorder_database_url.get_secret_value(),
+        )
+    )
+    return DurableProofInventoryStore(
+        store, sessions, backend_id=settings.temporary_proof_backend_id, mount=mount
+    )
+
+
+def _validate_inventory_configuration(settings: RecoveryDeliverySettings) -> None:
+    if (settings.temporary_proof_backend_id is not None) != _has_secret(
+        settings.temporary_proof_recorder_database_url
+    ):
+        raise RuntimeError(
+            "temporary proof inventory requires explicit backend identity and recorder DSN"
+        )
+    if (
+        settings.temporary_proof_backend_id is not None
+        and settings.temporary_proof_backend_id.int == 0
+    ):
+        raise RuntimeError("temporary proof inventory requires a nonzero deployment identity")
 
 
 def has_recovery_secret_store_configuration(

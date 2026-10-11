@@ -13,6 +13,7 @@ from request_engine.modules.booking.application.commands.assign_resource_to_loca
 from request_engine.modules.booking.application.commands.configure_booking_context_terms import (
     BookingContextTermsState,
     ConfigureBookingContextTermsCommand,
+    validate_context_terms_amount,
 )
 from request_engine.modules.booking.application.operational_errors import (
     ContextualConfigurationConflict,
@@ -62,6 +63,13 @@ class PostgresContextualConfigCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
+                )
                 idempotency_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -72,14 +80,6 @@ class PostgresContextualConfigCommands:
                 )
                 if replay is not None:
                     return _assignment_from_json(cast(dict[str, object], replay["assignment"]))
-
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
-                )
                 location = (
                     await session.execute(
                         text(
@@ -256,6 +256,13 @@ class PostgresContextualConfigCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
+                )
                 idempotency_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -266,14 +273,6 @@ class PostgresContextualConfigCommands:
                 )
                 if replay is not None:
                     return _terms_from_json(cast(dict[str, object], replay["terms"]))
-
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
-                )
 
                 # The booking transaction locks Resource before
                 # ResourceLocationAssignment. Keep commercial configuration on
@@ -495,8 +494,7 @@ def _validate_terms(
 ) -> None:
     if (amount is None) != (currency is None):
         raise ValueError("amount and currency must be present together")
-    if amount is not None and amount < 0:
-        raise ValueError("amount must be non-negative")
+    validate_context_terms_amount(amount)
     if currency is not None and (
         len(currency) != 3 or not currency.isalpha() or currency != currency.upper()
     ):

@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% import "partials/inputs.html" as inputs %}
+{% block title %}Staff member · Request Engine admin{% endblock %}
+{% block content %}
+<p><a href="/tenants/{{ organization_id }}/staff">← People &amp; permissions</a></p>
+<header class="page-heading"><div><p class="eyebrow">Organization {{ organization_id }}</p><h1>{{ member.display_name or 'Staff membership' }}</h1>{% if not error %}<p><code>{{ member.principal_id }}</code> · <span class="badge {{ member.status }}">{{ member.status }}</span></p>{% endif %}</div></header>
+{% if error %}<div class="alert error" role="alert">{{ error }}</div>
+{% else %}
+<p><a href="/tenants/{{ organization_id }}/staff/{{ membership_id }}/history">View administrative history →</a></p>
+<section class="card"><h2>Current permissions</h2><p class="muted">Authority revision {{ member.authority_revision }} · Membership revision {{ member.membership_revision }}</p><ul>{% for grant in member.standing_grants %}<li><code>{{ grant.capability }}</code>{% if grant.delegable %} · can delegate{% endif %}</li>{% else %}<li>No visible permissions. This is not proof that no other permissions exist.</li>{% endfor %}</ul></section>
+{% if operations.profile %}
+<section class="card"><h2>Name in this organization</h2>
+<p>This label helps administrators recognize a member. It does not verify identity, change their login, or grant permissions. Leave it empty to remove the label.</p>
+<form id="staff-profile" method="post" action="{{ operations.profile.url }}" hx-post="{{ operations.profile.url }}" hx-target="#staff-profile-result">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+<input type="hidden" name="_intent_id" value="{{ operations.profile.intent_id }}" data-form-intent />
+{{ inputs.render(operations.profile.inputs) }}
+<button type="submit" class="secondary">Save display name</button>
+</form><div id="staff-profile-result"></div></section>
+{% endif %}
+<div class="workspace-grid">
+{% for key in ['plan', 'status'] %}{% set entry = operations[key] %}
+<section class="card"><h2>{% if key == 'plan' %}Review a permission change{% else %}Change membership status{% endif %}</h2>
+{% if key == 'plan' %}<p>Start with the current permissions. Add or remove capabilities, record the reason, then preview the exact difference before applying. Permissions outside your grantable scope cannot be changed here.</p>{% endif %}
+<form id="staff-{{ key }}" method="post" action="{{ entry.url }}" hx-post="{{ entry.url }}" hx-target="#staff-{{ key }}-result">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+<input type="hidden" name="_intent_id" value="{{ entry.intent_id }}" data-form-intent />
+{% if key == 'plan' %}
+<input type="hidden" name="_permission_picker" value="1" />
+<fieldset><legend>Permissions you can assign</legend>
+<p class="muted">Checked permissions will be kept. Uncheck to remove one. Permissions outside your delegable scope remain unchanged.</p>
+{% for capability in permission_choices %}
+<label class="permission-choice"><input type="checkbox" name="selected_capabilities" value="{{ capability }}" {% if capability in selected_permissions %}checked{% endif %} /> <span>{{ capability | replace('.', ' · ') | replace('_', ' ') }}</span><code>{{ capability }}</code></label>
+{% else %}<p>You cannot delegate any permissions. An authorized controller must grant the required delegation authority.</p>{% endfor %}
+</fieldset>
+{{ inputs.render(entry.inputs | rejectattr('name', 'equalto', 'desired_capabilities') | list) }}
+{% else %}{{ inputs.render(entry.inputs) }}{% endif %}
+{% if key == 'status' %}<p class="alert warning"><strong>Session scope:</strong> suspending or revoking a native-backed staff membership revokes that native identity's sessions globally, including sessions used in other tenant contexts. Review this scope before continuing.</p>{% endif %}
+<button class="{{ 'secondary' if key == 'plan' else 'danger' }}" type="submit">{{ 'Preview changes' if key == 'plan' else 'Change status' }}</button>
+</form><div id="staff-{{ key }}-result"></div></section>
+{% endfor %}</div>
+{% endif %}{% endblock %}

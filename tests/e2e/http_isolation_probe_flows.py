@@ -79,7 +79,7 @@ def foreign_request(
         return (
             f"/v1/requests/definitions/{foreign.request_key}/submit",
             {},
-            {"payload": {"message": "cross tenant"}},
+            {"definition_version": 1, "payload": {"message": "cross tenant"}},
             404,
         )
     if name == "requests.read":

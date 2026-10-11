@@ -102,6 +102,9 @@ def _write_manifest(root: Path) -> Path:
     manifest = {
         "schema": "request-engine/recovery-bundle/v1",
         "created_at": datetime.now(UTC).isoformat(),
+        # PostgreSQL object owners, ACLs and policies are stored in the custom
+        # dump. Cluster-global roles remain external prerequisites.
+        "postgres_topology_preserved": True,
         "files": [_file_fact(path) for path in files],
     }
     target = root / _MANIFEST
@@ -178,8 +181,6 @@ def create_backup(args: argparse.Namespace) -> Path:
             [
                 pg_dump,
                 "--format=custom",
-                "--no-owner",
-                "--no-privileges",
                 "--file",
                 str(postgres_dump),
             ],
@@ -220,6 +221,10 @@ def _extract_verified(bundle: Path, identity: Path, root: Path) -> dict[str, obj
     manifest = manifest_value
     if manifest.get("schema") != "request-engine/recovery-bundle/v1":
         raise RecoveryBundleError("unsupported recovery bundle schema")
+    if "postgres_topology_preserved" in manifest and not isinstance(
+        manifest["postgres_topology_preserved"], bool
+    ):
+        raise RecoveryBundleError("recovery manifest PostgreSQL topology flag is invalid")
     facts = manifest.get("files")
     if not isinstance(facts, list):
         raise RecoveryBundleError("recovery manifest files are invalid")
@@ -279,10 +284,16 @@ def _write_restore_evidence(
         "duration_seconds": max(0.0, (completed_at - started_at).total_seconds()),
         "bundle_sha256": _sha256(bundle),
         "bundle_manifest_created_at": manifest.get("created_at"),
-        "outbound_fenced": True,
+        "postgres_topology_preserved": True,
+        "postgres_owner_acl_topology_applied": True,
+        # This records the environment declaration the operator supplied.
+        # The CLI cannot observe host/network policy and never certifies isolation.
+        "outbound_fence_environment_declared": True,
+        "outbound_isolation_independently_proven": False,
         "completed_steps": [
             "bundle_integrity_verified",
             "postgres_restore_applied",
+            "postgres_owner_acl_topology_applied",
             "openbao_raft_force_restore_applied",
         ],
         "post_restore_verification_required": True,
@@ -307,15 +318,19 @@ def restore_backup(args: argparse.Namespace) -> Path | None:
     with tempfile.TemporaryDirectory(prefix="request-engine-restore-") as raw:
         root = Path(raw)
         manifest = _extract_verified(bundle, identity, root)
+        if manifest.get("postgres_topology_preserved") is not True:
+            raise RecoveryBundleError(
+                "legacy bundle does not preserve PostgreSQL owners and ACLs; "
+                "refusing production-safe restore"
+            )
         extracted = root / "extracted"
         _run(
             [
                 pg_restore,
                 "--clean",
                 "--if-exists",
-                "--no-owner",
-                "--no-privileges",
                 "--exit-on-error",
+                "--single-transaction",
                 "--dbname",
                 database,
                 str(extracted / _POSTGRES_DUMP),

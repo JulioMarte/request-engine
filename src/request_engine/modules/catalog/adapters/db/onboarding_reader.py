@@ -29,8 +29,18 @@ class PostgresCatalogOnboardingReader:
                     text(
                         """
                         SELECT count(*)
-                        FROM request_engine.offering_versions
-                        WHERE organization_id = :organization_id AND bookable
+                        FROM request_engine.offerings AS o
+                        JOIN LATERAL (
+                            SELECT ov.bookable
+                            FROM request_engine.offering_versions AS ov
+                            WHERE ov.organization_id = o.organization_id
+                              AND ov.offering_id = o.id
+                            ORDER BY ov.version DESC
+                            LIMIT 1
+                        ) AS latest ON true
+                        WHERE o.organization_id = :organization_id
+                          AND o.active
+                          AND latest.bookable
                         """
                     ),
                     {"organization_id": organization_id},

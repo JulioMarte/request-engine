@@ -27,6 +27,7 @@ from request_engine.platform.security.native_webauthn_auth import (
     NativeWebAuthnAuthService,
     WebAuthnCeremonyStarted,
 )
+from request_engine.platform.security.password_work import run_password_work
 from request_engine.platform.security.recovery_codes import NativeRecoveryCodeService
 
 _DEFAULT_SETUP_TTL_SECONDS = 1800
@@ -203,7 +204,7 @@ class InstanceSetupService:
     async def set_pending_identity(
         self, *, setup_session_id: UUID, login_handle: str, password: str
     ) -> None:
-        verifier = hash_password(password)
+        verifier = await run_password_work(hash_password, password)
         created = await self._store.set_pending_identity(
             native_identity_id=uuid4(),
             setup_session_id=setup_session_id,

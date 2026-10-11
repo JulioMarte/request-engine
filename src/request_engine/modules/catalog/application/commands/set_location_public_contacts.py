@@ -2,6 +2,7 @@ from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 from uuid import UUID
 
+from request_engine.modules.catalog.application.errors import CatalogInvalidInput
 from request_engine.platform.public_contacts import (
     PublicContactValidationError,
     normalize_public_contact_value,
@@ -44,7 +45,7 @@ async def set_location_public_contacts(
     command: SetLocationPublicContactsCommand,
 ) -> LocationPublicContactsState:
     if not command.idempotency_key:
-        raise ValueError("idempotency_key is required")
+        raise CatalogInvalidInput("idempotency_key is required")
     contacts: list[LocationPublicContactInput] = []
     seen: set[tuple[str, str]] = set()
     for contact in command.contacts:

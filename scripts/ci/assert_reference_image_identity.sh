@@ -2,6 +2,7 @@
 set -euo pipefail
 
 compose=(docker compose -f deploy/reference/compose.e2e.yaml)
+if [[ -n "${E2E_TLS_OVERLAY:-}" ]]; then compose+=(-f "$E2E_TLS_OVERLAY"); fi
 expected="request-engine:${REQUEST_ENGINE_IMAGE_TAG:-e2e}"
 expected_id="$(docker image inspect "$expected" --format '{{.Id}}')"
 runtime_services=( ${E2E_RUNTIME_SERVICES:-api control-plane} )
@@ -10,7 +11,7 @@ printf 'expected_image=%s\nexpected_id=%s\n' "$expected" "$expected_id"
 
 for service in "${runtime_services[@]}"; do
   case "$service" in
-    api|control-plane|worker) ;;
+    api|api-replica|control-plane|worker) ;;
     *)
       echo "unsupported Request Engine runtime service in identity proof: $service" >&2
       exit 2
@@ -33,7 +34,9 @@ done
 import json, sys
 expected=sys.argv[1]
 config=json.load(sys.stdin)
-for service in ("migrate", "api", "control-plane", "worker"):
+for service in ("migrate", "api", "control-plane", "worker", "api-replica"):
+    if service not in config["services"]:
+        continue
     configured=config["services"][service]["image"]
     print(f"configured.{service}={configured}")
     if configured != expected:

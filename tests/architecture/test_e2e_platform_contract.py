@@ -126,22 +126,82 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
 
 def test_enabled_registry_selectors_are_executable_by_generic_runner() -> None:
     enabled = _enabled_suites()
-    registered = {str(spec["selector"]) for spec in enabled.values()}
+    registered = {
+        str(spec["selector"])
+        for spec in enabled.values()
+        if spec.get("driver", "generic") == "generic"
+    }
     implemented = _runner_selectors()
     assert registered <= implemented, (
         f"registered E2E selectors missing from generic runner: {sorted(registered - implemented)}"
     )
 
 
+def test_enabled_suites_use_only_known_platform_drivers() -> None:
+    known_drivers = {"generic", "network-boundary"}
+    for name, spec in _enabled_suites().items():
+        driver = spec.get("driver", "generic")
+        assert driver in known_drivers, f"{name} declares unsupported E2E driver: {driver!r}"
+        if driver == "generic":
+            assert not spec.get("ingress_services", []), (
+                f"{name} uses infrastructure driver-only ingress services"
+            )
+            continue
+        assert driver == "network-boundary"
+        assert spec.get("selector") == "network-auth-admission"
+        assert set(_string_list(spec, "services", name)) == {
+            "api",
+            "api-replica",
+            "control-plane",
+        }
+        assert set(_string_list(spec, "profiles", name)) == {"network-lab", "secrets"}
+        assert set(_string_list(spec, "ingress_services", name)) == {
+            "api-ingress",
+            "control-ingress",
+        }
+        assert set(_string_list(spec, "tls_hosts", name)) == {
+            "api-lab",
+            "api-replica-lab",
+            "control-lab",
+        }
+
+
 def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
-    allowed_services = {"api", "control-plane", "worker"}
-    allowed_profiles = {"worker", "secrets", "delivery", "managed-delivery", "oidc"}
+    allowed_services = {"api", "api-replica", "control-plane", "worker"}
+    allowed_infrastructure = {"event-sink", "mailpit", "openbao", "smtp-provider"}
+    allowed_profiles = {
+        "worker",
+        "secrets",
+        "delivery",
+        "managed-delivery",
+        "oidc",
+        "network-lab",
+        "smtp-provider",
+    }
     allowed_fault_actions = {"kill-restart"}
     mapping_pattern = re.compile(r"^[A-Z][A-Z0-9_]*=[^/:]+\.json:[A-Za-z0-9_.-]+$")
     for name, spec in _enabled_suites().items():
         services = set(_string_list(spec, "services", name))
         profiles = set(_string_list(spec, "profiles", name))
         deferred = set(_string_list(spec, "deferred_services", name))
+        infrastructure_raw = spec.get("infrastructure_services", [])
+        assert isinstance(infrastructure_raw, list), (
+            f"{name}.infrastructure_services must be a list"
+        )
+        infrastructure_values = cast(list[object], infrastructure_raw)
+        assert all(isinstance(item, str) for item in infrastructure_values), (
+            f"{name}.infrastructure_services must contain only strings"
+        )
+        infrastructure = set(infrastructure_values)
+        ingress_raw = spec.get("ingress_services", [])
+        assert isinstance(ingress_raw, list), f"{name}.ingress_services must be a list"
+        ingress_services = cast(list[object], ingress_raw)
+        assert all(isinstance(item, str) for item in ingress_services), (
+            f"{name}.ingress_services must contain only strings"
+        )
+        assert set(ingress_services) <= {"api-ingress", "control-ingress"}, (
+            f"{name} declares unsupported ingress services: {ingress_services}"
+        )
         environment_raw = spec.get("environment", [])
         assert isinstance(environment_raw, list), f"{name}.environment must be a list"
         environment = cast(list[object], environment_raw)
@@ -155,6 +215,9 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
         faults = _string_list(spec, "faults", name)
         assert services, f"{name} must declare at least one runtime service"
         assert services <= allowed_services, f"{name} declares unsupported services: {services}"
+        assert infrastructure <= allowed_infrastructure, (
+            f"{name} declares unsupported infrastructure services: {infrastructure}"
+        )
         assert profiles <= allowed_profiles, f"{name} declares unsupported profiles: {profiles}"
         assert deferred <= services, f"{name} defers services it does not declare: {deferred}"
         assert bool(deferred) is bool(mappings), (
@@ -166,6 +229,18 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
         if "worker" in services:
             assert "worker" in profiles, f"{name} must enable the worker profile"
             assert "worker" in deferred, f"{name} must provision worker identity before start"
+        if "api-replica" in services:
+            assert "network-lab" in profiles, f"{name} must enable the API replica profile"
+        if "smtp-provider" in profiles:
+            assert "smtp-provider" in infrastructure, (
+                f"{name} must declare smtp-provider as infrastructure"
+            )
+        if "smtp-provider" in infrastructure:
+            assert "smtp-provider" in profiles, f"{name} must enable the smtp-provider profile"
+        if "network-lab" in profiles:
+            assert spec.get("driver") == "network-boundary", (
+                f"{name} uses network-lab without its platform driver"
+            )
         assert bool(faults) is bool(spec["fault_injection"]), (
             f"{name} fault_injection must match whether faults are declared"
         )
@@ -173,6 +248,25 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
             target, separator, action = fault.partition(":")
             assert separator and target in services, f"{name} has invalid fault target: {fault}"
             assert action in allowed_fault_actions, f"{name} has unsupported fault action: {fault}"
+
+
+def test_staff_invitation_delivery_suite_wires_server_side_staging_and_worker_url() -> None:
+    spec = _enabled_suites()["recovery-delivery"]
+    assert (
+        "REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL=https://admin.example.test/staff-invitations"
+        in _string_list(spec, "environment", "recovery-delivery")
+    )
+    compose = (ROOT / "deploy/reference/compose.e2e.yaml").read_text(encoding="utf-8")
+    api = compose.split("  api:\n", 1)[1].split("  control-plane:\n", 1)[0]
+    worker = compose.split("\n  worker:\n", 1)[1].split("\n  event-sink:\n", 1)[0]
+    for surface in (api, worker):
+        for variable in (
+            "REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL",
+            "REQUEST_ENGINE_OPENBAO_ADDR",
+            "REQUEST_ENGINE_OPENBAO_TOKEN",
+        ):
+            assert variable in surface
+    assert "REQUEST_ENGINE_SMTP_" not in api, "HTTP staging must not receive SMTP authority"
 
 
 def test_managed_platform_configuration_suite_has_no_bootstrap_smtp_profile() -> None:

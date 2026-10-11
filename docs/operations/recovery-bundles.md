@@ -32,6 +32,21 @@ PostgreSQL credentials are read from an environment variable and moved to
 libpq's child-process environment; they are not placed in the `pg_dump` or
 `pg_restore` command arguments.
 
+New bundle dumps preserve PostgreSQL object owners, grants/default ACLs, RLS
+policies and related object-level security metadata. The manifest records
+`postgres_topology_preserved: true`. `pg_dump` does not include cluster-global
+roles. Before restoring, provision the accepted NOLOGIN role topology on the
+clean target through the reviewed migration/baseline role setup. `pg_restore`
+runs with `--exit-on-error` and applies owners and ACLs; it stops if an expected
+role is missing. Afterwards, create or rotate target LOGIN credentials through
+the least-privilege deployment procedure. Those credentials are independent of
+the source and are not included in a backup. Do not use `pg_dumpall --globals`:
+it may export unrelated cluster roles or credential-bearing role state.
+The restore uses `pg_restore --single-transaction --exit-on-error`, so a failed
+PostgreSQL restore rolls back as a unit. PostgreSQL and OpenBao restoration are
+still separate operations; if the later OpenBao restore fails, keep the target
+fenced and treat the combined restore as incomplete.
+
 ## Prerequisites
 
 Install compatible PostgreSQL client tools, the OpenBao `bao` CLI and
@@ -62,7 +77,7 @@ python scripts/operations/recovery_bundle.py backup \
 
 Success means all of the following completed:
 
-1. `pg_dump --format=custom`;
+1. `pg_dump --format=custom` with ownership and ACL metadata retained;
 2. `bao operator raft snapshot save`;
 3. SHA-256 manifest creation;
 4. tar packaging;
@@ -90,7 +105,9 @@ python scripts/operations/recovery_bundle.py verify /path/to/request-engine-reco
 
 Verification decrypts into a temporary directory, rejects unexpected archive
 members and verifies the recorded SHA-256 and byte size for both authoritative
-payloads.
+payloads. It accepts legacy manifests for integrity verification, but restore
+refuses a bundle without `postgres_topology_preserved: true` because it cannot
+faithfully reapply PostgreSQL ownership and ACLs.
 
 ## Restore or run a drill
 
@@ -108,12 +125,20 @@ python scripts/operations/recovery_bundle.py restore \
   --evidence-output /var/lib/request-engine/recovery-evidence/restore-20260924.json
 ```
 
-Use an isolated network/host for a drill. The target Request Engine deployment
-must remain outbound-fenced while restored data is inspected. The restore uses
-standard `bao operator raft snapshot restore`; it deliberately does not use
-force-restore. If seal keys differ, stop and use the documented OpenBao operator
-recovery procedure rather than automatically bypassing the seal-key safety
-check.
+Before invoking restore, run the reviewed migration set to its accepted head
+against a disposable bootstrap database on the clean target PostgreSQL cluster.
+This provisions the cluster-global NOLOGIN roles and memberships. Drop the
+bootstrap database, then create a new empty restore database so its temporary
+application schema cannot leak into the recovered database.
+Do not copy source LOGIN passwords; after data restore, create fresh
+least-privilege LOGIN credentials through the target secret-management
+procedure. The restore fails on missing referenced roles rather than silently
+assigning objects to the restore user. Use an isolated network/host for a drill.
+Keep the target outbound-fenced while restored data is inspected. OpenBao clean
+targets use `bao operator raft snapshot restore -force` because temporary target
+seal material differs from the snapshot's original shares. Afterward, restart
+OpenBao and unseal with the original snapshot shares. The force flag applies the
+snapshot but does not establish that OpenBao is usable.
 
 After restore, verify:
 
@@ -127,7 +152,10 @@ When `--evidence-output` is supplied, the command writes the evidence file only
 after bundle integrity verification, PostgreSQL restore and OpenBao Raft restore
 all complete. The evidence contains timestamps, elapsed restore time, the
 encrypted bundle SHA-256, the bundle manifest timestamp and confirmation that the
-restore ran with the outbound fence enabled. It contains no database password,
+operator supplied `REQUEST_ENGINE_OUTBOUND_FENCED=true`. This is an environment
+declaration only: the tool cannot inspect host/network policy and explicitly
+records `outbound_isolation_independently_proven=false`. Attach independent
+firewall/egress-control evidence to the drill record. It contains no database password,
 OpenBao token, age identity or secret value.
 
 This file proves that the two authoritative restore operations completed; it does

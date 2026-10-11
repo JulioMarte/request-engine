@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres:18
+    environment:
+      POSTGRES_DB: request_engine_operator_smoke
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${OPERATOR_ALERT_SMOKE_PG_PASSWORD:?required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d request_engine_operator_smoke"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:${OPERATOR_ALERT_SMOKE_PG_PORT:?required}:5432"

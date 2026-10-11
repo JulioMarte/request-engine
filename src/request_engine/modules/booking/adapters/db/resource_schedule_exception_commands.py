@@ -51,6 +51,13 @@ class PostgresResourceScheduleExceptionCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
+                )
                 idempotency_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -61,13 +68,6 @@ class PostgresResourceScheduleExceptionCommands:
                 )
                 if replay is not None:
                     return codec.from_json(cast(dict[str, object], replay["exception"]))
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
-                )
                 current_revision = await store.require_resource_revision(
                     session,
                     organization_id=command.organization_id,

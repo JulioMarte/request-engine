@@ -1,6 +1,10 @@
 from uuid import UUID
 
 
+class BookingTermsInvalidInput(ValueError):
+    """A caller-supplied monetary amount cannot be stored exactly."""
+
+
 class ResourceAvailabilityRevisionConflict(RuntimeError):
     def __init__(self, resource_id: UUID, expected: int, actual: int) -> None:
         super().__init__(

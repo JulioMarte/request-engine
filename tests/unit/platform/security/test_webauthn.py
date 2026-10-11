@@ -51,7 +51,9 @@ def _registered(
     service: WebAuthnService, authenticator: SoftwareAuthenticator
 ) -> tuple[RegistrationOptions, VerifiedRegistration]:
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, user_handle=authenticator.user_handle
+    )
     verified = service.verify_registration(
         credential=credential, expected_challenge=options.challenge
     )
@@ -62,7 +64,9 @@ def test_registration_and_authentication_round_trip() -> None:
     service = _service()
     authenticator = _authenticator()
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, user_handle=authenticator.user_handle
+    )
     assert extract_registration_challenge(credential) == options.challenge
 
     verified = service.verify_registration(
@@ -129,6 +133,11 @@ def test_begin_options_are_json_serializable() -> None:
     assert payload["challenge"]
     assert payload["rp"]["id"] == RP_ID
     assert payload["user"]["name"] == USER_NAME
+    # New credentials must support the canonical usernameless admin journey.
+    # Omitting this requirement defaults fido2 to discouraged/non-discoverable.
+    assert payload["authenticatorSelection"]["residentKey"] == "required"
+    assert payload["authenticatorSelection"]["requireResidentKey"] is True
+    assert payload["authenticatorSelection"]["userVerification"] == "required"
 
     auth_options = service.begin_authentication()
     auth_payload = json.loads(json.dumps(auth_options.public_key))
@@ -140,7 +149,7 @@ def test_registration_rejects_missing_user_verification() -> None:
     authenticator = _authenticator()
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
     credential = authenticator.registration_credential(
-        challenge=options.challenge, user_verified=False
+        challenge=options.challenge, user_handle=authenticator.user_handle, user_verified=False
     )
     with pytest.raises(WebAuthnVerificationError) as exc:
         service.verify_registration(credential=credential, expected_challenge=options.challenge)
@@ -169,7 +178,9 @@ def test_registration_rejects_wrong_origin() -> None:
     service = _service()
     authenticator = _authenticator(origin="http://evil.test")
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, user_handle=authenticator.user_handle
+    )
     with pytest.raises(WebAuthnVerificationError):
         service.verify_registration(credential=credential, expected_challenge=options.challenge)
 
@@ -178,7 +189,9 @@ def test_registration_rejects_wrong_rp_id() -> None:
     service = _service()
     authenticator = _authenticator(rp_id="evil.test")
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, user_handle=authenticator.user_handle
+    )
     with pytest.raises(WebAuthnVerificationError):
         service.verify_registration(credential=credential, expected_challenge=options.challenge)
 
@@ -187,7 +200,9 @@ def test_registration_rejects_wrong_expected_challenge() -> None:
     service = _service()
     authenticator = _authenticator()
     options = service.begin_registration(user_handle=authenticator.user_handle, user_name=USER_NAME)
-    credential = authenticator.registration_credential(challenge=options.challenge)
+    credential = authenticator.registration_credential(
+        challenge=options.challenge, user_handle=authenticator.user_handle
+    )
     with pytest.raises(WebAuthnVerificationError):
         service.verify_registration(credential=credential, expected_challenge=b"\x01" * 32)
 
@@ -275,6 +290,39 @@ def test_extract_helpers_reject_malformed_credentials() -> None:
 def test_policy_rejects_empty_allowed_origins() -> None:
     with pytest.raises(ValueError):
         WebAuthnPolicy(rp_id=RP_ID, rp_name="Request Engine", allowed_origins=frozenset())
+
+
+@pytest.mark.parametrize("ttl", [0, -1, 901, 3600])
+def test_policy_rejects_unbounded_challenge_ttl(ttl: int) -> None:
+    with pytest.raises(ValueError, match="challenge_ttl_seconds"):
+        WebAuthnPolicy(
+            rp_id=RP_ID,
+            rp_name="Request Engine",
+            allowed_origins=frozenset({ORIGIN}),
+            challenge_ttl_seconds=ttl,
+        )
+
+
+@pytest.mark.parametrize("ttl", [True, 1.0, float("nan"), float("inf"), float("-inf")])
+def test_policy_requires_an_exact_integer_challenge_ttl(ttl: object) -> None:
+    with pytest.raises(ValueError, match="exact integer"):
+        WebAuthnPolicy(
+            rp_id=RP_ID,
+            rp_name="Request Engine",
+            allowed_origins=frozenset({ORIGIN}),
+            challenge_ttl_seconds=cast(int, ttl),
+        )
+
+
+def test_policy_accepts_challenge_ttl_at_bounded_edges() -> None:
+    for ttl in (1, 900):
+        policy = WebAuthnPolicy(
+            rp_id=RP_ID,
+            rp_name="Request Engine",
+            allowed_origins=frozenset({ORIGIN}),
+            challenge_ttl_seconds=ttl,
+        )
+        assert policy.challenge_ttl_seconds == ttl
 
 
 def test_policy_rejects_non_none_attestation_without_verifier() -> None:

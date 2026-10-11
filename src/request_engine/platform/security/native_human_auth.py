@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -21,6 +20,10 @@ from request_engine.platform.security.native_auth import (
 from request_engine.platform.security.native_session import (
     NativeCredentialStatus,
     NativeIdentityStatus,
+)
+from request_engine.platform.security.password_work import (
+    PasswordWorkCapacityExceeded,
+    run_password_work,
 )
 
 _DEFAULT_SESSION_TTL = timedelta(hours=12)
@@ -214,7 +217,7 @@ class NativeHumanAuthService:
         normalized = normalize_login_handle(login_handle)
         native_identity_id = uuid4()
         credential_id = uuid4()
-        verifier = await asyncio.to_thread(hash_password, password)
+        verifier = await run_password_work(hash_password, password)
         outcome = await self._store.create_identity(
             identity_authority_id=identity_authority_id,
             native_identity_id=native_identity_id,
@@ -245,7 +248,7 @@ class NativeHumanAuthService:
         )
         if not _credential_is_usable(snapshot):
             raise CredentialInvalid("native credential is invalid")
-        if not await asyncio.to_thread(verify_password, password, snapshot.verifier):
+        if not await run_password_work(verify_password, password, snapshot.verifier):
             raise CredentialInvalid("native credential is invalid")
         await self._maybe_rehash(password, snapshot)
 
@@ -302,11 +305,11 @@ class NativeHumanAuthService:
         )
         if not _credential_is_usable(snapshot):
             raise CredentialInvalid("native credential is invalid")
-        if not await asyncio.to_thread(verify_password, current_password, snapshot.verifier):
+        if not await run_password_work(verify_password, current_password, snapshot.verifier):
             raise CredentialInvalid("native credential is invalid")
 
         new_credential_id = uuid4()
-        new_verifier = await asyncio.to_thread(hash_password, new_password)
+        new_verifier = await run_password_work(hash_password, new_password)
         rotated = await self._store.rotate_password(
             native_identity_id=snapshot.native_identity_id,
             expected_credential_id=snapshot.credential_id,
@@ -360,7 +363,7 @@ class NativeHumanAuthService:
 
     async def consume_recovery(self, *, raw_token: str, new_password: str) -> UUID:
         parsed = parse_opaque_token(raw_token)
-        new_verifier = await asyncio.to_thread(hash_password, new_password)
+        new_verifier = await run_password_work(hash_password, new_password)
         native_identity_id = await self._store.consume_recovery_intent(
             recovery_id=parsed.token_id,
             token_digest=digest_opaque_secret(parsed.secret),
@@ -381,7 +384,7 @@ class NativeHumanAuthService:
         verifier = await self._store.read_credential_verifier(credential_id=credential_id)
         if verifier is None:
             raise CredentialInvalid("native credential is invalid")
-        if not await asyncio.to_thread(verify_password, password, verifier):
+        if not await run_password_work(verify_password, password, verifier):
             raise CredentialInvalid("native credential is invalid")
         authenticated_at = await self._store.reauthenticate_session(
             session_id=session_id,
@@ -402,7 +405,10 @@ class NativeHumanAuthService:
 
         if not password_needs_rehash(snapshot.verifier):
             return
-        new_verifier = await asyncio.to_thread(hash_password, password)
+        try:
+            new_verifier = await run_password_work(hash_password, password)
+        except PasswordWorkCapacityExceeded:
+            return
         try:
             await self._store.rehash_password_verifier(
                 credential_id=snapshot.credential_id,

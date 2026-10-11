@@ -4,6 +4,14 @@ Date: 2026-09-18
 Branch of reference: `cohesion/system-optimization`  
 Status: **accepted architecture and implementation handoff; not production certification.**
 
+The reference software-authenticator runner keeps Python `3.13-slim` and the
+same isolated TCP/WebAuthn claim journey. Its base image is now Docker's
+official `public.ecr.aws/docker/library/python:3.13-slim` publication, avoiding
+the shared Docker Hub pull quota observed in CI. This is an image registry
+change, not a relaxation of claim/signature/origin/authority acceptance. Resolve
+and record the actual candidate image digest; a mirrored tag alone is not a
+proof that two registries currently return identical bytes.
+
 Implementation status (2026-09-19, migration head `0067_webauthn_login`):
 
 ```text
@@ -107,10 +115,11 @@ login/step-up surface are delivered before P5:
   stored fingerprint, never another claim's receipt.
 - **HTTP WebAuthn login** (`POST /auth/native/webauthn/authentication-options`,
   `POST /auth/native/webauthn/sessions`) reuses the existing
-  `NativeWebAuthnAuthService` ceremony. `read_active_webauthn_identity` resolves
-  the handle; an unknown or credential-less handle returns a structurally
-  identical decoy challenge (HMAC-keyed decoy credential id, never persisted) so
-  the options endpoint is not a reliable account-enumeration oracle. Assurance,
+  `NativeWebAuthnAuthService` ceremony. The current privacy correction uses a
+  discoverable unbound one-time challenge with an empty allow-list for every
+  supplied or omitted handle. Completion resolves the demonstrated credential
+  and requires that any supplied handle owns it before finalization (ADR 0014
+  §9). Options disclose no credential count or id-length metadata. Assurance,
   user verification and methods are derived only from the verified ceremony.
 - **HTTP WebAuthn step-up**
   (`POST /auth/native/sessions/current/webauthn/step-up-options`,
@@ -134,9 +143,9 @@ login/step-up surface are delivered before P5:
   `INV-PHISHING-RESISTANT-ASSURANCE-001`, `INV-WEBAUTHN-STEP-UP-001`,
   `INV-WEBAUTHN-CHALLENGE-SINGLE-USE-001` and
   `INV-PRIVILEGED-AUTH-FRESHNESS-001` are registered with executed proofs.
-- `REQUEST_ENGINE_WEBAUTHN_DECOY_KEY` is a new required deployment secret
-  (≥32 bytes) for the enumeration-resistant decoy. The public data-plane app is
-  not yet composed with the WebAuthn login policy; the control plane is.
+- `REQUEST_ENGINE_WEBAUTHN_DECOY_KEY` (≥32 bytes) remains a deployment
+  configuration compatibility input; current discoverable options do not use
+  decoy identifiers. Removing that input is separate configuration cleanup.
 
 ### P4.2 Offline owner access recovery (0068)
 
@@ -323,7 +332,8 @@ Current pieces that are **transitional** under ADR 0014:
 - bootstrap intent token ceremony as the canonical first-owner product journey;
 - password-only definition of an authenticatable native platform controller;
 - open native identity enrollment mounted wholesale on the control plane;
-- `tenant-controller-v3` default while newer immutable policies exist.
+- The historical `tenant-controller-v3` default while newer immutable policies
+  existed; current fresh-root default is v6 after `0021_tenant_controller_v6`.
 
 Do not build the new design beside these and leave both authoritative.
 
@@ -607,11 +617,16 @@ mapping.
 A credential ID can bind to at most one native identity in the authority. The
 same passkey credential cannot be silently attached to two Principals/identities.
 
-The first implementation may use a username/login-handle-first authentication
-flow if that best fits the current native identity model. Any account lookup must
-preserve the existing anti-enumeration failure semantics. Discoverable
-username-less passkey login can be added later without changing the authority
-model.
+Both login modes use the same discoverable options without changing authority.
+A username/login-handle-first flow resolves and validates the intended identity
+only at completion, before finalization; options never look up the handle.
+Supplied and omitted handles receive an empty allow-list and a persisted unbound
+single-use challenge. The presented credential id (globally unique) determines
+the actual identity; a supplied handle must match it. ADR 0014 §9 defines the
+explicit pre-production replacement journey for legacy non-discoverable keys,
+which are retained and remain usable for current-session step-up. Migration
+`0002_discoverable_webauthn_login` adds the unbound challenge purpose and the
+identity-from-credential finalizer.
 
 ### 5.6 TOTP
 
@@ -1522,10 +1537,11 @@ Do not let this work hide known debt:
 
 ### Tenant initial policy
 
-Current Python still defaults new native organizations to
-`tenant-controller-v3` while immutable v4/v5 exist. Determine the intentional
-current policy and update provisioning/tests coherently. Do not blindly replace
-the string without checking what capabilities v4/v5 imply.
+Current Python defaults new native organizations to `tenant-controller-v6` after
+`0021_tenant_controller_v6`, preserving immutable v1–v5. The explicit v5 plus
+thirteen-capability manifest is documented in `initial-controller-policy.md`;
+existing tenants are not upgraded. Existing-root adoption remains pending
+governance in proposed ADR 0016, not an available self-upgrade workaround.
 
 ### Root capability drift
 

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% import "partials/action_form.html" as action_form %}
+{% block title %}{{ kind }} &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card">
+  <p><a href="/resources/configurations">&larr; Platform configuration</a></p>
+  <h1>{{ kind }}</h1>
+  <p class="muted">Active revision: <code>{{ active_revision or 'none' }}</code></p>
+  {% if revisions_error %}<div class="alert error">{{ revisions_error }}</div>{% endif %}
+</section>
+<section class="card">
+  <h2>Revisions</h2>
+  <div class="table-scroll"><table class="ops">
+    <thead><tr><th>Revision</th><th>Provider</th><th>State</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+    {% for item in revisions %}
+      <tr>
+        <td><code>{{ item.revision }}</code></td>
+        <td>{{ item.provider_kind }}</td>
+        <td><span class="badge">{{ item.state }}</span></td>
+        <td class="muted small">{{ item.created_at }}</td>
+        <td><a href="/resources/configurations/{{ kind | urlencode }}/{{ item.revision }}">Open</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">No revisions for this kind.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+<section class="card">
+  <h2>Stage a new revision</h2>
+  <p class="muted small">The <code>configuration</code> payload is provider-specific JSON.</p>
+  <div id="result"></div>
+  {{ action_form.render(stage) }}
+</section>
+{% endblock %}

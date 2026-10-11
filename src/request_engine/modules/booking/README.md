@@ -80,6 +80,38 @@ row) when planning slots and freezes it into each new Reservation's
 `booking_policy_snapshot`. `read_booking_supply` (via `contracts/onboarding.py`)
 backs the `no_resource_supply` readiness fact.
 
+## Administrative configuration transport
+
+Resource bootstrap, assignment/retirement, local availability, contextual terms
+and schedule-exception commands expose distinct typed HTTP receipt Views. These
+Views project application results; application state dataclasses are not public
+HTTP schemas. Bodies reject unknown fields, invalid revisions, timezone-less
+absolute instants, inverted intervals and invalid local weekly windows before
+invoking authoritative handlers. No database or authorization bypass is added.
+
+Pre-production transport disposition (2026-10-03): **ADAPT** previously untyped
+context-terms responses to a documented `BookingContextTermsView`. Monetary
+`amount` is an exact decimal JSON string (for example `"19.90"`) plus `currency`,
+not an imprecise float; consumers must parse it using decimal arithmetic.
+Command inputs accept at most 14 integer digits and six fractional digits,
+matching the authoritative `numeric(20,6)` storage. Values outside that range
+return validation errors instead of being silently rounded or overflowing.
+Revision/idempotency/party authority and durable command meanings are unchanged.
+
+Lossless input transport ADAPT (2026-10-06): contextual configure/supersede
+amounts accept decimal JSON strings or JSON integers (and native Decimal for
+typed Python callers). Fractional JSON numbers, including `1.0`, and booleans
+are rejected with 422; their binary-float parsing would otherwise silently
+change some valid prices. OpenAPI advertises `string|integer|null`; `null` retains
+the existing optional override semantics. Clients must quote fractional prices,
+for example `"19.90"`. Owner Commands and direct adapters additionally reject
+nonfinite, negative, overflow and inexact values before receipts/writes;
+insignificant trailing zeroes remain valid. Exponents outside PostgreSQL numeric's
+-16383..131071 representation range, including zero, are rejected explicitly.
+`BookingTermsInvalidInput` maps to 422 `invalid_booking_terms_input` for owner
+validation, while transport validation retains `validation_failed`. No price is
+silently rounded and no authority/idempotency policy or migration is changed.
+
 ## Reservation lifecycle and attendance
 
 Reservation commitment and attendance execution are deliberately orthogonal:

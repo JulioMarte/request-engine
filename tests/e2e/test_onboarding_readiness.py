@@ -3,8 +3,9 @@
 Three business-plausible worlds travel through the real public/operational HTTP
 routes that exist for onboarding (Party registration, bootstrap authority,
 locations, resource capabilities, offerings, resources and queues). Only the
-provisioning prerequisite without any API (organization + principal rows) is
-seeded by SQL, matching the tenant_sandbox convention. The report must reflect
+provisioning prerequisites (organization, principal and the configuration
+operator's explicit standing grant) are seeded by SQL, matching the tenant_sandbox
+convention. This does not prove native provisioning or grant setup. The report must reflect
 owner-backed facts honestly: blockers only where the owning module has no
 supply, and a communications blocker only for an intentionally disabled
 purpose — never for an unconfigured default.
@@ -67,12 +68,51 @@ def _actor(tenant: ProvisionedTenant) -> ActorContext:
 
 
 def _blocker(code: str, owner: str, *resolution_capabilities: str) -> dict[str, object]:
+    # Expected public contract, independent of the production projector.
+    guidance = {
+        "business_party_missing": (
+            "parties_register",
+            "Register the intended active organization-kind business Party. This does "
+            "not provision a tenant root/controller or grant Representation authority; "
+            "inspect those provisioning facts separately if they are missing.",
+        ),
+        "location_missing": (
+            "catalog_location_create",
+            "Create a location using the owner schema and an idempotency key.",
+        ),
+        "no_bookable_offering": (
+            "catalog_manage_offerings",
+            "Create or configure an active offering whose latest version is bookable; "
+            "then configure its booking policy and capacity requirements.",
+        ),
+        "no_resource_supply": (
+            "booking_resource_create",
+            "Create a resource if needed, then configure its location assignment and "
+            "availability. Read current revisions before changing existing supply. "
+            "A resource alone does not prove a bookable slot.",
+        ),
+        "service_queue_missing": (
+            "queue_service_queue_create",
+            "Create an active service queue for the intended location/offering.",
+        ),
+        "channel_purpose_disabled": (
+            "communications_configure_channel_policy",
+            "Read the disabled purpose's policy and revision, then enable its intended "
+            "channel with the owner's concurrency contract. This does not certify SMTP.",
+        ),
+    }
+    operation_id, hint = guidance[code]
     return {
         "code": code,
         "owner": owner,
-        "resolution_capabilities": list(resolution_capabilities),
+        "resolution_capabilities": (
+            ["parties.register"]
+            if code == "business_party_missing"
+            else list(resolution_capabilities)
+        ),
         "requires_operator": False,
-        "operation_id": None,
+        "operation_id": operation_id,
+        "resolution_hint": hint,
     }
 
 
@@ -88,6 +128,7 @@ def _identity_blocker(
         "resolution_capabilities": list(resolution_capabilities),
         "requires_operator": True,
         "operation_id": operation_id,
+        "resolution_hint": None,
     }
 
 
@@ -174,6 +215,15 @@ def seed_provisioned_tenant(conn: support.PgConnection, prefix: str) -> Provisio
         RETURNING id
         """,
         (organization_id, f"bootstrap-{suffix}"),
+    )
+    # Trusted test resolver capabilities must also have current persistent grants.
+    conn.execute(
+        "INSERT INTO request_engine.principal_authority_grants "
+        "(organization_id,principal_id,principal_plane,authority_plane,capability_key, "
+        "granted_by_principal_id,provenance_kind,provenance_reference) "
+        "VALUES (%s,%s,'tenant','operational','communications.configure',%s, "
+        "'operator','proof:onboarding-configuration')",
+        (organization_id, principal_id, principal_id),
     )
     return ProvisionedTenant(organization_id, principal_id, f"token-{suffix}")
 

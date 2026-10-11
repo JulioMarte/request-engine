@@ -19,6 +19,9 @@ from request_engine.modules.platform_configuration.api.http import (
     SmtpProviderTester,
     install_platform_configuration_http,
 )
+from request_engine.modules.tenancy.api.controller_policy_adoption_platform import (
+    install_platform_controller_policy_adoption_http,
+)
 from request_engine.modules.tenancy.api.identity_recovery import (
     install_identity_recovery_http,
 )
@@ -28,8 +31,14 @@ from request_engine.modules.tenancy.api.native_platform_provisioning import (
 from request_engine.modules.tenancy.api.platform_native_identity_management import (
     install_native_identity_management_http,
 )
+from request_engine.modules.tenancy.api.platform_organization_reads import (
+    install_platform_organization_reads_http,
+)
 from request_engine.modules.tenancy.api.platform_owner_management import (
     install_platform_owner_management_http,
+)
+from request_engine.modules.tenancy.api.platform_owner_reads import (
+    install_platform_owner_reads_http,
 )
 from request_engine.modules.tenancy.api.platform_provisioner_management import (
     install_native_platform_provisioner_management_http,
@@ -41,9 +50,13 @@ from request_engine.platform.db.native_recovery_address_store import (
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
+from request_engine.platform.http.authentication_schema import install_authentication_schema
+from request_engine.platform.http.request_budget import install_request_budget
 from request_engine.platform.observability.p7_metrics import P7OperationalMetrics
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
 from request_engine.platform.secrets.platform_store import PlatformSecretStore
+from request_engine.platform.security.execution_context import clear_actor_context
+from request_engine.platform.security.http import request_correlation_id
 from request_engine.platform.security.instance_setup import InstanceSetupService
 from request_engine.platform.security.native_recovery_addresses import (
     NativeRecoveryAddressService,
@@ -99,14 +112,20 @@ def create_platform_control_app(
         store=PostgresRecoveryCodeStore(auth_session_factory)
     )
     app = FastAPI(title="Request Engine platform control", version="1.0.0")
+    install_request_budget(app, session_factory=auth_session_factory)
 
     async def uncached_control_response(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
-        return response
+        correlation_id = request_correlation_id(request)
+        try:
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["X-Correlation-ID"] = str(correlation_id)
+            return response
+        finally:
+            clear_actor_context()
 
     app.middleware("http")(uncached_control_response)
     add_global_error_handlers(app)
@@ -143,6 +162,11 @@ def create_platform_control_app(
         actor_resolver=runtime.platform_actor_resolver,
         native_authority_id=native_authority_id,
     )
+    install_platform_owner_reads_http(
+        app,
+        read_session_factory=platform_read_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
+    )
     install_identity_recovery_http(
         app,
         read_session_factory=platform_read_session_factory,
@@ -157,6 +181,17 @@ def create_platform_control_app(
         actor_resolver=runtime.platform_actor_resolver,
         native_auth_service=runtime.service,
         native_authority_id=native_authority_id,
+    )
+    install_platform_organization_reads_http(
+        app,
+        read_session_factory=platform_read_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
+    )
+    install_platform_controller_policy_adoption_http(
+        app,
+        write_session_factory=platform_write_session_factory,
+        read_session_factory=platform_read_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
     )
     install_platform_configuration_http(
         app,
@@ -184,5 +219,10 @@ def create_platform_control_app(
             webauthn=webauthn_auth,
             recovery_codes=recovery_codes,
         ),
+    )
+    install_authentication_schema(
+        app,
+        scheme_name="NativeSessionBearer",
+        description="Active native HUMAN session resolved through current platform authority.",
     )
     return app

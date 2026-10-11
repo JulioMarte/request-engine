@@ -45,10 +45,10 @@ def render_units(
     if local_retention_days <= 0:
         raise RecoveryScheduleError("local retention days must be positive")
 
-    repo = str(repo_root.resolve())
-    python_path = str(python.resolve())
-    env_file = str(environment_file)
-    backup_dir = str(backup_output_dir.resolve())
+    repo = repo_root.resolve().as_posix()
+    python_path = python.resolve().as_posix()
+    env_file = environment_file.as_posix()
+    backup_dir = backup_output_dir.resolve().as_posix()
     command = " ".join(
         (
             _systemd_quote(python_path),

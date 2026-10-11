@@ -51,7 +51,27 @@ class TransitionAgentProfileCommand:
     idempotency_key: str
 
 
+@dataclass(frozen=True, slots=True)
+class RotateAgentCredentialCommand:
+    agent_principal_id: UUID
+    expected_authority_revision: int
+    credential_expires_at: datetime
+    provenance_reference: str
+    idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class RotateAgentCredentialResult:
+    credential_id: UUID
+    authority_revision: int
+    workload_token: str | None = field(default=None, repr=False)
+
+
 class AgentGovernanceCommands(Protocol):
+    async def rotate_agent_credential(
+        self, actor: ActorContext, command: RotateAgentCredentialCommand
+    ) -> RotateAgentCredentialResult: ...
+
     async def provision_agent(
         self,
         actor: ActorContext,

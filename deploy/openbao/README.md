@@ -56,6 +56,16 @@ bao policy write request-engine-signing-runtime policies/request-engine-signing-
 bao auth enable approle
 ```
 
+Temporary recovery/invitation proof writers no longer delete metadata or destroy
+versions. Failed issuers retain the verified TTL because another issuer can own
+the same CAS winner. Do not combine their control token with broader metadata-delete
+grants. The separate `policies/request-engine-proof-cleanup.hcl` is a scoped janitor
+policy template, not authorization to enable a production scheduler. It has no
+plaintext read/write access. Certify effective policies for every ordinary operator
+and writer before admitting cleanup; root/break-glass, restore and mount replacement
+require fencing and renewed admission. See the current
+[retention contract](../../docs/architecture/temporary-proof-retention.md).
+
 Create separate AppRoles for runtime read and control-plane mutation. The sample
 Proxy config names `request-engine-runtime`; deployments that expose mutation
 through a separate control-plane process should run a second Proxy/role with the

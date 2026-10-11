@@ -15,6 +15,8 @@ _DATABASE_ROLES = {
     "request_engine_discovery_definer": (False, False, True, False, False),
     "request_engine_schema_owner": (False, False, False, False, False),
     "request_engine_worker": (False, False, False, False, False),
+    "request_webauthn_retention": (False, False, False, False, False),
+    "request_webauthn_retention_definer": (False, False, False, False, False),
 }
 _EXPECTED_SCHEMA_USAGE = {
     "request_engine_app": {"request_engine", "request_read", "request_cmd"},
@@ -22,6 +24,7 @@ _EXPECTED_SCHEMA_USAGE = {
     "request_engine_worker": {"request_engine", "request_cmd"},
     "request_engine_admin": set(_RUNTIME_SCHEMAS),
     "request_engine_discovery_definer": {"request_engine"},
+    "request_webauthn_retention_definer": {"request_engine"},
 }
 _RUNTIME_GROUP_ROLES = {
     "request_engine_admin",
@@ -128,6 +131,21 @@ def test_request_engine_roles_do_not_inherit_one_another(admin_conn: PgConnectio
     ).fetchall()
 
     assert rows == []
+    retention_memberships = admin_conn.execute(
+        """
+        SELECT parent.rolname, member.rolname
+        FROM pg_auth_members membership
+        JOIN pg_roles parent ON parent.oid = membership.roleid
+        JOIN pg_roles member ON member.oid = membership.member
+        WHERE parent.rolname = ANY(%s) OR member.rolname = ANY(%s)
+        ORDER BY parent.rolname, member.rolname
+        """,
+        (
+            ["request_webauthn_retention", "request_webauthn_retention_definer"],
+            ["request_webauthn_retention", "request_webauthn_retention_definer"],
+        ),
+    ).fetchall()
+    assert retention_memberships == []
 
 
 @pytest.mark.postgres
@@ -256,3 +274,64 @@ def test_worker_has_no_direct_relation_privileges(admin_conn: PgConnection) -> N
     ).fetchall()
 
     assert rows == []
+
+
+@pytest.mark.postgres
+def test_webauthn_retention_roles_have_exact_function_and_table_authority(
+    admin_conn: PgConnection,
+) -> None:
+    # Table-wide authority is intentionally DELETE only. Column grants are
+    # checked separately because PostgreSQL stores those in pg_attribute.
+    table_rows = admin_conn.execute(
+        """
+        SELECT acl.privilege_type
+        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) acl
+        WHERE n.nspname = 'request_engine' AND c.relname = 'webauthn_challenges'
+          AND acl.grantee = 'request_webauthn_retention_definer'::regrole
+        ORDER BY acl.privilege_type
+        """
+    ).fetchall()
+    column_rows = admin_conn.execute(
+        """
+        SELECT a.attname, acl.privilege_type
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN LATERAL aclexplode(a.attacl) acl
+        WHERE n.nspname = 'request_engine' AND c.relname = 'webauthn_challenges'
+          AND a.attnum > 0 AND NOT a.attisdropped
+          AND acl.grantee = 'request_webauthn_retention_definer'::regrole
+        ORDER BY a.attname, acl.privilege_type
+        """
+    ).fetchall()
+    assert table_rows == [("DELETE",)]
+    assert column_rows == [
+        ("consumed_at", "SELECT"),
+        ("expires_at", "SELECT"),
+        ("id", "SELECT"),
+        ("id", "UPDATE"),
+        ("status", "SELECT"),
+    ]
+
+    caller_acl = admin_conn.execute(
+        """
+        SELECT 'schema', n.nspname, acl.privilege_type
+        FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) acl
+        WHERE acl.grantee = 'request_webauthn_retention'::regrole
+        UNION ALL
+        SELECT 'function', n.nspname || '.' || p.proname, acl.privilege_type
+        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        CROSS JOIN LATERAL aclexplode(p.proacl) acl
+        WHERE acl.grantee = 'request_webauthn_retention'::regrole
+        ORDER BY 1, 2, 3
+        """
+    ).fetchall()
+    assert caller_acl == [
+        (
+            "function",
+            "request_auth.delete_retained_webauthn_challenges",
+            "EXECUTE",
+        ),
+        ("schema", "request_auth", "USAGE"),
+    ]

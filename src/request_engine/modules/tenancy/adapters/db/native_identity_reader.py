@@ -53,7 +53,9 @@ class PostgresNativeIdentityReader:
         query: ListNativeIdentitiesQuery,
     ) -> tuple[NativeIdentityView, ...]:
         _authorize(actor)
-        rows = await self._read(identity_id=None, after=query.after, limit=query.limit)
+        rows = await self._read(
+            identity_id=None, after=query.after, limit=query.limit, lookahead=True
+        )
         return tuple(_materialize(row) for row in rows)
 
     async def read_identity(
@@ -67,20 +69,36 @@ class PostgresNativeIdentityReader:
             raise NativeIdentityReadNotFound("native identity was not found")
         return _materialize(rows[0])
 
-    async def _read(self, *, identity_id: Any, after: Any, limit: int) -> list[Any]:
+    async def _read(
+        self, *, identity_id: Any, after: Any, limit: int, lookahead: bool = False
+    ) -> list[Any]:
         async with self._session_factory() as session:
             try:
                 result = await session.execute(
                     text(
                         """
+                        WITH page AS MATERIALIZED (
                         SELECT * FROM request_platform.read_native_identities(
                             CAST(:identity_id AS uuid),
                             CAST(:after AS uuid),
                             CAST(:limit AS integer)
-                        )
+                        ))
+                        SELECT * FROM page
+                        UNION ALL
+                        SELECT * FROM request_platform.read_native_identities(
+                            NULL,
+                            (SELECT native_identity_id FROM page
+                             ORDER BY native_identity_id DESC LIMIT 1), 1
+                        ) WHERE :lookahead AND (SELECT count(*) FROM page) = :limit
+                        ORDER BY native_identity_id
                         """
                     ),
-                    {"identity_id": identity_id, "after": after, "limit": limit},
+                    {
+                        "identity_id": identity_id,
+                        "after": after,
+                        "limit": limit,
+                        "lookahead": lookahead,
+                    },
                 )
             except DBAPIError as exc:
                 error_type = _READ_ERRORS.get(str(getattr(exc.orig, "sqlstate", "")))

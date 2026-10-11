@@ -1,0 +1,14 @@
+route:
+  receiver: operator-webhook
+  group_by: [alertname, service, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 2h
+
+receivers:
+  - name: operator-webhook
+    webhook_configs:
+      # Replace with the operator-owned HTTPS receiver before deployment.
+      # A webhook 2xx is transport acceptance, not human acknowledgement.
+      - url: https://replace-with-operator-receiver.invalid/alerts
+        send_resolved: true

@@ -7,7 +7,15 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
-ROLE_PATTERNS = ("request_engine_%", "request_platform_%", "request_bootstrap_%")
+ROLE_PATTERNS = (
+    "request_engine_%",
+    "request_platform_%",
+    "request_bootstrap_%",
+    "request_http_%",
+    "request_webauthn_%",
+    "request_proof_%",
+    "request_operator_%",
+)
 
 # pg_roles deliberately masks rolpassword as ******** for every role. This proof
 # runs as the PostgreSQL bootstrap superuser, so use pg_authid for the actual

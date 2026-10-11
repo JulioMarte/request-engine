@@ -7,12 +7,19 @@ through the effective-policy read and freezes it into
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from time import monotonic
 from typing import Any, LiteralString, cast
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
+import psycopg
 import pytest
 from psycopg import Connection
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
@@ -29,6 +36,7 @@ from request_engine.modules.booking.application.queries.find_appointment_slots i
     FindAppointmentSlotsQuery,
     find_appointment_slots,
 )
+from request_engine.modules.catalog.adapters.db import offering_policy_commands as policy_adapter
 from request_engine.modules.catalog.adapters.db.offering_policy_commands import (
     PostgresOfferingBookingPolicyCommands,
 )
@@ -42,6 +50,11 @@ from request_engine.modules.catalog.application.errors import (
     OfferingBookingPolicyRevisionConflict,
 )
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.security.operational_authority import (
+    OperationalAuthorityGrant,
+    OperationalAuthorityRequired,
+)
+from request_engine.platform.security.principal_authority import CapabilityRequired
 
 pytestmark = pytest.mark.postgres
 
@@ -228,6 +241,14 @@ def _seed_policy_world(conn: PgConnection, prefix: str) -> PolicyWorld:
             """,
             (world.organization_id, world.principal_id, world.subject_party_id, scope_key),
         )
+    conn.execute(
+        "INSERT INTO request_engine.principal_authority_grants "
+        "(organization_id,principal_id,principal_plane,authority_plane,capability_key, "
+        "granted_by_principal_id,provenance_kind,provenance_reference) "
+        "VALUES (%s,%s,'tenant','operational','catalog.manage',%s, "
+        "'operator','proof:catalog-policy-manager')",
+        (world.organization_id, world.principal_id, world.principal_id),
+    )
     return world
 
 
@@ -411,6 +432,176 @@ async def test_booking_policy_override_replays_idempotently_without_new_revision
         (world.organization_id, world.offering_version_id),
     ).fetchone()
     assert count == (1,)
+
+
+@pytest.mark.asyncio
+@pytest.mark.adversarial
+@pytest.mark.security
+@pytest.mark.invariant
+@pytest.mark.parametrize("withdrawal", ["grant", "representation", "party"])
+async def test_booking_policy_rechecks_authority_before_fresh_intent_and_replay(
+    admin_conn: PgConnection, command_session_factory: SessionFactory, withdrawal: str
+) -> None:
+    world = _seed_policy_world(admin_conn, "policy-authority")
+    command = _policy_command(world, expected_revision=0, key="policy-authority-proof")
+    commands = PostgresOfferingBookingPolicyCommands(command_session_factory)
+    first = await commands.set_offering_version_booking_policy(command)
+    assert first.booking_policy_revision == 1
+    expected_error: type[Exception] = OperationalAuthorityRequired
+    if withdrawal == "grant":
+        admin_conn.execute(
+            "UPDATE request_engine.principal_authority_grants SET status='revoked', "
+            "revoked_at=clock_timestamp(),revoked_by_principal_id=%s,revision=revision+1 "
+            "WHERE principal_id=%s AND capability_key='catalog.manage' AND status='active'",
+            (world.principal_id, world.principal_id),
+        )
+        expected_error = CapabilityRequired
+    elif withdrawal == "representation":
+        admin_conn.execute(
+            "UPDATE request_engine.representations SET status='revoked' "
+            "WHERE principal_id=%s AND scope_key='operations.manage_terms'",
+            (world.principal_id,),
+        )
+    else:
+        admin_conn.execute(
+            "UPDATE request_engine.parties SET active=false WHERE id=%s",
+            (world.subject_party_id,),
+        )
+    before = admin_conn.execute(
+        "SELECT (SELECT count(*) FROM request_engine.offering_version_booking_policies), "
+        "(SELECT count(*) FROM request_engine.idempotency_records), "
+        "(SELECT count(*) FROM request_engine.audit_records), "
+        "(SELECT count(*) FROM request_engine.outbox_messages)"
+    ).fetchone()
+    assert before == (1, 1, 1, 0)
+    for candidate in (
+        command,
+        replace(command, expected_revision=1, idempotency_key="policy-authority-fresh"),
+    ):
+        with pytest.raises(expected_error):
+            await commands.set_offering_version_booking_policy(candidate)
+    assert (
+        admin_conn.execute(
+            "SELECT (SELECT count(*) FROM request_engine.offering_version_booking_policies), "
+            "(SELECT count(*) FROM request_engine.idempotency_records), "
+            "(SELECT count(*) FROM request_engine.audit_records), "
+            "(SELECT count(*) FROM request_engine.outbox_messages)"
+        ).fetchone()
+        == before
+    )
+    assert admin_conn.execute(
+        "SELECT revision,booking_policy FROM request_engine.offering_version_booking_policies "
+        "WHERE offering_version_id=%s",
+        (world.offering_version_id,),
+    ).fetchone() == (1, _expected_policy_json())
+
+
+@pytest.mark.asyncio
+@pytest.mark.concurrency
+@pytest.mark.adversarial
+@pytest.mark.invariant
+@pytest.mark.parametrize("withdrawal", ["grant", "representation"])
+@pytest.mark.parametrize("writer_wins", [True, False])
+async def test_booking_policy_serializes_authority_withdrawal(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+    pg_conninfo: str,
+    withdrawal: str,
+    writer_wins: bool,
+) -> None:
+    world = _seed_policy_world(admin_conn, "policy-race")
+    command = _policy_command(world, expected_revision=0, key="policy-race-proof")
+    commands = PostgresOfferingBookingPolicyCommands(command_session_factory)
+    expected_error: type[Exception] = OperationalAuthorityRequired
+    if withdrawal == "grant":
+        revoke_sql = (
+            "UPDATE request_engine.principal_authority_grants SET status='revoked', "
+            "revoked_at=clock_timestamp(),revoked_by_principal_id=principal_id,revision=revision+1 "
+            "WHERE principal_id=%s AND capability_key='catalog.manage' AND status='active'"
+        )
+        expected_error = CapabilityRequired
+    else:
+        revoke_sql = (
+            "UPDATE request_engine.representations SET status='revoked' WHERE principal_id=%s "
+            "AND scope_key='operations.manage_terms' AND status='active'"
+        )
+    with psycopg.connect(pg_conninfo) as writer:
+        writer.execute("SET LOCAL statement_timeout='12s'")
+        if writer_wins:
+            writer.execute(revoke_sql, (world.principal_id,))
+            attempt = asyncio.create_task(commands.set_offering_version_booking_policy(command))
+            try:
+                await _observe_policy_blocker(admin_conn, writer.info.backend_pid)
+            finally:
+                writer.commit()
+            with pytest.raises(expected_error):
+                await asyncio.wait_for(attempt, timeout=15)
+        else:
+            admitted, release = asyncio.Event(), asyncio.Event()
+            holder_pid: list[int] = []
+            original_guard = policy_adapter.require_principal_serialized_operational_authority
+
+            async def observed_guard(
+                session: AsyncSession, **kwargs: Any
+            ) -> OperationalAuthorityGrant:
+                result = await original_guard(session, **kwargs)
+                holder_pid.append(
+                    int((await session.execute(text("SELECT pg_backend_pid()"))).scalar_one())
+                )
+                admitted.set()
+                await asyncio.wait_for(release.wait(), timeout=12)
+                return result
+
+            with patch.object(
+                policy_adapter,
+                "require_principal_serialized_operational_authority",
+                side_effect=observed_guard,
+            ):
+                attempt = asyncio.create_task(commands.set_offering_version_booking_policy(command))
+                await asyncio.wait_for(admitted.wait(), timeout=10)
+                withdrawal_task = asyncio.create_task(
+                    asyncio.to_thread(writer.execute, revoke_sql, (world.principal_id,))
+                )
+                try:
+                    await _observe_policy_blocker(admin_conn, holder_pid[0])
+                finally:
+                    release.set()
+                result = await asyncio.wait_for(attempt, timeout=15)
+                assert result.booking_policy_revision == 1
+                await asyncio.wait_for(withdrawal_task, timeout=15)
+                writer.commit()
+    before = admin_conn.execute(
+        "SELECT (SELECT count(*) FROM request_engine.offering_version_booking_policies), "
+        "(SELECT count(*) FROM request_engine.idempotency_records), "
+        "(SELECT count(*) FROM request_engine.audit_records), "
+        "(SELECT count(*) FROM request_engine.outbox_messages)"
+    ).fetchone()
+    assert before == ((0, 0, 0, 0) if writer_wins else (1, 1, 1, 0))
+    with pytest.raises(expected_error):
+        await commands.set_offering_version_booking_policy(command)
+    assert (
+        admin_conn.execute(
+            "SELECT (SELECT count(*) FROM request_engine.offering_version_booking_policies), "
+            "(SELECT count(*) FROM request_engine.idempotency_records), "
+            "(SELECT count(*) FROM request_engine.audit_records), "
+            "(SELECT count(*) FROM request_engine.outbox_messages)"
+        ).fetchone()
+        == before
+    )
+
+
+async def _observe_policy_blocker(conn: PgConnection, holder_pid: int) -> None:
+    deadline = monotonic() + 10
+    while monotonic() < deadline:
+        row = conn.execute(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() "
+            "AND wait_event_type='Lock' AND %s=ANY(pg_blocking_pids(pid))",
+            (holder_pid,),
+        ).fetchone()
+        if row == (1,):
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("independent policy authority writer/command did not contend")
 
 
 @pytest.mark.asyncio

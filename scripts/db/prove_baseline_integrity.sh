@@ -37,23 +37,71 @@ cp alembic.ini "$ALEMBIC_DIR/alembic.ini"
 sed -i "s#^script_location = migrations#script_location = ${ALEMBIC_DIR}#" \
   "$ALEMBIC_DIR/alembic.ini"
 
+# Docker remains the canonical CI default. Native mode is explicit and creates
+# its own clean cluster; it never verifies the baseline in the current database.
+NATIVE_BIN="${REQUEST_ENGINE_BASELINE_PG_BIN:-}"
+NATIVE_ROOT=""
 cleanup() {
-  docker rm --force "$CONTAINER" >/dev/null 2>&1 || true
+  local original_status=$?
+  if [[ -n "$NATIVE_ROOT" ]]; then
+    if [[ -f "$NATIVE_ROOT/data/postmaster.pid" ]] &&
+       ! "$NATIVE_BIN/pg_ctl" -D "$NATIVE_ROOT/data" -m fast -w stop >/dev/null 2>&1; then
+      echo "baseline PostgreSQL stop failed; retained temporary cluster: $NATIVE_ROOT" >&2
+      if [[ "$original_status" -eq 0 ]]; then return 1; fi
+      return "$original_status"
+    fi
+    rm -rf -- "$NATIVE_ROOT"
+  elif [[ -z "$NATIVE_BIN" ]]; then
+    docker rm --force "$CONTAINER" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
+: "${PGPASSWORD:?PGPASSWORD must be set}"
 
-export POSTGRES_PASSWORD="${PGPASSWORD:?PGPASSWORD must be set}"
-export POSTGRES_DB="$SOURCE_DB"
-docker run --detach \
-  --name "$CONTAINER" \
-  --env POSTGRES_PASSWORD \
-  --env POSTGRES_DB \
-  --env POSTGRES_USER=postgres \
-  --publish 127.0.0.1::5432 \
-  postgres:18 >/dev/null
-unset POSTGRES_PASSWORD POSTGRES_DB
+if [[ -n "$NATIVE_BIN" ]]; then
+  for executable in initdb pg_ctl postgres createdb; do
+    if [[ ! -x "$NATIVE_BIN/$executable" ]]; then
+      echo "native baseline PostgreSQL executable missing: $executable" >&2
+      exit 1
+    fi
+  done
+  if [[ "$("$NATIVE_BIN/postgres" --version)" != *" 18."* ]]; then
+    echo "native baseline mode requires PostgreSQL 18" >&2
+    exit 1
+  fi
+  NATIVE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/request-engine-baseline-XXXXXX")"
+  chmod 700 "$NATIVE_ROOT"
+  printf '%s\n' "$PGPASSWORD" > "$NATIVE_ROOT/password"
+  chmod 600 "$NATIVE_ROOT/password"
+  "$NATIVE_BIN/initdb" -D "$NATIVE_ROOT/data" --username=postgres \
+    --auth=scram-sha-256 --pwfile="$NATIVE_ROOT/password" >/dev/null
+  rm -- "$NATIVE_ROOT/password"
+  PORT="$(python - <<'PORT_PY'
+import socket
+with socket.socket() as listener:
+    listener.bind(("127.0.0.1", 0))
+    print(listener.getsockname()[1])
+PORT_PY
+)"
+  "$NATIVE_BIN/pg_ctl" -D "$NATIVE_ROOT/data" \
+    -l "$NATIVE_ROOT/postgres.log" \
+    -o "-c listen_addresses=127.0.0.1 -c unix_socket_directories='' -p $PORT" \
+    -w start >/dev/null
+  "$NATIVE_BIN/createdb" --host=127.0.0.1 --port="$PORT" \
+    --username=postgres "$SOURCE_DB"
+else
+  export POSTGRES_PASSWORD="$PGPASSWORD" POSTGRES_DB="$SOURCE_DB"
+  docker run --detach \
+    --name "$CONTAINER" \
+    --env POSTGRES_PASSWORD \
+    --env POSTGRES_DB \
+    --env POSTGRES_USER=postgres \
+    --publish 127.0.0.1::5432 \
+    public.ecr.aws/docker/library/postgres:18 >/dev/null
+  unset POSTGRES_PASSWORD POSTGRES_DB
+  PORT="$(docker port "$CONTAINER" 5432/tcp | head -n 1 | awk -F: '{print $NF}')"
+fi
 
-PORT="$(docker port "$CONTAINER" 5432/tcp | head -n 1 | awk -F: '{print $NF}')"
 if [[ -z "$PORT" ]]; then
   echo "failed to resolve accepted-baseline PostgreSQL host port" >&2
   exit 1
@@ -78,7 +126,11 @@ for _ in {1..30}; do
   sleep 1
 done
 if [[ "$ready" -ne 1 ]]; then
-  docker logs "$CONTAINER" >&2 || true
+  if [[ -n "$NATIVE_ROOT" ]]; then
+    cat "$NATIVE_ROOT/postgres.log" >&2 || true
+  else
+    docker logs "$CONTAINER" >&2 || true
+  fi
   echo "accepted-baseline PostgreSQL cluster did not become externally ready" >&2
   exit 1
 fi

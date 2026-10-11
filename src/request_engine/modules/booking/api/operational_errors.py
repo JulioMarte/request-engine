@@ -1,12 +1,33 @@
-from fastapi import Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from request_engine.modules.booking.application.operational_errors import (
+    BookingTermsInvalidInput,
     ContextualConfigurationConflict,
     ResourceAvailabilityRevisionConflict,
     ResourceLocationAssignmentRevisionConflict,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+
+
+def register_terms_input_error_handler(app: FastAPI) -> None:
+    app.add_exception_handler(BookingTermsInvalidInput, booking_terms_input_error_handler)
+
+
+async def booking_terms_input_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, BookingTermsInvalidInput):
+        raise exc
+    return JSONResponse(
+        status_code=422,
+        content=ErrorEnvelope(
+            error=ErrorBody(
+                code="invalid_booking_terms_input",
+                message=str(exc),
+                resolution=ErrorResolution.FIX_REQUEST,
+            )
+        ).model_dump(mode="json"),
+    )
+
 
 BookingOperationalError = (
     ResourceAvailabilityRevisionConflict

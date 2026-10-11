@@ -40,6 +40,23 @@ class RecoveryDeliveryPermanent(RecoveryDeliveryError):
 
 
 @dataclass(frozen=True, slots=True)
+class RetainedProofVersion:
+    """Provider-confirmed identity/deadline, distinct from a candidate expiry."""
+
+    version: int
+    created_at: datetime
+    deletion_at: datetime
+
+    def __post_init__(self) -> None:
+        if isinstance(self.version, bool) or self.version < 1:
+            raise ValueError("positive retained version required")
+        if self.created_at.tzinfo is None or self.deletion_at.tzinfo is None:
+            raise ValueError("aware retained timestamps required")
+        if self.created_at >= self.deletion_at:
+            raise ValueError("invalid retained version deadline")
+
+
+@dataclass(frozen=True, slots=True)
 class StagedRecoverySecret:
     """Opaque metadata for a staged proof. Never carries the raw secret."""
 
@@ -47,6 +64,7 @@ class StagedRecoverySecret:
     digest: str
     expires_at: datetime
     created: bool
+    retention_version: RetainedProofVersion | None = None
 
     def __post_init__(self) -> None:
         if not self.reference.strip():
@@ -57,14 +75,14 @@ class StagedRecoverySecret:
             raise ValueError("staged secret digest must be 64 lowercase hex characters")
 
 
-class RecoverySecretDelivery(Protocol):
-    """Create-if-absent staging plus fenced, idempotent publication.
+class RecoverySecretStaging(Protocol):
+    """Create-if-absent proof retention without requiring transport authority.
 
     ``stage`` is keyed by ``(case_id, generation)`` and MUST return the secret
     that was actually retained: on replay or a concurrent candidate it returns
     the existing reference/digest and the caller discards its own candidate.
-    ``publish`` MUST NOT be retried blindly on an ambiguous outcome; callers
-    reconcile first with the same idempotency key.
+    Issuing processes can stage a durable delivery proof without holding SMTP
+    runtime-read privileges. Transport belongs to the separately composed worker.
     """
 
     async def stage(
@@ -76,7 +94,18 @@ class RecoverySecretDelivery(Protocol):
         expires_at: datetime,
     ) -> StagedRecoverySecret: ...
 
-    async def discard(self, *, case_id: UUID, generation: int) -> None: ...
+    async def discard(self, *, case_id: UUID, generation: int) -> None:
+        """Abandon the caller's candidate, never destroy a possible retained winner.
+
+        Creation alone does not confer exclusive ownership of a shared generation.
+        KV-v2 stores retain the verified TTL and non-reusable metadata identity;
+        explicit-version destruction belongs to expiry cleanup, not failed issuers.
+        """
+        ...
+
+
+class RecoverySecretDelivery(RecoverySecretStaging, Protocol):
+    """Staging plus publication, which reconciles uncertainty before any retry."""
 
     async def publish(
         self,

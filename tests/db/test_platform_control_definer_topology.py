@@ -1,7 +1,8 @@
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 
 import pytest
-from psycopg import Connection
+from psycopg import Connection, sql
+from psycopg.errors import InsufficientPrivilege
 
 PgConnection = Connection[Any]
 pytestmark = [pytest.mark.postgres, pytest.mark.invariant, pytest.mark.security]
@@ -11,6 +12,9 @@ _DEFINER = "request_platform_control_definer"
 _PROVISIONER_FUNCTION = "request_platform.provision_tenant_provisioner(uuid, text, text)"
 _NATIVE_PROVISIONER_FUNCTION = (
     "request_platform.provision_native_tenant_provisioner(uuid, uuid, uuid, uuid, text)"
+)
+_NATIVE_IDENTITY_FUNCTION = (
+    "request_platform.provision_native_identity(uuid,uuid,text,uuid,text,text,text)"
 )
 _ROOT_FUNCTION = (
     "request_platform.provision_native_organization_root(uuid, text, text, uuid, uuid, "
@@ -25,6 +29,37 @@ _LIFECYCLE_FUNCTION = (
 )
 _CONTINUITY_ASSERT_FUNCTION = "request_platform.assert_other_platform_controller(uuid)"
 _CONTINUITY_PREDICATE_FUNCTION = "request_platform.principal_is_effective_platform_controller(uuid)"
+_ADOPTION_APPLY_FUNCTION = (
+    "request_platform.apply_controller_policy_adoption(uuid,bigint,text,text)"
+)
+_ADOPTION_REVIEW_FUNCTION = "request_platform.review_controller_policy_adoption(uuid)"
+_NATIVE_RECEIPT_COLUMNS = {
+    ("native_identity_provision_receipts", column, privilege)
+    for privilege, columns in (
+        (
+            "SELECT",
+            (
+                "actor_principal_id",
+                "idempotency_key_digest",
+                "intent_digest",
+                "native_identity_id",
+                "login_handle",
+            ),
+        ),
+        (
+            "INSERT",
+            (
+                "actor_principal_id",
+                "idempotency_key_digest",
+                "intent_digest",
+                "native_identity_id",
+                "login_handle",
+                "correlation_id",
+            ),
+        ),
+    )
+    for column in columns
+}
 _EXPECTED_COLUMNS = {
     ("initial_controller_policies", "policy_key", "SELECT"),
     ("identity_bindings", "id", "SELECT"),
@@ -65,6 +100,7 @@ _EXPECTED_COLUMNS = {
     ("organization_root_provisioning_facts", "controller_principal_id", "SELECT"),
     ("organization_root_provisioning_facts", "controller_binding_id", "SELECT"),
     ("organization_root_provisioning_facts", "provisioned_by_principal_id", "SELECT"),
+    ("organization_root_provisioning_facts", "initial_controller_policy_key", "SELECT"),
     ("organization_root_provisioning_facts", "provenance_reference", "SELECT"),
     ("organization_root_provisioning_facts", "organization_id", "INSERT"),
     ("organization_root_provisioning_facts", "organization_party_id", "INSERT"),
@@ -102,6 +138,8 @@ _EXPECTED_COLUMNS = {
     ("principal_authority_grants", "principal_id", "SELECT"),
     ("principal_authority_grants", "principal_plane", "SELECT"),
     ("principal_authority_grants", "authority_plane", "SELECT"),
+    # 0027's adoption command scopes its grant lookup to the tenant organization.
+    ("principal_authority_grants", "organization_id", "SELECT"),
     ("principal_authority_grants", "capability_key", "SELECT"),
     ("principal_authority_grants", "delegable", "SELECT"),
     ("principal_authority_grants", "status", "SELECT"),
@@ -111,6 +149,14 @@ _EXPECTED_COLUMNS = {
     ("principal_authority_grants", "revision", "UPDATE"),
     ("principal_authority_grants", "revoked_at", "UPDATE"),
     ("principal_authority_grants", "revoked_by_principal_id", "UPDATE"),
+    # 0027 adoption compares against the canonical target policy and locks the
+    # tenant's membership rows before changing controller authority.
+    ("initial_controller_policies", "grants", "SELECT"),
+    ("staff_memberships", "id", "SELECT"),
+    ("staff_memberships", "organization_id", "SELECT"),
+    ("staff_memberships", "principal_id", "SELECT"),
+    ("staff_memberships", "status", "SELECT"),
+    ("staff_memberships", "id", "UPDATE"),
     ("platform_authority_lifecycle_facts", "id", "SELECT"),
     ("platform_authority_lifecycle_facts", "principal_id", "SELECT"),
     ("platform_authority_lifecycle_facts", "action", "SELECT"),
@@ -448,6 +494,12 @@ _EXPECTED_COLUMNS = {
     ("platform_owner_invitations", "idempotency_key_digest", "SELECT"),
     ("platform_owner_invitations", "intent_digest", "SELECT"),
     ("platform_owner_invitations", "expires_at", "SELECT"),
+    # 0016: the authorized 0014 invitation metadata projection needs these
+    # timestamps; no token or write permission is added by this read contract.
+    ("platform_owner_invitations", "created_at", "SELECT"),
+    ("platform_owner_invitations", "enrolled_at", "SELECT"),
+    ("platform_owner_invitations", "consumed_at", "SELECT"),
+    ("platform_owner_invitations", "revoked_at", "SELECT"),
     ("platform_owner_invitations", "id", "INSERT"),
     ("platform_owner_invitations", "token_digest", "INSERT"),
     ("platform_owner_invitations", "token_fingerprint", "INSERT"),
@@ -596,6 +648,76 @@ _P7_CONFIGURATION_COLUMNS = {
     ("platform_secret_mutations", "committed_at", "UPDATE"),
 }
 
+# Adoption command ACLs are column-scoped. This inventory must fail if a future
+# migration reintroduces whole-table authority to the SECURITY DEFINER owner.
+_CONTROLLER_POLICY_ADOPTION_COLUMNS = (
+    {
+        ("controller_policy_adoption_requests", column, "SELECT")
+        for column in (
+            "id",
+            "organization_id",
+            "controller_principal_id",
+            "controller_binding_id",
+            "source_policy_key",
+            "target_policy_key",
+            "expected_authority_revision",
+            "reason",
+            "status",
+            "revision",
+            "created_at",
+            "expires_at",
+            "controller_native_identity_id",
+            "controller_recovery_epoch",
+        )
+    }
+    | {
+        ("controller_policy_adoption_requests", column, "UPDATE")
+        for column in ("status", "revision", "closed_at")
+    }
+    | {
+        ("controller_policy_adoption_facts", column, "SELECT")
+        for column in (
+            "id",
+            "request_id",
+            "organization_id",
+            "controller_principal_id",
+            "source_policy_key",
+            "target_policy_key",
+            "authority_revision_before",
+            "authority_revision_after",
+            "added_capabilities",
+            "idempotency_key_digest",
+            "intent_digest",
+            "platform_approver_principal_id",
+            "platform_authority_revision",
+            "applied_at",
+            "controller_native_identity_id",
+            "controller_recovery_epoch",
+        )
+    }
+    | {
+        ("controller_policy_adoption_facts", column, "INSERT")
+        for column in (
+            "request_id",
+            "organization_id",
+            "controller_principal_id",
+            "controller_binding_id",
+            "platform_approver_principal_id",
+            "source_policy_key",
+            "target_policy_key",
+            "authority_revision_before",
+            "authority_revision_after",
+            "added_capabilities",
+            "idempotency_key_digest",
+            "intent_digest",
+            "platform_authority_revision",
+            "correlation_id",
+            "controller_native_identity_id",
+            "controller_recovery_epoch",
+        )
+    }
+)
+
 
 def test_platform_control_roles_have_exact_elevation(admin_conn: PgConnection) -> None:
     rows = admin_conn.execute(
@@ -640,15 +762,69 @@ def test_platform_control_definer_has_only_reviewed_columns(
         (cast(str, table), cast(str, column), cast(str, privilege))
         for table, column, privilege in rows
     }
-    assert actual == _EXPECTED_COLUMNS | _P7_CONFIGURATION_COLUMNS
+    assert actual == (
+        _EXPECTED_COLUMNS
+        | _P7_CONFIGURATION_COLUMNS
+        | _NATIVE_RECEIPT_COLUMNS
+        | _CONTROLLER_POLICY_ADOPTION_COLUMNS
+    )
     assert admin_conn.execute(
         """
             SELECT table_name, privilege_type
               FROM information_schema.role_table_grants
              WHERE grantee = %s AND table_schema = 'request_engine'
+             ORDER BY table_name, privilege_type
             """,
         (_DEFINER,),
-    ).fetchall() == [("identity_recovery_issuance_reservations", "DELETE")]
+    ).fetchall() == [
+        ("identity_recovery_issuance_reservations", "DELETE"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "role,statement",
+    [
+        (_DEFINER, "SELECT created_at FROM request_engine.native_identity_provision_receipts"),
+        (_DEFINER, "SELECT correlation_id FROM request_engine.native_identity_provision_receipts"),
+        (
+            _DEFINER,
+            "INSERT INTO request_engine.native_identity_provision_receipts"
+            "(created_at) VALUES(clock_timestamp())",
+        ),
+        (
+            _DEFINER,
+            "UPDATE request_engine.native_identity_provision_receipts "
+            "SET login_handle='forbidden' WHERE false",
+        ),
+        (_DEFINER, "DELETE FROM request_engine.native_identity_provision_receipts WHERE false"),
+        (
+            _RUNTIME,
+            "SELECT actor_principal_id FROM request_engine.native_identity_provision_receipts",
+        ),
+        (
+            _RUNTIME,
+            "INSERT INTO request_engine.native_identity_provision_receipts"
+            "(actor_principal_id) VALUES(NULL)",
+        ),
+        (
+            "request_engine_app",
+            "SELECT actor_principal_id FROM request_engine.native_identity_provision_receipts",
+        ),
+        (
+            "request_engine_app",
+            "INSERT INTO request_engine.native_identity_provision_receipts"
+            "(actor_principal_id) VALUES(NULL)",
+        ),
+    ],
+)
+def test_native_receipt_columns_deny_unnecessary_and_runtime_access(
+    admin_conn: PgConnection, role: str, statement: str
+) -> None:
+    # Real role checks precede constraints, so invalid placeholder rows cannot
+    # manufacture a passing denial through a NOT NULL or FK failure instead.
+    with pytest.raises(InsufficientPrivilege), admin_conn.transaction():
+        admin_conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(role)))
+        admin_conn.execute(cast(LiteralString, statement))
 
 
 def test_platform_control_definer_uses_native_auth_only_through_lock_boundary(
@@ -683,12 +859,56 @@ def test_platform_control_definer_uses_native_auth_only_through_lock_boundary(
             ).fetchone() == (False,)
 
 
+def test_controller_policy_adoption_functions_have_narrow_control_authority(
+    admin_conn: PgConnection,
+) -> None:
+    expected = {
+        "apply_controller_policy_adoption": (
+            "p_request_id uuid, p_expected_revision bigint, p_key_digest text, p_intent_digest text"
+        ),
+        "review_controller_policy_adoption": "p_request_id uuid",
+    }
+    rows = admin_conn.execute(
+        """
+        SELECT p.proname, pg_get_function_identity_arguments(p.oid),
+               pg_get_userbyid(p.proowner), p.prosecdef, p.proconfig
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE p.oid = ANY(%s::regprocedure[])
+         ORDER BY 1
+        """,
+        ([_ADOPTION_APPLY_FUNCTION, _ADOPTION_REVIEW_FUNCTION],),
+    ).fetchall()
+    assert {cast(str, name): cast(str, arguments) for name, arguments, *_ in rows} == expected
+    assert all(
+        cast(str, owner) == _DEFINER
+        and bool(security_definer)
+        and config == ["search_path=pg_catalog, request_engine, request_platform, pg_temp"]
+        for _, _, owner, security_definer, config in rows
+    )
+
+    # The privileged code is callable only through the explicit platform-control
+    # runtime identity. Ownership is exact; neither PUBLIC nor tenant app access
+    # receives a second path into the definer routines.
+    for function in (_ADOPTION_APPLY_FUNCTION, _ADOPTION_REVIEW_FUNCTION):
+        assert admin_conn.execute(
+            "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+            (_RUNTIME, function),
+        ).fetchone() == (True,)
+        for role in ("request_engine_app", "public"):
+            assert admin_conn.execute(
+                "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+                (role, function),
+            ).fetchone() == (False,)
+
+
 def test_only_platform_control_runtime_can_execute_commands(
     admin_conn: PgConnection,
 ) -> None:
     for function in (
         _PROVISIONER_FUNCTION,
         _NATIVE_PROVISIONER_FUNCTION,
+        _NATIVE_IDENTITY_FUNCTION,
         _ROOT_FUNCTION,
         _POLICY_FUNCTION,
         _LIFECYCLE_FUNCTION,

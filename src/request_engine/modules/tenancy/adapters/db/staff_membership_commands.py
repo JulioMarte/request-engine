@@ -1,3 +1,4 @@
+import unicodedata
 from typing import NoReturn, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
@@ -17,6 +18,7 @@ from request_engine.modules.tenancy.application.commands.staff_membership import
     InviteNativeStaffResult,
     ReplaceStaffAuthorityCommand,
     TransitionStaffMembershipCommand,
+    UpdateStaffProfileCommand,
 )
 from request_engine.modules.tenancy.application.errors import (
     StaffMembershipConflict,
@@ -25,14 +27,16 @@ from request_engine.modules.tenancy.application.errors import (
     StaffMembershipNotFound,
     StaffMembershipRevisionConflict,
 )
+from request_engine.modules.tenancy.application.staff_authority import (
+    validate_staff_capabilities,
+)
+from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, actor_transaction
 from request_engine.platform.idempotency.postgres import (
     acquire_idempotency,
     command_fingerprint,
     complete_idempotency,
 )
-from request_engine.platform.security.capabilities import capability_definition
-from request_engine.platform.security.capability_types import AuthorityPlane
 from request_engine.platform.security.context import ActorContext, PrincipalKind
 
 _INVITE_CAPABILITY = "staff.invite"
@@ -57,21 +61,6 @@ def _validate_idempotency_key(value: str) -> str:
     if not normalized:
         raise ValueError("idempotency_key is required")
     return normalized
-
-
-def _validate_staff_capabilities(capabilities: tuple[str, ...]) -> tuple[str, ...]:
-    if len(set(capabilities)) != len(capabilities):
-        raise ValueError("desired_capabilities must not contain duplicates")
-    for capability in capabilities:
-        definition = capability_definition(capability)
-        if definition is None or definition.key != capability:
-            raise ValueError(f"unknown or non-canonical capability: {capability}")
-        if definition.authority_plane not in {
-            AuthorityPlane.TENANT_CONTROL,
-            AuthorityPlane.OPERATIONAL,
-        }:
-            raise ValueError(f"capability is not tenant authority: {capability}")
-    return capabilities
 
 
 def _require_human_actor(actor: ActorContext) -> None:
@@ -125,12 +114,95 @@ class PostgresStaffMembershipCommands:
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
+    async def update_staff_profile(
+        self, actor: ActorContext, command: UpdateStaffProfileCommand
+    ) -> int:
+        _require_human_actor(actor)
+        if not actor.allows(_MEMBERSHIP_CAPABILITY):
+            raise StaffMembershipForbidden("staff profile management requires membership authority")
+        if command.expected_profile_revision < 0:
+            raise ValueError("expected_profile_revision cannot be negative")
+        name = command.display_name.strip() if command.display_name is not None else None
+        if name is not None and (
+            not 1 <= len(name) <= 200
+            or any(unicodedata.category(character).startswith("C") for character in name)
+        ):
+            raise ValueError("display_name must contain 1..200 characters without controls")
+        provenance = _validate_provenance_reference(command.provenance_reference)
+        key = _validate_idempotency_key(command.idempotency_key)
+        fingerprint = command_fingerprint(
+            _MEMBERSHIP_CAPABILITY,
+            {
+                "operation": "staff_profile_update",
+                "membership_id": command.membership_id,
+                "display_name": name,
+                "expected_profile_revision": command.expected_profile_revision,
+                "provenance_reference": provenance,
+            },
+        )
+        async with actor_transaction(self._session_factory, actor) as session:
+            try:
+                idem_id, replay = await acquire_idempotency(
+                    session,
+                    organization_id=actor.organization_id,
+                    principal_id=actor.principal_id,
+                    capability=_MEMBERSHIP_CAPABILITY,
+                    idempotency_key=key,
+                    fingerprint=fingerprint,
+                )
+                # Same idempotency-before-root order as existing staff commands.
+                # Revalidate before replay too; stale ActorContext is never enough.
+                await session.execute(
+                    text("SELECT request_cmd.lock_staff_member_profile(:member)"),
+                    {"member": command.membership_id},
+                )
+                if replay is not None:
+                    return _replay_revision(replay, "profile_revision")
+                revision = int(
+                    (
+                        await session.execute(
+                            text("""
+                    SELECT request_cmd.write_staff_member_profile(
+                        :member,:expected,:name,:provenance)
+                """),
+                            {
+                                "member": command.membership_id,
+                                "expected": command.expected_profile_revision,
+                                "name": name,
+                                "provenance": provenance,
+                            },
+                        )
+                    ).scalar_one()
+                )
+            except DBAPIError as exc:
+                _raise_staff_db_error(exc)
+            await append_audit(
+                session,
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                command_name="staff.profile.update",
+                aggregate_kind="StaffMemberProfile",
+                aggregate_id=command.membership_id,
+                idempotency_id=idem_id,
+                details={
+                    "action": "profile_update",
+                    "reason_code": "staff_profile_updated",
+                    "revision_before": command.expected_profile_revision,
+                    "revision_after": revision,
+                    "provenance_reference": provenance,
+                },
+            )
+            await complete_idempotency(session, idem_id, {"profile_revision": revision})
+            return revision
+
     async def invite_native_staff(
         self,
         actor: ActorContext,
         command: InviteNativeStaffCommand,
     ) -> InviteNativeStaffResult:
         _require_human_actor(actor)
+        if not actor.allows(_INVITE_CAPABILITY):
+            raise StaffMembershipForbidden("staff command capability is absent from actor context")
         provenance = _validate_provenance_reference(command.provenance_reference)
         idempotency_key = _validate_idempotency_key(command.idempotency_key)
         fingerprint = command_fingerprint(
@@ -150,6 +222,15 @@ class PostgresStaffMembershipCommands:
                 idempotency_key=idempotency_key,
                 fingerprint=fingerprint,
             )
+            try:
+                # Idempotency precedes ordered tenant/actor locks on every path.
+                # Completed receipts do not grant authority to a stale context.
+                await session.execute(
+                    text("SELECT request_cmd.lock_staff_command_authority(:capability)"),
+                    {"capability": _INVITE_CAPABILITY},
+                )
+            except DBAPIError as exc:
+                _raise_staff_db_error(exc)
             if replay is not None:
                 return _replay_invitation(replay)
 
@@ -218,9 +299,11 @@ class PostgresStaffMembershipCommands:
         command: ReplaceStaffAuthorityCommand,
     ) -> int:
         _require_human_actor(actor)
+        if not actor.allows(_AUTHORITY_CAPABILITY):
+            raise StaffMembershipForbidden("staff command capability is absent from actor context")
         if command.expected_authority_revision <= 0:
             raise ValueError("expected_authority_revision must be positive")
-        desired = _validate_staff_capabilities(command.desired_capabilities)
+        desired = validate_staff_capabilities(command.desired_capabilities)
         provenance = _validate_provenance_reference(command.provenance_reference)
         idempotency_key = _validate_idempotency_key(command.idempotency_key)
         fingerprint = command_fingerprint(
@@ -241,6 +324,15 @@ class PostgresStaffMembershipCommands:
                 idempotency_key=idempotency_key,
                 fingerprint=fingerprint,
             )
+            try:
+                # Idempotency precedes ordered tenant/actor locks on every path.
+                # Completed receipts do not grant authority to a stale context.
+                await session.execute(
+                    text("SELECT request_cmd.lock_staff_command_authority(:capability)"),
+                    {"capability": _AUTHORITY_CAPABILITY},
+                )
+            except DBAPIError as exc:
+                _raise_staff_db_error(exc)
             if replay is not None:
                 return _replay_revision(replay, "authority_revision")
             try:
@@ -292,6 +384,8 @@ class PostgresStaffMembershipCommands:
         command: TransitionStaffMembershipCommand,
     ) -> int:
         _require_human_actor(actor)
+        if not actor.allows(_MEMBERSHIP_CAPABILITY):
+            raise StaffMembershipForbidden("staff command capability is absent from actor context")
         if command.expected_revision <= 0:
             raise ValueError("expected_revision must be positive")
         provenance = _validate_provenance_reference(command.provenance_reference)
@@ -314,6 +408,15 @@ class PostgresStaffMembershipCommands:
                 idempotency_key=idempotency_key,
                 fingerprint=fingerprint,
             )
+            try:
+                # Idempotency precedes ordered tenant/actor locks on every path.
+                # Completed receipts do not grant authority to a stale context.
+                await session.execute(
+                    text("SELECT request_cmd.lock_staff_command_authority(:capability)"),
+                    {"capability": _MEMBERSHIP_CAPABILITY},
+                )
+            except DBAPIError as exc:
+                _raise_staff_db_error(exc)
             if replay is not None:
                 return _replay_revision(replay, "membership_revision")
             try:

@@ -1,0 +1,204 @@
+rule_files:
+  - ../alert-rules.yaml
+evaluation_interval: 30s
+tests:
+  - name: due scheduled action without terminal progress fires
+    interval: 30s
+    input_series:
+      - series: request_engine_scheduled_action_backlog
+        values: '1+0x30'
+      - series: request_engine_worker_outcomes_total{worker="scheduled_action",outcome="retry"}
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: RequestEngineWorkerProgressStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: A non-empty worker backlog is making no progress
+  - name: future scheduled action does not appear in executable backlog
+    interval: 30s
+    input_series:
+      - series: request_engine_scheduled_action_backlog
+        values: '0+0x30'
+      - series: request_engine_worker_outcomes_total{worker="scheduled_action",outcome="retry"}
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: RequestEngineWorkerProgressStalled
+        exp_alerts: []
+  - name: ambiguous delivery is critical
+    interval: 30s
+    input_series:
+      - series: request_engine_communication_ambiguous_10m
+        values: '1+0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RequestEngineAmbiguousDelivery
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Communication delivery has an ambiguous outcome; reconcile before retry
+  - name: stopped operator metrics collector fires stale alert
+    interval: 30s
+    input_series:
+      - series: request_engine_operator_metrics_collector_last_success_timestamp
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RequestEngineOperatorMetricsCollectorStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Operator metrics database collector has stopped reporting
+  - name: absent worker cycle signal fires after grace
+    interval: 30s
+    input_series: []
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RequestEngineWorkerSignalsMissing
+        exp_alerts:
+          - exp_labels:
+              worker: scheduled_action
+              severity: warning
+            exp_annotations:
+              summary: Worker cycle telemetry is missing
+          - exp_labels:
+              worker: outbox
+              severity: warning
+            exp_annotations:
+              summary: Worker cycle telemetry is missing
+          - exp_labels:
+              worker: provider_event
+              severity: warning
+            exp_annotations:
+              summary: Worker cycle telemetry is missing
+  - name: absent recovery evidence remains unverified
+    interval: 30s
+    input_series: []
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RequestEngineRecoveryEvidenceUnverified
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Backup or restore-drill evidence is unknown, missing, or unverified
+  - name: old evidence verification bit does not hide missing freshness age
+    interval: 30s
+    input_series:
+      - series: request_engine_backup_evidence_verified
+        values: '1+0x30'
+      - series: request_engine_restore_drill_verified
+        values: '1+0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RequestEngineRecoveryEvidenceUnverified
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Backup or restore-drill evidence is unknown, missing, or unverified
+  - name: stale backup age fires after evidence was once verified
+    interval: 30s
+    input_series:
+      - series: request_engine_backup_evidence_verified
+        values: '1+0x30'
+      - series: request_engine_restore_drill_verified
+        values: '1+0x30'
+      - series: request_engine_backup_evidence_age_seconds
+        values: '3000000+0x30'
+      - series: request_engine_restore_drill_evidence_age_seconds
+        values: '0+0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RequestEngineRecoveryEvidenceUnverified
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Backup or restore-drill evidence is unknown, missing, or unverified
+  - name: zero delivery failure signals remain healthy
+    interval: 30s
+    input_series:
+      - series: request_engine_provider_event_failures_10m
+        values: '0+0x10'
+      - series: request_engine_communication_failures_10m
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RequestEngineDeliveryFailures
+        exp_alerts: []
+  - name: complete fresh telemetry keeps operational alerts clear
+    interval: 30s
+    input_series:
+      - series: up{job="request-engine-collector"}
+        values: '1+0x30'
+      - series: request_engine_worker_cycles_total{worker="scheduled_action"}
+        values: '0+1x30'
+      - series: request_engine_worker_cycles_total{worker="outbox"}
+        values: '0+1x30'
+      - series: request_engine_worker_cycles_total{worker="provider_event"}
+        values: '0+1x30'
+      - series: request_engine_scheduled_action_backlog
+        values: '0+0x30'
+      - series: request_engine_scheduled_action_oldest_age_seconds
+        values: '0+0x30'
+      - series: request_engine_outbox_backlog
+        values: '0+0x30'
+      - series: request_engine_outbox_oldest_age_seconds
+        values: '0+0x30'
+      - series: request_engine_provider_event_backlog
+        values: '0+0x30'
+      - series: request_engine_provider_event_oldest_age_seconds
+        values: '0+0x30'
+      - series: request_engine_provider_event_failures_10m
+        values: '0+0x30'
+      - series: request_engine_communication_failures_10m
+        values: '0+0x30'
+      - series: request_engine_communication_ambiguous_10m
+        values: '0+0x30'
+      - series: request_engine_operator_metrics_collector_last_success_timestamp
+        values: '0+30x30'
+      - series: request_engine_backup_evidence_verified
+        values: '1+0x30'
+      - series: request_engine_restore_drill_verified
+        values: '1+0x30'
+      - series: request_engine_backup_evidence_age_seconds
+        values: '0+0x30'
+      - series: request_engine_restore_drill_evidence_age_seconds
+        values: '0+0x30'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: RequestEngineWorkerSignalsMissing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RequestEngineWorkerCycleStalled
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RequestEngineWorkerProgressStalled
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RequestEngineBacklogSignalsMissing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RequestEngineOperatorMetricsCollectorStale
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RequestEngineDeliverySignalsMissing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RequestEngineBacklogOldestAge
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RequestEngineDeliveryFailures
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RequestEngineAmbiguousDelivery
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RequestEngineRecoveryEvidenceUnverified
+        exp_alerts: []

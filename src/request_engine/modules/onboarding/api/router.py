@@ -26,6 +26,7 @@ class ReadinessBlockerView(BaseModel):
     resolution_capabilities: tuple[str, ...] = ()
     requires_operator: bool = False
     operation_id: str | None = None
+    resolution_hint: str | None = None
 
 
 class JourneyReadinessView(BaseModel):
@@ -63,6 +64,7 @@ def _blocker(
     *resolution_capabilities: str,
     requires_operator: bool = False,
     operation_id: str | None = None,
+    resolution_hint: str | None = None,
 ) -> ReadinessBlockerView:
     return ReadinessBlockerView(
         code=code,
@@ -70,6 +72,7 @@ def _blocker(
         resolution_capabilities=resolution_capabilities,
         requires_operator=requires_operator,
         operation_id=operation_id,
+        resolution_hint=resolution_hint,
     )
 
 
@@ -114,7 +117,12 @@ def _identity_section(facts: OnboardingIdentityFacts | None) -> JourneyReadiness
                     "tenancy",
                     "staff.invite",
                     "identity.link_self",
-                    operation_id="staff_invite",
+                    requires_operator=True,
+                    resolution_hint=(
+                        "Inspect the existing controller's identity binding and authentication "
+                        "status. Restore its authorized authentication path; creating another "
+                        "staff member does not repair this controller."
+                    ),
                 ),
             ),
         )
@@ -170,26 +178,79 @@ def project_readiness(facts: OnboardingReadiness) -> OnboardingReadinessView:
     """Project owner facts into actionable guidance without acquiring execution authority."""
 
     business_party_blockers = (
-        () if facts.has_business_party else (_blocker("business_party_missing", "tenancy"),)
+        ()
+        if facts.has_business_party
+        else (
+            _blocker(
+                "business_party_missing",
+                "tenancy",
+                "parties.register",
+                operation_id="parties_register",
+                resolution_hint=(
+                    "Register the intended active organization-kind business Party. This does "
+                    "not provision a tenant root/controller or grant Representation authority; "
+                    "inspect those provisioning facts separately if they are missing."
+                ),
+            ),
+        )
     )
     location_blockers = (
         ()
         if facts.location_count > 0
-        else (_blocker("location_missing", "catalog", "catalog.manage"),)
+        else (
+            _blocker(
+                "location_missing",
+                "catalog",
+                "catalog.manage",
+                operation_id="catalog_location_create",
+                resolution_hint="Create a location using the owner schema and an idempotency key.",
+            ),
+        )
     )
 
     appointment_blockers: list[ReadinessBlockerView] = []
     if facts.bookable_offering_version_count == 0:
-        appointment_blockers.append(_blocker("no_bookable_offering", "catalog", "catalog.manage"))
+        appointment_blockers.append(
+            _blocker(
+                "no_bookable_offering",
+                "catalog",
+                "catalog.manage",
+                operation_id="catalog_manage_offerings",
+                resolution_hint=(
+                    "Create or configure an active offering whose latest version is bookable; "
+                    "then configure its booking policy and capacity requirements."
+                ),
+            )
+        )
     if facts.resource_supply_count == 0:
         appointment_blockers.append(
-            _blocker("no_resource_supply", "booking", "booking.manage_supply")
+            _blocker(
+                "no_resource_supply",
+                "booking",
+                "booking.manage_supply",
+                operation_id="booking_resource_create",
+                resolution_hint=(
+                    "Create a resource if needed, then configure its location assignment and "
+                    "availability. Read current revisions before changing existing supply. "
+                    "A resource alone does not prove a bookable slot."
+                ),
+            )
         )
 
     queue_blockers = (
         ()
         if facts.active_queue_count > 0
-        else (_blocker("service_queue_missing", "queue", "queue.configure"),)
+        else (
+            _blocker(
+                "service_queue_missing",
+                "queue",
+                "queue.configure",
+                operation_id="queue_service_queue_create",
+                resolution_hint=(
+                    "Create an active service queue for the intended location/offering."
+                ),
+            ),
+        )
     )
     communication_blockers = (
         ()
@@ -199,6 +260,11 @@ def project_readiness(facts: OnboardingReadiness) -> OnboardingReadinessView:
                 "channel_purpose_disabled",
                 "communications",
                 "communications.configure",
+                operation_id="communications_configure_channel_policy",
+                resolution_hint=(
+                    "Read the disabled purpose's policy and revision, then enable its intended "
+                    "channel with the owner's concurrency contract. This does not certify SMTP."
+                ),
             ),
         )
     )

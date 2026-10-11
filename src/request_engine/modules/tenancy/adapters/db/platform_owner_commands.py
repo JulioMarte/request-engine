@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import secrets
@@ -33,6 +32,7 @@ from request_engine.platform.security.native_auth import (
     hash_password,
     normalize_login_handle,
 )
+from request_engine.platform.security.password_work import run_password_work
 from request_engine.platform.security.platform_context import PlatformActorContext
 
 _OWNER_NAMESPACE = UUID("9e24e794-70ff-4b88-b6d5-15c5b315db48")
@@ -117,7 +117,7 @@ class PostgresPlatformOwnerCommands:
         command: EnrollPlatformOwnerInvitationCommand,
     ) -> PlatformOwnerInvitationEnrollmentResult:
         normalized_login = normalize_login_handle(command.login_handle)
-        verifier = await asyncio.to_thread(hash_password, command.password)
+        verifier = await run_password_work(hash_password, command.password)
         token_digest = hashlib.sha256(command.raw_token.encode("utf-8")).digest()
         native_identity_id = uuid4()
         credential_id = uuid4()

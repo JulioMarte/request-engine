@@ -5,6 +5,53 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0038: bounded transport-only shared authentication admission; no direct state-table ACL.
+    "request_auth.admit_http_authentication(p_limit integer)",
+    # 0025: current HUMAN manager, tenant-local target and delegable ceiling;
+    # revision-checked credential replacement, with no direct credential table ACL.
+    "request_cmd.lock_agent_credential_manager(p_target uuid)",
+    (
+        "request_cmd.rotate_agent_credential(p_target uuid, p_expected bigint, "
+        "p_credential uuid, p_digest bytea, p_fingerprint text, "
+        "p_expiry timestamp with time zone)"
+    ),
+    # Metadata only; never returns token digest, fingerprint or plaintext.
+    "request_read.agent_credential_metadata(p_target uuid)",
+    # 0012: closed staff capability gate, current actor locks, no business writes.
+    "request_cmd.lock_staff_command_authority(p_capability text)",
+    # 0028: current controller-upgrade authority before an idempotency replay.
+    "request_cmd.lock_controller_policy_upgrade_authority()",
+    # 0027: original-root consent, cancellation, and own-request receipt reads.
+    (
+        "request_cmd.request_controller_policy_adoption(p_binding_id uuid, "
+        "p_expected_authority_revision bigint, p_reason text, p_key_digest text, "
+        "p_intent_digest text, p_correlation_id uuid)"
+    ),
+    (
+        "request_cmd.withdraw_controller_policy_adoption(p_request_id uuid, "
+        "p_expected_revision bigint, p_binding_id uuid, p_key_digest text, "
+        "p_intent_digest text)"
+    ),
+    "request_cmd.read_controller_policy_adoption(p_request_id uuid, p_binding_id uuid)",
+    # 0011: fixed-capability tenant-local profile locks/CAS; no authority writes.
+    "request_cmd.lock_staff_member_profile(p_membership uuid)",
+    (
+        "request_cmd.write_staff_member_profile(p_membership uuid, p_expected bigint, "
+        "p_name text, p_provenance text)"
+    ),
+    # 0009: current manager gate and subject-proof-bound staff materialization.
+    "request_cmd.assert_staff_invitation_manager()",
+    "request_cmd.lock_staff_invitation_admin(p_id uuid)",
+    (
+        "request_cmd.lock_staff_invitation_acceptance(p_id uuid, p_digest text, "
+        "p_authority uuid, p_identity uuid, p_session uuid)"
+    ),
+    (
+        "request_cmd.materialize_invited_staff(p_id uuid, p_digest text, p_authority uuid, "
+        "p_identity uuid, p_session uuid, p_membership uuid, p_principal uuid, p_binding uuid)"
+    ),
+    # 0007: current-tenant planner projection, not the private cross-tenant predicate.
+    "request_read.staff_controller_is_effective(p_principal_id uuid)",
     # 0030: current HUMAN manager revalidation, bounded credential replacement,
     # and tenant-local inspection. Private state mutators remain owner-only.
     "request_cmd.assert_integration_manager(p_capability text)",

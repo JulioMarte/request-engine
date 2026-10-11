@@ -54,6 +54,13 @@ class PostgresResourceCreationCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
+                )
                 idem, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -64,13 +71,6 @@ class PostgresResourceCreationCommands:
                 )
                 if replay is not None:
                     return _state_from_json(cast(dict[str, object], replay["resource"]))
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
-                )
                 location_exists = (
                     await session.execute(
                         text(

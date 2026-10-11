@@ -6,6 +6,9 @@ from request_engine.modules.catalog.adapters.db.bootstrap_catalog_commands impor
 from request_engine.modules.catalog.adapters.db.business_info_reader import (
     PostgresBusinessInfoReader,
 )
+from request_engine.modules.catalog.adapters.db.configuration_reader import (
+    PostgresCatalogConfigurationReader,
+)
 from request_engine.modules.catalog.adapters.db.location_creation_commands import (
     PostgresLocationCreationCommands,
 )
@@ -25,8 +28,10 @@ from request_engine.modules.catalog.adapters.db.organization_holiday_commands im
     PostgresOrganizationHolidayCommands,
 )
 from request_engine.modules.catalog.api.bootstrap_router import create_bootstrap_router
+from request_engine.modules.catalog.api.configuration_router import create_configuration_router
 from request_engine.modules.catalog.api.operational_errors import (
     catalog_operational_error_handler,
+    register_input_error_handler,
 )
 from request_engine.modules.catalog.api.operational_profile_router import (
     create_operational_profile_router,
@@ -51,6 +56,15 @@ def install_http(
     actor_resolver: ActorResolver,
 ) -> None:
     """Connect the public Catalog read surface to the public HTTP process."""
+
+    register_input_error_handler(app)
+
+    app.include_router(
+        create_configuration_router(
+            PostgresCatalogConfigurationReader(session_factory),
+            actor_resolver,
+        )
+    )
 
     app.add_exception_handler(
         LocationOperationalRevisionConflict,
@@ -87,6 +101,8 @@ def install_operational_http(
     actor_resolver: ActorResolver,
 ) -> None:
     """Connect Catalog configuration commands to the operator HTTP process."""
+
+    register_input_error_handler(app)
 
     app.add_exception_handler(
         LocationOperationalRevisionConflict,

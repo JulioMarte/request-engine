@@ -114,7 +114,9 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
         rp_id = public_key["rp"]["id"]
         authenticator = SoftwareAuthenticator(rp_id=rp_id, origin=ORIGIN)
         credential = authenticator.registration_credential(
-            challenge=websafe_decode(public_key["challenge"]), user_verified=True
+            challenge=websafe_decode(public_key["challenge"]),
+            public_key=public_key,
+            user_verified=True,
         )
         registered = await client.post(
             "/v1/setup/webauthn/registrations",
@@ -207,7 +209,13 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
         "WHERE principal_id = %s AND principal_plane = 'platform'",
         (owner_principal_id,),
     ).fetchone()
-    assert grants is not None and grants[0] == 23
+    # Platform owner v4 adds the explicit organization-directory read grant.
+    assert grants is not None and grants[0] == 24
+    assert e2e_admin_conn.execute(
+        "SELECT status, delegable FROM request_engine.principal_authority_grants "
+        "WHERE principal_id = %s AND capability_key = 'platform.organization.read'",
+        (owner_principal_id,),
+    ).fetchone() == ("active", False)
 
 
 @pytest.mark.asyncio
@@ -235,7 +243,9 @@ async def test_webauthn_registration_rejects_another_setup_session(
         public_key = options_response.json()["public_key"]
         authenticator = SoftwareAuthenticator(rp_id=public_key["rp"]["id"], origin=ORIGIN)
         credential = authenticator.registration_credential(
-            challenge=websafe_decode(public_key["challenge"]), user_verified=True
+            challenge=websafe_decode(public_key["challenge"]),
+            public_key=public_key,
+            user_verified=True,
         )
 
         # A valid bearer for another concurrent ceremony cannot complete this one.

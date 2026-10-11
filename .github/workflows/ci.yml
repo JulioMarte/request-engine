@@ -142,7 +142,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18
+        image: public.ecr.aws/docker/library/postgres:18
         env:
           POSTGRES_DB: request_engine
           POSTGRES_USER: request_engine
@@ -177,7 +177,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:18
+        image: public.ecr.aws/docker/library/postgres:18
         env:
           POSTGRES_DB: request_engine_current
           POSTGRES_USER: postgres

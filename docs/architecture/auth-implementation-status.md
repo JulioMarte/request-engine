@@ -7,6 +7,67 @@ amended slices in `principal-agent-and-provisioning-authority-model.md`.
 **Overall status: incomplete; not certified for production.** Passing the current
 tests is necessary but does not prove the unimplemented acceptance journeys.
 
+Current governance correction (2026-10-08, inspected candidate `1bf18997`):
+ADR 0016 is Accepted and existing-root controller-policy adoption is implemented.
+The original tenant root gives explicit consent; a distinct authorized platform
+HUMAN approves it with recent phishing-resistant proof. Neither ordinary
+self-upgrade beyond a delegable ceiling nor automatic grants are authorized.
+Historical E1 tests below exercise a manager who already has upgrade authority;
+they are not the evidence for this separate adoption journey.
+
+The current implementation snapshots the controller's native identity and
+recovery epoch. Recovery after consent invalidates unapplied consent even after
+recovery completes; withdrawal and fresh consent are required. Both participants
+must meet the configured native authority and normal recovery-posture admission
+checks. Discoverable WebAuthn login binds the required assertion user handle to
+the credential's persisted registration handle, preserves setup handles during
+claim promotion, checks the configured authority and rechecks challenge expiry
+after serialization locks. These corrections are present in the candidate;
+this documentation reconciliation does not establish a new passing test run.
+
+Current verification continuation (2026-10-09): migration
+`0036_webauthn_deadline` extends the strict atomic-effect expiry contract to all
+five finalizers and rolls back effects delayed beyond TTL. Local PostgreSQL 18.6
+proofs reproduced eight failures before the fix and passed 50 cases afterward.
+Per-engine connection ceilings are configurable and enforced for both supported
+async drivers. The 17-operation Booking/Catalog authority matrix passed 204
+cases; adoption recovery/suspension/native-disable races passed, and a populated
+0033-to-head upgrade preserved genuine native/setup passkeys. These are local
+proofs with explicit fixture preconditions, not operational acceptance.
+
+The complete local current-product run subsequently passed 1676 tests in 24
+packets, including 484 E2E and 478 principal-authority cases, with no failures or
+skips. Its executed-proof validation reports no gaps. This is PostgreSQL 18.6
+laboratory evidence on the frozen code/tests of `7ca79bca`, not Docker, exact-head
+GitHub CI or acceptance of a real deployment.
+
+The [current readiness reconciliation](../testing/pr137-api-production-readiness-2026-10-06.md#continuacion-de-implementacion-2026-10-09)
+records those results, their laboratory boundaries and remaining evidence.
+Production remains uncertified: final candidate CI/review, upgrade from the
+actual installed revision, capacity/ingress/rate/retention budgets and acceptance
+of real SMTP, backup/restore, alerts and isolated deployment remain open.
+
+Current operational candidate continuation (2026-10-09, no installation yet):
+`0037_webauthn_retention` adds opt-in bounded challenge cleanup with dedicated
+NOLOGIN roles and fail-closed role reuse. Authentication/setup POST admission
+is limited to 120 attempts per rolling minute per process; replicas and restarts
+still need deployment-wide ingress controls. A full-response bounded load probe
+exercises real TCP and records failures rather than certifying capacity.
+Laboratory evidence includes 300 successful nominal requests and a subsequent
+50-request phase with exactly 20 accepted options and 30 rejected with 429;
+PostgreSQL holds exactly 120 pending challenges and no issued sessions.
+The earlier concurrency-8 measurement had 32% 503 responses under smaller
+admission/pool limits and is not a passing capacity result. No real SMTP,
+off-host restore, operator alert delivery or production network acceptance
+can be completed before an installation exists. See the updated readiness
+report and the indexed operational guides for commands and evidence limits.
+
+Current privacy correction superseding historical decoy claims below:
+ADR 0014 §9 (2026-10-03) requires the same discoverable options for supplied and
+omitted handles, with no credential-id/count disclosure and intended-handle
+validation before completion. Legacy non-discoverable keys use the documented
+password/recovery replacement journey; they are not deleted.
+
 Detailed continuation plan: `auth-production-completion-plan.md` (2026-09-14).
 For the initial platform trust root specifically, ADR 0014 and
 `instance-claim-platform-owner-plan.md` (2026-09-18) are now the accepted target:
@@ -425,8 +486,9 @@ Production change:
   `tenant-controller-v5` catalog row = v4 plus the delegable operational
   `authority.inspect_resource` grant. No table, function or backfill; existing
   roots and revoked grants are neither upgraded nor restored. New native roots
-  still select `tenant-controller-v3`; v5 is a governed upgrade target exactly like
-  v4 (documented decision, consistent with E1).
+  selected `tenant-controller-v3` at that historical checkpoint. Current application
+  default is v6 after `0021_tenant_controller_v6`, only for fresh native roots;
+  existing-root adoption remains pending governance, not a working self-upgrade.
 - Pydantic-free tenancy contract `contracts/resource_authority.py`:
   `ResourceAuthorityOperation` (`appointments.book`, `booking.manage_supply`),
   `ResourceAuthorityQuery` (per-operation shape validation), `ResourceAuthorityDecision`
@@ -2196,3 +2258,19 @@ and the old password is never replayable.
 
 This is account-access recovery, not Instance recovery and not secret-store
 restore. OpenBao/backup recovery is governed separately by ADR 0015.
+
+## Discoverable usernameless passkey login
+
+Migration `0002_discoverable_webauthn_login` makes `login_handle` optional on the
+native WebAuthn login surface. Omitting it begins a discoverable ceremony (empty
+allow-list, unbound challenge) and completes by resolving the owning native
+identity from the presented credential id; supplying a handle now uses those
+same discoverable options and additionally validates the intended identity at
+completion (ADR 0014 §9). Assurance, user verification
+and methods remain derived only from the verified ceremony, the authority ->
+identity -> credential lock order is unchanged, and the new finalizer is
+executable only by the app role (PUBLIC revoked). Current guarantee
+`INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001`, proved by
+`tests/db/test_webauthn_persistence.py` and
+`tests/e2e/test_native_webauthn_login_http.py`. The private admin console uses
+this flow for passkey sign-in (no username or password).

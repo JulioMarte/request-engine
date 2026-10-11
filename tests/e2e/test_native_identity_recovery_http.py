@@ -13,7 +13,7 @@ import os
 import smtplib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from typing import Any
 from uuid import UUID, uuid4
@@ -298,6 +298,7 @@ async def _bearer_headers(
     )
     credential = authenticator.registration_credential(
         challenge=websafe_decode(options["challenge"]),
+        public_key=options,
         user_verified=True,
     )
     registered = await client.post(
@@ -904,6 +905,8 @@ class _VaultKvV2Mock:
     def __init__(self) -> None:
         self.payloads: dict[str, dict[str, Any]] = {}
         self.data_writes: list[dict[str, Any]] = []
+        self.retention_seconds: dict[str, int] = {}
+        self.deletion_times: dict[str, str] = {}
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self._handle)
@@ -923,18 +926,41 @@ class _VaultKvV2Mock:
                     json={"errors": ["check-and-set parameter did not match the current version"]},
                 )
             self.payloads[key] = body["data"]
-            return httpx.Response(200, json={"data": {"version": 1}})
+            self.deletion_times[key] = (
+                datetime.now(UTC) + timedelta(seconds=self.retention_seconds[key])
+            ).isoformat()
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "version": 1,
+                        "deletion_time": self.deletion_times[key],
+                    }
+                },
+            )
         if kind == "data" and request.method == "GET":
             stored = self.payloads.get(key)
             if stored is None:
                 return httpx.Response(404, json={"errors": []})
             return httpx.Response(
                 200,
-                json={"data": {"data": stored, "metadata": {"version": 1}}},
+                json={
+                    "data": {
+                        "data": stored,
+                        "metadata": {
+                            "version": 1,
+                            "deletion_time": self.deletion_times[key],
+                        },
+                    }
+                },
             )
         if kind == "metadata" and request.method in ("POST", "DELETE"):
             if request.method == "DELETE":
                 self.payloads.pop(key, None)
+            else:
+                self.retention_seconds[key] = int(
+                    json.loads(request.content)["delete_version_after"][:-1]
+                )
             return httpx.Response(204)
         return httpx.Response(405)
 

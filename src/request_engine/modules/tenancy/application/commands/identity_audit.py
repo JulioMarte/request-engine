@@ -9,6 +9,7 @@ _MAX_POLICY_KEY = 200
 class IdentitySubjectKind(StrEnum):
     STAFF_MEMBERSHIP = "StaffMembership"
     AGENT_PRINCIPAL = "AgentPrincipal"
+    AGENT_CREDENTIAL = "AgentCredential"
     INTEGRATION_PRINCIPAL = "IntegrationPrincipal"
     INTEGRATION_CREDENTIAL = "IntegrationCredential"
     TENANT_CONTROLLER = "TenantController"

@@ -109,7 +109,7 @@ async def test_resource_activity_read_reconstructs_open_occupation(
         )
 
     assert observed.status_code == 200, observed.text
-    assert len(observed.json()) == 1
-    assert observed.json()[0]["id"] == started.json()["id"]
-    assert observed.json()[0]["kind"] == "administrative"
-    assert observed.json()[0]["ended_at"] is None
+    assert len(observed.json()["items"]) == 1
+    assert observed.json()["items"][0]["id"] == started.json()["id"]
+    assert observed.json()["items"][0]["kind"] == "administrative"
+    assert observed.json()["items"][0]["ended_at"] is None

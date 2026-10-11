@@ -85,6 +85,11 @@ WAITLIST_REMINDER_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.OPERATOR,
         "Configure the organization channel policy for one communication purpose.",
     ),
+    query_capability(
+        "communications.read_configuration",
+        CapabilityExposure.OPERATOR,
+        "Read organization channel configuration and its current revision.",
+    ),
     command_capability(
         "reminders.subject_override",
         CapabilityExposure.OPERATOR,

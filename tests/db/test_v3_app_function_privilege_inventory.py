@@ -53,7 +53,8 @@ def _executable_application_functions(conn: PgConnection) -> set[str]:
         SELECT pg_get_function_identity_arguments(p.oid), n.nspname, p.proname
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = ANY(%s)
+        WHERE (n.nspname = ANY(%s)
+               OR (n.nspname = 'request_auth' AND p.proname = 'admit_http_authentication'))
           AND has_schema_privilege(current_user, n.oid, 'USAGE')
           AND has_function_privilege(current_user, p.oid, 'EXECUTE')
         """,
@@ -79,10 +80,11 @@ def test_real_app_login_has_exact_reviewed_function_surface(
                    has_schema_privilege(current_user, 'request_engine', 'USAGE'),
                    has_schema_privilege(current_user, 'request_read', 'USAGE'),
                    has_schema_privilege(current_user, 'request_cmd', 'USAGE'),
-                   has_schema_privilege(current_user, 'request_admin', 'USAGE')
+                   has_schema_privilege(current_user, 'request_admin', 'USAGE'),
+                   has_schema_privilege(current_user, 'request_auth', 'USAGE')
             """
         ).fetchone()
-        assert identity == (True, True, False, False, True, True, True, False)
+        assert identity == (True, True, False, False, True, True, True, False, True)
 
         executable = _executable_application_functions(app)
         assert executable == REVIEWED_APP_EXECUTE_ALLOWLIST

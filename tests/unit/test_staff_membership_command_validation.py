@@ -9,6 +9,7 @@ from request_engine.modules.tenancy.adapters.db.staff_membership_commands import
 from request_engine.modules.tenancy.application.commands.staff_membership import (
     InviteNativeStaffCommand,
     ReplaceStaffAuthorityCommand,
+    UpdateStaffProfileCommand,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext, PrincipalKind
@@ -66,3 +67,17 @@ async def test_staff_invitation_rejects_invalid_provenance_before_db_access() ->
                     idempotency_key="invite-test",
                 ),
             )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["   ", "x" * 201, "bad\x00name", "hidden\u202ename"])
+async def test_profile_rejects_invalid_labels_before_database(name: str) -> None:
+    actor = ActorContext(
+        organization_id=uuid4(),
+        principal_id=uuid4(),
+        capabilities=frozenset({"staff.manage_membership"}),
+    )
+    with pytest.raises(ValueError, match="display_name"):
+        await _writer().update_staff_profile(
+            actor, UpdateStaffProfileCommand(uuid4(), name, 0, "directory:review", "profile:test")
+        )

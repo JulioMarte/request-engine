@@ -88,7 +88,7 @@ class PostgresOfferingCatalogReader:
             predicates = ["o.organization_id = :organization_id", "o.active"]
             parameters: dict[str, object] = {
                 "organization_id": query.organization_id,
-                "limit": query.limit,
+                "limit": query.limit + int(query.include_page_probe),
             }
             if query.search_text is not None and (search_text := query.search_text.strip()):
                 predicates.append(
@@ -102,6 +102,10 @@ class PostgresOfferingCatalogReader:
             if query.bookable is not None:
                 predicates.append("latest.bookable = :bookable")
                 parameters["bookable"] = query.bookable
+            if query.after_id is not None:
+                predicates.append("(o.display_name, o.id) > (:after_display_name, :after_id)")
+                parameters["after_display_name"] = query.after_display_name
+                parameters["after_id"] = query.after_id
             if query.requestable is not None:
                 predicates.append("latest.requestable = :requestable")
                 parameters["requestable"] = query.requestable
@@ -124,8 +128,8 @@ class PostgresOfferingCatalogReader:
                             FROM request_engine.offering_resource_requirements req
                             WHERE req.organization_id = o.organization_id
                               AND req.offering_version_id = latest.id
-                              AND (
-                                  SELECT count(DISTINCT r.id)
+                              AND NOT EXISTS (
+                                  SELECT 1
                                   FROM request_engine.resources r
                                   JOIN request_engine.resource_capability_assignments rca
                                     ON rca.organization_id = r.organization_id
@@ -139,7 +143,10 @@ class PostgresOfferingCatalogReader:
                                    AND a.effective_during @> CAST(:effective_at AS timestamptz)
                                   WHERE r.organization_id = o.organization_id
                                     AND r.active
-                              ) < req.quantity
+                                    AND ((r.capacity_model = 'exclusive' AND req.quantity = 1)
+                                         OR (r.capacity_model = 'units'
+                                             AND r.capacity_units >= req.quantity))
+                              )
                         )
                         """,
                     ]

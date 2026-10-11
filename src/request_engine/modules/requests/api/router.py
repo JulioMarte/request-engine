@@ -51,6 +51,7 @@ from request_engine.modules.requests.contracts.request import (
     RequestParticipantInput,
 )
 from request_engine.platform.http.capability_routes import add_capability_route
+from request_engine.platform.http.errors import ErrorEnvelope
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
 
@@ -234,6 +235,21 @@ def create_router(
         methods=["POST"],
         response_model=SubmittedRequestView,
         status_code=status.HTTP_201_CREATED,
+        responses={
+            404: {"model": ErrorEnvelope, "description": "Definition or exact version not found"},
+            409: {
+                "model": ErrorEnvelope,
+                "description": "Inactive definition, correlation or idempotency conflict",
+            },
+            422: {
+                "model": ErrorEnvelope,
+                "description": "Invalid input payload or referenced Party",
+            },
+            500: {
+                "model": ErrorEnvelope,
+                "description": "Definition schema invalid; operator intervention required",
+            },
+        },
     )
     add_capability_route(
         router,
@@ -242,6 +258,10 @@ def create_router(
         capability="requests.read",
         methods=["GET"],
         response_model=RequestView,
+        responses={
+            404: {"model": ErrorEnvelope, "description": "Request not found"},
+            422: {"model": ErrorEnvelope, "description": "Invalid Request identifier"},
+        },
     )
     if include_internal:
         add_capability_route(
@@ -251,6 +271,21 @@ def create_router(
             capability="requests.record_result",
             methods=["POST"],
             response_model=RequestView,
+            responses={
+                404: {
+                    "model": ErrorEnvelope,
+                    "description": "Request or definition version not found",
+                },
+                409: {
+                    "model": ErrorEnvelope,
+                    "description": "Lifecycle, result, revision or idempotency conflict",
+                },
+                422: {"model": ErrorEnvelope, "description": "Invalid input or result payload"},
+                500: {
+                    "model": ErrorEnvelope,
+                    "description": "Result schema invalid; operator intervention required",
+                },
+            },
         )
         add_capability_route(
             router,
@@ -259,6 +294,21 @@ def create_router(
             capability="requests.complete",
             methods=["POST"],
             response_model=RequestView,
+            responses={
+                404: {
+                    "model": ErrorEnvelope,
+                    "description": "Request or definition version not found",
+                },
+                409: {
+                    "model": ErrorEnvelope,
+                    "description": "Lifecycle, result, revision or idempotency conflict",
+                },
+                422: {"model": ErrorEnvelope, "description": "Invalid input or result payload"},
+                500: {
+                    "model": ErrorEnvelope,
+                    "description": "Result schema invalid; operator intervention required",
+                },
+            },
         )
     add_capability_route(
         router,
@@ -267,6 +317,14 @@ def create_router(
         capability="requests.cancel",
         methods=["POST"],
         response_model=RequestView,
+        responses={
+            404: {"model": ErrorEnvelope, "description": "Request not found"},
+            409: {
+                "model": ErrorEnvelope,
+                "description": "Lifecycle, revision or idempotency conflict",
+            },
+            422: {"model": ErrorEnvelope, "description": "Invalid input"},
+        },
     )
     if include_internal:
         add_capability_route(
@@ -276,5 +334,13 @@ def create_router(
             capability="requests.fail",
             methods=["POST"],
             response_model=RequestView,
+            responses={
+                404: {"model": ErrorEnvelope, "description": "Request not found"},
+                409: {
+                    "model": ErrorEnvelope,
+                    "description": "Lifecycle, revision or idempotency conflict",
+                },
+                422: {"model": ErrorEnvelope, "description": "Invalid input"},
+            },
         )
     return router

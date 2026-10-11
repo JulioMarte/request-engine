@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from request_engine.modules.tenancy.api.agent_governance_models import (
     AgentAuthorityReplaceBody,
     AgentAuthorityReplaceView,
+    AgentCredentialRotateBody,
+    AgentCredentialRotateView,
     AgentProfileTransitionBody,
     AgentProfileTransitionView,
     AgentProvisionBody,
@@ -17,6 +19,7 @@ from request_engine.modules.tenancy.application.commands.agent_governance import
     AgentGovernanceCommands,
     ProvisionAgentCommand,
     ReplaceAgentAuthorityCommand,
+    RotateAgentCredentialCommand,
     TransitionAgentProfileCommand,
 )
 from request_engine.modules.tenancy.application.errors import (
@@ -117,6 +120,44 @@ def add_agent_governance_routes(
         except ValueError as exc:
             raise AgentGovernanceInputInvalid(str(exc)) from None
         return AgentProfileTransitionView(profile_revision=revision)
+
+    async def rotate_credential(
+        agent_principal_id: UUID,
+        body: AgentCredentialRotateBody,
+        response: Response,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> AgentCredentialRotateView:
+        authorize(actor, "agent.manage_authority")
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            result = await commands.rotate_agent_credential(
+                actor,
+                RotateAgentCredentialCommand(
+                    agent_principal_id=agent_principal_id,
+                    expected_authority_revision=body.expected_authority_revision,
+                    credential_expires_at=body.credential_expires_at,
+                    provenance_reference=body.provenance_reference,
+                    idempotency_key=idempotency_key,
+                ),
+            )
+        except ValueError as exc:
+            raise AgentGovernanceInputInvalid(str(exc)) from None
+        return AgentCredentialRotateView(
+            credential_id=result.credential_id,
+            authority_revision=result.authority_revision,
+            workload_token=result.workload_token,
+        )
+
+    add_capability_route(
+        router,
+        "/{agent_principal_id}/credentials:rotate",
+        rotate_credential,
+        capability="agent.manage_authority",
+        methods=["POST"],
+        operation_id="agent_credential_rotate",
+        response_model=AgentCredentialRotateView,
+    )
 
     add_capability_route(
         router,

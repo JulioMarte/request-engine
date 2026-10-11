@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM public.ecr.aws/docker/library/python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -10,6 +10,8 @@ COPY deploy/reference/e2e-runner-requirements.txt /e2e/requirements.txt
 RUN python -m pip install --no-cache-dir --requirement /e2e/requirements.txt
 COPY tests/system_e2e/runner.py /e2e/runner.py
 COPY tests/system_e2e/event_sink.py /e2e/event_sink.py
+COPY tests/system_e2e/network_boundary_probe.py /e2e/network_boundary_probe.py
+COPY tests/system_e2e/smtp_provider_suite.py /e2e/smtp_provider_suite.py
 COPY tests/fixtures/software_webauthn_authenticator.py /e2e/software_webauthn_authenticator.py
 RUN mkdir -p /artifacts /sink && chown -R e2e:e2e /e2e /artifacts /sink
 

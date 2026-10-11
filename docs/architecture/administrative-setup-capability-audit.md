@@ -186,9 +186,13 @@ Catalog Location/schedule operations, Booking assignment operations and Tenancy 
 
 Several current configuration handlers return `object`. That prevents high-quality generated SDK/MCP schemas. Before broad tool projection, important setup operations need explicit response models or a stable schema adapter.
 
-### C4 — public/operator/admin discovery does not yet exist
+### C4 — discovery has a bounded implementation, not universal authorization
 
-`CapabilityDefinition.exposure` and operation metadata exist, but there is no runtime authorized operation catalog yet. A public agent therefore must not derive its tool list by blindly converting all mounted OpenAPI operations.
+`GET /v1/operation-catalog` now implements authenticated AGENT self-discovery
+filtered by current grants, tool policy and risk. See the current self-discovery
+contract in doc 16. This is not a universal public/operator/admin catalog and
+does not prove Party/resource authority for a returned operation. A public agent
+must not derive its tool list by blindly converting all mounted OpenAPI operations.
 
 ### C5 — readiness is minimum viable setup, not full business configuration
 
@@ -207,9 +211,18 @@ public_discovery
 
 without making Onboarding own the underlying facts.
 
-### C6 — staff-management/permission administration is a current blocker
+### C6 — staff lifecycle exists; complete administrative journeys remain open
 
-The inspected Tenancy command/API surface supports Party/contact/identity operations and initial operational-authority bootstrap, but no supported machine-facing lifecycle has yet been found/proven for creating, listing, changing and revoking employee Representation/capability grants.
+The original inspection predates the current staff lifecycle. Tenancy now owns
+staff list/detail/overview, native identity association, membership transitions
+and authority preview/replacement. Email invitation create/list/get/resend/revoke
+and native-subject acceptance are also implemented; acceptance starts with zero
+grants. See `staff-email-invitations.md`, the Tenancy README and
+`../testing/admin-api-verification-2026-09-30.md` for contracts and dated proof.
+
+These operations do not imply a general employee Representation editor or
+cross-tenant person directory. Names, contact projections, complete human-facing
+journeys and real browser/provider acceptance must be tracked separately.
 
 This means Request Engine must **not** yet claim complete self-service administration for the user's target model of public patient agent + private employee/admin agents.
 

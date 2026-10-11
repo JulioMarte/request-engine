@@ -21,6 +21,7 @@ from request_engine.platform.security.native_session import (
     NativeCredentialStatus,
     NativeIdentityStatus,
 )
+from request_engine.platform.security.password_work import PasswordWorkCapacityExceeded
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 NOW = datetime(2026, 9, 8, tzinfo=UTC)
@@ -180,6 +181,49 @@ async def test_wrong_password_never_creates_session() -> None:
         )
 
     assert store.created_session is None
+
+
+@pytest.mark.asyncio
+async def test_optional_rehash_capacity_failure_does_not_prevent_valid_login(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeNativeHumanAuthStore(_snapshot())
+    service = NativeHumanAuthService(store=store, clock=lambda: NOW)
+
+    def busy(_: str) -> str:
+        raise PasswordWorkCapacityExceeded("test capacity exhausted")
+
+    def needs_rehash(_: str) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        "request_engine.platform.security.native_human_auth.password_needs_rehash", needs_rehash
+    )
+    monkeypatch.setattr("request_engine.platform.security.native_human_auth.hash_password", busy)
+    issued = await service.authenticate_password(
+        identity_authority_id=uuid4(), login_handle="j@example.com", password=PASSWORD
+    )
+    assert store.created_session is not None
+    assert issued.session_id == store.created_session["session_id"]
+    assert store.rehashed is None
+
+
+@pytest.mark.asyncio
+async def test_required_password_work_failure_does_not_write_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeNativeHumanAuthStore()
+    service = NativeHumanAuthService(store=store, clock=lambda: NOW)
+
+    def busy(_: str) -> str:
+        raise PasswordWorkCapacityExceeded("test capacity exhausted")
+
+    monkeypatch.setattr("request_engine.platform.security.native_human_auth.hash_password", busy)
+    with pytest.raises(PasswordWorkCapacityExceeded):
+        await service.enroll_password_identity(
+            identity_authority_id=uuid4(), login_handle="j@example.com", password=PASSWORD
+        )
+    assert store.created_identity is None and store.created_session is None
 
 
 @pytest.mark.asyncio

@@ -1,11 +1,15 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from request_engine.modules.communications.application.commands import (
     set_organization_channel_policy as policy_commands,
+)
+from request_engine.modules.communications.application.queries.channel_configuration import (
+    ChannelConfigurationQuery,
+    ChannelConfigurationReader,
 )
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
@@ -42,10 +46,31 @@ class SetChannelPolicyBody(BaseModel):
     expected_revision: int = Field(ge=0)
 
 
+class ChannelPolicyView(BaseModel):
+    purpose: str
+    enabled: bool
+    channel_policy: dict[str, object]
+    revision: int
+
+
+class ChannelConfigurationView(BaseModel):
+    purpose: str
+    configured: bool
+    revision: int
+    enabled: bool | None
+    channel_policy: dict[str, object] | None
+
+
+class ChannelConfigurationParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    authority_party_id: UUID
+
+
 def create_channel_policy_router(
     *,
     handler: policy_commands.SetOrganizationChannelPolicyHandler,
     actor_resolver: ActorResolver,
+    reader: ChannelConfigurationReader | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/communications", tags=["communications"])
 
@@ -57,9 +82,19 @@ def create_channel_policy_router(
         body: SetChannelPolicyBody,
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> object:
+    ) -> ChannelPolicyView:
+        """Configure one purpose using the revision returned by its GET operation.
+
+        Requires current operations.manage_profile Party authority. For an unconfigured
+        purpose use expected_revision=0. Retry an uncertain result with the same
+        Idempotency-Key and unchanged body; a new intent needs a new key.
+        Current communications.configure standing authority, active Party and exact
+        Representation are checked inside the owner transaction before every receipt
+        lookup. Withdrawal denies new work and completed-result replay; it does not
+        undo a Command admitted before the withdrawal.
+        """
         require_capability(current, "communications.configure")
-        return await policy_commands.set_organization_channel_policy(
+        result = await policy_commands.set_organization_channel_policy(
             handler,
             policy_commands.SetOrganizationChannelPolicyCommand(
                 organization_id=current.organization_id,
@@ -77,6 +112,41 @@ def create_channel_policy_router(
                 idempotency_key=idempotency_key,
             ),
         )
+        return ChannelPolicyView(
+            purpose=result.purpose,
+            enabled=result.enabled,
+            channel_policy=result.channel_policy,
+            revision=result.revision,
+        )
+
+    async def read_policy(
+        purpose: PurposePath,
+        params: Annotated[ChannelConfigurationParams, Query()],
+        response: Response,
+        current: Annotated[ActorContext, Depends(actor)],
+    ) -> ChannelConfigurationView:
+        """Read the current policy before configuring this purpose.
+
+        Requires current operations.manage_profile Party authority. Missing configuration
+        returns configured=false, revision=0 and null settings; it does not imply an
+        enabled default. Use that revision as expected_revision on the matching PUT.
+        This read does not certify provider connectivity or actual message delivery.
+        """
+        require_capability(current, "communications.read_configuration")
+        assert reader is not None
+        result = await reader.read_configuration(
+            ChannelConfigurationQuery(
+                current.organization_id, current.principal_id, params.authority_party_id, purpose
+            )
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return ChannelConfigurationView(
+            purpose=result.purpose,
+            configured=result.configured,
+            revision=result.revision,
+            enabled=result.enabled,
+            channel_policy=result.channel_policy,
+        )
 
     add_capability_route(
         router,
@@ -85,5 +155,16 @@ def create_channel_policy_router(
         capability="communications.configure",
         methods=["PUT"],
         operation_id="communications_configure_channel_policy",
+        response_model=ChannelPolicyView,
     )
+    if reader is not None:
+        add_capability_route(
+            router,
+            "/channel-policies/{purpose}",
+            read_policy,
+            capability="communications.read_configuration",
+            methods=["GET"],
+            operation_id="communications_channel_policy_get",
+            response_model=ChannelConfigurationView,
+        )
     return router

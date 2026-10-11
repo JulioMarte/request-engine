@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 
+from request_engine.modules.communications.adapters.db.channel_configuration_reader import (
+    PostgresChannelConfigurationReader,
+)
 from request_engine.modules.communications.adapters.db.organization_channel_policy_commands import (
     PostgresOrganizationChannelPolicyCommands,
 )
@@ -9,14 +12,25 @@ from request_engine.modules.communications.adapters.db.reminder_commands import 
 from request_engine.modules.communications.adapters.db.reminder_reader import (
     PostgresReminderPlanReader,
 )
+from request_engine.modules.communications.adapters.db.staff_invitation_delivery import (
+    PostgresStaffInvitationDeliveryRecorder,
+)
 from request_engine.modules.communications.api.channel_policy_router import (
     create_channel_policy_router,
 )
 from request_engine.modules.communications.api.errors import communications_error_handler
 from request_engine.modules.communications.api.router import create_router
+from request_engine.modules.communications.contracts.staff_invitations import (
+    StaffInvitationDeliveryRecorder,
+)
 from request_engine.modules.communications.domain.errors import CommunicationsError
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
+
+
+def build_staff_invitation_delivery_recorder() -> StaffInvitationDeliveryRecorder:
+    """Publish the owner-selected transactional invitation delivery connection."""
+    return PostgresStaffInvitationDeliveryRecorder()
 
 
 def install_http(
@@ -40,5 +54,6 @@ def install_http(
         create_channel_policy_router(
             handler=PostgresOrganizationChannelPolicyCommands(session_factory),
             actor_resolver=actor_resolver,
+            reader=PostgresChannelConfigurationReader(session_factory),
         )
     )

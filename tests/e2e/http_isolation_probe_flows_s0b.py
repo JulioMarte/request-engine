@@ -114,8 +114,23 @@ def foreign_request(
             },
             403,
         )
+    if operation.name == "staff.history.list":
+        return (operation.probe.path, {}, None, 403)
     if operation.name == "staff.list":
         return ("/v1/staff/members", {}, None, 403)
+    if operation.name == "staff.profile.update":
+        return (operation.probe.path, {}, operation.probe.body, 403)
+    if operation.name.startswith("staff.invitation."):
+        return (operation.probe.path, {}, operation.probe.body, 403)
+    if operation.name == "staff.overview":
+        return ("/v1/staff/overview", {}, None, 403)
+    if operation.name == "staff.authority.plan":
+        return (
+            f"/v1/staff/members/{foreign.principal_id}/authority:plan",
+            {},
+            {"expected_authority_revision": 1, "desired_capabilities": ["staff.invite"]},
+            403,
+        )
     if operation.name == "staff.get":
         return (f"/v1/staff/members/{PROBE_UUID}", {}, None, 403)
     if operation.name == "staff.authority.replace":

@@ -14,8 +14,12 @@ from request_engine.bootstrap.appointment_signing import (
     build_appointment_signing_secret_store,
 )
 from request_engine.bootstrap.outbound_fence import OutboundSideEffectFence
-from request_engine.bootstrap.recovery_delivery import build_native_recovery_messenger
+from request_engine.bootstrap.recovery_delivery import (
+    RecoveryDeliverySettings,
+    build_native_recovery_messenger,
+)
 from request_engine.bootstrap.settings import HttpSettings
+from request_engine.bootstrap.staff_invitation_delivery import build_staff_invitation_staging
 from request_engine.entrypoints.http.app import create_native_app
 from request_engine.entrypoints.http.native_runtime import build_identity_link_verifier
 from request_engine.modules.booking.adapters.appointment_options import (
@@ -35,6 +39,7 @@ from request_engine.modules.communications.adapters.db.slot_offer_intent import 
     PostgresSlotOfferNotificationIntent,
 )
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
+from request_engine.platform.db.execution_budget import PostgresExecutionBudget
 from request_engine.platform.db.oidc_authority_reader import PostgresOidcAuthorityReader
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
@@ -44,7 +49,10 @@ from request_engine.platform.security.webauthn import WebAuthnPolicy
 def create_app() -> FastAPI:
     """Fail on missing bootstrap config; managed OIDC is governed by database state."""
     settings = HttpSettings.model_validate({})
-    engine = create_postgres_engine(settings.database_url.get_secret_value())
+    engine = create_postgres_engine(
+        settings.database_url.get_secret_value(),
+        budget=PostgresExecutionBudget.http_from_environment(),
+    )
     sessions = create_session_factory(engine)
     # The resolver is always present, but it has no routing authority until an
     # identity.oidc revision is activated.  This removes the second source of
@@ -54,6 +62,9 @@ def create_app() -> FastAPI:
     outbound_fence = OutboundSideEffectFence.from_environment()
     bootstrap_recovery_messenger = build_native_recovery_messenger()
     native_recovery_messenger = outbound_fence.recovery(bootstrap_recovery_messenger)
+    # HTTP only retains the proof. The least-privilege worker resolves SMTP;
+    # API-managed SMTP does not require bootstrap SMTP settings in this process.
+    staff_invitation_delivery = build_staff_invitation_staging(RecoveryDeliverySettings())
 
     bootstrap_signing_key = (
         None
@@ -81,6 +92,7 @@ def create_app() -> FastAPI:
     app = create_native_app(
         session_factory=sessions,
         native_identity_authority_id=settings.native_identity_authority_id,
+        staff_invitation_delivery=staff_invitation_delivery,
         appointment_option_codec=signing_codec,
         identity_exchange_fingerprint_key=(
             settings.identity_exchange_fingerprint_key.get_secret_value().encode()

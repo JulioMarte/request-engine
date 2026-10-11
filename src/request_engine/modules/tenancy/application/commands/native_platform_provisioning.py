@@ -4,7 +4,7 @@ from uuid import UUID
 
 from request_engine.platform.security.platform_context import PlatformActorContext
 
-NATIVE_INITIAL_CONTROLLER_POLICY = "tenant-controller-v3"
+NATIVE_INITIAL_CONTROLLER_POLICY = "tenant-controller-v6"
 
 
 class NativePlatformProvisioningError(RuntimeError):

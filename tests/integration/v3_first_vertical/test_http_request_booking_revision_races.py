@@ -37,6 +37,7 @@ async def test_request_cancel_same_revision_has_one_winner_and_one_revision_conf
         created = await setup.post(
             f"/v1/requests/definitions/{fixture.request_key}/submit",
             json={
+                "definition_version": 2,
                 "payload": {"message": "concurrent cancellation"},
                 "requester_party_id": str(fixture.requester_party_id),
             },

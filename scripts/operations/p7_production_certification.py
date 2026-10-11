@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,18 @@ def _fresh(completed_at: datetime, *, now: datetime, max_age_hours: float, label
         raise CertificationError(f"{label} evidence is older than {max_age_hours:g} hours")
 
 
+def _recovery_seconds(value: Any) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise CertificationError("recovery RPO/RTO must be finite non-negative numbers")
+    try:
+        result = float(value)
+    except OverflowError as exc:
+        raise CertificationError("recovery RPO/RTO must be finite non-negative numbers") from exc
+    if not math.isfinite(result) or result < 0:
+        raise CertificationError("recovery RPO/RTO must be finite non-negative numbers")
+    return result
+
+
 def certify(
     *,
     openbao_path: Path,
@@ -65,8 +78,16 @@ def certify(
     output: Path | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    if max_evidence_age_hours <= 0:
-        raise CertificationError("max evidence age must be positive")
+    if (
+        isinstance(max_evidence_age_hours, bool)
+        or not math.isfinite(max_evidence_age_hours)
+        or max_evidence_age_hours <= 0
+    ):
+        raise CertificationError("max evidence age must be finite and positive")
+    try:
+        timedelta(hours=max_evidence_age_hours)
+    except OverflowError as exc:
+        raise CertificationError("max evidence age exceeds the supported duration") from exc
     expected_topology = expected_openbao_topology.strip()
     if not expected_topology:
         raise CertificationError("expected OpenBao topology reference is required")
@@ -112,17 +133,15 @@ def certify(
         if not isinstance(value, str) or not value.strip():
             raise CertificationError("SMTP mailbox/throttling evidence references are required")
 
-    observed_rpo = recovery.get("observed_rpo_seconds")
-    observed_rto = recovery.get("observed_rto_seconds")
-    max_rpo = recovery.get("accepted_max_rpo_seconds")
-    max_rto = recovery.get("accepted_max_rto_seconds")
-    rpo_rto_values = (observed_rpo, observed_rto, max_rpo, max_rto)
-    if not all(
-        isinstance(value, (int, float)) and not isinstance(value, bool) for value in rpo_rto_values
+    if any(
+        recovery.get(field) is None
+        for field in ("accepted_max_rpo_seconds", "accepted_max_rto_seconds")
     ):
-        raise CertificationError(
-            "recovery evidence must include measured and operator-accepted RPO/RTO"
-        )
+        raise CertificationError("recovery evidence must include operator-accepted RPO/RTO")
+    observed_rpo = _recovery_seconds(recovery.get("observed_rpo_seconds"))
+    observed_rto = _recovery_seconds(recovery.get("observed_rto_seconds"))
+    max_rpo = _recovery_seconds(recovery.get("accepted_max_rpo_seconds"))
+    max_rto = _recovery_seconds(recovery.get("accepted_max_rto_seconds"))
     if observed_rpo > max_rpo or observed_rto > max_rto:
         raise CertificationError("observed RPO/RTO exceeds the accepted production limits")
 

@@ -44,6 +44,13 @@ A connection surface can be a:
 
 The goal is not to manufacture interface classes. The goal is to make crossing a boundary deliberate and reviewable.
 
+Staff email invitations use a caller-owned Tenancy application port implemented
+by Communications' closed-purpose recorder and wired by composition. Record,
+cancel and delivery-status reads share the command's transaction where needed;
+Tenancy never reads Communications tables directly. This supported synchronous
+connection preserves atomic invitation/delivery intent without a circular Python
+dependency through Booking. See `architecture/staff-email-invitations.md`.
+
 ## 3. Required design questions
 
 Before implementing or changing a capability/integration, answer:

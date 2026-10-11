@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% import "partials/action_form.html" as action_form %}
+{% block title %}Platform owners &middot; Request Engine admin{% endblock %}
+{% block content %}
+<section class="card">
+  <p><a href="/resources">&larr; Workspaces</a></p>
+  <h1>Platform owners</h1>
+  <div class="alert notice">{{ note }}</div>
+  <p class="muted small">Owner lifecycle actions take the <code>principal_id</code> returned by
+    invitation activation. Invitation actions take the <code>invitation_id</code>.</p>
+  <div id="result"></div>
+</section>
+<section class="card">
+  <h2>Invitations</h2>
+  {{ action_form.render(forms['invite']) }}
+  {{ action_form.render(forms['revoke-invitation']) }}
+  {{ action_form.render(forms['activate-invitation']) }}
+</section>
+<section class="card">
+  <h2>Owner lifecycle</h2>
+  {{ action_form.render(forms['suspend']) }}
+  {{ action_form.render(forms['reactivate']) }}
+  {{ action_form.render(forms['revoke']) }}
+</section>
+{% endblock %}

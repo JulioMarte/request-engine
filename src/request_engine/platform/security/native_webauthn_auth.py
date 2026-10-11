@@ -41,6 +41,7 @@ from request_engine.platform.security.webauthn import (
 
 _DEFAULT_SESSION_TTL = timedelta(hours=12)
 _USER_HANDLE_PREFIX = b"request-engine:native:"
+_DISCOVERABLE_AUTHENTICATION_PURPOSE = "authentication_discoverable"
 
 
 class WebAuthnCeremonyError(WebAuthnError):
@@ -67,6 +68,7 @@ class WebAuthnCredentialRecord:
     backup_state: bool
     user_verified: bool
     status: str
+    user_handle: bytes | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +100,7 @@ class WebAuthnCeremonyStore(Protocol):
         native_identity_id: UUID | None = None,
         session_id: UUID | None = None,
         setup_session_id: UUID | None = None,
+        user_handle: bytes | None = None,
     ) -> bool: ...
 
     async def read_challenge(
@@ -152,6 +155,23 @@ class WebAuthnCeremonyStore(Protocol):
         user_verified: bool,
     ) -> bool: ...
 
+    async def finalize_discoverable_authentication(
+        self,
+        *,
+        challenge_digest: bytes,
+        credential_row_id: UUID,
+        sign_count: int,
+        backup_eligible: bool,
+        backup_state: bool,
+        user_verified: bool,
+        session_id: UUID,
+        token_digest: bytes,
+        token_fingerprint: str,
+        expires_at: datetime,
+        expected_authority_id: UUID,
+        user_handle: bytes,
+    ) -> UUID | None: ...
+
     async def finalize_setup_registration(
         self,
         *,
@@ -190,8 +210,9 @@ class NativeWebAuthnAuthService:
 
     async def begin_registration(self, *, native_identity_id: UUID) -> WebAuthnCeremonyStarted:
         existing = await self._store.read_credentials(native_identity_id=native_identity_id)
+        user_handle = _user_handle(native_identity_id)
         options = self._webauthn.begin_registration(
-            user_handle=_user_handle(native_identity_id),
+            user_handle=user_handle,
             user_name=f"native-{native_identity_id}",
             exclude_credential_ids=[
                 record.credential_id for record in existing if record.status == "active"
@@ -201,6 +222,7 @@ class NativeWebAuthnAuthService:
             purpose="registration",
             challenge=options.challenge,
             native_identity_id=native_identity_id,
+            user_handle=user_handle,
         )
         return WebAuthnCeremonyStarted(challenge=options.challenge, public_key=options.public_key)
 
@@ -287,6 +309,10 @@ class NativeWebAuthnAuthService:
             public_key=record.public_key,
             aaguid=record.aaguid,
         )
+        if verified.user_handle is not None and (
+            record.user_handle is None or verified.user_handle != record.user_handle
+        ):
+            raise WebAuthnCeremonyError("webauthn_user_handle_mismatch")
         token = issue_opaque_token()
         expires_at = self._now() + self._session_ttl
         finalized = await self._store.finalize_authentication(
@@ -306,6 +332,98 @@ class NativeWebAuthnAuthService:
             raise WebAuthnCeremonyError("webauthn_authentication_rejected")
         return NativeWebAuthnSessionIssued(
             native_identity_id=native_identity_id,
+            credential_row_id=record.id,
+            session_id=token.token_id,
+            raw_token=token.raw_token,
+            expires_at=expires_at,
+            assurance=classify_assurance(
+                AuthenticationEvidence.webauthn(user_verified=verified.user_verified)
+            ),
+        )
+
+    async def begin_authentication_discoverable(self) -> WebAuthnCeremonyStarted:
+        """Begin a usernameless ceremony: no allow-list and no bound identity.
+
+        An empty ``allow_credential_ids`` makes the browser offer any discoverable
+        passkey; the identity is resolved from the presented credential at
+        completion, so no handle is required and there is no handle to enumerate.
+        The challenge is persisted unbound and remains single-use and TTL-bounded.
+        """
+
+        options = self._webauthn.begin_authentication(allow_credential_ids=[])
+        await self._persist_challenge(
+            purpose=_DISCOVERABLE_AUTHENTICATION_PURPOSE,
+            challenge=options.challenge,
+        )
+        return WebAuthnCeremonyStarted(challenge=options.challenge, public_key=options.public_key)
+
+    async def complete_discoverable_authentication(
+        self,
+        *,
+        credential: Mapping[str, Any],
+        expected_authority_id: UUID,
+        expected_native_identity_id: UUID | None = None,
+    ) -> NativeWebAuthnSessionIssued:
+        """Complete a usernameless ceremony, resolving identity from the credential."""
+
+        challenge = extract_authentication_challenge(credential)
+        digest = challenge_digest(challenge)
+        scope = await self._store.read_challenge(
+            challenge_digest=digest, purpose=_DISCOVERABLE_AUTHENTICATION_PURPOSE
+        )
+        if (
+            scope is None
+            or scope.native_identity_id is not None
+            or scope.session_id is not None
+            or scope.setup_session_id is not None
+        ):
+            raise WebAuthnCeremonyError("webauthn_challenge_unknown")
+
+        credential_id = extract_authentication_credential_id(credential)
+        record = await self._store.read_credential(credential_id=credential_id)
+        if (
+            record is None
+            or record.status != "active"
+            or (
+                expected_native_identity_id is not None
+                and record.native_identity_id != expected_native_identity_id
+            )
+        ):
+            raise WebAuthnCeremonyError("webauthn_credential_unknown")
+
+        verified = self._webauthn.verify_authentication(
+            credential=credential,
+            expected_challenge=challenge,
+            credential_id=record.credential_id,
+            public_key=record.public_key,
+            aaguid=record.aaguid,
+        )
+        if (
+            record.user_handle is None
+            or verified.user_handle is None
+            or verified.user_handle != record.user_handle
+        ):
+            raise WebAuthnCeremonyError("webauthn_user_handle_mismatch")
+        token = issue_opaque_token()
+        expires_at = self._now() + self._session_ttl
+        resolved_identity_id = await self._store.finalize_discoverable_authentication(
+            challenge_digest=digest,
+            credential_row_id=record.id,
+            sign_count=verified.sign_count,
+            backup_eligible=verified.backup_eligible,
+            backup_state=verified.backup_state,
+            user_verified=verified.user_verified,
+            session_id=token.token_id,
+            token_digest=token.digest,
+            token_fingerprint=token.fingerprint,
+            expires_at=expires_at,
+            expected_authority_id=expected_authority_id,
+            user_handle=verified.user_handle,
+        )
+        if resolved_identity_id is None:
+            raise WebAuthnCeremonyError("webauthn_authentication_rejected")
+        return NativeWebAuthnSessionIssued(
+            native_identity_id=resolved_identity_id,
             credential_row_id=record.id,
             session_id=token.token_id,
             raw_token=token.raw_token,
@@ -344,6 +462,10 @@ class NativeWebAuthnAuthService:
             public_key=record.public_key,
             aaguid=record.aaguid,
         )
+        if verified.user_handle is not None and (
+            record.user_handle is None or verified.user_handle != record.user_handle
+        ):
+            raise WebAuthnCeremonyError("webauthn_user_handle_mismatch")
         finalized = await self._store.finalize_step_up(
             challenge_digest=digest,
             credential_row_id=record.id,
@@ -364,6 +486,7 @@ class NativeWebAuthnAuthService:
         native_identity_id: UUID | None = None,
         session_id: UUID | None = None,
         setup_session_id: UUID | None = None,
+        user_handle: bytes | None = None,
     ) -> None:
         created = await self._store.create_challenge(
             challenge_id=uuid4(),
@@ -373,14 +496,16 @@ class NativeWebAuthnAuthService:
             native_identity_id=native_identity_id,
             session_id=session_id,
             setup_session_id=setup_session_id,
+            user_handle=user_handle,
         )
         if not created:
             raise WebAuthnCeremonyError("webauthn_challenge_not_created")
 
     async def begin_setup_registration(self, *, setup_session_id: UUID) -> WebAuthnCeremonyStarted:
         challenge = generate_challenge()
+        user_handle = _setup_user_handle(setup_session_id)
         options = self._webauthn.begin_registration(
-            user_handle=_setup_user_handle(setup_session_id),
+            user_handle=user_handle,
             user_name=f"setup-{setup_session_id}",
             challenge=challenge,
         )
@@ -388,6 +513,7 @@ class NativeWebAuthnAuthService:
             purpose="registration",
             challenge=challenge,
             setup_session_id=setup_session_id,
+            user_handle=user_handle,
         )
         return WebAuthnCeremonyStarted(challenge=challenge, public_key=options.public_key)
 

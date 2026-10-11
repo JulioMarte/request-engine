@@ -1,4 +1,5 @@
 import secrets
+from datetime import UTC, datetime
 from hashlib import sha256
 from typing import NoReturn, Protocol, runtime_checkable
 from uuid import UUID, uuid4
@@ -11,6 +12,8 @@ from request_engine.modules.tenancy.application.commands.agent_governance import
     ProvisionAgentCommand,
     ProvisionAgentResult,
     ReplaceAgentAuthorityCommand,
+    RotateAgentCredentialCommand,
+    RotateAgentCredentialResult,
     TransitionAgentProfileCommand,
 )
 from request_engine.modules.tenancy.application.commands.identity_audit import (
@@ -41,6 +44,7 @@ from request_engine.platform.security.context import ActorContext, PrincipalKind
 _PROVISION_CAPABILITY = "agent.provision"
 _AUTHORITY_CAPABILITY = "agent.manage_authority"
 _LIFECYCLE_CAPABILITY = "agent.suspend"
+_ROTATE_COMMAND = "agent_credential_rotate"
 
 _LIFECYCLE_TARGETS = frozenset(
     {AgentProfileStatus.ACTIVE, AgentProfileStatus.SUSPENDED, AgentProfileStatus.REVOKED}
@@ -120,6 +124,106 @@ class PostgresAgentGovernanceCommands:
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
+
+    async def rotate_agent_credential(
+        self, actor: ActorContext, command: RotateAgentCredentialCommand
+    ) -> RotateAgentCredentialResult:
+        _require_human_actor(actor)
+        if command.expected_authority_revision < 1:
+            raise ValueError("expected_authority_revision must be positive")
+        expires_at = command.credential_expires_at
+        if expires_at.tzinfo is None or expires_at.utcoffset() is None:
+            raise ValueError("credential_expires_at must include a timezone")
+        expires_at = expires_at.astimezone(UTC)
+        provenance = _validate_provenance_reference(command.provenance_reference)
+        if len(provenance) > 400:
+            raise ValueError("rotation provenance_reference cannot exceed 400 characters")
+        key = _validate_idempotency_key(command.idempotency_key)
+        fingerprint = command_fingerprint(
+            _ROTATE_COMMAND,
+            {
+                "agent_principal_id": command.agent_principal_id,
+                "expected_authority_revision": command.expected_authority_revision,
+                "credential_expires_at": expires_at,
+                "provenance_reference": provenance,
+            },
+        )
+        async with actor_transaction(self._session_factory, actor) as session:
+            # The same guard runs before replay. A receipt is not current authority.
+            try:
+                await session.execute(
+                    text("SELECT request_cmd.lock_agent_credential_manager(:target)"),
+                    {"target": command.agent_principal_id},
+                )
+            except DBAPIError as exc:
+                _raise_agent_db_error(exc)
+            idempotency_id, replay = await acquire_idempotency(
+                session,
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                capability=_ROTATE_COMMAND,
+                idempotency_key=key,
+                fingerprint=fingerprint,
+            )
+            if replay is not None:
+                return RotateAgentCredentialResult(
+                    credential_id=_replay_uuid(replay, "credential_id"),
+                    authority_revision=_replay_revision(replay, "authority_revision"),
+                )
+            if expires_at <= datetime.now(UTC):
+                raise ValueError("credential_expires_at must be in the future")
+            credential_id = uuid4()
+            secret = secrets.token_urlsafe(32)
+            digest = sha256(secret.encode("utf-8")).digest()
+            try:
+                revision = int(
+                    (
+                        await session.execute(
+                            text("""
+                    SELECT request_cmd.rotate_agent_credential(
+                        :target, :expected, :credential, :digest, :fingerprint, :expiry)
+                """),
+                            {
+                                "target": command.agent_principal_id,
+                                "expected": command.expected_authority_revision,
+                                "credential": credential_id,
+                                "digest": digest,
+                                "fingerprint": digest.hex()[:16],
+                                "expiry": expires_at,
+                            },
+                        )
+                    ).scalar_one()
+                )
+            except DBAPIError as exc:
+                _raise_agent_db_error(exc)
+            await complete_idempotency(
+                session,
+                idempotency_id,
+                {
+                    "credential_id": str(credential_id),
+                    "authority_revision": revision,
+                },
+            )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_ROTATE_COMMAND,
+                aggregate_id=credential_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.CREDENTIAL_ROTATE,
+                    reason_code=IdentityAuditReason.CREDENTIAL_ROTATED,
+                    subject_kind=IdentitySubjectKind.AGENT_CREDENTIAL,
+                    revision_before=command.expected_authority_revision,
+                    revision_after=revision,
+                    external_case_reference=provenance,
+                ),
+            )
+            return RotateAgentCredentialResult(
+                credential_id=credential_id,
+                authority_revision=revision,
+                workload_token=f"{credential_id}.{secret}",
+            )
 
     async def provision_agent(
         self,

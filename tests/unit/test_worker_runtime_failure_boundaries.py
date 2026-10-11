@@ -90,6 +90,29 @@ class _SlowProcessor:
         await self.release.wait()
 
 
+class _Telemetry:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.events: list[tuple[object, ...]] = []
+        self.fail = fail
+
+    def cycle(self) -> None:
+        self._record(("cycle",))
+
+    def claimed(self, count: int) -> None:
+        self._record(("claimed", count))
+
+    def outcome(self, state: str, detail: str) -> None:
+        self._record(("outcome", state, detail))
+
+    def processing_seconds(self, seconds: float) -> None:
+        self._record(("duration", seconds))
+
+    def _record(self, event: tuple[object, ...]) -> None:
+        if self.fail:
+            raise RuntimeError("telemetry unavailable")
+        self.events.append(event)
+
+
 def _config(*, processing_timeout: timedelta) -> WorkerRuntimeConfig:
     return WorkerRuntimeConfig(
         max_concurrency=1,
@@ -150,6 +173,59 @@ async def test_lost_heartbeat_prevents_finalization_even_when_handler_returns() 
     assert store.complete_calls == 0
     assert store.retry_calls == []
     assert store.dead_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_worker_telemetry_observes_progress_and_cannot_change_worker_result() -> None:
+    lease = _Lease(uuid4())
+    telemetry = _Telemetry()
+    release = asyncio.Event()
+    release.set()
+    runtime = FencedWorkerRuntime(
+        _Store(lease),
+        _SlowProcessor(release),
+        config=_config(processing_timeout=timedelta(seconds=1)),
+        telemetry=telemetry,
+    )
+
+    outcome = (await runtime.run_once())[0]
+
+    assert outcome.state is WorkerItemState.COMPLETED
+    assert [event[0] for event in telemetry.events] == ["cycle", "claimed", "duration", "outcome"]
+    assert telemetry.events[1] == ("claimed", 1)
+    assert telemetry.events[-1] == ("outcome", "completed", "completed")
+
+    broken_telemetry = _Telemetry(fail=True)
+    release = asyncio.Event()
+    release.set()
+    runtime = FencedWorkerRuntime(
+        _Store(_Lease(uuid4())),
+        _SlowProcessor(release),
+        config=_config(processing_timeout=timedelta(seconds=1)),
+        telemetry=broken_telemetry,
+    )
+    assert (await runtime.run_once())[0].state is WorkerItemState.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_claim_failure_propagates_without_becoming_a_telemetry_outcome() -> None:
+    class FailingStore(_Store):
+        async def claim(self, *, limit: int, lease: timedelta) -> tuple[_Lease, ...]:
+            del limit, lease
+            raise RuntimeError("database unavailable")
+
+    telemetry = _Telemetry()
+    runtime = FencedWorkerRuntime(
+        FailingStore(_Lease(uuid4())),
+        _SlowProcessor(asyncio.Event()),
+        config=_config(processing_timeout=timedelta(seconds=1)),
+        telemetry=telemetry,
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await runtime.run_once()
+
+    assert [event[0] for event in telemetry.events] == ["cycle"]
 
 
 class _FailingLoop:

@@ -45,8 +45,9 @@ does not replace `authority_read_self`.
 
 - Capability `authority.inspect_resource` (operator exposure, operational plane,
   query, no idempotency or expected revision) is appended to the immutable
-  `tenant-controller-v5` policy by migration `0055`. New roots still select
-  `tenant-controller-v3`; existing roots are not backfilled, matching the E1
+  `tenant-controller-v5` policy in historical migration `0055`. Current new roots select
+  `tenant-controller-v6` after `0021_tenant_controller_v6`; existing roots are not backfilled,
+  preserving the E1
   policy-upgrade posture.
 - Only explicitly supported operations are accepted: `appointments.book` over a
   `subject_party_id` and `booking.manage_supply` over an `authority_party_id`.

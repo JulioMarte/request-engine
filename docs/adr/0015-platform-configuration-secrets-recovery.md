@@ -2,6 +2,15 @@
 
 Status: Accepted
 
+Operational amendment (2026-10-09): the reusable reference acceptance deployment
+pulls Python/PostgreSQL from Docker's official ECR Public publication with the
+existing `3.13-slim`/`18` tags. This changes artifact distribution only after
+Docker Hub quota failures; it does not change secret authority, process/network
+separation, recovery fencing or production acceptance. See
+[Docker E2E platform](../architecture/docker-e2e-ci-plan.md) for provenance and
+actual resolved-image evidence requirements. Registry availability remains a
+failing prerequisite, never permission to skip recovery proofs.
+
 ## Context
 
 Request Engine historically composes SMTP, Vault and cryptographic deployment
@@ -59,6 +68,11 @@ boundary without weakening either decision.
     admin surface is not exposed until P5 establishes governed additional
     Platform Owner/admin lifecycle and the existing recent
     `PHISHING_RESISTANT` guard can protect high-risk mutations.
+11. **Discoverable login is convenience, not a recovery root.** The native login
+    surface additionally accepts an omitted login handle and resolves the owning
+    identity from the presented credential id (discoverable usernameless
+    WebAuthn). It changes neither the native authentication guarantee nor the
+    offline recovery hierarchy above.
 
 ## Consequences
 

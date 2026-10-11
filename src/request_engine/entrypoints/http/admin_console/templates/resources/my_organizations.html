@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}My organizations · Request Engine admin{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div><p class="eyebrow">People &amp; access / Your memberships</p>
+    <h1>My organizations</h1>
+    <p>Choose where to work. Only organizations linked to your signed-in identity appear here.</p>
+  </div>
+</header>
+<section class="workspace-intro panel">
+  <div><span aria-hidden="true">◇</span><div><strong>Your access stays with each organization</strong>
+    <p>Membership does not automatically grant staff-management permissions. The API checks your current access when you open a workspace or make a change.</p>
+  </div></div>
+</section>
+{% if loaded %}
+<section class="card" aria-labelledby="organizations-title">
+  <h2 id="organizations-title">Available organizations</h2>
+  {% if organizations %}
+  <div class="table-wrap"><table>
+    <thead><tr><th scope="col">Organization</th><th scope="col">Your principal</th><th scope="col">Workspace</th></tr></thead>
+    <tbody>{% for organization in organizations %}<tr>
+      <td><strong>{{ organization.display_name }}</strong><br /><small><code>{{ organization.organization_id }}</code></small></td>
+      <td><code>{{ organization.principal_id }}</code></td>
+      <td><a class="button secondary" href="/tenants/{{ organization.organization_id }}/staff" aria-label="Open people and permissions for {{ organization.display_name }}">People &amp; permissions →</a></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}
+  <div class="empty-state"><h3>{% if after %}No more organizations{% else %}No active memberships{% endif %}</h3>
+    <p>{% if after %}Return to the first page to choose an organization.{% else %}Ask an organization administrator to add your identity. Platform ownership alone does not create a tenant membership.{% endif %}</p>
+  </div>
+  {% endif %}
+  {% if after or next_after %}<nav aria-label="Organization pages">
+    {% if after %}<a href="/my-organizations?limit={{ page_limit }}">← First page</a>{% endif %}
+    {% if after and next_after %} · {% endif %}
+    {% if next_after %}<a href="/my-organizations?after={{ next_after }}&amp;limit={{ page_limit }}">Next page →</a>{% endif %}
+  </nav>{% endif %}
+</section>
+{% else %}
+<section class="card"><h2>Access could not be checked</h2><p>No organization data is being shown.</p>
+  <a class="button secondary" href="/my-organizations">Try again</a>
+  <a class="button secondary" href="/login">Sign in again</a>
+</section>
+{% endif %}
+{% endblock %}

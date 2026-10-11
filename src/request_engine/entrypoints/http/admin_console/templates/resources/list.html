@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% import "partials/inputs.html" as ui %}
+{% block title %}{{ spec.title }} &middot; Request Engine admin{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/resources">Workspaces</a><span aria-hidden="true">/</span><span aria-current="page">{{ spec.title }}</span></nav><h1>{{ spec.title }}</h1><p>{{ spec.summary }}</p></div>
+  {% if create_inputs %}<a class="button" href="#create-panel">{{ spec.create_label }}</a>{% endif %}
+</header>
+<section class="panel list-panel">
+  {% if spec.list_note %}<div class="alert notice">{{ spec.list_note }}</div>{% endif %}
+  {% if list_error %}<div class="error-state" role="alert"><span aria-hidden="true">!</span><div><strong>Could not load {{ spec.title | lower }}</strong><p>{{ list_error }}. No empty result is being assumed.</p><a class="button secondary" href="/resources/{{ spec.key }}">Try again</a></div></div>{% else %}
+  {% if rows %}<div class="list-toolbar"><label for="loaded-filter">Filter loaded results<input id="loaded-filter" type="search" placeholder="Search this page…" aria-controls="resource-table" data-table-filter /></label><p class="muted small" id="filter-status" role="status" aria-live="polite">{{ rows | length }} loaded</p></div>{% endif %}
+  <div class="table-scroll">
+  <table class="ops" id="resource-table">
+    <thead><tr><th scope="col">Id</th>{% for column in spec.columns %}<th scope="col">{{ column }}</th>{% endfor %}<th scope="col">Action</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr data-filter-row data-search="{{ ([row.id] + row.columns) | join(' ') | lower }}">
+        <td><code>{{ row.id }}</code></td>
+        {% for value in row.columns %}<td>{{ value }}</td>{% endfor %}
+        <td><a href="/resources/{{ spec.key }}/{{ row.id }}" aria-label="Open {{ spec.title }} {{ row.id }}">Open</a></td>
+      </tr>
+    {% else %}<tr><td colspan="{{ spec.columns | length + 2 }}"><div class="empty-state compact"><span aria-hidden="true">○</span><div><strong>No {{ spec.title | lower }} yet</strong><p>The control plane returned an empty collection.{% if create_inputs %} Use “{{ spec.create_label }}” to add the first one.{% endif %}</p></div></div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if next_cursor %}
+  <p><a class="button secondary" href="/resources/{{ spec.key }}?after={{ next_cursor | urlencode }}">Next &rarr;</a></p>
+  {% endif %}
+  {% endif %}
+</section>
+{% if create_inputs %}<details class="card create-disclosure" id="create-panel"><summary>{{ spec.create_label }}</summary><div class="create-form"><form id="create" class="stack" method="post" action="/resources/{{ spec.key }}" hx-post="/resources/{{ spec.key }}" hx-target="#result" hx-swap="innerHTML"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="_intent_id" value="" data-form-intent />{{ ui.render(create_inputs) }}<button type="submit">{{ spec.create_label }}</button></form><div id="result"></div></div></details>{% endif %}
+{% endblock %}

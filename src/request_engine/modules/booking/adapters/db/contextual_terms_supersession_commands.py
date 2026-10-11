@@ -17,6 +17,7 @@ from request_engine.modules.booking.adapters.db.contextual_terms_supersession_st
 )
 from request_engine.modules.booking.application.commands.configure_booking_context_terms import (
     BookingContextTermsState,
+    validate_context_terms_amount,
 )
 from request_engine.modules.booking.application.commands.supersede_booking_context_terms import (
     SupersedeBookingContextTermsCommand,
@@ -40,6 +41,7 @@ class PostgresContextualTermsSupersessionCommands:
         self,
         command: SupersedeBookingContextTermsCommand,
     ) -> BookingContextTermsState:
+        validate_context_terms_amount(command.amount)
         cutover = command.effective_from.astimezone(UTC)
         fingerprint = command_fingerprint(
             "booking.supersede_booking_context_terms",
@@ -50,6 +52,13 @@ class PostgresContextualTermsSupersessionCommands:
                 self._session_factory,
                 command.organization_id,
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
+                )
                 idem_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -60,13 +69,6 @@ class PostgresContextualTermsSupersessionCommands:
                 )
                 if replay is not None:
                     return from_json(cast(dict[str, object], replay["terms"]))
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
-                )
                 assignment_id, offering_version_id = await lock_identity(
                     session,
                     organization_id=command.organization_id,

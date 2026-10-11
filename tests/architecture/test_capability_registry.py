@@ -53,6 +53,18 @@ def test_internal_processing_is_not_public_capability_surface() -> None:
         assert by_key[key].party_scope is None
 
 
+def test_controller_policy_adoption_capability_is_exposed_and_high_risk() -> None:
+    definition = next(
+        item
+        for item in CAPABILITIES
+        if item.key == "platform.organization.adopt_initial_controller_policy"
+    )
+    assert definition.authority_plane.value == "platform"
+    assert definition.runtime_available is True
+    assert definition.requires_recent_authentication is True
+    assert definition.revision.value == "required"
+
+
 def test_operational_recovery_is_operator_only_and_commands_are_idempotent() -> None:
     by_key = {definition.key: definition for definition in CAPABILITIES}
     assert by_key["operational_recovery.read"].exposure is CapabilityExposure.OPERATOR

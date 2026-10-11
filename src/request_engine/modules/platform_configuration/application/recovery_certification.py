@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -99,9 +100,12 @@ def _timestamp(value: object, field: str) -> datetime:
 def _non_negative_number(value: object, field: str) -> float:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise RecoveryCertificationInvalid(f"{field} must be numeric")
-    result = float(value)
-    if result < 0:
-        raise RecoveryCertificationInvalid(f"{field} must be non-negative")
+    try:
+        result = float(value)
+    except OverflowError as exc:
+        raise RecoveryCertificationInvalid(f"{field} must be finite") from exc
+    if not math.isfinite(result) or result < 0:
+        raise RecoveryCertificationInvalid(f"{field} must be a finite non-negative number")
     return result
 
 

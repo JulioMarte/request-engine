@@ -214,7 +214,7 @@ async def test_http_request_surface_requires_authenticated_capability(
         unauthenticated = await client.post(
             f"/v1/requests/definitions/{fixture.request_key}/submit",
             headers={"Idempotency-Key": f"unauth-{uuid4().hex}"},
-            json={"payload": {"message": "hello"}},
+            json={"definition_version": 2, "payload": {"message": "hello"}},
         )
         assert unauthenticated.status_code == 401
 
@@ -224,7 +224,7 @@ async def test_http_request_surface_requires_authenticated_capability(
                 "Authorization": "Bearer no-submit",
                 "Idempotency-Key": f"forbidden-{uuid4().hex}",
             },
-            json={"payload": {"message": "hello"}},
+            json={"definition_version": 2, "payload": {"message": "hello"}},
         )
         assert forbidden.status_code == 403
 
@@ -232,7 +232,7 @@ async def test_http_request_surface_requires_authenticated_capability(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
-async def test_http_submit_resolves_latest_version_and_replays_idempotently(
+async def test_http_submit_uses_pinned_version_and_replays_idempotently(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
@@ -246,6 +246,7 @@ async def test_http_submit_resolves_latest_version_and_replays_idempotently(
     }
     idempotency_key = f"http-submit-{uuid4().hex}"
     body = {
+        "definition_version": 2,
         "payload": {"message": "Please prepare a quote"},
         "requester_party_id": str(fixture.requester_party_id),
         "correlations": [
@@ -449,7 +450,7 @@ async def test_http_idempotency_key_reuse_with_different_payload_is_conflict(
                 "Authorization": "Bearer agent",
                 "Idempotency-Key": idempotency_key,
             },
-            json={"payload": {"message": "first"}},
+            json={"definition_version": 2, "payload": {"message": "first"}},
         )
         second = await client.post(
             f"/v1/requests/definitions/{fixture.request_key}/submit",
@@ -457,7 +458,7 @@ async def test_http_idempotency_key_reuse_with_different_payload_is_conflict(
                 "Authorization": "Bearer agent",
                 "Idempotency-Key": idempotency_key,
             },
-            json={"payload": {"message": "different"}},
+            json={"definition_version": 2, "payload": {"message": "different"}},
         )
     assert first.status_code == 201
     assert second.status_code == 409

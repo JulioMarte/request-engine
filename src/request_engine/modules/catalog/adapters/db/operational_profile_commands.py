@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (  # noqa: E501
     ConfigureOfferingVersionBookingTermsCommand,
     OfferingVersionBookingTermsState,
+    validate_booking_terms_input,
 )
 from request_engine.modules.catalog.application.commands.set_location_hours_exception import (
     LocationHoursExceptionState,
@@ -77,6 +78,13 @@ class PostgresOperationalProfileCommands:
             },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            authority = await require_operational_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                authority_party_id=command.authority_party_id,
+                scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
+            )
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -88,13 +96,6 @@ class PostgresOperationalProfileCommands:
             if replay is not None:
                 return _location_state_from_json(cast(dict[str, object], replay["location"]))
 
-            authority = await require_operational_authority(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                authority_party_id=command.authority_party_id,
-                scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
-            )
             current = (
                 (
                     await session.execute(
@@ -216,6 +217,13 @@ class PostgresOperationalProfileCommands:
             },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            authority = await require_operational_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                authority_party_id=command.authority_party_id,
+                scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
+            )
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -227,13 +235,6 @@ class PostgresOperationalProfileCommands:
             if replay is not None:
                 return _contacts_state_from_json(cast(dict[str, object], replay["contacts"]))
 
-            authority = await require_operational_authority(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                authority_party_id=command.authority_party_id,
-                scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
-            )
             exists = (
                 await session.execute(
                     text(
@@ -359,6 +360,13 @@ class PostgresOperationalProfileCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
+                )
                 idempotency_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -369,13 +377,6 @@ class PostgresOperationalProfileCommands:
                 )
                 if replay is not None:
                     return _hours_exception_from_json(cast(dict[str, object], replay["exception"]))
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
-                )
                 current_revision = await _lock_location_revision(
                     session,
                     command.organization_id,
@@ -509,6 +510,7 @@ class PostgresOperationalProfileCommands:
         self,
         command: ConfigureOfferingVersionBookingTermsCommand,
     ) -> OfferingVersionBookingTermsState:
+        validate_booking_terms_input(command)
         fingerprint = command_fingerprint(
             "catalog.configure_offering_version_booking_terms",
             {
@@ -522,6 +524,13 @@ class PostgresOperationalProfileCommands:
             async with tenant_transaction(
                 self._session_factory, command.organization_id
             ) as session:
+                authority = await require_operational_authority(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    authority_party_id=command.authority_party_id,
+                    scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
+                )
                 idempotency_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -532,13 +541,6 @@ class PostgresOperationalProfileCommands:
                 )
                 if replay is not None:
                     return _base_terms_from_json(cast(dict[str, object], replay["terms"]))
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
-                )
                 offering = (
                     await session.execute(
                         text(

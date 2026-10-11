@@ -28,6 +28,9 @@ from request_engine.modules.booking.adapters.db.resource_creation_commands impor
 from request_engine.modules.booking.adapters.db.resource_schedule_exception_commands import (
     PostgresResourceScheduleExceptionCommands,
 )
+from request_engine.modules.booking.adapters.db.supply_configuration_reader import (
+    PostgresSupplyConfigurationReader,
+)
 from request_engine.modules.booking.adapters.discovery_error_boundary import (
     DiscoverySafeBookAppointmentHandler,
 )
@@ -39,7 +42,10 @@ from request_engine.modules.booking.api.errors import booking_error_handler
 from request_engine.modules.booking.api.operational_assignment_router import (
     create_operational_assignment_router,
 )
-from request_engine.modules.booking.api.operational_errors import booking_operational_error_handler
+from request_engine.modules.booking.api.operational_errors import (
+    booking_operational_error_handler,
+    register_terms_input_error_handler,
+)
 from request_engine.modules.booking.api.operational_exception_router import (
     create_operational_exception_router,
 )
@@ -50,6 +56,9 @@ from request_engine.modules.booking.api.resource_bootstrap_router import (
     create_resource_bootstrap_router,
 )
 from request_engine.modules.booking.api.router import create_router
+from request_engine.modules.booking.api.supply_configuration_router import (
+    create_supply_configuration_router,
+)
 from request_engine.modules.booking.application.errors import BookingError
 from request_engine.modules.booking.application.operational_errors import (
     ContextualConfigurationConflict,
@@ -83,6 +92,12 @@ def install_http(
     app.add_exception_handler(BookingError, booking_error_handler)
     install_day_board_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     app.include_router(
+        create_supply_configuration_router(
+            reader=PostgresSupplyConfigurationReader(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
+    app.include_router(
         create_router(
             availability_reader=PostgresAppointmentAvailabilityReader(session_factory),
             option_codec=option_codec,
@@ -112,6 +127,7 @@ def install_operational_http(
     actor_resolver: ActorResolver,
 ) -> None:
     """Connect Booking configuration commands to the operator HTTP process."""
+    register_terms_input_error_handler(app)
     for error_type in (
         ResourceAvailabilityRevisionConflict,
         ResourceLocationAssignmentRevisionConflict,
