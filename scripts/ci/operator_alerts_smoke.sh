@@ -78,6 +78,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 
 cp "$OBS_DIR/prometheus.yaml" "$TMP_DIR/prometheus.yaml"
 cp "$OBS_DIR/alert-rules.yaml" "$TMP_DIR/alert-rules.yaml"
+cp -R "$OBS_DIR/tests" "$TMP_DIR/tests"
 sed "s#https://replace-with-operator-receiver.invalid/alerts#http://operator-alert-receiver:19188/alerts#" \
   "$OBS_DIR/alertmanager.yaml" | sed -e 's/group_wait: 30s/group_wait: 1s/' \
     -e 's/group_interval: 5m/group_interval: 1s/' \
@@ -141,11 +142,11 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$TMP_DIR:/etc/prometheus:ro" --en
   "$PROM_IMAGE" check config /etc/prometheus/prometheus.yaml \
   | tee -a "$ARTIFACT_DIR/operator-alerts-smoke.txt"
 docker run --rm --user "$(id -u):$(id -g)" -v "$TMP_DIR:/etc/prometheus:ro" --entrypoint /bin/promtool \
-  -v "$OBS_DIR/tests:/etc/prometheus/tests:ro" "$PROM_IMAGE" check rules \
+  "$PROM_IMAGE" check rules \
   /etc/prometheus/alert-rules.yaml \
   | tee -a "$ARTIFACT_DIR/operator-alerts-smoke.txt"
 docker run --rm --user "$(id -u):$(id -g)" -v "$TMP_DIR:/etc/prometheus:ro" \
-  -v "$OBS_DIR/tests:/etc/prometheus/tests:ro" --entrypoint /bin/promtool \
+  --entrypoint /bin/promtool \
   "$PROM_IMAGE" test rules /etc/prometheus/tests/alert-rules.test.yaml \
   | tee -a "$ARTIFACT_DIR/operator-alerts-smoke.txt"
 docker run --rm --user "$(id -u):$(id -g)" -v "$TMP_DIR:/etc/alertmanager:ro" --entrypoint /bin/amtool \
@@ -256,6 +257,10 @@ wait_http http://127.0.0.1:9093/-/ready
 wait_for_watchdog_state present 60
 
 # Run the real provider-event store, router, fenced runtime and OTLP observer in the optional image.
+# Reject notifications before inducing the failure: the first delivery-failure
+# notification must exercise retry even when metric observation is slow.
+curl --connect-timeout 2 --max-time 5 --fail --silent --show-error \
+  -X PUT "http://127.0.0.1:${RECEIVER_PORT}/control/fail" >/dev/null
 docker run --detach --name "$WORKER_CONTAINER" --network "${PROJECT}_default" \
   --env OPERATOR_ALERT_SMOKE_WORKER_DATABASE_URL \
   --env OPERATOR_ALERT_SMOKE_WORKER_ROLE \
@@ -268,8 +273,6 @@ worker_deadline=$((SECONDS + 90))
 while (( SECONDS < worker_deadline )) && [[ ! -f "$WORKER_CONTROL_DIR/worker-ready" ]]; do sleep 1; done
 test -f "$WORKER_CONTROL_DIR/worker-ready"
 wait_prom_metric_positive request_engine_provider_event_failures_10m 90
-curl --connect-timeout 2 --max-time 5 --fail --silent --show-error \
-  -X PUT "http://127.0.0.1:${RECEIVER_PORT}/control/fail" >/dev/null
 wait_prom_alert RequestEngineDeliveryFailures 90
 wait_receiver_status rejected RequestEngineDeliveryFailures 30
 curl --connect-timeout 2 --max-time 5 --fail --silent --show-error \

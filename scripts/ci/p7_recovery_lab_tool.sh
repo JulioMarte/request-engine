@@ -90,6 +90,10 @@ case "$tool" in
       snapshot="${6:?snapshot path is missing}"
       remote="/tmp/p7-offhost-target-$$.snap"
       docker cp "$snapshot" "$P7_OPENBAO_TARGET_CONTAINER:$remote" >/dev/null
+      # Docker copies the extracted 0600 snapshot as root. Preserve that
+      # confidentiality while making it readable by the service's own user.
+      docker exec --user 0:0 "$P7_OPENBAO_TARGET_CONTAINER" chown openbao:openbao "$remote"
+      docker exec --user 0:0 "$P7_OPENBAO_TARGET_CONTAINER" chmod 600 "$remote"
       BAO_TOKEN="$P7_OPENBAO_TARGET_TOKEN" docker exec \
         -e BAO_ADDR=http://127.0.0.1:8200 -e BAO_TOKEN \
         "$P7_OPENBAO_TARGET_CONTAINER" bao operator raft snapshot restore -force "$remote"
