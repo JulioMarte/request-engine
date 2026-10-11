@@ -200,6 +200,7 @@ wait_http "http://127.0.0.1:${RECEIVER_PORT}/healthz"
 
 docker run --detach --name "$DB_COLLECTOR_CONTAINER" --network "${PROJECT}_default" \
   --env REQUEST_ENGINE_OPERATOR_METRICS_DATABASE_URL \
+  --env "OTEL_RESOURCE_ATTRIBUTES=service.instance.id=${DB_COLLECTOR_CONTAINER}" \
   --env OTEL_EXPORTER_OTLP_ENDPOINT "$IMAGE_NAME" \
   python /app/scripts/observability/operator_metrics_collector.py >/dev/null
 
@@ -252,6 +253,7 @@ wait_prom_metric_positive() {
 # Require a real successful database read through OTLP and the scrape before
 # inducing failures. Container startup alone is not collector readiness.
 wait_prom_metric_positive request_engine_operator_metrics_collector_last_success_timestamp 90
+printf 'Collector database read reached Prometheus.\n' | tee -a "$ARTIFACT_DIR/operator-alerts-smoke.txt"
 
 probe_file="$TMP_DIR/watchdog-monitor.txt"
 python3 "$ROOT_DIR/scripts/observability/operator_alerts_watchdog_monitor.py" \
@@ -312,13 +314,19 @@ printf 'recover\n' > "$WORKER_CONTROL_DIR/recover-worker"
 wait_receiver_status resolved RequestEngineDeliveryFailures 90
 grep -Fq 'failure|dead' "$WORKER_CONTROL_DIR/worker-results.txt"
 grep -Fq 'recovery|completed' "$WORKER_CONTROL_DIR/worker-results.txt"
+printf 'Worker failure, receiver retry and audited recovery notifications passed.\n' \
+  | tee -a "$ARTIFACT_DIR/operator-alerts-smoke.txt"
 
 # Stopping the independent SQL collector makes its success timestamp stale; restart clears it.
 docker stop --time 1 "$DB_COLLECTOR_CONTAINER" >/dev/null
 wait_prom_alert RequestEngineOperatorMetricsCollectorStale 180
 wait_receiver_status firing RequestEngineOperatorMetricsCollectorStale 60
+collector_restart_timestamp="$(date +%s)"
 docker start "$DB_COLLECTOR_CONTAINER" >/dev/null
+wait_prom_metric_positive "request_engine_operator_metrics_collector_last_success_timestamp-${collector_restart_timestamp}" 90
 wait_receiver_status resolved RequestEngineOperatorMetricsCollectorStale 90
+printf 'SQL collector outage and fresh read after restart reached the receiver.\n' \
+  | tee -a "$ARTIFACT_DIR/operator-alerts-smoke.txt"
 
 # The independent host probe detects a missing dead-man rule and a stopped Prometheus process.
 awk '

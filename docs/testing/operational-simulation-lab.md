@@ -47,6 +47,12 @@ Before fault injection, monitoring requires the collector's successful database
 read timestamp to reach Prometheus through OTLP and a real scrape. Its permission
 verification runs as the actual aggregate-only login; privileged catalog checks
 alone cannot prove that the collector can start.
+The SQL collector receives a stable, run-unique `service.instance.id` through
+`OTEL_RESOURCE_ATTRIBUTES`. The pinned SDK otherwise generates a new identity
+per process; retained old series can keep their own stale alert firing after
+restart. Recovery requires a database-read timestamp newer than restart to
+reach Prometheus, followed by the receiver's resolved notification. No old
+series is manually deleted and no alert rule is weakened.
 
 The monitoring worker receives only its restricted runtime database login. The
 outer host creates the disposable event and administratively replays it before

@@ -246,6 +246,7 @@ accepted certification read-only at `/run/request-engine/recovery-certification.
 ```bash
 docker run --rm \
   --env REQUEST_ENGINE_OPERATOR_METRICS_DATABASE_URL \
+  --env OTEL_RESOURCE_ATTRIBUTES \
   --env REQUEST_ENGINE_RECOVERY_CERTIFICATION_PATH=/run/request-engine/recovery-certification.json \
   --mount type=bind,src=/secure/evidence/recovery-certification.json,dst=/run/request-engine/recovery-certification.json,readonly \
   request-engine:<immutable-release-tag> \
@@ -255,6 +256,18 @@ docker run --rm \
 The `--env` form passes the secret from the deployment environment without placing its
 value in the process arguments. Keep this poller on a private network with the approved
 metrics backend endpoint; it does not expose a public HTTP endpoint.
+
+Configure `OTEL_RESOURCE_ATTRIBUTES` with a stable, deployment-unique
+`service.instance.id` for this collector, for example
+`service.instance.id=primary-operator-metrics`. Keep that identity across a
+restart of the same logical collector; concurrently running collectors need
+distinct identities. The
+[pinned Python SDK](https://github.com/open-telemetry/opentelemetry-python/blob/v1.44.0/opentelemetry-sdk/src/opentelemetry/sdk/resources/__init__.py)
+generates a process-specific identity when none is supplied. With resource labels
+enabled and the five-minute metric retention in this stack, changing identities
+leaves the old timestamp series behind: its stale alert can remain firing while
+the new collector reports successfully. Stable identity avoids that restart
+overlap; it does not provide inventory-based detection of a missing replica.
 
 Migration 0039 creates `request_operator_metrics` as a `NOLOGIN` group, not a
 credential. Provision a separate login through the deployment's secret workflow,
