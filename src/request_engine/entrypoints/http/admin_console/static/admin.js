@@ -111,6 +111,7 @@
       sidebar: document.getElementById("admin-sidebar"),
       toggle: document.querySelector(".menu-toggle"),
       scrim: document.querySelector(".nav-scrim"),
+      frame: document.getElementById("admin-frame"),
     };
   }
 
@@ -121,6 +122,14 @@
     document.body.classList.toggle("nav-open", mobile && open);
     elements.toggle.setAttribute("aria-expanded", mobile && open ? "true" : "false");
     elements.sidebar.inert = mobile && !open;
+    if (elements.frame) elements.frame.inert = mobile && open;
+    if (mobile && open) {
+      elements.sidebar.setAttribute("role", "dialog");
+      elements.sidebar.setAttribute("aria-modal", "true");
+    } else {
+      elements.sidebar.removeAttribute("role");
+      elements.sidebar.removeAttribute("aria-modal");
+    }
     if (elements.scrim) elements.scrim.tabIndex = mobile && open ? 0 : -1;
     if (mobile && open) {
       var firstLink = elements.sidebar.querySelector("a");
@@ -133,8 +142,25 @@
   document.addEventListener("DOMContentLoaded", function () { setNavigation(false, false); });
   window.addEventListener("resize", function () { setNavigation(false, false); });
   document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape" && document.body.classList.contains("nav-open")) {
+    if (!document.body.classList.contains("nav-open")) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
       setNavigation(false, true);
+    }
+    if (event.key === "Tab") {
+      var elements = navigationElements();
+      var links = Array.from(elements.sidebar.querySelectorAll("a[href], button:not(:disabled)"));
+      if (elements.scrim) links.push(elements.scrim);
+      if (!links.length) return;
+      var first = links[0];
+      var last = links[links.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
   });
   document.addEventListener("click", function (event) {
@@ -144,7 +170,9 @@
       setNavigation(!document.body.classList.contains("nav-open"), false);
       return;
     }
-    if (target.closest(".nav-scrim") || (target.closest("#admin-sidebar a") && window.matchMedia("(max-width: 900px)").matches)) {
+    if (target.closest(".nav-scrim")) {
+      setNavigation(false, true);
+    } else if (target.closest("#admin-sidebar a") && window.matchMedia("(max-width: 900px)").matches) {
       setNavigation(false, false);
     }
   });
@@ -277,7 +305,9 @@
       })
       .then(function () {
         var nextInput = document.querySelector('input[name="next"]');
-        window.location.href = nextInput && nextInput.value === "/staff-invitations/accept" ? nextInput.value : "/";
+        var next = nextInput ? nextInput.value : "/";
+        window.location.href = next === "/staff-invitations/accept" || next === "/account/security"
+          ? next : "/";
       });
   }
 
@@ -291,7 +321,12 @@
     if (!message) return;
     event.preventDefault();
     var dialog = document.getElementById("confirm-dialog");
-    if (!dialog || typeof dialog.showModal !== "function") return;
+    if (!dialog || typeof dialog.showModal !== "function") {
+      if (window.confirm(message)) event.detail.issueRequest(true);
+      return;
+    }
+    if (dialog.open) return;
+    dialog.returnValue = "cancel";
     var messageNode = document.getElementById("confirm-message");
     if (messageNode) messageNode.textContent = message;
     dialog.showModal();
@@ -300,6 +335,35 @@
       if (dialog.returnValue === "confirm") event.detail.issueRequest(true);
     });
   });
+
+  function requestForm(event) {
+    var element = event.detail && event.detail.elt;
+    return element && element.closest ? element.closest("form") : null;
+  }
+
+  function finishFormRequest(event) {
+    var form = requestForm(event);
+    if (!form) return;
+    form.removeAttribute("aria-busy");
+    form.querySelectorAll("[data-request-disabled]").forEach(function (button) {
+      button.disabled = false;
+      button.removeAttribute("data-request-disabled");
+    });
+  }
+
+  document.addEventListener("htmx:beforeRequest", function (event) {
+    var form = requestForm(event);
+    if (!form) return;
+    form.setAttribute("aria-busy", "true");
+    form.querySelectorAll("button[type=submit]").forEach(function (button) {
+      if (button.disabled) return;
+      button.setAttribute("data-request-disabled", "true");
+      button.disabled = true;
+    });
+  });
+  document.addEventListener("htmx:afterRequest", finishFormRequest);
+  document.addEventListener("htmx:sendError", finishFormRequest);
+  document.addEventListener("htmx:timeout", finishFormRequest);
 
   document.addEventListener("input", function (event) {
     var input = event.target;
@@ -356,4 +420,47 @@
       });
     }
   });
+  // Nested controls submit named scalar fields; the server reconstructs only
+  // canonical schema properties and keeps owner validation authoritative.
+  document.addEventListener("change", function (event) {
+    var target = event.target;
+    if (!(target instanceof Element) || !target.matches("[data-include-structured], [data-structured-mode]")) return;
+    var group = target.closest("[data-structured-input]");
+    var controls = group ? group.querySelector("[data-structured-controls]") : null;
+    var include = group ? group.querySelector(":scope > label > [data-include-structured]") : null;
+    var mode = group ? group.querySelector(":scope > label > [data-structured-mode]") : null;
+    if (controls) controls.disabled = (include && !include.checked) || (mode && mode.value === "null");
+  });
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!(target instanceof Element)) return;
+    var add = target.closest("[data-array-add]");
+    if (add) {
+      var editor = add.closest("[data-array-editor]");
+      if (!editor) return;
+      var rows = editor.querySelector(":scope > [data-array-rows]");
+      var template = editor.querySelector(":scope > template[data-array-template]");
+      if (!rows || !template || rows.children.length >= 100) return;
+      var next = Number(editor.dataset.nextIndex || "0");
+      var html = template.innerHTML.split(editor.dataset.indexToken).join(String(next));
+      editor.dataset.nextIndex = String(next + 1);
+      rows.insertAdjacentHTML("beforeend", html);
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+      var entry = rows.lastElementChild;
+      var input = entry ? entry.querySelector("input:not([type=hidden]), select, textarea") : null;
+      if (input) input.focus();
+    }
+    var remove = target.closest("[data-array-remove]");
+    if (remove) {
+      var row = remove.closest("[data-array-row]");
+      var parent = row ? row.parentElement : null;
+      if (row) row.remove();
+      if (parent) parent.dispatchEvent(new Event("input", { bubbles: true }));
+      var nextButton = parent && parent.parentElement ? parent.parentElement.querySelector(":scope > [data-array-add]") : null;
+      if (nextButton) nextButton.focus();
+    }
+  });
+  // Hide the mobile sidebar only after its controls are actually installed.
+  document.documentElement.classList.add("js-navigation");
 })();

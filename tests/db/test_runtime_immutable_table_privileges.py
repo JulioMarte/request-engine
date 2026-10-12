@@ -233,6 +233,11 @@ _EXACT_DEFINER_OWNERS = {
     ): "request_platform_control_definer",
     (
         "request_platform",
+        "read_native_identity_profiles",
+        "p_identity_id uuid, p_after uuid, p_limit integer",
+    ): "request_platform_definer",
+    (
+        "request_platform",
         "read_native_identities",
         "p_identity_id uuid, p_after uuid, p_limit integer",
     ): "request_platform_definer",

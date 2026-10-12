@@ -149,3 +149,41 @@ Owner reads are metadata queries, not a substitute for activation readiness or
 an email delivery journey. Browser acceptance, infrastructure/provider acceptance
 and exact-head remote CI remain separate release evidence. Do not call production
 ready based on the focused tests alone.
+
+## Private native account labels (0041)
+
+`platform_native_identity_list/get`, GET `/v1/platform/native-identities`
+and its identity detail, remain Tenancy-owned read-only Queries under existing
+HUMAN `platform.identity.read`. Their private, no-store View now includes the
+canonical `login_handle` as a human-readable account label. This is a CONTROLLED
+private projection evolution: a handle is identifying account information, not
+an authentication proof. No password, verifier, session token, recovery proof,
+or credential inventory is projected. Public authentication options and tenant
+staff/audit surfaces retain their independent identity-opacity guarantees;
+this change neither exposes this platform inventory to them nor creates a grant.
+The existing actor authorization boundary remains unchanged.
+
+Migration `0041_native_identity_labels` adds the seven-column
+`request_platform.read_native_identity_profiles(uuid,uuid,integer)` projection
+and SELECT of only `native_identities.login_handle` to the existing private read
+definer. The old six-column `read_native_identities` function, its body and ACL
+remain available unchanged for overlapping old consumers. The new projection
+uses the old bounded selection in the same statement, joins the exact identity,
+uses a fixed search path, and has no PUBLIC EXECUTE. Runtime read logins gain
+only EXECUTE through normal bootstrap, never direct table access. Deploy the
+migration and refresh reviewed read-login grants before the new control-plane
+code. No row rewrite/backfill, authoritative mutation, extra lock or external
+provider is involved; catalog grant/function DDL is transactional and small.
+Rollback is code-compatible with the retained old read; schema evolution remains
+roll-forward. Machine-facing operation IDs, capability, idempotency (none),
+revision observations and error semantics are unchanged; no second tool path is
+needed.
+
+`test_native_identity_account_labels_are_private_exact_and_paginated` exercises
+supported provisioning and the real restricted read login on PostgreSQL 18,
+checks exact account labels/list/detail/pagination, denied unauthorized and
+non-HUMAN actors, absence of secret fields, forbidden direct reads and preserved
+legacy projection. Definer topology tests check the exact new column/signature,
+owner/search path/ACL; unknown privilege expansion remains rejected. The proof
+belongs to the existing native identity current-product CI file. Browser UX and
+production acceptance remain separate evidence.

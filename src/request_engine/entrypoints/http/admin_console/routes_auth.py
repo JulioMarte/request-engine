@@ -54,7 +54,7 @@ def _new_session(
 
 
 def _login_next(value: object) -> str:
-    return "/staff-invitations/accept" if value == "/staff-invitations/accept" else "/"
+    return str(value) if value in ("/staff-invitations/accept", "/account/security") else "/"
 
 
 def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:

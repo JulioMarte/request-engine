@@ -1628,6 +1628,30 @@ Delivered by revisions 0071-0074 and the Platform Owner HTTP/E2E journeys:
 - suspend/reactivate/revoke semantics with revisions, idempotency and append-only facts;
 - a second owner can be activated and the final effective owner cannot be removed.
 
+### P5.1 — Guided business setup after instance claim
+
+The private admin console's `/resources/business-setup` journey runs only with
+an existing ordinary authenticated session. It projects the canonical native
+organization creation Command through the same executor used by the other
+administrative workspaces. It does not accept a SetupSession, claim the instance,
+reopen setup, enroll a new Platform Owner or provide an alternate trust root.
+The owning operation continues to check current capability, accepted human
+authentication posture, idempotency and native identity/controller prerequisites.
+
+The operator deliberately chooses a named native account from the authorized
+private inventory. Account creation and business creation remain distinct;
+choosing a label does not manufacture an identity or grant platform authority.
+The successful owner response supplies the real organization and represented
+Party for the next setup link. Partial responses supply no fabricated authority
+or continuation. Platform owner status alone still confers no implicit tenant
+membership. Existing businesses require their actual tenant/Party authorization.
+
+This is an ordered configuration start, not proof of onboarding completion or
+production acceptance. See `admin-dashboard-completion.md` for visual controls,
+readback requirements and the explicit advanced-input limits. Existing instance
+claim, owner activation, recovery restriction and strong-factor guarantees remain
+unchanged.
+
 ### P6 — Instance recovery — delivered
 
 The accepted recovery goal is met without introducing a permanent magic root or

@@ -1,17 +1,24 @@
 import asyncio
 import time
-from dataclasses import replace
-from typing import Any
+from dataclasses import asdict, replace
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from fastapi import FastAPI, Request
+from httpx import ASGITransport, AsyncClient
 from native_authority_gate_support import insert_authority
 from platform_provisioning_support import platform_grant, platform_principal, principal_revision
 from psycopg import Connection
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from request_engine.modules.tenancy.adapters.db.native_identity_provision_commands import (
     PostgresNativeIdentityProvisionCommands,
+)
+from request_engine.modules.tenancy.adapters.db.native_identity_reader import (
+    PostgresNativeIdentityReader,
 )
 from request_engine.modules.tenancy.adapters.db.platform_organization_reader import (
     PostgresPlatformOrganizationReader,
@@ -22,6 +29,9 @@ from request_engine.modules.tenancy.adapters.db.platform_owner_commands import (
 from request_engine.modules.tenancy.adapters.db.platform_owner_reader import (
     PostgresPlatformOwnerReader,
 )
+from request_engine.modules.tenancy.api.platform_native_identity_management import (
+    install_native_identity_management_http,
+)
 from request_engine.modules.tenancy.application.commands.native_identity_provision import (
     NativeIdentityProvisionConflict,
     NativeIdentityProvisionForbidden,
@@ -29,6 +39,12 @@ from request_engine.modules.tenancy.application.commands.native_identity_provisi
 )
 from request_engine.modules.tenancy.application.commands.platform_owner_lifecycle import (
     CreatePlatformOwnerInvitationCommand,
+)
+from request_engine.modules.tenancy.application.queries.native_identity_read import (
+    GetNativeIdentityQuery,
+    ListNativeIdentitiesQuery,
+    NativeIdentityReadForbidden,
+    NativeIdentityReadNotFound,
 )
 from request_engine.modules.tenancy.application.queries.platform_organization_read import (
     ListPlatformOrganizationsQuery,
@@ -40,6 +56,7 @@ from request_engine.modules.tenancy.application.queries.platform_owner_read impo
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import PrincipalKind
 from request_engine.platform.security.native_auth import hash_password
+from request_engine.platform.security.native_human_auth import NativeHumanAuthService
 from request_engine.platform.security.platform_context import PlatformActorContext
 
 pytestmark = [
@@ -450,3 +467,114 @@ async def test_actual_session_provenance_is_required_before_provision_replay(
         "WHERE actor_principal_id=%s",
         (actor.principal_id,),
     ).fetchone() == (1,)
+
+
+@pytest.mark.asyncio
+async def test_native_identity_account_labels_are_private_exact_and_paginated(
+    admin_conn: Connection[Any],
+    platform_control_session_factory: SessionFactory,
+    platform_read_session_factory: SessionFactory,
+) -> None:
+    authority, actor = _world(admin_conn)
+    commands = PostgresNativeIdentityProvisionCommands(
+        platform_control_session_factory, native_authority_id=authority
+    )
+    first_login = f"reception-{uuid4().hex}@example.test"
+    second_login = f"manager-{uuid4().hex}@example.test"
+    first = await commands.provision_identity(
+        actor, ProvisionNativeIdentityCommand(first_login, "strong first password", "label-first")
+    )
+    second = await commands.provision_identity(
+        actor,
+        ProvisionNativeIdentityCommand(second_login, "strong second password", "label-second"),
+    )
+    reader = PostgresNativeIdentityReader(platform_read_session_factory)
+    read_actor = replace(actor, capabilities=frozenset({"platform.identity.read"}))
+    rows = await reader.list_identities(read_actor, ListNativeIdentitiesQuery())
+    assert len(rows) == 3
+    assert {row.native_identity_id: row.login_handle for row in rows}.items() >= {
+        first.native_identity_id: first_login,
+        second.native_identity_id: second_login,
+    }.items()
+    detail = await reader.read_identity(
+        read_actor, GetNativeIdentityQuery(first.native_identity_id)
+    )
+    assert detail.login_handle == first_login
+    assert detail.identity_authority_id == authority
+    assert detail.revision == 1
+    assert set(asdict(detail)) == {
+        "native_identity_id",
+        "identity_authority_id",
+        "login_handle",
+        "status",
+        "revision",
+        "created_at",
+        "disabled_at",
+    }
+    observed: list[UUID] = []
+    after = None
+    while True:
+        page = await reader.list_identities(read_actor, ListNativeIdentitiesQuery(after, 1))
+        if not page:
+            break
+        observed.append(page[0].native_identity_id)
+        after = page[0].native_identity_id
+    assert observed == sorted(row.native_identity_id for row in rows)
+    with pytest.raises(NativeIdentityReadNotFound):
+        await reader.read_identity(read_actor, GetNativeIdentityQuery(uuid4()))
+    for denied_actor in (
+        replace(read_actor, capabilities=frozenset()),
+        replace(read_actor, principal_kind=PrincipalKind.AGENT),
+    ):
+        with pytest.raises(NativeIdentityReadForbidden):
+            await reader.list_identities(denied_actor, ListNativeIdentitiesQuery())
+        with pytest.raises(NativeIdentityReadForbidden):
+            await reader.read_identity(
+                denied_actor, GetNativeIdentityQuery(first.native_identity_id)
+            )
+    async with platform_read_session_factory() as session:
+        legacy = (
+            await session.execute(
+                text("SELECT * FROM request_platform.read_native_identities(NULL,NULL,100)")
+            )
+        ).all()
+        assert all(len(row) == 6 for row in legacy)
+        assert {row[0] for row in legacy} == set(observed)
+    for forbidden_query in (
+        "SELECT login_handle FROM request_engine.native_identities",
+        "SELECT verifier FROM request_engine.native_credentials",
+    ):
+        async with platform_read_session_factory() as session:
+            with pytest.raises(DBAPIError) as denied:
+                await session.execute(text(forbidden_query))
+            assert getattr(denied.value.orig, "sqlstate", None) == "42501"
+    assert admin_conn.execute(
+        "SELECT has_function_privilege('public', "
+        "'request_platform.read_native_identity_profiles(uuid,uuid,integer)', 'EXECUTE')"
+    ).fetchone() == (False,)
+
+    class ReadResolver:
+        async def resolve_platform_actor(self, request: Request) -> PlatformActorContext:
+            return read_actor
+
+    app = FastAPI()
+    install_native_identity_management_http(
+        app,
+        read_session_factory=platform_read_session_factory,
+        write_session_factory=platform_control_session_factory,
+        actor_resolver=ReadResolver(),
+        native_auth_service=cast(NativeHumanAuthService, None),
+        native_authority_id=authority,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as client:
+        response = await client.get(f"/v1/platform/native-identities/{first.native_identity_id}")
+        page_response = await client.get("/v1/platform/native-identities", params={"limit": 1})
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["login_handle"] == first_login
+    assert set(response.json()) == set(asdict(detail))
+    assert page_response.status_code == 200
+    assert page_response.headers["cache-control"] == "no-store"
+    assert len(page_response.json()["items"]) == 1
+    assert page_response.json()["next_cursor"] == str(observed[0])
+    assert page_response.json()["items"][0]["login_handle"] == rows[0].login_handle

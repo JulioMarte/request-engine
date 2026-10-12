@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Controller policy adoption · Request Engine admin{% endblock %}
+{% block content %}
+<header class="page-heading"><div><a href="/resources">← Workspaces</a><h1>Controller policy adoption</h1><p>Review tenant consent before adding the current controller policy.</p></div></header>
+<section class="card">
+{% if result %}{% include "partials/result.html" %}{% else %}
+<div class="table-scroll"><table class="ops"><thead><tr><th scope="col">Organization</th><th scope="col">Policy change</th><th scope="col">Status</th><th scope="col">Expires</th><th scope="col">Action</th></tr></thead><tbody>
+{% for row in rows %}<tr><td><code>{{ row.organization_id }}</code></td><td>{{ row.source_policy_key }} → {{ row.target_policy_key }}</td><td>{{ row.status }}</td><td>{{ row.expires_at }}</td><td><a href="/resources/controller-policy-adoptions/{{ row.request_id | urlencode }}">Review consent</a></td></tr>
+{% else %}<tr><td colspan="5"><div class="empty-state"><strong>No policy adoption requests</strong><p>The control plane returned an empty collection.</p></div></td></tr>{% endfor %}
+</tbody></table></div>
+{% if next_url %}<a class="button secondary" href="{{ next_url }}">Next →</a>{% endif %}
+{% endif %}
+</section>
+{% endblock %}

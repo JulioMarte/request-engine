@@ -39,6 +39,7 @@ _VIEW_FIELDS = frozenset(
         "revision",
         "created_at",
         "disabled_at",
+        "login_handle",
     }
 )
 
@@ -159,6 +160,7 @@ async def test_native_identity_global_disable_http_journey_is_governed_and_audit
             item for item in items if item["native_identity_id"] == str(target.identity_id)
         )
         assert set(target_item) == _VIEW_FIELDS
+        assert target_item["login_handle"] == target.login_handle
         assert target_item["identity_authority_id"] == str(authority_id)
         assert target_item["status"] == "active"
         assert target_item["revision"] == 1
@@ -228,6 +230,8 @@ async def test_native_identity_global_disable_http_journey_is_governed_and_audit
             f"{_IDENTITIES_PATH}/{target.identity_id}", headers=root_headers
         )
         assert terminal.status_code == 200
+        assert set(terminal.json()) == _VIEW_FIELDS
+        assert terminal.json()["login_handle"] == target.login_handle
         assert terminal.json()["status"] == "disabled"
         assert terminal.json()["disabled_at"] is not None
         assert terminal.json()["revision"] == 2

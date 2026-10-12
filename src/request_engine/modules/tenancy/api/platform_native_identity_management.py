@@ -87,6 +87,7 @@ class NativeIdentityProvisionView(BaseModel):
 class NativeIdentityView(BaseModel):
     native_identity_id: UUID
     identity_authority_id: UUID
+    login_handle: str
     status: str
     revision: int
     created_at: datetime
@@ -123,6 +124,7 @@ def _view(identity: object) -> NativeIdentityView:
     return NativeIdentityView(
         native_identity_id=identity.native_identity_id,  # type: ignore[attr-defined]
         identity_authority_id=identity.identity_authority_id,  # type: ignore[attr-defined]
+        login_handle=identity.login_handle,  # type: ignore[attr-defined]
         status=identity.status,  # type: ignore[attr-defined]
         revision=identity.revision,  # type: ignore[attr-defined]
         created_at=identity.created_at,  # type: ignore[attr-defined]

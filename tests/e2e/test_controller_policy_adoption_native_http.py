@@ -386,7 +386,7 @@ async def test_adoption_uses_real_native_http_auth_and_platform_control_composit
         assert applied.status_code == 200, applied.text
         assert applied.json()["controller_principal_id"] == str(root_principal_id)
         assert applied.json()["platform_approver_principal_id"] == str(owner_principal_id)
-        assert applied.json()["target_policy_key"] == "tenant-controller-v6"
+        assert applied.json()["target_policy_key"] == "tenant-controller-v7"
 
 
 @pytest.mark.asyncio

@@ -9,11 +9,62 @@ from uuid import UUID
 import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import RedirectResponse, Response
+from pydantic import AwareDatetime, BaseModel, Field, StrictBool, StrictStr, ValidationError
 
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
+
+
+class _StaffGrant(BaseModel):
+    capability: StrictStr
+    delegable: StrictBool
+
+
+class _StaffMember(BaseModel):
+    membership_id: UUID
+    principal_id: UUID
+    status: Literal["invited", "active", "suspended", "revoked"]
+    membership_revision: int = Field(strict=True, ge=1)
+    authority_revision: int = Field(strict=True, ge=1)
+    principal_active: StrictBool
+    authority_anchor_party_id: UUID | None
+    standing_grants: list[_StaffGrant] = Field(strict=True)
+    display_name: StrictStr | None = None
+    profile_revision: int = Field(strict=True, ge=0)
+
+
+class _StaffPage(BaseModel):
+    items: list[_StaffMember] = Field(strict=True, max_length=100)
+    next_cursor: UUID | None
+
+
+class _StaffOverview(BaseModel):
+    total: int = Field(strict=True, ge=0)
+    active: int = Field(strict=True, ge=0)
+    invited: int = Field(strict=True, ge=0)
+    suspended: int = Field(strict=True, ge=0)
+    revoked: int = Field(strict=True, ge=0)
+    effective_capabilities: list[StrictStr] = Field(strict=True)
+    delegable_ceiling: list[StrictStr] = Field(strict=True)
+
+
+class _StaffHistoryEntry(BaseModel):
+    event_id: UUID
+    actor_principal_id: UUID | None
+    occurred_at: AwareDatetime
+    command_name: Literal[
+        "staff.invite", "staff.manage_authority", "staff.manage_membership", "staff.profile.update"
+    ]
+    revision_kind: Literal["membership", "authority", "profile"]
+    revision_before: int | None = Field(strict=True, ge=0)
+    revision_after: int | None = Field(strict=True, ge=0)
+
+
+class _StaffHistoryPage(BaseModel):
+    items: list[_StaffHistoryEntry] = Field(strict=True, max_length=100)
+    next_cursor: UUID | None
 
 
 def _read_error(status_code: int) -> str:
@@ -127,8 +178,21 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         except httpx.HTTPError:
             return Response("Staff service temporarily unavailable", status_code=503)
         reads_ok = overview_response.ok and list_response.ok
-        body = as_mapping(list_response.payload) if list_response.ok else {}
-        items = [as_mapping(item) for item in as_list(body.get("items"))] if reads_ok else []
+        body: dict[str, Any] = {}
+        items: list[dict[str, Any]] = []
+        overview_view: dict[str, Any] = {}
+        if reads_ok:
+            try:
+                page = _StaffPage.model_validate(list_response.payload)
+                overview_view = _StaffOverview.model_validate(
+                    overview_response.payload
+                ).model_dump()
+                body = page.model_dump(mode="json")
+                items = body["items"]
+            except ValidationError:
+                return Response(
+                    "Invalid staff API response. Reload before making changes.", status_code=502
+                )
         failed_status = (
             overview_response.status_code if not overview_response.ok else list_response.status_code
         )
@@ -138,7 +202,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             state.context(
                 request,
                 organization_id=str(organization_id),
-                overview=as_mapping(overview_response.payload),
+                overview=overview_view,
                 members=items,
                 next_cursor=body.get("next_cursor"),
                 page_limit=str(limit),
@@ -181,6 +245,16 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         permission_choices: list[str] = []
         selected_permissions: list[str] = []
         if response.ok:
+            # Identity and concurrency tokens come from a complete owner read.
+            try:
+                member_view = _StaffMember.model_validate(response.payload)
+                if member_view.membership_id != membership_id:
+                    raise ValueError("membership mismatch")
+                item = member_view.model_dump(mode="json")
+            except (ValidationError, ValueError):
+                return Response(
+                    "Invalid staff API response. Reload before making changes.", status_code=502
+                )
             overview_op = catalog.by_id().get(_OPS["overview"])
             if overview_op is None:
                 return Response("Staff operation catalog incomplete", status_code=503)
@@ -195,10 +269,13 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 return Response("Staff service temporarily unavailable", status_code=503)
             if not overview.ok:
                 return Response(_read_error(overview.status_code), status_code=overview.status_code)
-            permission_choices = sorted(
-                str(value)
-                for value in as_list(as_mapping(overview.payload).get("delegable_ceiling"))
-            )
+            try:
+                authority_context = _StaffOverview.model_validate(overview.payload)
+            except ValidationError:
+                return Response(
+                    "Invalid staff API response. Reload before making changes.", status_code=502
+                )
+            permission_choices = sorted(authority_context.delegable_ceiling)
             visible_capabilities = [
                 str(grant.get("capability"))
                 for grant in (as_mapping(value) for value in as_list(item.get("standing_grants")))
@@ -288,7 +365,18 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             )
         except httpx.HTTPError:
             return Response("Staff service temporarily unavailable", status_code=503)
-        body = as_mapping(response.payload) if response.ok else {}
+        body: dict[str, Any] = {}
+        if response.ok:
+            try:
+                page = _StaffHistoryPage.model_validate(response.payload)
+                if len(page.items) > limit:
+                    raise ValueError("history page exceeds requested limit")
+                body = page.model_dump(mode="json")
+            except (ValidationError, ValueError):
+                return Response(
+                    "Invalid staff history API response. Reload before interpreting the history.",
+                    status_code=502,
+                )
         return state.templates.TemplateResponse(
             request,
             "resources/staff_history.html",

@@ -90,6 +90,7 @@ async def test_history_is_read_only_redacted_and_forwards_trusted_session(status
                     {
                         "items": [
                             {
+                                "event_id": MEMBER,
                                 "occurred_at": "2026-10-02T12:00:00Z",
                                 "command_name": "staff.profile.update",
                                 "actor_principal_id": ORG,
@@ -178,9 +179,15 @@ class FakeApi:
                             "membership_id": MEMBER,
                             "principal_id": ORG,
                             "status": "active",
+                            "membership_revision": 1,
+                            "authority_revision": 1,
+                            "profile_revision": 0,
+                            "principal_active": True,
+                            "authority_anchor_party_id": None,
                             "standing_grants": [],
                         }
-                    ]
+                    ],
+                    "next_cursor": None,
                 },
                 {},
             )
@@ -196,6 +203,8 @@ class FakeApi:
                     "standing_grants": [],
                     "display_name": "Jordan Example",
                     "profile_revision": 3,
+                    "principal_active": True,
+                    "authority_anchor_party_id": None,
                 },
                 {},
             )
@@ -879,3 +888,322 @@ async def test_staff_status_filter_is_api_backed_and_survives_both_page_links() 
     assert list_requests[1][2]["params"] == {"limit": "1"}
     assert invalid.status_code == 422
     assert len(list_requests) == 2
+
+
+def staff_client(runtime: FakeApi) -> httpx.AsyncClient:
+    settings = AdminConsoleSettings(
+        session_store_directory=Path(
+            os.environ["REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY"]
+        ),
+        control_api_base_url="http://control",
+        runtime_api_base_url="http://runtime",
+        session_secret=SecretStr("unit-test-session-secret-40-characters"),
+        cookie_secure=False,
+    )
+    app = create_admin_console_app(settings, client=FakeApi(), runtime_client=runtime)
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("membership_id", ORG),
+        ("principal_id", "not-an-id"),
+        ("membership_revision", 0),
+        ("authority_revision", None),
+        ("authority_revision", True),
+        ("profile_revision", -1),
+        ("profile_revision", "3"),
+    ],
+)
+async def test_staff_detail_incomplete_identity_or_revision_never_offers_commands(
+    field: str, value: object
+) -> None:
+    runtime = FakeApi(runtime=True)
+    original = runtime.request
+
+    async def malformed(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        response = await original(method, path, **kwargs)
+        if path == f"/v1/staff/members/{MEMBER}":
+            return ControlResponse(200, {**response.payload, field: value}, {})
+        return response
+
+    runtime.request = malformed  # type: ignore[method-assign]
+    async with staff_client(runtime) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
+    assert page.status_code == 502
+    assert 'id="staff-profile"' not in page.text
+    assert 'id="staff-status"' not in page.text
+    assert 'id="staff-plan"' not in page.text
+    # The malformed read must not trigger another read that fabricates a usable form.
+    assert len(runtime.requests) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["membership_id", "principal_id", "next_cursor"])
+async def test_staff_list_rejects_invalid_link_targets(field: str) -> None:
+    runtime = FakeApi(runtime=True)
+    original = runtime.request
+
+    async def malformed(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        response = await original(method, path, **kwargs)
+        if path == "/v1/staff/members":
+            payload = {**response.payload}
+            if field == "next_cursor":
+                payload[field] = "not-an-id"
+            else:
+                payload["items"] = [{**payload["items"][0], field: "not-an-id"}]
+            return ControlResponse(200, payload, {})
+        return response
+
+    runtime.request = malformed  # type: ignore[method-assign]
+    async with staff_client(runtime) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff")
+    assert page.status_code == 502
+    assert "not-an-id" not in page.text
+    assert 'id="staff-invite"' not in page.text
+
+
+@pytest.mark.asyncio
+async def test_staff_detail_real_render_has_parseable_forms_and_current_revisions() -> None:
+    from html.parser import HTMLParser
+
+    class Forms(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.current: str | None = None
+            self.forms: dict[str, dict[str, str | None]] = {}
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            attributes = dict(attrs)
+            if tag == "form":
+                self.current = attributes.get("id")
+                if self.current:
+                    self.forms[self.current] = {"action": attributes.get("action")}
+            elif tag == "input" and self.current and attributes.get("name"):
+                self.forms[self.current][str(attributes["name"])] = attributes.get("value")
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag == "form":
+                self.current = None
+
+    async with staff_client(FakeApi(runtime=True)) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
+    assert page.status_code == 200
+    parser = Forms()
+    parser.feed(page.text)
+    for name, revision_name, revision in (
+        ("profile", "expected_profile_revision", "3"),
+        ("plan", "expected_authority_revision", "1"),
+        ("status", "expected_revision", "1"),
+    ):
+        form = parser.forms[f"staff-{name}"]
+        assert form["action"] == f"/tenants/{ORG}/staff/{MEMBER}/{name}"
+        assert form[revision_name] == revision
+        assert form["csrf_token"]
+    assert "Apply reviewed draft" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_staff_business_configuration_navigation_uses_validated_tenant_only() -> None:
+    runtime = FakeApi(runtime=True)
+    async with staff_client(runtime) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(
+            f"/tenants/{ORG}/staff?organization_id={MEMBER}&authority_party_id={MEMBER}",
+            headers={"X-RE-Organization-ID": MEMBER},
+        )
+    assert page.status_code == 200
+    assert f'href="/tenants/{ORG}/configuration"' in page.text
+    assert f'href="/tenants/{MEMBER}/configuration"' not in page.text
+    assert "Business configuration" in page.text
+    for _, _, kwargs in runtime.requests:
+        assert kwargs["extra_headers"] == {"X-RE-Organization-ID": ORG}
+        assert "authority_party_id" not in (kwargs.get("params") or {})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"items": None, "next_cursor": None},
+        {"items": "not-a-list", "next_cursor": None},
+        {"items": [None], "next_cursor": None},
+        {"items": [{"membership_id": MEMBER}], "next_cursor": None},
+        {"items": []},
+    ],
+)
+async def test_staff_success_status_with_invalid_page_is_not_empty_success(
+    payload: dict[str, object],
+) -> None:
+    runtime = FakeApi(runtime=True)
+    original = runtime.request
+
+    async def malformed(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path == "/v1/staff/members":
+            runtime.requests.append((method, path, kwargs))
+            return ControlResponse(200, payload, {})
+        return await original(method, path, **kwargs)
+
+    runtime.request = malformed  # type: ignore[method-assign]
+    async with staff_client(runtime) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff")
+    assert page.status_code == 502
+    assert 'id="staff-invite"' not in page.text
+    assert "No visible staff memberships" not in page.text
+    assert "Invite by email" not in page.text
+    assert all(method == "GET" for method, _, _ in runtime.requests)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("workspace", ["", f"/{MEMBER}"])
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("total", None),
+        ("active", True),
+        ("invited", "0"),
+        ("suspended", -1),
+        ("effective_capabilities", None),
+        ("delegable_ceiling", "staff.read"),
+        ("delegable_ceiling", [None]),
+    ],
+)
+async def test_staff_malformed_overview_never_constructs_authority_forms(
+    workspace: str, field: str, value: object
+) -> None:
+    runtime = FakeApi(runtime=True)
+    original = runtime.request
+
+    async def malformed(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        response = await original(method, path, **kwargs)
+        if path == "/v1/staff/overview":
+            return ControlResponse(200, {**response.payload, field: value}, {})
+        return response
+
+    runtime.request = malformed  # type: ignore[method-assign]
+    async with staff_client(runtime) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff{workspace}")
+    assert page.status_code == 502
+    assert 'id="staff-invite"' not in page.text
+    assert 'id="staff-plan"' not in page.text
+    assert 'id="staff-status"' not in page.text
+    assert 'id="staff-profile"' not in page.text
+    assert all(method == "GET" for method, _, _ in runtime.requests)
+
+
+@pytest.mark.asyncio
+async def test_staff_valid_empty_owner_page_still_renders_truthful_empty_state() -> None:
+    runtime = FakeApi(runtime=True)
+    original = runtime.request
+
+    async def empty(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path == "/v1/staff/members":
+            return ControlResponse(200, {"items": [], "next_cursor": None}, {})
+        return await original(method, path, **kwargs)
+
+    runtime.request = empty  # type: ignore[method-assign]
+    async with staff_client(runtime) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff")
+    assert page.status_code == 200
+    assert "No visible staff memberships" in page.text
+    assert 'id="staff-invite"' in page.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"items": None, "next_cursor": None},
+        {"items": "invalid", "next_cursor": None},
+        {"items": [None], "next_cursor": None},
+        {"items": [{"event_id": MEMBER}], "next_cursor": None},
+        {"items": []},
+        {"items": [], "next_cursor": "invalid"},
+    ],
+)
+async def test_staff_history_invalid_collection_never_claims_empty_provenance(
+    payload: dict[str, Any],
+) -> None:
+    runtime = FakeApi(runtime=True)
+    original = runtime.request
+
+    async def malformed(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path.endswith("/history"):
+            runtime.requests.append((method, path, kwargs))
+            return ControlResponse(200, payload, {})
+        return await original(method, path, **kwargs)
+
+    runtime.request = malformed  # type: ignore[method-assign]
+    async with staff_client(runtime) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff/{MEMBER}/history")
+    assert page.status_code == 502
+    assert "Invalid staff history API response" in page.text
+    assert "No visible administrative events" not in page.text
+    assert "Older events" not in page.text
+    assert all(method == "GET" for method, _, _ in runtime.requests)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    [
+        "valid_empty",
+        "invalid_revision",
+        "invalid_time",
+        "too_many",
+        "invalid_command",
+        "invalid_revision_kind",
+    ],
+)
+async def test_staff_history_valid_empty_and_factual_entry_validation(case: str) -> None:
+    runtime = FakeApi(runtime=True)
+    original = runtime.request
+    entry: dict[str, Any] = {
+        "event_id": MEMBER,
+        "actor_principal_id": ORG,
+        "occurred_at": "2026-10-02T12:00:00Z",
+        "command_name": "staff.profile.update",
+        "revision_kind": "profile",
+        "revision_before": 0,
+        "revision_after": 1,
+    }
+    if case == "invalid_command":
+        entry["command_name"] = "payments.fake_event"
+    elif case == "invalid_revision_kind":
+        entry["revision_kind"] = "unknown_revision"
+    elif case == "invalid_revision":
+        entry["revision_after"] = True
+    elif case == "invalid_time":
+        entry["occurred_at"] = "not-a-time"
+    payload = {"items": [] if case == "valid_empty" else [entry], "next_cursor": None}
+    if case == "too_many":
+        payload["items"] = [entry, entry]
+
+    async def response(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path.endswith("/history"):
+            runtime.requests.append((method, path, kwargs))
+            return ControlResponse(200, payload, {})
+        return await original(method, path, **kwargs)
+
+    runtime.request = response  # type: ignore[method-assign]
+    async with staff_client(runtime) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff/{MEMBER}/history?limit=1")
+    assert page.status_code == (200 if case == "valid_empty" else 502)
+    assert ("No visible administrative events" in page.text) is (case == "valid_empty")
+    assert all(method == "GET" for method, _, _ in runtime.requests)

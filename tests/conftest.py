@@ -133,6 +133,12 @@ async def platform_read_session_factory() -> AsyncIterator[SessionFactory]:
         admin.execute(
             sql.SQL(
                 "GRANT EXECUTE ON FUNCTION "
+                "request_platform.read_native_identity_profiles(uuid,uuid,integer) TO {}"
+            ).format(sql.Identifier(role_name))
+        )
+        admin.execute(
+            sql.SQL(
+                "GRANT EXECUTE ON FUNCTION "
                 "request_platform.read_platform_organizations(uuid,uuid,integer) TO {}"
             ).format(sql.Identifier(role_name))
         )

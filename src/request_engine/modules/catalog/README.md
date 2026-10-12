@@ -149,3 +149,31 @@ absent versions are 404. Caller filters cannot select tenant/principal. Reads
 authorize trusted ActorContext, use tenant transactions and existing RLS; no
 cross-module dependency, provider I/O or writes are introduced. These queries
 do not yet expose a full catalog version/lifecycle administration suite.
+
+Administrative inventory also exposes Locations and Offerings, including inactive
+configuration, through `catalog_location_configuration_list/read` and
+`catalog_offering_configuration_list/read`. GET `/v1/catalog/locations/configuration`
+and `/v1/catalog/offerings/configuration` return `{items,next_cursor}` ordered by
+UUID with `limit` 1..100 (default 50) and `after` continuation. Exact reads use
+`/{location_id}/configuration` or `/{offering_id}/configuration`. Every call
+requires `catalog.read_configuration`, current tenant principal standing and the
+exact represented `authority_party_id` inside the restricted runtime transaction:
+Locations require `operations.manage_profile`; Offerings require
+`operations.manage_terms`. Foreign and absent exact targets are both 404.
+Location rows expose the current operational revision and profile; Offering rows
+identify only the latest immutable version and its effective booking-policy
+revision. They do not enumerate historical versions or grant authority over the
+returned IDs. Unsupported filters fail 422. This is a live inventory, not a
+transaction-spanning snapshot, and creates no business facts or grants.
+
+
+Location detail also supplies required `hours_windows` and `public_contacts`
+arrays from the same SQL snapshot as the profile and operational revision.
+These are complete current replacement inputs: all active windows, preserving
+nullable dates even for past/future validity, and active public contacts with
+canonical `value` and nullable label. Superseded inactive rows are excluded;
+observed empty arrays remain valid. Collection inventory does not load/project
+these children. Existing `catalog.read_configuration` plus exact Party profile
+authority, restricted application SELECT and tenant RLS remain unchanged.
+See `docs/architecture/administrative-configuration-readback.md` for the guided
+replacement and PostgreSQL proof contract.

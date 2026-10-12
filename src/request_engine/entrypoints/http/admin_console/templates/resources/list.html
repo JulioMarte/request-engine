@@ -4,7 +4,7 @@
 {% block content %}
 <header class="page-heading">
   <div><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/resources">Workspaces</a><span aria-hidden="true">/</span><span aria-current="page">{{ spec.title }}</span></nav><h1>{{ spec.title }}</h1><p>{{ spec.summary }}</p></div>
-  {% if create_inputs %}<a class="button" href="#create-panel">{{ spec.create_label }}</a>{% endif %}
+  {% if create_inputs %}<a class="button" href="{{ '/resources/business-setup' if spec.key == 'organizations' else '#create-panel' }}">{{ spec.create_label }}</a>{% endif %}
 </header>
 <section class="panel list-panel">
   {% if spec.list_note %}<div class="alert notice">{{ spec.list_note }}</div>{% endif %}
@@ -30,5 +30,6 @@
   {% endif %}
   {% endif %}
 </section>
-{% if create_inputs %}<details class="card create-disclosure" id="create-panel"><summary>{{ spec.create_label }}</summary><div class="create-form"><form id="create" class="stack" method="post" action="/resources/{{ spec.key }}" hx-post="/resources/{{ spec.key }}" hx-target="#result" hx-swap="innerHTML"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="_intent_id" value="" data-form-intent />{{ ui.render(create_inputs) }}<button type="submit">{{ spec.create_label }}</button></form><div id="result"></div></div></details>{% endif %}
+{% if create_inputs and spec.key == 'organizations' %}<section class="card"><h2>Create a business</h2><p>Choose its administrator by account name and follow the setup steps.</p><a class="button" href="/resources/business-setup">Start guided setup</a></section>
+{% elif create_inputs %}<details class="card create-disclosure" id="create-panel"><summary>{{ spec.create_label }}</summary><div class="create-form"><form id="create" class="stack" method="post" action="/resources/{{ spec.key }}" hx-post="/resources/{{ spec.key }}" hx-target="#result" hx-swap="innerHTML"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="_intent_id" value="" data-form-intent />{{ ui.render(create_inputs) }}<button type="submit">{{ spec.create_label }}</button></form><div id="result"></div></div></details>{% endif %}
 {% endblock %}

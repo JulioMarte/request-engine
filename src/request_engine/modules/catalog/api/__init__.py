@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 
+from request_engine.modules.catalog.adapters.db.administration_reader import (
+    PostgresCatalogAdministrationReader,
+)
 from request_engine.modules.catalog.adapters.db.bootstrap_catalog_commands import (
     PostgresCatalogBootstrapCommands,
 )
@@ -27,6 +30,7 @@ from request_engine.modules.catalog.adapters.db.operational_profile_commands imp
 from request_engine.modules.catalog.adapters.db.organization_holiday_commands import (
     PostgresOrganizationHolidayCommands,
 )
+from request_engine.modules.catalog.api.administration_router import create_administration_router
 from request_engine.modules.catalog.api.bootstrap_router import create_bootstrap_router
 from request_engine.modules.catalog.api.configuration_router import create_configuration_router
 from request_engine.modules.catalog.api.operational_errors import (
@@ -59,6 +63,11 @@ def install_http(
 
     register_input_error_handler(app)
 
+    app.include_router(
+        create_administration_router(
+            PostgresCatalogAdministrationReader(session_factory), actor_resolver
+        )
+    )
     app.include_router(
         create_configuration_router(
             PostgresCatalogConfigurationReader(session_factory),

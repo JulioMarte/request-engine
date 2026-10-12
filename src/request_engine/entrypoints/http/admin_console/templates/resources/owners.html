@@ -1,25 +1,22 @@
 {% extends "base.html" %}
 {% import "partials/action_form.html" as action_form %}
-{% block title %}Platform owners &middot; Request Engine admin{% endblock %}
+{% block title %}Platform owners · Request Engine admin{% endblock %}
 {% block content %}
-<section class="card">
-  <p><a href="/resources">&larr; Workspaces</a></p>
-  <h1>Platform owners</h1>
-  <div class="alert notice">{{ note }}</div>
-  <p class="muted small">Owner lifecycle actions take the <code>principal_id</code> returned by
-    invitation activation. Invitation actions take the <code>invitation_id</code>.</p>
-  <div id="result"></div>
+<p><a href="/resources">← Workspaces</a></p>
+<header class="page-heading"><div><p class="eyebrow">Platform / Authority</p><h1>Platform owners</h1><p>Inspect current platform authority and govern owner invitations. Ownership does not grant tenant membership.</p></div></header>
+<nav class="chips" aria-label="Owner resources"><a class="chip {% if not invitations %}active{% endif %}" href="/resources/owners" {% if not invitations %}aria-current="page"{% endif %}>Owners</a><a class="chip {% if invitations %}active{% endif %}" href="/resources/owners/invitations" {% if invitations %}aria-current="page"{% endif %}>Invitations</a></nav>
+<section class="panel"><h2>{{ 'Owner invitations' if invitations else 'Current owners' }}</h2>
+{% if read_error %}<div class="alert error" role="alert">{{ read_error }}</div><p>No owner information or action forms are shown.</p><a class="button secondary" href="{{ request.url.path }}">Try again</a><a class="button secondary" href="/login">Sign in again</a>
+{% elif rows %}
+<div class="table-wrap"><table><thead><tr><th scope="col">{{ 'Invitation' if invitations else 'Principal' }}</th><th scope="col">State</th><th scope="col">Revision</th><th scope="col">{{ 'Expires' if invitations else 'Binding state' }}</th></tr></thead><tbody>
+{% for item in rows %}<tr>
+<td>{% if invitations %}<a href="/resources/owners/invitations/{{ item.invitation_id | urlencode }}"><code>{{ item.invitation_id }}</code></a>{% else %}<a href="/resources/owners/{{ item.principal_id | urlencode }}"><code>{{ item.principal_id }}</code></a>{% endif %}</td>
+<td>{% if invitations %}{{ item.status }}{% if item.expired %} · expired{% endif %}{% else %}{{ 'Active' if item.active else 'Inactive' }}{% endif %}</td>
+<td>{{ item.revision if invitations else item.authority_revision }}</td><td>{{ item.expires_at if invitations else item.binding_status or '—' }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}<div class="empty-state"><h3>{{ 'No more results' if after else 'No owner resources returned' }}</h3><p>The authorized owner service returned an empty page.</p></div>{% endif %}
+{% if not read_error and (after or next_after) %}<nav aria-label="Owner resource pages">{% if after %}<a href="{{ request.url.path }}?limit={{ page_limit }}">← First page</a>{% endif %}{% if next_after %}<a href="{{ request.url.path }}?after={{ next_after | urlencode }}&amp;limit={{ page_limit }}">Next page →</a>{% endif %}</nav>{% endif %}
 </section>
-<section class="card">
-  <h2>Invitations</h2>
-  {{ action_form.render(forms['invite']) }}
-  {{ action_form.render(forms['revoke-invitation']) }}
-  {{ action_form.render(forms['activate-invitation']) }}
-</section>
-<section class="card">
-  <h2>Owner lifecycle</h2>
-  {{ action_form.render(forms['suspend']) }}
-  {{ action_form.render(forms['reactivate']) }}
-  {{ action_form.render(forms['revoke']) }}
-</section>
+{% if action_drift %}<p class="alert warning" role="alert">Owner action definitions are unavailable. No action can run until the control plane and console agree.</p>{% endif %}
+{% if forms %}<section class="panel"><h2>Invite a platform owner</h2><p>Creating an invitation does not activate authority. The recipient must enroll through the governed invitation ceremony before activation. Keep the one-time invitation proof private. The recipient can open <a href="/owner-invitations/enroll">owner enrollment</a>, enter the proof privately, then set up <a href="/account/security">personal account security</a>.</p><div id="result"></div>{% for action in forms %}{{ action_form.render(action) }}{% endfor %}</section>{% endif %}
 {% endblock %}

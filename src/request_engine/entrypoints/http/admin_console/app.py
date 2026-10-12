@@ -27,6 +27,12 @@ from request_engine.entrypoints.http.admin_console.client import (
     ControlPlanePort,
 )
 from request_engine.entrypoints.http.admin_console.routes_auth import install_auth_routes
+from request_engine.entrypoints.http.admin_console.routes_business_setup import (
+    install_business_setup_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_controller_adoption import (
+    install_controller_adoption_routes,
+)
 from request_engine.entrypoints.http.admin_console.routes_diagnostics import (
     install_diagnostics_routes,
 )
@@ -36,12 +42,18 @@ from request_engine.entrypoints.http.admin_console.routes_my_organizations impor
 from request_engine.entrypoints.http.admin_console.routes_operations import (
     install_operation_routes,
 )
+from request_engine.entrypoints.http.admin_console.routes_owner_enrollment import (
+    install_owner_enrollment_routes,
+)
 from request_engine.entrypoints.http.admin_console.routes_resources import (
     install_resource_routes,
 )
 from request_engine.entrypoints.http.admin_console.routes_setup import install_setup_routes
 from request_engine.entrypoints.http.admin_console.routes_staff_invitations import (
     install_staff_invitation_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_tenant_configuration import (
+    install_tenant_configuration_routes,
 )
 from request_engine.entrypoints.http.admin_console.routes_tenant_staff import (
     install_tenant_staff_routes,
@@ -245,10 +257,14 @@ def create_admin_console_app(
     app.add_api_route("/health/ready", ready, methods=["GET"], include_in_schema=False)
 
     install_auth_routes(app, state)
+    install_owner_enrollment_routes(app, state)
     install_setup_routes(app, state)
     install_operation_routes(app, state)
+    install_controller_adoption_routes(app, state)
+    install_business_setup_routes(app, state)
     install_resource_routes(app, state)
     install_tenant_staff_routes(app, state)
+    install_tenant_configuration_routes(app, state)
     install_staff_invitation_routes(app, state)
     install_my_organization_routes(app, state)
     install_diagnostics_routes(app, state)

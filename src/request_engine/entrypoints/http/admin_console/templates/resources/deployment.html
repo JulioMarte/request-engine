@@ -10,13 +10,16 @@
 <section class="card">
   {% if item_error %}<div class="alert error">{{ item_error }}</div>{% endif %}
   {% if item.binding %}<h2>Active binding</h2><dl class="detail">{% for key, value in item.binding.items() %}<dt>{{ key | replace('_', ' ') | title }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
-  <h2>Plan and reconcile</h2>
+  {% if can_act %}<h2>Plan and reconcile</h2>
   <ol class="task-steps">
     <li class="done"><span>1</span><div><strong>Review binding</strong><small>Inspect the current recovery target and identifiers.</small></div></li>
     <li class="{% if item.state == 'in_sync' %}done{% else %}current{% endif %}"><span>2</span><div><strong>Compare with provider</strong><small>{% if item.changes %}{{ item.changes | length }} change(s) reported.{% else %}No changes reported.{% endif %}</small></div></li>
     <li class="{% if item.state == 'in_sync' %}done{% endif %}"><span>3</span><div><strong>Reconcile</strong><small>{% if item.state == 'in_sync' %}No reconciliation is required.{% else %}Apply the reviewed recovery plan.{% endif %}</small></div></li>
   </ol>
   {% if item.changes %}<div class="change-list"><strong>Proposed changes</strong><ul>{% for change in item.changes %}<li>{{ change }}</li>{% endfor %}</ul></div>{% endif %}
+  {% else %}<p>No valid provider comparison is available. Reload the recovery plan before reconciling.</p>
+  {% if initial_setup_available %}<a class="button primary" href="/resources/deployment-recovery/new">Set up an initial binding</a>{% endif %}
+  {% endif %}
 </section>
 {% if can_act %}<section class="card">
   <div id="result"></div>

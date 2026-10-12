@@ -210,6 +210,7 @@ def _actor_pair(
         "tenant-controller-v3",
         "tenant-controller-v4",
         "tenant-controller-v5",
+        "tenant-controller-v6",
     ],
 )
 @pytest.mark.asyncio
@@ -440,8 +441,10 @@ async def test_legacy_policy_adoption_http_journey_and_readiness(
         )
         assert applied.status_code == 200, applied.text
         assert applied.json()["platform_approver_principal_id"] == str(platform_id)
-        assert applied.json()["target_policy_key"] == "tenant-controller-v6"
+        assert applied.json()["target_policy_key"] == "tenant-controller-v7"
         assert applied.json()["added_capabilities"]
+        if source_policy == "tenant-controller-v6":
+            assert applied.json()["added_capabilities"] == ["queue.read_configuration"]
         assert applied.json()["authority_revision_after"] > root_revision
 
         grant_rows = e2e_admin_conn.execute(
@@ -488,7 +491,7 @@ async def test_legacy_policy_adoption_http_journey_and_readiness(
                 text("SELECT request_engine.read_onboarding_identity_facts(:organization_id)"),
                 {"organization_id": organization_id},
             )
-        assert readiness["tenant_control"]["recorded_policy_key"] == "tenant-controller-v6"
+        assert readiness["tenant_control"]["recorded_policy_key"] == "tenant-controller-v7"
         assert readiness["tenant_control"]["current_policy_ready"] is True
         assert (
             readiness["controller_authority_revision"] == applied.json()["authority_revision_after"]

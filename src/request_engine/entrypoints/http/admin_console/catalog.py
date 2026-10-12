@@ -142,9 +142,15 @@ class _SchemaResolver:
                 resolved_properties: dict[str, Any] = {}
                 for prop_name, prop_schema in as_mapping(value).items():
                     resolved_properties[prop_name] = (
-                        self._resolve(_as_schema(prop_schema), frozenset()) or {}
+                        self._resolve(_as_schema(prop_schema), seen) or {}
                     )
                 result["properties"] = resolved_properties
+            elif key in {"items", "additionalProperties"} and isinstance(value, dict):
+                result[key] = self._resolve(as_mapping(value), seen) or {}
+            elif key in {"anyOf", "oneOf", "allOf"} and isinstance(value, list):
+                result[key] = [
+                    self._resolve(_as_schema(item), seen) or {} for item in as_list(value)
+                ]
             else:
                 result[key] = value
         return result

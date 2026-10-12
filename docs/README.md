@@ -56,6 +56,10 @@ Current tenant configuration Query contracts:
 Admin organization/staff journey review and prioritized remediation are tracked in
 [`testing/admin-api-adversarial-handoff-2026-09-29.md`](testing/admin-api-adversarial-handoff-2026-09-29.md).
 
+Current dashboard task coverage, interface acceptance and evidence boundaries:
+[`architecture/admin-dashboard-completion.md`](architecture/admin-dashboard-completion.md).
+- [Admin dashboard validation checkpoint](testing/admin-dashboard-completion-2026-10-11.md) — executed local proof and its boundaries.
+
 Earlier verification checkpoint and explicitly unfinished admin journeys:
 [`testing/admin-api-verification-2026-09-30.md`](testing/admin-api-verification-2026-09-30.md).
 Latest additive implementation checkpoint:

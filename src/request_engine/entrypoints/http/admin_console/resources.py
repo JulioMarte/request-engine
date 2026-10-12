@@ -185,6 +185,12 @@ RESOURCE_SPECS: tuple[ResourceSpec, ...] = (
 
 WORKSPACE_SPECS: tuple[WorkspaceSpec, ...] = (
     WorkspaceSpec(
+        key="controller-policy-adoptions",
+        title="Controller policy adoption",
+        owner="tenancy",
+        summary="Review tenant consent and apply the current controller policy safely.",
+    ),
+    WorkspaceSpec(
         key="configurations",
         title="Platform configuration",
         owner="platform_configuration",
@@ -211,11 +217,6 @@ WORKSPACE_SPECS: tuple[WorkspaceSpec, ...] = (
         title="Platform owners",
         owner="tenancy",
         summary="Invite, enroll and govern additional Platform Owners.",
-        no_list_note=(
-            "The control plane defines owner capabilities but mounts no owner "
-            "enumeration operation, so existing owners cannot be listed here. Use "
-            "the principal id returned by invitation activation."
-        ),
     ),
     WorkspaceSpec(
         key="provisioning",
@@ -230,6 +231,11 @@ WORKSPACE_SPECS: tuple[WorkspaceSpec, ...] = (
 )
 
 # Operation ids used by the non-simple workspaces (resolved against the catalog).
+CONTROLLER_ADOPTION_OPERATION_IDS = {
+    "list": "platform_controller_policy_adoption_list",
+    "review": "platform_controller_policy_adoption_review",
+    "apply": "platform_controller_policy_adoption_apply",
+}
 CONFIGURATION_OPERATION_IDS = {
     "list": "platform_configuration_list",
     "revision_list": "platform_configuration_revision_list",
@@ -350,6 +356,7 @@ def next_cursor(payload: Any) -> str:
 __all__ = [
     "ActionSpec",
     "CONFIGURATION_OPERATION_IDS",
+    "CONTROLLER_ADOPTION_OPERATION_IDS",
     "DEPLOYMENT_OPERATION_IDS",
     "MissingOperation",
     "OWNER_OPERATION_IDS",

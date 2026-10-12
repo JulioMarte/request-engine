@@ -38,6 +38,7 @@ def _materialize(row: Any) -> NativeIdentityView:
         revision=int(row[3]),
         created_at=row[4],
         disabled_at=row[5],
+        login_handle=str(row[6]),
     )
 
 
@@ -78,14 +79,14 @@ class PostgresNativeIdentityReader:
                     text(
                         """
                         WITH page AS MATERIALIZED (
-                        SELECT * FROM request_platform.read_native_identities(
+                        SELECT * FROM request_platform.read_native_identity_profiles(
                             CAST(:identity_id AS uuid),
                             CAST(:after AS uuid),
                             CAST(:limit AS integer)
                         ))
                         SELECT * FROM page
                         UNION ALL
-                        SELECT * FROM request_platform.read_native_identities(
+                        SELECT * FROM request_platform.read_native_identity_profiles(
                             NULL,
                             (SELECT native_identity_id FROM page
                              ORDER BY native_identity_id DESC LIMIT 1), 1

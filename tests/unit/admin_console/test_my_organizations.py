@@ -94,6 +94,9 @@ async def test_self_context_page_uses_runtime_without_browser_tenant_or_identity
     assert page.headers["cache-control"] == "no-store"
     assert "North &amp; South" in page.text
     assert f'href="/tenants/{ORG}/staff"' in page.text
+    assert f'href="/tenants/{ORG}/configuration"' in page.text
+    assert f'href="/tenants/{OTHER}/configuration"' not in page.text
+    assert "Business configuration" in page.text
     assert f"after={ORG}&amp;limit=2" in page.text
     assert "Membership does not automatically grant" in page.text
     assert runtime.calls == [
@@ -146,6 +149,7 @@ async def test_self_context_failures_never_render_membership_links(
         page = await client.get("/my-organizations")
     assert page.status_code == status
     assert f'href="/tenants/{ORG}/staff"' not in page.text
+    assert f'href="/tenants/{ORG}/configuration"' not in page.text
     assert "No active memberships" not in page.text
     if case in {"anonymous", "drift"}:
         assert runtime.calls == []

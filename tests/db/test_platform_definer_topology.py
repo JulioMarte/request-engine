@@ -81,6 +81,7 @@ _EXPECTED_COLUMN_PRIVILEGES = {
     ("identity_recovery_cases", "status", "SELECT"),
     ("identity_recovery_cases", "target_native_identity_id", "SELECT"),
     ("native_identities", "id", "SELECT"),
+    ("native_identities", "login_handle", "SELECT"),
     ("native_identities", "identity_authority_id", "SELECT"),
     ("native_identities", "status", "SELECT"),
     ("native_identities", "revision", "SELECT"),
@@ -298,6 +299,13 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
         (
             "request_platform",
             "read_native_identities",
+            "p_identity_id uuid, p_after uuid, p_limit integer",
+            True,
+            ["search_path=pg_catalog, request_engine, pg_temp"],
+        ),
+        (
+            "request_platform",
+            "read_native_identity_profiles",
             "p_identity_id uuid, p_after uuid, p_limit integer",
             True,
             ["search_path=pg_catalog, request_engine, pg_temp"],

@@ -155,9 +155,14 @@ operation, capability, idempotency and step-up rules as the API.
 - **Deployment recovery** — inspect the active binding, configure and reconcile.
 - **Organizations** — list and detail views from the platform control plane,
   plus the canonical organization-provisioning command.
-- **Platform owners** and **recovery operators** — no read/list operation is
-  mounted, so these pages state that explicitly and expose only the available
-  commands rather than fabricating an empty table.
+- **Platform owners** — owners and invitations list, detail and revision-bound
+  lifecycle actions. An invited recipient enrolls at `/owner-invitations/enroll`,
+  then prepares their own passkey and recovery codes at `/account/security`;
+  enrollment does not activate ownership.
+- **Recovery operators** — no read/list operation is mounted, so this page states
+  that explicitly and exposes only the available commands.
+- **Controller policy adoption** — list, review and apply a governed adoption
+  using the exact reviewed consent revision and intent.
 
 **People & permissions** uses `/my-organizations` for self-authorized organization
 selection, then `/tenants/{organization_id}/staff` for members, counts, permission
@@ -167,6 +172,13 @@ The same authenticated HUMAN subject may have platform and tenant bindings;
 the runtime API must materialize and revalidate the tenant actor independently.
 Selecting a tenant or holding platform-owner authority never grants tenant access.
 Permission assignment remains separate from invitation acceptance.
+
+**Business configuration** (`/tenants/{organization_id}/configuration`) projects
+99 current organization, catalog, booking supply, queue, communications, Requests,
+Discovery, agent, integration, authority, identity and operational-policy owner operations through the runtime API. Inventory reads and current revisions
+come from owner Queries. Explicit Party authority remains required and checked
+upstream. Complex configuration uses typed JSON fields where the owner schema
+requires them; the console does not invent configuration defaults.
 
 Both the workspaces and the generic `/operations` browser execute through a
 single `execution.execute_operation` path, so there is no second execution path.
@@ -239,12 +251,23 @@ profile revisions are independent of membership and authority revisions. Invitat
 recipients can review the organization and expiry through `staff_invitation_preview`
 before submitting acceptance; the preview itself never grants authority.
 
-The console is not complete against every dashboard reference: broader/contact
-and cross-tenant search, activity projections, permission descriptions and real-browser/provider
-evidence remain tracked in
-[`admin-completion-checkpoint-2026-10-02.md`](../../../../../docs/testing/admin-completion-checkpoint-2026-10-02.md).
+The current acceptance scope and evidence boundaries are defined in
+[`admin-dashboard-completion.md`](../../../../../docs/architecture/admin-dashboard-completion.md).
+Overview health requires complete canonical readiness and observability data;
+incomplete responses cannot appear healthy. Browser checks exercise navigation,
+focus, narrow screens and confirmation against a simulated upstream. They do not
+prove real provider delivery, production installation or authenticator enrollment.
+Private invitation redemption and recovery-code issuance require JavaScript to
+avoid browser POST history retaining secrets. Navigation remains usable without it.
 
 ## Tests
+
+The Workspaces page links to `/resources/business-setup`: a named-account
+administrator picker and guided first-business creation. Tenant configuration
+offers ordered setup tasks and owner-backed resource choices. Known nested
+schemas render visual fields and add/remove rows; open documents remain advanced.
+Loaded revisions are retained internally and checked by the owner. The interface
+does not invent missing Party authority or implicit platform-to-tenant access.
 
 ```powershell
 uv run pytest tests/unit/admin_console -q
@@ -254,3 +277,8 @@ They cover opaque server sessions, the OpenAPI catalog and `$ref` resolution,
 schema-driven form parsing, cookie/session flow, security headers, disabled
 operator docs, request-id propagation, redaction, the bounded error tracker and
 the diagnostics surface.
+
+Optional, reproducible Chromium UI proof and its explicit simulated-upstream
+boundary are documented in
+[`tests/browser/admin_console/README.md`](../../../../../tests/browser/admin_console/README.md).
+This proof is not a mandatory CI lane or production installation acceptance.

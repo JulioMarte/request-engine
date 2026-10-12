@@ -11,11 +11,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
+from uuid import UUID
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
+from request_engine.entrypoints.http.admin_console.client import ControlResponse
 from request_engine.entrypoints.http.admin_console.execution import (
     ExecutionOutcome,
     execute_operation,
@@ -26,11 +28,10 @@ from request_engine.entrypoints.http.admin_console.inputs import (
     scalar_columns,
     summarize_payload,
 )
-from request_engine.entrypoints.http.admin_console.json_types import as_mapping
+from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
 from request_engine.entrypoints.http.admin_console.resources import (
     CONFIGURATION_OPERATION_IDS,
     DEPLOYMENT_OPERATION_IDS,
-    OWNER_OPERATION_IDS,
     PROVISIONING_OPERATION_IDS,
     RESOURCE_SPECS,
     SECRET_OPERATION_IDS,
@@ -45,6 +46,7 @@ from request_engine.entrypoints.http.admin_console.resources import (
     spec_by_key,
     workspace_by_key,
 )
+from request_engine.entrypoints.http.admin_console.routes_owners import install_owner_routes
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 _CONFIG_ACTIONS = {
@@ -63,14 +65,6 @@ _SECRET_ACTIONS = {
 _DEPLOYMENT_ACTIONS = {
     "configure": DEPLOYMENT_OPERATION_IDS["configure"],
     "reconcile": DEPLOYMENT_OPERATION_IDS["reconcile"],
-}
-_OWNER_ACTIONS = {
-    "invite": OWNER_OPERATION_IDS["invite"],
-    "revoke-invitation": OWNER_OPERATION_IDS["revoke_invitation"],
-    "activate-invitation": OWNER_OPERATION_IDS["activate_invitation"],
-    "suspend": OWNER_OPERATION_IDS["suspend"],
-    "reactivate": OWNER_OPERATION_IDS["reactivate"],
-    "revoke": OWNER_OPERATION_IDS["revoke"],
 }
 _PROVISIONING_ACTIONS = {
     "recovery-operator": PROVISIONING_OPERATION_IDS["recovery_operator_create"],
@@ -154,7 +148,17 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         return state.context(
             request,
             operation=operation,
-            inputs=build_inputs(operation, values=values, secret_fields=secret_fields)
+            inputs=build_inputs(
+                operation,
+                values=values,
+                secret_fields=secret_fields,
+                loaded_revisions=tuple(
+                    name
+                    for name in (values or {})
+                    if name.startswith("expected_")
+                    and ("revision" in name or name.endswith("_version"))
+                ),
+            )
             if operation is not None
             else [],
             action_url=action_url,
@@ -229,6 +233,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 bearer=_bearer(request),
                 params=pagination_params(list_operation, request.query_params) or None,
             )
+            response = _guard_resource_read(response, spec.key, collection=True)
             if response.ok:
                 rows = [
                     {
@@ -278,6 +283,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
             get_operation.path_template.replace("{" + spec.item_param + "}", item_id),
             bearer=_bearer(request),
         )
+        response = _guard_resource_read(response, spec.key, reference=item_id)
         item = as_mapping(response.payload)
         return state.templates.TemplateResponse(
             request,
@@ -350,6 +356,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         response = await state.control_request(
             list_operation.method, list_operation.path_template, bearer=_bearer(request)
         )
+        response = _guard_configuration_read(response, collection=True)
         kinds: dict[str, int] = {}
         if response.ok:
             for item in list_items(response.payload):
@@ -361,6 +368,8 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
             policy_response = await state.control_request(
                 policy_operation.method, policy_operation.path_template, bearer=_bearer(request)
             )
+            if policy_response.ok and not _valid_recovery_policy(policy_response.payload):
+                policy_response = _invalid_read()
             if policy_response.ok:
                 policy = as_mapping(policy_response.payload)
             else:
@@ -407,6 +416,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
             revision_list.path_template.replace("{configuration_kind}", kind),
             bearer=_bearer(request),
         )
+        response = _guard_configuration_read(response, collection=True, kind=kind)
         revisions = list_items(response.payload) if response.ok else []
         active = next(
             (str(item.get("revision")) for item in revisions if item.get("state") == "active"),
@@ -454,12 +464,16 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
             ),
             bearer=_bearer(request),
         )
+        detail_response = _guard_configuration_read(detail_response, kind=kind, revision=revision)
         payload = as_mapping(detail_response.payload)
         list_response = await state.control_request(
             revision_list.method,
             revision_list.path_template.replace("{configuration_kind}", kind),
             bearer=_bearer(request),
         )
+        list_response = _guard_configuration_read(list_response, collection=True, kind=kind)
+        if not list_response.ok and detail_response.ok:
+            detail_response = _invalid_read()
         active = next(
             (
                 str(item.get("revision"))
@@ -574,6 +588,8 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
             metadata.path_template.replace("{binding_id}", binding_id),
             bearer=_bearer(request),
         )
+        if response.ok and not _valid_secret(response.payload, binding_id):
+            response = _invalid_read()
         payload = as_mapping(response.payload)
         purpose = str(payload.get("purpose", ""))
         is_keyring = purpose == "security.appointment_option_signing"
@@ -643,6 +659,8 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         response = await state.control_request(
             plan.method, plan.path_template, bearer=_bearer(request)
         )
+        if response.ok and not _valid_deployment(response.payload):
+            response = _invalid_read()
         payload = as_mapping(response.payload)
         binding = as_mapping(payload.get("binding"))
         configure_values = {
@@ -660,6 +678,10 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 item_error="" if response.ok else _error_text(response),
                 detail=summarize_payload(payload),
                 can_act=response.ok,
+                initial_setup_available=(
+                    response.status_code == 404
+                    and response.error_code == "platform_configuration_not_found"
+                ),
                 configure=_action_context(
                     request,
                     configure,
@@ -679,52 +701,33 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
             ),
         )
 
+    async def deployment_initial_setup(request: Request) -> Response:
+        if _session(request) is None:
+            return RedirectResponse("/login", status_code=303)
+        try:
+            configure = resolve_operation(await _catalog(), DEPLOYMENT_OPERATION_IDS["configure"])
+        except MissingOperation as exc:
+            return _drift(request, exc.operation_id)
+        return state.templates.TemplateResponse(
+            request,
+            "resources/deployment_initial_setup.html",
+            state.context(
+                request,
+                configure=_action_context(
+                    request,
+                    configure,
+                    action_url="/resources/deployment-recovery/actions/configure",
+                    form_id="configure",
+                    submit_label="Configure binding",
+                ),
+            ),
+        )
+
     async def deployment_action(request: Request, action_key: str) -> Response:
         operation_id = _DEPLOYMENT_ACTIONS.get(action_key)
         if operation_id is None:
             return RedirectResponse("/resources/deployment-recovery", status_code=303)
         return await _run_action(request, operation_id, form_id=action_key)
-
-    # ---------------------------------------------------------------- owners
-
-    async def owners(request: Request) -> Response:
-        if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
-        catalog = await _catalog()
-        try:
-            resolved = {
-                key: resolve_operation(catalog, operation_id)
-                for key, operation_id in _OWNER_ACTIONS.items()
-            }
-        except MissingOperation as exc:
-            return _drift(request, exc.operation_id)
-        forms = {
-            key: _action_context(
-                request,
-                operation,
-                action_url=f"/resources/owners/actions/{key}",
-                form_id=f"owner-{key}",
-                submit_label=_owner_label(key),
-                danger=key in {"revoke-invitation", "suspend", "revoke"},
-                confirm=f"{_owner_label(key)}?",
-            )
-            for key, operation in resolved.items()
-        }
-        return state.templates.TemplateResponse(
-            request,
-            "resources/owners.html",
-            state.context(
-                request,
-                note=_note("owners"),
-                forms=forms,
-            ),
-        )
-
-    async def owners_action(request: Request, action_key: str) -> Response:
-        operation_id = _OWNER_ACTIONS.get(action_key)
-        if operation_id is None:
-            return RedirectResponse("/resources/owners", status_code=303)
-        return await _run_action(request, operation_id, form_id=f"owner-{action_key}")
 
     # ---------------------------------------------------------- provisioning
 
@@ -823,8 +826,13 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         deployment_action,
         methods=["POST"],
     )
-    app.add_api_route("/resources/owners", owners, methods=["GET"], response_class=HTMLResponse)
-    app.add_api_route("/resources/owners/actions/{action_key}", owners_action, methods=["POST"])
+    app.add_api_route(
+        "/resources/deployment-recovery/new",
+        deployment_initial_setup,
+        methods=["GET"],
+        response_class=HTMLResponse,
+    )
+    install_owner_routes(app, state)
     app.add_api_route(
         "/resources/provisioning",
         provisioning,
@@ -858,16 +866,169 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
     )
 
 
+def _invalid_read() -> ControlResponse:
+    return ControlResponse(
+        502,
+        {"error": {"code": "invalid_owner_response", "message": "Owner read is incomplete"}},
+        {},
+    )
+
+
+def _uuid(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _positive_revision(value: Any) -> bool:
+    return type(value) is int and value >= 1
+
+
+def _text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
+_RESOURCE_READ_FIELDS = {
+    "native-identities": ("native_identity_id", "revision", ("status",)),
+    "provisioners": ("principal_id", "authority_revision", ("principal_kind",)),
+    "recovery-cases": ("case_id", "revision", ("status", "delivery_status")),
+    "organizations": (
+        "organization_id",
+        None,
+        ("organization_key", "display_name", "operational_status"),
+    ),
+}
+
+
+def _guard_resource_read(
+    response: ControlResponse, key: str, *, collection: bool = False, reference: str | None = None
+) -> ControlResponse:
+    if not response.ok:
+        return response
+    body = response.payload
+    if not isinstance(body, dict):
+        return _invalid_read()
+    body = as_mapping(body)
+    rows: list[Any] = [body]
+    if collection:
+        cursor_key = "next_cursor" if key == "native-identities" else "next_after"
+        if not isinstance(body.get("items"), list) or cursor_key not in body:
+            return _invalid_read()
+        cursor = body[cursor_key]
+        if cursor is not None and not _uuid(cursor):
+            return _invalid_read()
+        rows = as_list(body["items"])
+        if len(rows) > 100:
+            return _invalid_read()
+    identifier, revision, strings = _RESOURCE_READ_FIELDS[key]
+    for row in rows:
+        if not isinstance(row, dict):
+            return _invalid_read()
+        row = as_mapping(row)
+        if not _uuid(row.get(identifier)):
+            return _invalid_read()
+        if reference is not None and (
+            not _uuid(reference) or UUID(row[identifier]) != UUID(reference)
+        ):
+            return _invalid_read()
+        if revision is not None and not _positive_revision(row.get(revision)):
+            return _invalid_read()
+        if not all(_text(row.get(field)) for field in strings):
+            return _invalid_read()
+        if key == "provisioners" and type(row.get("active")) is not bool:
+            return _invalid_read()
+    return response
+
+
+def _guard_configuration_read(
+    response: ControlResponse,
+    *,
+    collection: bool = False,
+    kind: str | None = None,
+    revision: str | None = None,
+) -> ControlResponse:
+    if not response.ok:
+        return response
+    body = response.payload
+    if not isinstance(body, dict):
+        return _invalid_read()
+    body = as_mapping(body)
+    rows: list[Any] = [body]
+    if collection:
+        if not isinstance(body.get("items"), list):
+            return _invalid_read()
+        rows = as_list(body["items"])
+    for row in rows:
+        if not isinstance(row, dict):
+            return _invalid_read()
+        row = as_mapping(row)
+        if not _positive_revision(row.get("revision")):
+            return _invalid_read()
+        if not _text(row.get("configuration_kind")) or not _text(row.get("state")):
+            return _invalid_read()
+        row = as_mapping(row)
+        if kind is not None and row["configuration_kind"] != kind:
+            return _invalid_read()
+        if revision is not None and str(row["revision"]) != revision:
+            return _invalid_read()
+        if not collection and not isinstance(row.get("configuration"), dict):
+            return _invalid_read()
+    return response
+
+
+def _valid_recovery_policy(body: Any) -> bool:
+    if not isinstance(body, dict):
+        return False
+    body = as_mapping(body)
+    return (
+        all(_text(body.get(key)) for key in ("source", "preset_name", "provider_kind"))
+        and "active_revision" in body
+        and (body["active_revision"] is None or _positive_revision(body["active_revision"]))
+        and isinstance(body.get("configuration"), dict)
+    )
+
+
+def _valid_secret(body: Any, binding_id: str) -> bool:
+    if not isinstance(body, dict):
+        return False
+    body = as_mapping(body)
+    return (
+        _uuid(body.get("binding_id"))
+        and body["binding_id"] == binding_id
+        and _text(body.get("purpose"))
+        and _positive_revision(body.get("revision"))
+        and _positive_revision(body.get("backend_version"))
+    )
+
+
+def _valid_deployment(body: Any) -> bool:
+    if not isinstance(body, dict):
+        return False
+    body = as_mapping(body)
+    if not _text(body.get("state")):
+        return False
+    if not isinstance(body.get("changes"), list) or not isinstance(body.get("binding"), dict):
+        return False
+    changes = as_list(body["changes"])
+    binding = as_mapping(body["binding"])
+    return (
+        all(isinstance(item, str) for item in changes)
+        and _positive_revision(binding.get("revision"))
+        and _uuid(binding.get("secret_binding_id"))
+        and all(_text(binding.get(key)) for key in ("base_url", "database_uuid"))
+    )
+
+
 def _error_text(response: Any) -> str:
     body = response.error_body
     code = body.get("code") if body else None
     if isinstance(code, str):
         return code
     return f"control_error_{response.status_code}"
-
-
-def _owner_label(key: str) -> str:
-    return key.replace("-", " ").title()
 
 
 def _note(key: str) -> str:
