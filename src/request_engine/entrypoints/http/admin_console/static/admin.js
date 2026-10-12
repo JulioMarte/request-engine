@@ -420,6 +420,47 @@
       });
     }
   });
+  // Nested controls submit named scalar fields; the server reconstructs only
+  // canonical schema properties and keeps owner validation authoritative.
+  document.addEventListener("change", function (event) {
+    var target = event.target;
+    if (!(target instanceof Element) || !target.matches("[data-include-structured], [data-structured-mode]")) return;
+    var group = target.closest("[data-structured-input]");
+    var controls = group ? group.querySelector("[data-structured-controls]") : null;
+    var include = group ? group.querySelector(":scope > label > [data-include-structured]") : null;
+    var mode = group ? group.querySelector(":scope > label > [data-structured-mode]") : null;
+    if (controls) controls.disabled = (include && !include.checked) || (mode && mode.value === "null");
+  });
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!(target instanceof Element)) return;
+    var add = target.closest("[data-array-add]");
+    if (add) {
+      var editor = add.closest("[data-array-editor]");
+      if (!editor) return;
+      var rows = editor.querySelector(":scope > [data-array-rows]");
+      var template = editor.querySelector(":scope > template[data-array-template]");
+      if (!rows || !template || rows.children.length >= 100) return;
+      var next = Number(editor.dataset.nextIndex || "0");
+      var html = template.innerHTML.split(editor.dataset.indexToken).join(String(next));
+      editor.dataset.nextIndex = String(next + 1);
+      rows.insertAdjacentHTML("beforeend", html);
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+      var entry = rows.lastElementChild;
+      var input = entry ? entry.querySelector("input:not([type=hidden]), select, textarea") : null;
+      if (input) input.focus();
+    }
+    var remove = target.closest("[data-array-remove]");
+    if (remove) {
+      var row = remove.closest("[data-array-row]");
+      var parent = row ? row.parentElement : null;
+      if (row) row.remove();
+      if (parent) parent.dispatchEvent(new Event("input", { bubbles: true }));
+      var nextButton = parent && parent.parentElement ? parent.parentElement.querySelector(":scope > [data-array-add]") : null;
+      if (nextButton) nextButton.focus();
+    }
+  });
   // Hide the mobile sidebar only after its controls are actually installed.
   document.documentElement.classList.add("js-navigation");
 })();

@@ -56,6 +56,7 @@ _READ = (
     "request_platform.read_platform_owner_invitations(uuid,uuid,integer)",
     "request_platform.read_identity_recovery_cases(uuid,uuid,integer)",
     "request_platform.read_native_identities(uuid,uuid,integer)",
+    "request_platform.read_native_identity_profiles(uuid,uuid,integer)",
     "request_platform.read_platform_organizations(uuid,uuid,integer)",
     "request_platform.list_controller_policy_adoptions(uuid,integer,uuid)",
     "request_platform.read_platform_configuration_revisions(text)",

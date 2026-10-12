@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from datetime import date, time
 from typing import Any
 from urllib.parse import urlencode
 from uuid import UUID
@@ -32,6 +33,24 @@ _READ_ACTIONS = {
         ("catalog_location_configuration_read", (("location_id", "location_id"),)),
     ),
     "catalog_location_configuration_read": (
+        (
+            "catalog_location_hours_replace",
+            (
+                ("location_id", "location_id"),
+                ("expected_operational_revision", "operational_revision"),
+            ),
+        ),
+        (
+            "catalog_location_hours_exception_upsert",
+            (
+                ("location_id", "location_id"),
+                ("expected_operational_revision", "operational_revision"),
+            ),
+        ),
+        (
+            "catalog_location_contacts_update",
+            (("location_id", "location_id"),),
+        ),
         (
             "catalog_location_update",
             (
@@ -145,6 +164,10 @@ def read_action_links(
             prefill = prefill_values(row, pairs)
             if not all(prefill.values()):
                 continue
+            if target == "catalog_location_hours_replace":
+                prefill["windows"] = json.dumps(row["hours_windows"])
+            if target == "catalog_location_contacts_update":
+                prefill["contacts"] = json.dumps(row["public_contacts"])
             if target == "request_definition_version_publish":
                 if not isinstance(row.get("input_schema"), dict):
                     continue
@@ -262,6 +285,12 @@ def inventory_read_valid(operation_id: str, payload: Any) -> bool:
                     return False
             elif not _uuid_value(cursor):
                 return False
+    if (
+        prefix == "catalog_location_configuration"
+        and kind == "read"
+        and not _location_children_valid(body)
+    ):
+        return False
     for candidate in rows:
         if not isinstance(candidate, dict):
             return False
@@ -347,5 +376,108 @@ def _valid_preconditions(
             if not isinstance(value, dict):
                 return False
         elif not isinstance(value, str) or not value:
+            return False
+    return True
+
+
+_SETUP_STEPS = (
+    (
+        "Business details",
+        "Add the business name and contacts.",
+        (
+            "business_get_info",
+            "tenancy_organization_profile_update",
+            "tenancy_organization_contacts_replace",
+        ),
+    ),
+    (
+        "Locations",
+        "Create a place where your team provides services.",
+        ("catalog_location_create", "catalog_location_configuration_list"),
+    ),
+    (
+        "Services",
+        "Define what customers can request or book.",
+        ("catalog_manage_offerings", "catalog_offering_configuration_list"),
+    ),
+    (
+        "Hours and resources",
+        "Set opening hours, then the people or equipment available.",
+        ("catalog_location_configuration_list", "booking_resource_create", "booking_resource_list"),
+    ),
+    (
+        "Queues",
+        "Create queues if customers wait for service.",
+        ("queue_service_queue_create", "queue_service_queue_configuration_list"),
+    ),
+)
+
+
+def guided_setup_steps(catalog: AdminCatalog, root: str, party_id: str) -> list[dict[str, Any]]:
+    """A presentation sequence; actual completion comes from owner readiness."""
+    suffix = f"?{urlencode({'authority_party_id': party_id})}" if _uuid_value(party_id) else ""
+    return [
+        {
+            "title": title,
+            "description": description,
+            "tasks": [
+                {
+                    "label": catalog.by_id()[key].summary or key.replace("_", " "),
+                    "href": f"{root}/{key}{suffix}",
+                }
+                for key in keys
+                if key in catalog.by_id()
+            ],
+        }
+        for title, description, keys in _SETUP_STEPS
+    ]
+
+
+def _location_children_valid(body: Mapping[str, Any]) -> bool:
+    """Required child snapshots must not turn a partial success into an empty replacement."""
+    windows = body.get("hours_windows")
+    contacts = body.get("public_contacts")
+    if not isinstance(windows, list) or not isinstance(contacts, list):
+        return False
+    for candidate in as_list(windows):
+        if not isinstance(candidate, dict):
+            return False
+        window = as_mapping(candidate)
+        if (
+            not {"weekday", "local_start", "local_end", "valid_from", "valid_until"}
+            <= window.keys()
+        ):
+            return False
+        if type(window["weekday"]) is not int or not 0 <= window["weekday"] <= 6:
+            return False
+        try:
+            for key in ("local_start", "local_end"):
+                if (
+                    not isinstance(window[key], str)
+                    or time.fromisoformat(window[key]).tzinfo is not None
+                ):
+                    return False
+            for key in ("valid_from", "valid_until"):
+                if window[key] is not None:
+                    if not isinstance(window[key], str):
+                        return False
+                    date.fromisoformat(window[key])
+        except ValueError:
+            return False
+    for candidate in as_list(contacts):
+        if not isinstance(candidate, dict):
+            return False
+        contact = as_mapping(candidate)
+        if not {"channel", "value", "label"} <= contact.keys():
+            return False
+        if not isinstance(contact["channel"], str) or contact["channel"] not in {
+            "phone",
+            "whatsapp",
+            "email",
+        }:
+            return False
+        if not isinstance(contact["value"], str) or not contact["value"]:
+            return False
+        if contact["label"] is not None and not isinstance(contact["label"], str):
             return False
     return True

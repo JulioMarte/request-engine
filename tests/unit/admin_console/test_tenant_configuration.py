@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -512,3 +514,422 @@ async def test_task_search_only_filters_presentation_and_keeps_selected_tenant(
         ]
         empty = await client.get(f"{_ROOT}?q=unmatched-configuration-task")
         assert "No configuration tasks match this search" in empty.text
+
+
+class LocationPort(Port):
+    def __init__(self) -> None:
+        super().__init__()
+        self.location: dict[str, Any] = {
+            "location_id": _OTHER,
+            "location_key": "office",
+            "display_name": "Main office",
+            "timezone": "America/Santo_Domingo",
+            "active": False,
+            "operational_revision": 7,
+            "hours_windows": [],
+            "public_contacts": [],
+            **{
+                key: None
+                for key in (
+                    "address_line1",
+                    "address_line2",
+                    "locality",
+                    "administrative_area",
+                    "postal_code",
+                    "country_code",
+                    "latitude",
+                    "longitude",
+                    "geocoding_source",
+                    "geocoded_at",
+                )
+            },
+        }
+        self.invalid_inventory = False
+        self.inventory_items: list[dict[str, Any]] | None = None
+
+    async def openapi(self) -> dict[str, Any]:
+        parameters = [
+            {
+                "name": "authority_party_id",
+                "in": "query",
+                "required": True,
+                "schema": {"type": "string"},
+            },
+        ]
+        return {
+            "paths": {
+                "/locations": {
+                    "get": {
+                        "operationId": "catalog_location_configuration_list",
+                        "parameters": parameters,
+                    }
+                },
+                "/locations/{location_id}": {
+                    "get": {
+                        "operationId": "catalog_location_configuration_read",
+                        "parameters": parameters
+                        + [
+                            {
+                                "name": "location_id",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            },
+                        ],
+                    },
+                    "put": {
+                        "operationId": "catalog_location_update",
+                        "parameters": [
+                            {
+                                "name": "location_id",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            },
+                        ],
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "required": [
+                                            "authority_party_id",
+                                            "expected_operational_revision",
+                                            "timezone",
+                                            "active",
+                                        ],
+                                        "properties": {
+                                            "authority_party_id": {"type": "string"},
+                                            "expected_operational_revision": {"type": "integer"},
+                                            "timezone": {"type": "string"},
+                                            "active": {"type": "boolean"},
+                                        },
+                                    }
+                                }
+                            }
+                        },
+                    },
+                },
+            }
+        }
+
+    async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+        self.calls.append((method, path, kwargs))
+        if path == "/locations":
+            body = (
+                {}
+                if self.invalid_inventory
+                else {
+                    "items": self.inventory_items
+                    if self.inventory_items is not None
+                    else [self.location],
+                    "next_cursor": None,
+                }
+            )
+            return ControlResponse(200, body, {})
+        return ControlResponse(200, self.location, {})
+
+
+@pytest.mark.asyncio
+async def test_location_selector_loads_current_revision_without_a_command(tmp_path: Path) -> None:
+    runtime = LocationPort()
+    async with _client(tmp_path, Port(), runtime) as client:
+        await _login(client)
+        start = await client.get(f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}")
+        assert '<select name="location_id"' in start.text
+        assert "Main office (inactive)" in start.text
+        assert "Load current settings" in start.text
+        assert 'name="expected_operational_revision"' not in start.text
+        loaded = await client.get(
+            f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}"
+            f"&location_id={_OTHER}&expected_operational_revision=900&active=true"
+        )
+        assert 'type="hidden" name="expected_operational_revision" value="7"' in loaded.text
+        assert 'name="active" value="true" checked' not in loaded.text
+        assert 'name="timezone" value="America/Santo_Domingo"' in loaded.text
+        assert all(method == "GET" for method, _, _ in runtime.calls)
+        assert all(
+            kwargs["extra_headers"]["X-RE-Organization-ID"] == _TENANT
+            for _, _, kwargs in runtime.calls
+        )
+
+
+@pytest.mark.asyncio
+async def test_failed_inventory_does_not_offer_an_unverified_location(tmp_path: Path) -> None:
+    runtime = LocationPort()
+    runtime.invalid_inventory = True
+    async with _client(tmp_path, Port(), runtime) as client:
+        await _login(client)
+        page = await client.get(
+            f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}&location_id={_OTHER}"
+        )
+        assert "Current choices could not be verified" in page.text
+        assert 'data-confirm="Apply' not in page.text
+        assert all(method == "GET" for method, _, _ in runtime.calls)
+
+
+@pytest.mark.asyncio
+async def test_guided_steps_preserve_explicit_party_without_assuming_readiness(
+    tmp_path: Path,
+) -> None:
+    async with _client(tmp_path, Port(), Port()) as client:
+        await _login(client)
+        page = await client.get(f"{_ROOT}?authority_party_id={_OTHER}")
+        assert "Start your business" in page.text
+        assert f"booking_resource_create?authority_party_id={_OTHER}" not in page.text
+        assert f"booking_resource_list?authority_party_id={_OTHER}" in page.text
+        assert "blocked" in page.text
+        assert "Enter this reference once" in page.text
+
+
+@pytest.mark.asyncio
+async def test_selected_location_outside_first_page_is_verified_by_detail(tmp_path: Path) -> None:
+    runtime = LocationPort()
+    runtime.inventory_items = []
+    async with _client(tmp_path, Port(), runtime) as client:
+        await _login(client)
+        page = await client.get(
+            f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}&location_id={_OTHER}"
+        )
+        assert 'type="hidden" name="expected_operational_revision" value="7"' in page.text
+        assert "could not be verified" not in page.text
+        assert any(path == f"/locations/{_OTHER}" for _, path, _ in runtime.calls)
+        assert all(method == "GET" for method, _, _ in runtime.calls)
+
+
+@pytest.mark.asyncio
+async def test_detail_of_different_location_never_unlocks_an_edit(tmp_path: Path) -> None:
+    runtime = LocationPort()
+    runtime.inventory_items = []
+    async with _client(tmp_path, Port(), runtime) as client:
+        await _login(client)
+        page = await client.get(
+            f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}&location_id={_TENANT}"
+        )
+        assert "previous selection could not be verified" in page.text
+        assert 'data-confirm="Apply' not in page.text
+        assert 'name="expected_operational_revision"' not in page.text
+        assert all(method == "GET" for method, _, _ in runtime.calls)
+
+
+class DefinitionPort(Port):
+    async def openapi(self) -> dict[str, Any]:
+        return {
+            "paths": {
+                "/definitions": {"get": {"operationId": "request_definitions_list"}},
+                "/definitions/{definition_id}": {
+                    "get": {
+                        "operationId": "request_definition_read",
+                        "parameters": [
+                            {
+                                "name": "definition_id",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            },
+                        ],
+                    },
+                    "put": {
+                        "operationId": "request_definition_set_active",
+                        "parameters": [
+                            {
+                                "name": "definition_id",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            },
+                        ],
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "required": ["expected_revision", "active"],
+                                        "properties": {
+                                            "expected_revision": {"type": "integer"},
+                                            "active": {"type": "boolean"},
+                                        },
+                                    }
+                                }
+                            }
+                        },
+                    },
+                },
+            }
+        }
+
+    async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+        self.calls.append((method, path, kwargs))
+        row: dict[str, Any] = {
+            "definition_id": _OTHER,
+            "request_key": "appointment",
+            "display_name": "Book appointment",
+            "active": False,
+            "revision": 12,
+            "version_id": _TENANT,
+            "version": 1,
+            "input_schema": {},
+            "result_schema": None,
+        }
+        return ControlResponse(
+            200, {"items": [row], "next_cursor": None} if path == "/definitions" else row, {}
+        )
+
+
+@pytest.mark.asyncio
+async def test_definition_picker_and_revision_need_no_manual_reference(tmp_path: Path) -> None:
+    runtime = DefinitionPort()
+    async with _client(tmp_path, Port(), runtime) as client:
+        await _login(client)
+        chooser = await client.get(f"{_ROOT}/request_definition_set_active")
+        assert '<select name="definition_id"' in chooser.text
+        assert "Book appointment (inactive)" in chooser.text
+        assert 'name="expected_revision"' not in chooser.text
+        current = await client.get(
+            f"{_ROOT}/request_definition_set_active?definition_id={_OTHER}&expected_revision=900"
+        )
+        assert 'type="hidden" name="expected_revision" value="12"' in current.text
+        assert all(method == "GET" for method, _, _ in runtime.calls)
+
+
+@pytest.mark.asyncio
+async def test_loaded_edit_keeps_identity_bound_to_its_current_settings(tmp_path: Path) -> None:
+    runtime = LocationPort()
+    runtime.location["operational_revision"] = 1
+    async with _client(tmp_path, Port(), runtime) as client:
+        await _login(client)
+        loaded = await client.get(
+            f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}&location_id={_OTHER}"
+        )
+        assert '<select name="location_id"' not in loaded.text
+        assert f'type="hidden" name="location_id" value="{_OTHER}"' in loaded.text
+        assert 'type="hidden" name="expected_operational_revision" value="1"' in loaded.text
+        assert "Choose a different item and load its current settings" in loaded.text
+        chooser = await client.get(f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}")
+        assert '<select name="location_id"' in chooser.text
+        assert 'name="expected_operational_revision"' not in chooser.text
+        setup = await client.get(f"{_ROOT}/setup?authority_party_id={_TENANT}")
+        assert setup.status_code == 200
+        assert "Start your business" in setup.text
+        assert all(method == "GET" for method, _, _ in runtime.calls)
+
+
+class HoursPort(LocationPort):
+    async def openapi(self) -> dict[str, Any]:
+        document = await super().openapi()
+        source = document["paths"]["/locations/{location_id}"]["put"]
+        hours = {**source, "operationId": "catalog_location_hours_replace"}
+        hours["requestBody"] = {
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": [
+                            "authority_party_id",
+                            "expected_operational_revision",
+                            "windows",
+                        ],
+                        "properties": {
+                            "authority_party_id": {"type": "string"},
+                            "expected_operational_revision": {"type": "integer"},
+                            "windows": {"type": "array", "items": {"type": "object"}},
+                        },
+                    }
+                }
+            }
+        }
+        document["paths"]["/locations/{location_id}/hours"] = {"put": hours}
+        return document
+
+
+@pytest.mark.asyncio
+async def test_schedule_replacement_never_clears_hours_without_explicit_confirmation(
+    tmp_path: Path,
+) -> None:
+    runtime = HoursPort()
+    path = f"{_ROOT}/catalog_location_hours_replace"
+    async with _client(tmp_path, Port(), runtime) as client:
+        await _login(client)
+        page = await client.get(f"{path}?authority_party_id={_TENANT}&location_id={_OTHER}")
+        assert "Current opening hours and their revision were loaded" in page.text
+        assert "Current settings were loaded automatically" not in page.text
+        assert 'name="_confirm_replacement" value="true" required' in page.text
+        outcome = await client.post(
+            path,
+            data={
+                "csrf_token": _csrf(page),
+                "authority_party_id": _TENANT,
+                "location_id": _OTHER,
+                "expected_operational_revision": "7",
+                "windows": "[]",
+            },
+        )
+        assert "Confirm that this complete schedule replaces" in outcome.text
+        assert all(method == "GET" for method, _, _ in runtime.calls)
+
+
+@pytest.mark.asyncio
+async def test_schedule_editor_prefills_the_actual_complete_owner_schedule(tmp_path: Path) -> None:
+    runtime = HoursPort()
+    runtime.location["hours_windows"] = [
+        {
+            "weekday": 0,
+            "local_start": "09:00:00",
+            "local_end": "17:00:00",
+            "valid_from": "2026-10-01",
+            "valid_until": None,
+        }
+    ]
+    async with _client(tmp_path, Port(), runtime) as client:
+        await _login(client)
+        page = await client.get(
+            f"{_ROOT}/catalog_location_hours_replace?authority_party_id={_TENANT}&location_id={_OTHER}"
+        )
+        row = re.search(
+            r'<textarea name="windows\[0\]"[^>]*>(.*?)</textarea>', page.text, re.DOTALL
+        )
+        assert row is not None
+        assert json.loads(html.unescape(row.group(1))) == runtime.location["hours_windows"][0]
+        assert 'name="windows[1]"' not in page.text
+        assert 'type="hidden" name="expected_operational_revision" value="7"' in page.text
+        assert all(method == "GET" for method, _, _ in runtime.calls)
+
+
+_INVALID_LOCATION_CHILDREN: list[tuple[str, Any]] = [
+    ("hours_windows", None),
+    ("public_contacts", None),
+    ("hours_windows", [{"weekday": True}]),
+    ("public_contacts", [{"channel": {}, "value": "a", "label": None}]),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field,invalid", _INVALID_LOCATION_CHILDREN)
+async def test_partial_child_snapshots_never_become_empty_replacement(
+    tmp_path: Path, field: str, invalid: Any
+) -> None:
+    runtime = HoursPort()
+    runtime.location[field] = invalid
+    async with _client(tmp_path, Port(), runtime) as client:
+        await _login(client)
+        page = await client.get(
+            f"{_ROOT}/catalog_location_hours_replace?authority_party_id={_TENANT}&location_id={_OTHER}"
+        )
+        assert "current configuration could not be verified" in page.text
+        assert 'data-confirm="Apply' not in page.text
+        assert all(method == "GET" for method, _, _ in runtime.calls)
+
+
+@pytest.mark.asyncio
+async def test_url_revision_without_an_owner_read_is_not_claimed_as_loaded(tmp_path: Path) -> None:
+    runtime = Port()
+    async with _client(tmp_path, Port(), runtime) as client:
+        await _login(client)
+        page = await client.get(
+            f"{_ROOT}/{_WRITE}?purpose=appointment_reminder&expected_revision=900"
+        )
+    assert page.status_code == 200
+    assert 'type="number" step="1" name="expected_revision" value="900"' in page.text
+    assert "Current version loaded" not in page.text
+    assert 'type="hidden" name="expected_revision"' not in page.text
+    assert runtime.calls == []

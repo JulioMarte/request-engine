@@ -150,7 +150,15 @@ def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
     ) -> dict[str, Any]:
         return state.context(
             request,
-            inputs=build_inputs(operation, values=values),
+            inputs=build_inputs(
+                operation,
+                values=values,
+                loaded_revisions=tuple(
+                    name
+                    for name in (values or {})
+                    if name.startswith("expected_") and "revision" in name
+                ),
+            ),
             form_id=f"owner-{key}",
             action_url=url,
             submit_label={

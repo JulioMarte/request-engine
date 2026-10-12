@@ -165,3 +165,15 @@ identify only the latest immutable version and its effective booking-policy
 revision. They do not enumerate historical versions or grant authority over the
 returned IDs. Unsupported filters fail 422. This is a live inventory, not a
 transaction-spanning snapshot, and creates no business facts or grants.
+
+
+Location detail also supplies required `hours_windows` and `public_contacts`
+arrays from the same SQL snapshot as the profile and operational revision.
+These are complete current replacement inputs: all active windows, preserving
+nullable dates even for past/future validity, and active public contacts with
+canonical `value` and nullable label. Superseded inactive rows are excluded;
+observed empty arrays remain valid. Collection inventory does not load/project
+these children. Existing `catalog.read_configuration` plus exact Party profile
+authority, restricted application SELECT and tenant RLS remain unchanged.
+See `docs/architecture/administrative-configuration-readback.md` for the guided
+replacement and PostgreSQL proof contract.

@@ -719,10 +719,12 @@ async def test_organizations_workspace_uses_platform_create_operation() -> None:
         page = await client.get("/resources/organizations")
         assert page.status_code == 200
         assert "Acme Clinic" in page.text
+        assert 'href="/resources/business-setup"' in page.text
         detail = await client.get(f"/resources/organizations/{_ORGANIZATION_ID}")
         assert detail.status_code == 200
         assert "America/Santo_Domingo" in detail.text
-        match = _CSRF_RE.search(page.text)
+        setup_page = await client.get("/resources/business-setup")
+        match = _CSRF_RE.search(setup_page.text)
         assert match is not None
         created = await client.post(
             "/resources/organizations",

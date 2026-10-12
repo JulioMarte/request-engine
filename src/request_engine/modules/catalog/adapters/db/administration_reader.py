@@ -2,14 +2,20 @@
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import date, time
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.catalog.application.queries.administration import (
+    AdministrativeHoursWindow,
     AdministrativeLocation,
+    AdministrativeLocationConfiguration,
     AdministrativeOffering,
+    AdministrativePublicContact,
     CatalogAdministrationQuery,
 )
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
@@ -21,6 +27,32 @@ from request_engine.platform.security.operational_authority import (
     MANAGE_OPERATIONAL_PROFILE_SCOPE,
     require_principal_serialized_operational_authority,
 )
+
+
+def _location(row: RowMapping, *, detail: bool) -> AdministrativeLocation:
+    values = dict(row)
+    windows = cast(list[dict[str, Any]], values.pop("hours_windows"))
+    contacts = cast(list[dict[str, Any]], values.pop("public_contacts"))
+    if not detail:
+        return AdministrativeLocation(**values)
+    return AdministrativeLocationConfiguration(
+        **values,
+        hours_windows=tuple(
+            AdministrativeHoursWindow(
+                weekday=window["weekday"],
+                local_start=time.fromisoformat(window["local_start"]),
+                local_end=time.fromisoformat(window["local_end"]),
+                valid_from=date.fromisoformat(window["valid_from"])
+                if window["valid_from"]
+                else None,
+                valid_until=date.fromisoformat(window["valid_until"])
+                if window["valid_until"]
+                else None,
+            )
+            for window in windows
+        ),
+        public_contacts=tuple(AdministrativePublicContact(**contact) for contact in contacts),
+    )
 
 
 class PostgresCatalogAdministrationReader:
@@ -66,15 +98,38 @@ class PostgresCatalogAdministrationReader:
                 (
                     await session.execute(
                         text("""
-                            SELECT id AS location_id, location_key, display_name, timezone,
-                                   active, operational_revision, address_line1, address_line2,
-                                   locality, administrative_area, postal_code, country_code,
-                                   latitude, longitude, geocoding_source, geocoded_at
-                            FROM request_engine.locations
-                            WHERE organization_id=:org
-                              AND (CAST(:after AS uuid) IS NULL OR id>:after)
-                              AND (CAST(:target AS uuid) IS NULL OR id=:target)
-                            ORDER BY id LIMIT :fetch_limit
+                            SELECT l.id AS location_id, l.location_key, l.display_name, l.timezone,
+                                   l.active, l.operational_revision,
+                                   l.address_line1, l.address_line2,
+                                   l.locality, l.administrative_area, l.postal_code, l.country_code,
+                                   l.latitude, l.longitude, l.geocoding_source, l.geocoded_at,
+                                   CASE WHEN CAST(:target AS uuid) IS NOT NULL THEN COALESCE((
+                                     SELECT jsonb_agg(jsonb_build_object(
+                                       'weekday',h.weekday,'local_start',h.local_start,
+                                       'local_end',h.local_end,'valid_from',h.valid_from,
+                                       'valid_until',h.valid_until)
+                                       ORDER BY h.weekday,h.local_start,h.local_end,
+                                                h.valid_from NULLS FIRST,
+                                                h.valid_until NULLS FIRST,h.id)
+                                     FROM request_engine.location_operational_hours h
+                                     WHERE h.organization_id=l.organization_id
+                                       AND h.location_id=l.id
+                                       AND h.active
+                                   ),'[]'::jsonb) END AS hours_windows,
+                                   CASE WHEN CAST(:target AS uuid) IS NOT NULL THEN COALESCE((
+                                     SELECT jsonb_agg(jsonb_build_object(
+                                       'channel',c.channel,'value',c.normalized_value,'label',c.label)
+                                       ORDER BY c.channel,c.normalized_value,c.id)
+                                     FROM request_engine.location_public_contact_endpoints c
+                                     WHERE c.organization_id=l.organization_id
+                                       AND c.location_id=l.id
+                                       AND c.active AND c.is_public
+                                   ),'[]'::jsonb) END AS public_contacts
+                            FROM request_engine.locations l
+                            WHERE l.organization_id=:org
+                              AND (CAST(:after AS uuid) IS NULL OR l.id>:after)
+                              AND (CAST(:target AS uuid) IS NULL OR l.id=:target)
+                            ORDER BY l.id LIMIT :fetch_limit
                         """),
                         self._params(query),
                     )
@@ -82,7 +137,7 @@ class PostgresCatalogAdministrationReader:
                 .mappings()
                 .all()
             )
-            return tuple(AdministrativeLocation(**row) for row in rows)
+            return tuple(_location(row, detail=query.target_id is not None) for row in rows)
 
     async def offerings(
         self, query: CatalogAdministrationQuery

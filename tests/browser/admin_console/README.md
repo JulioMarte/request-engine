@@ -60,6 +60,29 @@ Only synthetic fixture credentials/proofs are used; supply no real credentials.
   POSTs and Confirm sends one. Reload hides the one-time fixture code and does
   not issue another set.
 - Browser JavaScript errors fail the proof.
+- Nested visual controls add and remove rows, retain an explicit No value, and
+  disable nested required controls when Clear value is selected. Each row edit
+  changes the draft's idempotency intent. Requests contain the surviving row and
+  explicit null mode, rather than a removed row or disabled child.
+- First-business creation uses the canonical platform schema and a named account
+  picker. The picker starts blank, creation links the returned business and Party,
+  and the continuation reaches the guided setup page. New editor and setup pages
+  are captured at desktop/mobile widths and checked for whole-page overflow.
+- Without JavaScript, nested controls explain that adding entries and enabling
+  optional groups needs JavaScript; account choices remain usable and unselected.
+
+These assertions remain executable proof requirements. The October 12 initial
+download returned HTML instead of a browser archive; an alternative official
+Playwright CDN subsequently supplied Chromium 141.0.7390.37. The launcher passed
+with Playwright 1.62.1 at desktop 1440×1080 and mobile 320×900, with no JavaScript
+errors or whole-page overflow. Ten screenshots and the result were produced in
+the ignored `.ci/admin-visual` evidence directory.
+
+That run crossed the test checkpoint from `c64678d5` to `f8c984cd`.
+The complete production and browser-fixture Git trees were identical in both;
+only three other test files received typing fixes. The recorded result therefore
+proves those unchanged UI/fixture bytes, rather than falsely claiming the entire
+run occurred on a single commit. Later revisions need their own execution proof.
 
 Removing the drawer focus handling, private-form fetch interception, secret-input
 clearing, default-disabled private buttons or cancellation guard makes the

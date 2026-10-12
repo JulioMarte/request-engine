@@ -1,9 +1,9 @@
 """Administrative inventory: owner-authorized live reads, never public discovery."""
 
 from dataclasses import asdict, replace
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -42,6 +42,25 @@ class LocationAdministrationView(BaseModel):
     longitude: Decimal | None
     geocoding_source: str | None
     geocoded_at: datetime | None
+
+
+class LocationHoursWindowView(BaseModel):
+    weekday: int
+    local_start: time
+    local_end: time
+    valid_from: date | None
+    valid_until: date | None
+
+
+class LocationPublicContactConfigurationView(BaseModel):
+    channel: Literal["phone", "whatsapp", "email"]
+    value: str
+    label: str | None
+
+
+class LocationAdministrationDetailView(LocationAdministrationView):
+    hours_windows: tuple[LocationHoursWindowView, ...]
+    public_contacts: tuple[LocationPublicContactConfigurationView, ...]
 
 
 class OfferingAdministrationView(BaseModel):
@@ -109,7 +128,7 @@ def create_administration_router(
         request: Request,
         response: Response,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> LocationAdministrationView:
+    ) -> LocationAdministrationDetailView:
         if set(request.query_params) - {"authority_party_id"}:
             raise HTTPException(422, detail="unsupported configuration filter")
         command = query(CatalogAdministrationParams(authority_party_id=authority_party_id), current)
@@ -117,7 +136,7 @@ def create_administration_router(
         if not rows:
             raise HTTPException(404, detail="Location not found")
         response.headers["Cache-Control"] = "no-store"
-        return LocationAdministrationView(**asdict(rows[0]))
+        return LocationAdministrationDetailView(**asdict(rows[0]))
 
     async def offerings(
         params: Annotated[CatalogAdministrationParams, Query()],
@@ -164,7 +183,7 @@ def create_administration_router(
             "/locations/{location_id}/configuration",
             location,
             "catalog_location_configuration_read",
-            LocationAdministrationView,
+            LocationAdministrationDetailView,
         ),
         (
             "/offerings/configuration",

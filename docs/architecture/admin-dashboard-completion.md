@@ -63,9 +63,10 @@ forms to their actual positive revision and current schemas. Required Party inpu
 remains explicit when the read does not itself take a represented Party.
 
 `business_get_info` shows organization profile, public contacts and active locations
-with hours. It does not expose concurrency revisions. Location inventory supplies the
-current operational revision, but contact/hour values and revisions are not a frozen
-snapshot. Discovery has no current administrative configuration inventory/detail
+with hours. It does not expose concurrency revisions. Location detail now reads the
+operational revision, active configured hours and public contacts in one SQL
+snapshot, including inactive locations. Location inventory remains the bounded
+profile list. Discovery has no current administrative configuration inventory/detail
 Query for every control; existing identifiers and current revisions must come from an
 owner response. Such forms remain explicit about that requirement. No missing read is
 replaced by a fabricated empty collection, revision zero, or automatic grant.
@@ -106,8 +107,9 @@ simulated upstream; they are UI evidence, not production provider evidence.
 Catalog and Queue provide tenant-scoped Location, Offering and ServiceQueue
 inventory/detail Queries. They require current capability and explicit Party
 authority and report current configuration, including inactive queues. The UI
-uses those reads instead of inventing lists or revisions. Typed JSON
-configuration fields remain available for complex owner schemas; reachability is not a claim that every business task has
+uses those reads instead of inventing lists or revisions. Schema-defined objects
+and lists render as nested fields and add/remove rows. Open configuration documents
+remain explicitly advanced; reachability is not a claim that every business task has
 a bespoke visual editor. Production deliverability, external durability, host
 network security, human alert acceptance and operational installation remain
 outside this dashboard contract.
@@ -127,3 +129,42 @@ initial creation; it does not invent revision zero or claim an existing binding
 is absent. The owning command rejects a conflict. A missing-binding response
 links to this setup form, while malformed plans show no completed comparison or
 reconciliation action. The setup GET performs no provider or configuration write.
+
+## Guided first-business setup
+
+`/resources/business-setup` projects the existing native organization creation
+Command. It reads private, authorized account labels through the native identity
+inventory, offers an explicit administrator choice, and forwards the canonical
+form through the shared executor. Empty or malformed account pages do not supply
+an invented choice. Account pagination occurs before filling the business form.
+The successful owner response supplies the organization and represented Party
+for the setup link; a partial response supplies no fabricated continuation.
+Creation does not prove onboarding readiness or grant the platform operator
+implicit membership in the business.
+
+Tenant setup presents an ordered route through business information, locations,
+services, availability and staff. Existing location, service, queue and request
+definition choices come from tenant-scoped owner Queries. Current revisions stay
+inside loaded edit forms rather than becoming a manual input. Changing the edited
+identity requires another read. A stale revision remains an owner conflict and is
+never refreshed silently during a mutation or authentication retry.
+
+Location hours/contact replacement forms start with the actual child snapshot,
+not an invented empty list. Missing child fields block the edit. Replacing all
+opening hours also requires an explicit acknowledgement, including a deliberate
+empty schedule. Weekdays use names and canonical date/time fields use browser
+controls; timestamps requiring an offset retain it.
+
+The shared form projection resolves nested canonical schemas and preserves
+omission, false, explicit null and empty collections. Existing fields outside a
+known schema fall back to the complete advanced document instead of being erased.
+Optional groups and list additions require JavaScript, with a visible explanation
+when it is unavailable. Required account/resource choices start without a selected
+item; an administrator must make a deliberate choice.
+
+No Party directory is currently exposed. A Party reference can be carried from
+the actual organization creation result or selected explicitly for an existing
+workspace; it remains subject to owner authorization. Missing owner readback and
+free-form configuration documents still require advanced input. This is a guided
+normal setup path, not a claim that every administrative operation can yet be
+completed without technical knowledge.

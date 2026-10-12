@@ -262,6 +262,13 @@ avoid browser POST history retaining secrets. Navigation remains usable without 
 
 ## Tests
 
+The Workspaces page links to `/resources/business-setup`: a named-account
+administrator picker and guided first-business creation. Tenant configuration
+offers ordered setup tasks and owner-backed resource choices. Known nested
+schemas render visual fields and add/remove rows; open documents remain advanced.
+Loaded revisions are retained internally and checked by the owner. The interface
+does not invent missing Party authority or implicit platform-to-tenant access.
+
 ```powershell
 uv run pytest tests/unit/admin_console -q
 ```

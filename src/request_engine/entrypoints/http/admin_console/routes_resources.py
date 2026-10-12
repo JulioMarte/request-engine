@@ -148,7 +148,17 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         return state.context(
             request,
             operation=operation,
-            inputs=build_inputs(operation, values=values, secret_fields=secret_fields)
+            inputs=build_inputs(
+                operation,
+                values=values,
+                secret_fields=secret_fields,
+                loaded_revisions=tuple(
+                    name
+                    for name in (values or {})
+                    if name.startswith("expected_")
+                    and ("revision" in name or name.endswith("_version"))
+                ),
+            )
             if operation is not None
             else [],
             action_url=action_url,

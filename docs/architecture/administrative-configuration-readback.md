@@ -108,6 +108,31 @@ offerings require the same capability and `operations.manage_terms`. Readback
 includes current operational/booking-policy revisions and the latest offering
 version reference.
 
+Location detail additionally returns required `hours_windows` and
+`public_contacts` arrays for safe guided replacement. Window fields are weekday,
+local start/end wall-clock times and nullable validity dates. Contacts contain
+channel, canonical normalized value as `value`, and nullable label. Hours include
+all currently active configured rows, including expired or future validity ranges;
+contacts include currently active public endpoints. Superseded inactive history
+is not replacement input. These children and the actual `operational_revision`
+are selected in one SQL statement/snapshot after current capability and exact
+Party profile authority checks. Existing application-role SELECT and tenant RLS
+cover the children; no schema or privilege expansion is needed. Inventory rows
+remain lightweight without these arrays. Empty detail arrays mean observed empty
+configuration; a missing/malformed field cannot be interpreted as empty by a UI.
+Replacement Commands keep their independent revision/idempotency policy;
+contact replacement still has its existing idempotency policy and no invented
+revision input. Dates, time precision and nullable labels survive readback.
+This additive owner View evolution introduces no endpoint, tool execution path,
+provider connection, write, grant, or historical revision changes.
+
+The real PostgreSQL proof in
+`test_catalog_administration_reads.py` creates hours/contacts through existing
+owner Commands, replaces old inputs, reads an inactive location through the
+restricted role and HTTP, and independently checks complete retained date ranges,
+contacts, actual revision, superseded-row exclusion and explicit empty replacement.
+The established foreign-target and withdrawn-current-authority checks remain.
+
 Queue exposes `queue_service_queue_configuration_list/read` under
 `/v1/queues/configuration`, using the explicit `queue.read_configuration` Query
 capability and `operations.manage_supply` Party authority. Inventory includes

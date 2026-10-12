@@ -1,9 +1,9 @@
 """Current administrative inventory, separate from public active-only discovery."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
 
@@ -35,6 +35,28 @@ class AdministrativeLocation:
     longitude: Decimal | None
     geocoding_source: str | None
     geocoded_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class AdministrativeHoursWindow:
+    weekday: int
+    local_start: time
+    local_end: time
+    valid_from: date | None
+    valid_until: date | None
+
+
+@dataclass(frozen=True, slots=True)
+class AdministrativePublicContact:
+    channel: Literal["phone", "whatsapp", "email"]
+    value: str
+    label: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AdministrativeLocationConfiguration(AdministrativeLocation):
+    hours_windows: tuple[AdministrativeHoursWindow, ...]
+    public_contacts: tuple[AdministrativePublicContact, ...]
 
 
 @dataclass(frozen=True, slots=True)

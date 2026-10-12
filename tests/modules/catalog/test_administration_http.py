@@ -1,5 +1,6 @@
 """HTTP projection and admission; DB proofs own current Party authority."""
 
+from dataclasses import asdict
 from typing import Any
 from uuid import uuid4
 
@@ -11,6 +12,7 @@ from request_engine.entrypoints.http.error_handlers import add_global_error_hand
 from request_engine.modules.catalog.api.administration_router import create_administration_router
 from request_engine.modules.catalog.application.queries.administration import (
     AdministrativeLocation,
+    AdministrativeLocationConfiguration,
     AdministrativeOffering,
     CatalogAdministrationQuery,
 )
@@ -40,26 +42,33 @@ async def test_administrative_inventory_admits_only_trusted_actor_and_bounded_fi
             self.calls.append(query)
             if query.target_id is not None and query.target_id != location_id:
                 return ()
-            return (
-                AdministrativeLocation(
-                    location_id,
-                    "main",
-                    "Main office",
-                    "America/Santo_Domingo",
-                    False,
-                    7,
-                    "Street 1",
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                ),
+            location = AdministrativeLocation(
+                location_id,
+                "main",
+                "Main office",
+                "America/Santo_Domingo",
+                False,
+                7,
+                "Street 1",
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
             )
+            if query.target_id is not None:
+                return (
+                    AdministrativeLocationConfiguration(
+                        **asdict(location),
+                        hours_windows=(),
+                        public_contacts=(),
+                    ),
+                )
+            return (location,)
 
         async def offerings(
             self, query: CatalogAdministrationQuery
@@ -112,6 +121,8 @@ async def test_administrative_inventory_admits_only_trusted_actor_and_bounded_fi
             f"/v1/catalog/locations/{uuid4()}/configuration", params=params, headers=headers
         )
         assert location.json()["operational_revision"] == 7
+        assert location.json()["hours_windows"] == []
+        assert location.json()["public_contacts"] == []
         assert offering.json()["offering_version_id"] == str(version_id)
         assert offering.json()["booking_policy_revision"] == 4
         assert missing.status_code == 404

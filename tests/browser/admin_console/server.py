@@ -3,12 +3,14 @@
 import os
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from pydantic import SecretStr
 
 from request_engine.entrypoints.http.admin_console.app import create_admin_console_app
 from request_engine.entrypoints.http.admin_console.client import ControlResponse
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
+from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
 
 
 class VisualControl:
@@ -18,6 +20,20 @@ class VisualControl:
         payloads: dict[str, object] = {
             "/auth/native/sessions": {"access_token": "browser-fixture-bearer"},
             "/v1/platform/things": {"id": "fixture-created"},
+            "/v1/platform/native-identities": {
+                "items": [
+                    {
+                        "native_identity_id": str(UUID(int=123)),
+                        "login_handle": "Ana administrator",
+                        "status": "active",
+                    }
+                ],
+                "next_cursor": None,
+            },
+            "/v1/platform/organizations": {
+                "organization_id": str(UUID(int=456)),
+                "organization_party_id": str(UUID(int=789)),
+            },
             "/v1/platform/owner-invitations:enroll": {
                 "invitation_id": "11111111-1111-4111-8111-111111111111",
                 "native_identity_id": "22222222-2222-4222-8222-222222222222",
@@ -53,7 +69,7 @@ class VisualControl:
         )
 
     async def openapi(self) -> dict[str, Any]:
-        return {
+        document: dict[str, Any] = {
             "paths": {
                 "/v1/platform/things": {
                     "post": {
@@ -71,7 +87,30 @@ class VisualControl:
                                     "schema": {
                                         "type": "object",
                                         "required": ["name"],
-                                        "properties": {"name": {"type": "string"}},
+                                        "properties": {
+                                            "name": {"type": "string"},
+                                            "slots": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "required": ["day", "enabled"],
+                                                    "properties": {
+                                                        "day": {"type": "integer"},
+                                                        "enabled": {"type": "boolean"},
+                                                    },
+                                                },
+                                            },
+                                            "profile": {
+                                                "anyOf": [
+                                                    {
+                                                        "type": "object",
+                                                        "required": ["label"],
+                                                        "properties": {"label": {"type": "string"}},
+                                                    },
+                                                    {"type": "null"},
+                                                ]
+                                            },
+                                        },
                                     }
                                 }
                             }
@@ -80,6 +119,18 @@ class VisualControl:
                 }
             }
         }
+        inert: Any = object()
+        canonical = create_platform_control_app(
+            auth_session_factory=inert,
+            platform_read_session_factory=inert,
+            platform_write_session_factory=inert,
+            native_authority_id=UUID(int=1),
+            webauthn_decoy_key=b"browser-fixture-native-schema-key-32-bytes",
+        ).openapi()
+        for route in ("/v1/platform/native-identities", "/v1/platform/organizations"):
+            document["paths"][route] = canonical["paths"][route]
+        document["components"] = canonical["components"]
+        return document
 
     async def aclose(self) -> None:
         pass
@@ -91,4 +142,4 @@ settings = AdminConsoleSettings(
     session_store_directory=Path(os.environ["ADMIN_BROWSER_SESSION_DIRECTORY"]),
     cookie_secure=False,
 )
-app = create_admin_console_app(settings, client=VisualControl())
+app = create_admin_console_app(settings, client=VisualControl(), runtime_client=VisualControl())

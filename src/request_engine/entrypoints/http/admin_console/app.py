@@ -27,6 +27,9 @@ from request_engine.entrypoints.http.admin_console.client import (
     ControlPlanePort,
 )
 from request_engine.entrypoints.http.admin_console.routes_auth import install_auth_routes
+from request_engine.entrypoints.http.admin_console.routes_business_setup import (
+    install_business_setup_routes,
+)
 from request_engine.entrypoints.http.admin_console.routes_controller_adoption import (
     install_controller_adoption_routes,
 )
@@ -258,6 +261,7 @@ def create_admin_console_app(
     install_setup_routes(app, state)
     install_operation_routes(app, state)
     install_controller_adoption_routes(app, state)
+    install_business_setup_routes(app, state)
     install_resource_routes(app, state)
     install_tenant_staff_routes(app, state)
     install_tenant_configuration_routes(app, state)

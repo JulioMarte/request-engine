@@ -169,13 +169,15 @@ def test_malformed_parent_cannot_supply_action_preconditions(
     )
 
 
-_LOCATION = {
+_LOCATION: dict[str, Any] = {
     "location_id": _RESOURCE,
     "location_key": "main",
     "display_name": "Main office",
     "timezone": "America/Santo_Domingo",
     "active": False,
     "operational_revision": 7,
+    "hours_windows": [],
+    "public_contacts": [],
     "address_line1": "27 Main Street",
     "address_line2": None,
     "locality": "Santo Domingo",
@@ -266,9 +268,9 @@ def test_inventory_guidance_matches_real_owner_inputs(
     links = read_action_links(
         read_id, payload, values={"authority_party_id": _PARTY}, catalog=runtime_catalog, root=_ROOT
     )
-    assert len(links) == 1
-    parsed = urlsplit(links[0]["href"])
-    assert parsed.path == f"{_ROOT}/{target}"
+    matches = [link for link in links if urlsplit(link["href"]).path == f"{_ROOT}/{target}"]
+    assert len(matches) == 1
+    parsed = urlsplit(matches[0]["href"])
     values = {
         key: value[0] for key, value in parse_qs(parsed.query, keep_blank_values=True).items()
     }
