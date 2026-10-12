@@ -9,11 +9,32 @@ from uuid import UUID
 import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from pydantic import AwareDatetime, BaseModel, Field, StrictStr, ValidationError
 
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
+
+
+class _InvitationView(BaseModel):
+    invitation_id: UUID
+    organization_id: UUID
+    email: StrictStr = Field(min_length=1)
+    status: StrictStr = Field(min_length=1)
+    generation: int = Field(strict=True, ge=1)
+    revision: int = Field(strict=True, ge=1)
+    expires_at: AwareDatetime
+    created_at: AwareDatetime
+    membership_id: UUID | None
+    principal_id: UUID | None
+    binding_id: UUID | None
+    delivery_status: StrictStr | None
+
+
+class _InvitationPage(BaseModel):
+    items: list[_InvitationView] = Field(strict=True, max_length=100)
+    next_after: UUID | None
 
 
 def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> None:
@@ -113,20 +134,16 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
         body = as_mapping(result.payload)
         rows: list[dict[str, Any]] = []
         if result.ok:
-            for value in as_list(body.get("items")):
-                item = as_mapping(value)
-                try:
-                    invitation_id = str(UUID(str(item["invitation_id"])))
-                    revision = item["revision"]
-                except (KeyError, ValueError, TypeError):
-                    return Response("Invalid invitation API response", status_code=502)
-                if type(revision) is not int or revision < 1:
-                    return Response("Invalid invitation API revision", status_code=502)
-                if item.get("membership_id") is not None:
-                    try:
-                        item["membership_id"] = str(UUID(str(item["membership_id"])))
-                    except ValueError:
-                        return Response("Invalid invitation membership", status_code=502)
+            try:
+                page = _InvitationPage.model_validate(result.payload)
+                if len(page.items) > limit or any(
+                    item.organization_id != organization_id for item in page.items
+                ):
+                    raise ValueError("invitation page scope or size mismatch")
+                body = page.model_dump(mode="json")
+            except (ValidationError, ValueError):
+                return Response("Invalid invitation API response", status_code=502)
+            for item in (as_mapping(value) for value in as_list(body["items"])):
                 delivery_labels = {
                     "delivered": "Accepted by mail server (inbox not confirmed)",
                     "pending": "Queued for email delivery",
@@ -144,8 +161,6 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
                 rows.append(
                     {
                         **item,
-                        "invitation_id": invitation_id,
-                        "revision": revision,
                         "intent_id": token_urlsafe(24),
                     }
                 )

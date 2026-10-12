@@ -37,3 +37,17 @@ no model verdict is represented as human approval.
   container installation proof.
 - Production mail acceptance, external backup durability, host/network security,
   human alert receipt and operational acceptance remain separate work.
+
+## Independent-review corrections
+
+Review of the first published candidate found duplicate enrollment-route
+composition and malformed read payloads being presented as valid empty lists or
+actionable detail. Follow-up regressions cover unique route composition, complete
+tenant-bound invitation DTOs, factual staff history, generic resource/configuration
+readback and deployment plans. Initial recovery-binding setup uses the real
+control-plane OpenAPI and canonical request DTO in its transport proof; conflict,
+CSRF and idempotency handling remain in the existing execution path.
+
+The first published candidate passed all three triggered remote workflows
+(CI, Docker E2E and Coolify adapter contract). Those results do not certify later
+source changes; the follow-up commit requires its own full CI run.

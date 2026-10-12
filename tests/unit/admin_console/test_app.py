@@ -1,10 +1,12 @@
 import os
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+from fastapi.routing import APIRoute
 from pydantic import SecretStr
 
 from request_engine.entrypoints.http.admin_console.app import create_admin_console_app
@@ -98,6 +100,19 @@ class FakeControl:
 
     async def aclose(self) -> None:
         return None
+
+
+def test_factory_registers_each_browser_method_and_path_once() -> None:
+    app = create_admin_console_app(_settings(), client=FakeControl())
+    destinations = Counter(
+        (route.path, method)
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        for method in route.methods or ()
+    )
+    assert all(count == 1 for count in destinations.values()), destinations
+    assert destinations[("/owner-invitations/enroll", "GET")] == 1
+    assert destinations[("/account/security", "GET")] == 1
 
 
 @pytest.mark.asyncio

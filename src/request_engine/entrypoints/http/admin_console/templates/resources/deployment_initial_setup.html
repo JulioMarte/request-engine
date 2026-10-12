@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% import "partials/action_form.html" as action_form %}
+{% block title %}Initial recovery binding · Request Engine admin{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <p><a href="/resources/deployment-recovery">← Deployment recovery</a></p>
+  <h1>Initial recovery binding</h1>
+  <p>Choose the recovery target and an existing secret binding for its provider credentials.</p>
+  <p>For initial setup, leave the expected active revision blank. The service will reject that attempt if a binding is already active. Inspect the current binding before retrying a conflict.</p>
+  <div id="result"></div>
+  {{ action_form.render(configure) }}
+</section>
+{% endblock %}

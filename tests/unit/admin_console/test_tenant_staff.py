@@ -90,6 +90,7 @@ async def test_history_is_read_only_redacted_and_forwards_trusted_session(status
                     {
                         "items": [
                             {
+                                "event_id": MEMBER,
                                 "occurred_at": "2026-10-02T12:00:00Z",
                                 "command_name": "staff.profile.update",
                                 "actor_principal_id": ORG,
@@ -1119,3 +1120,90 @@ async def test_staff_valid_empty_owner_page_still_renders_truthful_empty_state()
     assert page.status_code == 200
     assert "No visible staff memberships" in page.text
     assert 'id="staff-invite"' in page.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"items": None, "next_cursor": None},
+        {"items": "invalid", "next_cursor": None},
+        {"items": [None], "next_cursor": None},
+        {"items": [{"event_id": MEMBER}], "next_cursor": None},
+        {"items": []},
+        {"items": [], "next_cursor": "invalid"},
+    ],
+)
+async def test_staff_history_invalid_collection_never_claims_empty_provenance(
+    payload: dict[str, Any],
+) -> None:
+    runtime = FakeApi(runtime=True)
+    original = runtime.request
+
+    async def malformed(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path.endswith("/history"):
+            runtime.requests.append((method, path, kwargs))
+            return ControlResponse(200, payload, {})
+        return await original(method, path, **kwargs)
+
+    runtime.request = malformed  # type: ignore[method-assign]
+    async with staff_client(runtime) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff/{MEMBER}/history")
+    assert page.status_code == 502
+    assert "Invalid staff history API response" in page.text
+    assert "No visible administrative events" not in page.text
+    assert "Older events" not in page.text
+    assert all(method == "GET" for method, _, _ in runtime.requests)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    [
+        "valid_empty",
+        "invalid_revision",
+        "invalid_time",
+        "too_many",
+        "invalid_command",
+        "invalid_revision_kind",
+    ],
+)
+async def test_staff_history_valid_empty_and_factual_entry_validation(case: str) -> None:
+    runtime = FakeApi(runtime=True)
+    original = runtime.request
+    entry: dict[str, Any] = {
+        "event_id": MEMBER,
+        "actor_principal_id": ORG,
+        "occurred_at": "2026-10-02T12:00:00Z",
+        "command_name": "staff.profile.update",
+        "revision_kind": "profile",
+        "revision_before": 0,
+        "revision_after": 1,
+    }
+    if case == "invalid_command":
+        entry["command_name"] = "payments.fake_event"
+    elif case == "invalid_revision_kind":
+        entry["revision_kind"] = "unknown_revision"
+    elif case == "invalid_revision":
+        entry["revision_after"] = True
+    elif case == "invalid_time":
+        entry["occurred_at"] = "not-a-time"
+    payload = {"items": [] if case == "valid_empty" else [entry], "next_cursor": None}
+    if case == "too_many":
+        payload["items"] = [entry, entry]
+
+    async def response(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path.endswith("/history"):
+            runtime.requests.append((method, path, kwargs))
+            return ControlResponse(200, payload, {})
+        return await original(method, path, **kwargs)
+
+    runtime.request = response  # type: ignore[method-assign]
+    async with staff_client(runtime) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff/{MEMBER}/history?limit=1")
+    assert page.status_code == (200 if case == "valid_empty" else 502)
+    assert ("No visible administrative events" in page.text) is (case == "valid_empty")
+    assert all(method == "GET" for method, _, _ in runtime.requests)

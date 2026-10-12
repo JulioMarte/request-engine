@@ -9,7 +9,7 @@ from uuid import UUID
 import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import RedirectResponse, Response
-from pydantic import BaseModel, Field, StrictBool, StrictStr, ValidationError
+from pydantic import AwareDatetime, BaseModel, Field, StrictBool, StrictStr, ValidationError
 
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs
@@ -48,6 +48,23 @@ class _StaffOverview(BaseModel):
     revoked: int = Field(strict=True, ge=0)
     effective_capabilities: list[StrictStr] = Field(strict=True)
     delegable_ceiling: list[StrictStr] = Field(strict=True)
+
+
+class _StaffHistoryEntry(BaseModel):
+    event_id: UUID
+    actor_principal_id: UUID | None
+    occurred_at: AwareDatetime
+    command_name: Literal[
+        "staff.invite", "staff.manage_authority", "staff.manage_membership", "staff.profile.update"
+    ]
+    revision_kind: Literal["membership", "authority", "profile"]
+    revision_before: int | None = Field(strict=True, ge=0)
+    revision_after: int | None = Field(strict=True, ge=0)
+
+
+class _StaffHistoryPage(BaseModel):
+    items: list[_StaffHistoryEntry] = Field(strict=True, max_length=100)
+    next_cursor: UUID | None
 
 
 def _read_error(status_code: int) -> str:
@@ -348,7 +365,18 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             )
         except httpx.HTTPError:
             return Response("Staff service temporarily unavailable", status_code=503)
-        body = as_mapping(response.payload) if response.ok else {}
+        body: dict[str, Any] = {}
+        if response.ok:
+            try:
+                page = _StaffHistoryPage.model_validate(response.payload)
+                if len(page.items) > limit:
+                    raise ValueError("history page exceeds requested limit")
+                body = page.model_dump(mode="json")
+            except (ValidationError, ValueError):
+                return Response(
+                    "Invalid staff history API response. Reload before interpreting the history.",
+                    status_code=502,
+                )
         return state.templates.TemplateResponse(
             request,
             "resources/staff_history.html",

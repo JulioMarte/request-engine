@@ -25,7 +25,7 @@ and [configuration readback](administrative-configuration-readback.md).
 | Platform owners | `/resources/owners` | Owners/invitations pagination, details, revision-bound lifecycle actions and explicit denied/error states |
 | Invited owner enrollment and account readiness | `/owner-invitations/enroll`, `/account/security` | Anonymous invitation redemption without a logged-in account; invitation material absent from URLs/logs; account readiness remains distinct from operator activation |
 | Controller policy adoption | `/resources/controller-policy-adoptions` | List, inspect proposed policy and consent revision, apply using that exact revision/intent; no implicit grant on viewing |
-| Platform identities, configuration and recovery | `/resources` | Existing native identities, provisioners, recovery cases, configuration revisions, governed secret bindings and deployment recovery workspaces |
+| Platform identities, configuration and recovery | `/resources` | Native identities, provisioners, recovery cases, configuration revisions, governed secret bindings and deployment recovery; initial recovery binding setup at `/resources/deployment-recovery/new` |
 | Organization selection | `/my-organizations` | Only memberships returned by self-discovery; platform directory never manufactures tenant access |
 | People and access | `/tenants/{organization_id}/staff`, `/staff-invitations` | Real tenant context, valid parent IDs/revisions, permission preview/apply, lifecycle/history and invitation delivery/acceptance |
 | Business configuration | `/tenants/{organization_id}/configuration` | 99 current owner operations grouped into organization, locations/catalog, supply, queues, channels, Requests, Discovery, agents, integrations, authority/controller policy, identity connections and capacity/recovery policies; owner reads guide supported revision-sensitive actions |
@@ -120,3 +120,10 @@ existing roots. The new default manifest adds only `queue.read_configuration`
 for future organizations. Existing controllers need governed dual-consent
 adoption; pending v6 consent keeps its original target. Opening a workspace
 does not upgrade permissions or restore revoked authority.
+
+Initial recovery-binding setup projects the canonical configure operation and its
+nullable expected-active-revision default. Leaving that field blank requests
+initial creation; it does not invent revision zero or claim an existing binding
+is absent. The owning command rejects a conflict. A missing-binding response
+links to this setup form, while malformed plans show no completed comparison or
+reconciliation action. The setup GET performs no provider or configuration write.

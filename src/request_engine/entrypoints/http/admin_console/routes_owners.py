@@ -22,9 +22,6 @@ from request_engine.entrypoints.http.admin_console.resources import (
     next_cursor,
     resolve_operation,
 )
-from request_engine.entrypoints.http.admin_console.routes_owner_enrollment import (
-    install_owner_enrollment_routes,
-)
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 _OWNER_ACTIONS = {key: OWNER_OPERATION_IDS[key] for key in ("suspend", "reactivate", "revoke")}
@@ -86,8 +83,6 @@ def _read_error(status: int) -> str:
 
 
 def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
-    install_owner_enrollment_routes(app, state)
-
     async def read(request: Request, key: str, *, item_id: UUID | None = None) -> ControlResponse:
         session = state.session(request)
         assert session is not None
