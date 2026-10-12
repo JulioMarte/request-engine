@@ -153,7 +153,11 @@ Location hours/contact replacement forms start with the actual child snapshot,
 not an invented empty list. Missing child fields block the edit. Replacing all
 opening hours also requires an explicit acknowledgement, including a deliberate
 empty schedule. Weekdays use names and canonical date/time fields use browser
-controls; timestamps requiring an offset retain it.
+controls; timestamps requiring an offset retain it. Native time controls allow
+fractional seconds without a whole-second step restriction. Existing time values
+with sub-millisecond precision or an offset use an exact text control, because
+the browser's time picker would silently clear them. This is preservation of
+owner-returned values, not a new time admission or rounding policy.
 
 The shared form projection resolves nested canonical schemas and preserves
 omission, false, explicit null and empty collections. Existing fields outside a

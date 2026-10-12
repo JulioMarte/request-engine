@@ -64,6 +64,18 @@ fs.mkdirSync(artifacts,{recursive:true});
  // Visual object/array editing must retain false, explicit null and new draft intents.
  await page.goto(base+'/operations/thing_create');
  await page.locator('input[name="name"]').fill('Nested visual fixture');
+ // Native HTML time controls clear microseconds/offsets; exact values need text.
+ const preciseTime=page.locator('input[name="precise_time"]');
+ const millisecondTime=page.locator('input[name="millisecond_time"]');
+ const offsetTime=page.locator('input[name="offset_time"]');
+ assert.equal(await preciseTime.getAttribute('type'),'text');
+ assert.equal(await preciseTime.inputValue(),'09:00:00.123456');
+ assert.equal(await offsetTime.getAttribute('type'),'text');
+ assert.equal(await offsetTime.inputValue(),'09:00:00+03:00');
+ assert.equal(await millisecondTime.getAttribute('type'),'time');
+ assert.equal(await millisecondTime.getAttribute('step'),'any');
+ assert.equal(await millisecondTime.inputValue(),'09:00:00.123');
+ assert.equal(await millisecondTime.evaluate(input=>input.checkValidity()),true);
  await page.locator('input[name="__include__slots"]').check();
  const slots=page.locator('[data-array-editor]').first();
  const intent=page.locator('#operation-form input[name="_intent_id"]');
@@ -95,6 +107,9 @@ fs.mkdirSync(artifacts,{recursive:true});
  assert.equal(typedBody.get('slots[1].day'),null);
  assert.equal(typedBody.get('__mode__profile'),'null');
  assert.equal(typedBody.get('profile.label'),null);
+ assert.equal(typedBody.get('precise_time'),'09:00:00.123456');
+ assert.equal(typedBody.get('millisecond_time'),'09:00:00.123');
+ assert.equal(typedBody.get('offset_time'),'09:00:00+03:00');
  // First-business choice is never automatically made, even with one active account.
  await page.goto(base+'/resources/business-setup');
  const administrator=page.locator('select[name="controller_native_identity_id"]');
@@ -189,6 +204,6 @@ fs.mkdirSync(artifacts,{recursive:true});
  await plain.goto(base+'/resources/business-setup');
  assert.equal(await plain.locator('select[name="controller_native_identity_id"]').inputValue(),'');
  assert.deepEqual(errors,[]);
- console.log(JSON.stringify({browser:browser.version(),upstream:'simulated visual fixture, not real API',desktop:'1440x1080',mobile:'320x900',keyboardFocusAndEscape:'PASS',noJavascriptNavigation:'PASS',wholePageOverflow:'none',confirmationCancelAndRetry:'PASS',requestBusyRestored:'PASS',originAndCsrfHeaders:'PASS',loginAndAccountSecurityRender:'PASS',privatePostFetchHistoryAndFailureClearing:'PASS',privateConfirmationSingleDialog:'PASS',noJavascriptPrivatePostWarning:'PASS',nestedRowsNullAndFalse:'PASS',arrayEditsRotateIntent:'PASS',businessNamedSelectionAndGuidedContinuation:'PASS',noJavascriptStructuredWarning:'PASS',pageErrors:errors}));
+ console.log(JSON.stringify({browser:browser.version(),upstream:'simulated visual fixture, not real API',desktop:'1440x1080',mobile:'320x900',keyboardFocusAndEscape:'PASS',noJavascriptNavigation:'PASS',wholePageOverflow:'none',confirmationCancelAndRetry:'PASS',requestBusyRestored:'PASS',originAndCsrfHeaders:'PASS',loginAndAccountSecurityRender:'PASS',privatePostFetchHistoryAndFailureClearing:'PASS',privateConfirmationSingleDialog:'PASS',noJavascriptPrivatePostWarning:'PASS',nestedRowsNullAndFalse:'PASS',exactTimePrecisionAndOffset:'PASS',arrayEditsRotateIntent:'PASS',businessNamedSelectionAndGuidedContinuation:'PASS',noJavascriptStructuredWarning:'PASS',pageErrors:errors}));
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1);});

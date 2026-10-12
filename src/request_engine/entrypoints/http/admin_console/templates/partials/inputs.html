@@ -81,7 +81,8 @@
     </label>
   {% else %}
     <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
-      <input type="{% if field.format in ('date', 'time') %}{{ field.format }}{% else %}text{% endif %}"{% if field.format == 'time' %} step="1"{% endif %} name="{{ field.name }}" value="{{ field.value }}"{% if field.required %} required{% endif %}{% if field.readonly %} readonly{% endif %} />
+      <input type="{% if field.format in ('date', 'time') %}{{ field.format }}{% else %}text{% endif %}"{% if field.format == 'time' %} step="any"{% endif %} name="{{ field.name }}" value="{{ field.value }}"{% if field.required %} required{% endif %}{% if field.readonly %} readonly{% endif %} />
+      {% if field.exact_time %}<small class="muted">This exact time contains precision or an offset that the browser picker cannot retain. Its value is preserved here.</small>{% endif %}
       {% if field.description %}<small class="muted">{{ field.description }}</small>{% endif %}
     </label>
   {% endif %}

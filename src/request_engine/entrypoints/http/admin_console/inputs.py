@@ -8,12 +8,15 @@ anything about control-plane internals.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from typing import Any
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
 from request_engine.entrypoints.http.admin_console.forms import FormField, build_fields
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+
+_BROWSER_TIME = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\.[0-9]{1,3})?)?")
 
 
 def build_inputs(
@@ -70,6 +73,10 @@ def _input_view(
         "structured": False,
         "format": field.format,
     }
+    if field.format == "time" and value and not _BROWSER_TIME.fullmatch(value):
+        # Native time controls silently clear sub-millisecond precision and offsets.
+        view["format"] = ""
+        view["exact_time"] = True
     if field.name == "weekday" and field.enum == tuple(str(day) for day in range(7)):
         weekdays = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
         view["enum_options"] = [

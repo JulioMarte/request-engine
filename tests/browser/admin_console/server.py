@@ -89,6 +89,21 @@ class VisualControl:
                                         "required": ["name"],
                                         "properties": {
                                             "name": {"type": "string"},
+                                            "precise_time": {
+                                                "type": "string",
+                                                "format": "time",
+                                                "default": "09:00:00.123456",
+                                            },
+                                            "millisecond_time": {
+                                                "type": "string",
+                                                "format": "time",
+                                                "default": "09:00:00.123",
+                                            },
+                                            "offset_time": {
+                                                "type": "string",
+                                                "format": "time",
+                                                "default": "09:00:00+03:00",
+                                            },
                                             "slots": {
                                                 "type": "array",
                                                 "items": {

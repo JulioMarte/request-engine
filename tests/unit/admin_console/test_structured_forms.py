@@ -347,6 +347,27 @@ def test_required_nullable_group_accepts_clear_value_without_required_children()
     assert result.body == {"hours": [], "profile": None}
 
 
+@pytest.mark.parametrize(
+    "value,native", [("09:00:00.123", True), ("09:00:00.123456", False), ("09:00:00+03:00", False)]
+)
+def test_time_controls_preserve_existing_precision_and_offsets(value: str, native: bool) -> None:
+    from dataclasses import replace
+
+    operation = replace(
+        _operation(),
+        body_schema={
+            "type": "object",
+            "required": ["start"],
+            "properties": {"start": {"type": "string", "format": "time"}},
+        },
+    )
+    html = _render(build_inputs(operation, values={"start": value}))
+    expected = 'type="time" step="any"' if native else 'type="text"'
+    assert f'{expected} name="start" value="{value}"' in html
+    result = parse_submission(build_fields(operation), {"start": value})
+    assert result.body == {"start": value}
+
+
 def test_hours_use_named_weekdays_and_date_time_controls_without_losing_offsets() -> None:
     from dataclasses import replace
 
@@ -383,7 +404,7 @@ def test_hours_use_named_weekdays_and_date_time_controls_without_losing_offsets(
     )
     assert '<option value="0" selected>Monday</option>' in html
     assert '<option value="6">Sunday</option>' in html
-    assert 'type="time" step="1" name="hours[0].start_time" value="09:00:00"' in html
+    assert 'type="time" step="any" name="hours[0].start_time" value="09:00:00"' in html
     assert 'type="date" name="hours[0].date" value="2026-10-12"' in html
     assert 'type="text" name="hours[0].at" value="2026-10-12T09:00:00-04:00"' in html
     result = parse_submission(

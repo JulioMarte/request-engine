@@ -64,6 +64,11 @@ Only synthetic fixture credentials/proofs are used; supply no real credentials.
   disable nested required controls when Clear value is selected. Each row edit
   changes the draft's idempotency intent. Requests contain the surviving row and
   explicit null mode, rather than a removed row or disabled child.
+- Time values retain microseconds (`09:00:00.123456`) and an explicit offset
+  (`09:00:00+03:00`) in text controls because native HTML time inputs silently
+  clear those values. Milliseconds (`09:00:00.123`) use a native time control with
+  no whole-second step restriction and pass actual browser validity checks. The submitted
+  request retains all three values exactly.
 - First-business creation uses the canonical platform schema and a named account
   picker. The picker starts blank, creation links the returned business and Party,
   and the continuation reaches the guided setup page. New editor and setup pages
