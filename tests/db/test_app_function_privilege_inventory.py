@@ -9,7 +9,13 @@ from app_function_surface import REVIEWED_APP_EXECUTE_ALLOWLIST
 from psycopg import Connection, sql
 
 PgConnection = Connection[Any]
-_RUNTIME_SCHEMAS = ("request_engine", "request_read", "request_cmd", "request_admin")
+_RUNTIME_SCHEMAS = (
+    "request_engine",
+    "request_read",
+    "request_cmd",
+    "request_admin",
+    "request_auth",
+)
 
 
 def _login_conninfo(pg_conninfo: str, role_name: str, password: str) -> str:

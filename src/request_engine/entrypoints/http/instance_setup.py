@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from request_engine.entrypoints.http.errors import render_error_response
+from request_engine.entrypoints.http.native_auth_errors import native_identity_input_error_response
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 from request_engine.platform.security.instance_setup import (
     InstanceClaimResult,
@@ -28,7 +29,10 @@ from request_engine.platform.security.instance_setup import (
     SetupSessionUnusable,
     SetupStepInvalid,
 )
-from request_engine.platform.security.native_auth import normalize_login_handle
+from request_engine.platform.security.native_auth import (
+    PasswordPolicyViolation,
+    normalize_login_handle,
+)
 from request_engine.platform.security.native_webauthn_auth import WebAuthnCeremonyError
 from request_engine.platform.security.webauthn import WebAuthnInputError, public_key_to_json
 
@@ -128,6 +132,8 @@ def install_instance_setup_http(app: Any, *, service: InstanceSetupService) -> N
                 login_handle=payload.login_handle,
                 password=payload.password,
             )
+        except PasswordPolicyViolation as exc:
+            return native_identity_input_error_response(exc)
         except SetupStepInvalid:
             return _step_invalid()
         return Response(status_code=status.HTTP_204_NO_CONTENT)

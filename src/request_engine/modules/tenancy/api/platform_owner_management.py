@@ -31,7 +31,7 @@ from request_engine.platform.http.errors import (
     ErrorResolution,
 )
 from request_engine.platform.security.freshness import (
-    require_phishing_resistant_authentication,
+    require_recent_admin_authentication,
 )
 from request_engine.platform.security.native_auth import (
     PasswordPolicyViolation,
@@ -172,7 +172,7 @@ def install_platform_owner_management_http(
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
     ) -> PlatformOwnerInvitationView:
-        require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+        require_recent_admin_authentication(actor, now=datetime.now(UTC))
         result = await commands.create_invitation(
             actor,
             CreatePlatformOwnerInvitationCommand(
@@ -211,7 +211,7 @@ def install_platform_owner_management_http(
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
     ) -> PlatformOwnerInvitationRevokeView:
-        require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+        require_recent_admin_authentication(actor, now=datetime.now(UTC))
         revision = await commands.revoke_invitation(
             actor,
             RevokePlatformOwnerInvitationCommand(
@@ -231,7 +231,7 @@ def install_platform_owner_management_http(
         _bearer: _NativeBearer,
         idempotency_key: _IdempotencyKey,
     ) -> PlatformOwnerProvisionView:
-        require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+        require_recent_admin_authentication(actor, now=datetime.now(UTC))
         result = await commands.activate_invitation(
             actor,
             ActivatePlatformOwnerInvitationCommand(
@@ -251,7 +251,7 @@ def install_platform_owner_management_http(
         actor: PlatformActorContext,
         idempotency_key: str,
     ) -> PlatformOwnerLifecycleView:
-        require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+        require_recent_admin_authentication(actor, now=datetime.now(UTC))
         result = await commands.transition_owner(
             actor,
             TransitionPlatformOwnerCommand(

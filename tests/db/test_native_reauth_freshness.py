@@ -83,9 +83,13 @@ def _reauth(
     session_id: UUID,
     credential_id: UUID,
 ) -> object:
+    verifier = app_role_conn.execute(
+        "SELECT request_auth.read_native_credential_verifier(%s)", (credential_id,)
+    ).fetchone()
+    assert verifier is not None
     row = app_role_conn.execute(
-        "SELECT request_auth.reauthenticate_native_session(%s, %s)",
-        (session_id, credential_id),
+        "SELECT request_auth.reauthenticate_native_session(%s, %s, %s)",
+        (session_id, credential_id, verifier[0]),
     ).fetchone()
     app_role_conn.commit()
     assert row is not None

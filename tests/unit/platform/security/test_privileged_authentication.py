@@ -11,12 +11,96 @@ from request_engine.platform.security.freshness import (
     RecoveryCompletionRequired,
     recovery_safe_capabilities,
     require_phishing_resistant_authentication,
+    require_recent_admin_authentication,
     require_recent_authentication,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 
 NOW = datetime(2026, 9, 19, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "assurance",
+    [
+        AuthenticationAssurance.SINGLE_FACTOR,
+        AuthenticationAssurance.MFA,
+        AuthenticationAssurance.PHISHING_RESISTANT,
+    ],
+)
+def test_admin_accepts_recent_normal_proof_without_manufacturing_assurance(
+    assurance: AuthenticationAssurance,
+) -> None:
+    verified = assurance is AuthenticationAssurance.PHISHING_RESISTANT
+    actor = _actor(
+        authenticated_at=NOW - timedelta(minutes=5), assurance=assurance, user_verified=verified
+    )
+    require_recent_admin_authentication(actor, now=NOW)
+    assert actor.authentication_assurance is assurance
+    assert actor.user_verified is verified
+    assert actor.capabilities == frozenset()
+
+
+@pytest.mark.parametrize(
+    "proof_time",
+    [
+        None,
+        NOW.replace(tzinfo=None),
+        NOW + timedelta(seconds=1),
+        NOW - timedelta(minutes=5, microseconds=1),
+    ],
+)
+def test_admin_rejects_absent_naive_future_or_stale_proof(proof_time: datetime | None) -> None:
+    with pytest.raises(RecentAuthenticationRequired):
+        require_recent_admin_authentication(
+            _actor(authenticated_at=proof_time, assurance=AuthenticationAssurance.SINGLE_FACTOR),
+            now=NOW,
+        )
+
+
+@pytest.mark.parametrize("restricted,derived", [(True, False), (False, True)])
+def test_password_admin_policy_never_escapes_recovery(restricted: bool, derived: bool) -> None:
+    with pytest.raises(RecoveryCompletionRequired):
+        require_recent_admin_authentication(
+            _actor(
+                authenticated_at=NOW,
+                assurance=AuthenticationAssurance.SINGLE_FACTOR,
+                recovery_restricted=restricted,
+                recovery_derived=derived,
+            ),
+            now=NOW,
+        )
+
+
+@pytest.mark.parametrize("assurance", [None, AuthenticationAssurance.RECOVERY])
+def test_admin_rejects_missing_or_recovery_assurance(
+    assurance: AuthenticationAssurance | None,
+) -> None:
+    with pytest.raises(RecentAuthenticationRequired):
+        require_recent_admin_authentication(
+            _actor(authenticated_at=NOW, assurance=assurance), now=NOW
+        )
+
+
+def test_admin_rejects_phishing_resistance_without_actual_user_verification() -> None:
+    with pytest.raises(RecentAuthenticationRequired):
+        require_recent_admin_authentication(
+            _actor(authenticated_at=NOW, assurance=AuthenticationAssurance.PHISHING_RESISTANT),
+            now=NOW,
+        )
+
+
+def test_recent_credential_guard_keeps_recovery_session_fenced_after_posture_completion() -> None:
+    with pytest.raises(RecoveryCompletionRequired):
+        require_recent_authentication(
+            _actor(
+                authenticated_at=NOW,
+                assurance=AuthenticationAssurance.RECOVERY,
+                recovery_derived=True,
+                recovery_restricted=False,
+            ),
+            now=NOW,
+        )
 
 
 def _actor(

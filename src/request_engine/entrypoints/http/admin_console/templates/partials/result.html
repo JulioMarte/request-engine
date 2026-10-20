@@ -23,9 +23,10 @@
     </section>
   {% endif %}
   {% if result.needs_step_up %}
-    <p class="alert error">A fresh passkey confirmation is required for this action.</p>
-    <button type="button" class="secondary step-up-btn" data-retry-form="{{ form_id }}">Confirm with passkey and retry</button>
-    <p class="step-up-status muted" role="status" aria-live="polite"></p>
+    <p class="alert error">Confirm your current session before retrying this action. Your entries and loaded revision stay unchanged.</p>
+    {% import "partials/reauthentication.html" as authentication %}
+    {{ authentication.render(form_id, result.error_code == 'phishing_resistant_auth_required') }}
   {% endif %}
+  {% if result.error_code == 'recovery_completion_required' %}<p class="alert warning">Complete recovery in Account security, then sign out and sign in with your password before returning to this action.</p><a href="/account/security">Complete recovery</a>{% endif %}
   <details class="technical-details"><summary>Technical details</summary><pre class="payload">{{ result.payload_json }}</pre></details>
 </div>

@@ -31,6 +31,12 @@ def _idempotency_key(token: str) -> str:
 
 def _error_text(response: Any) -> str:
     body = response.error_body
+    if (
+        body is not None
+        and body.get("code") == "password_policy_violation"
+        and isinstance(body.get("message"), str)
+    ):
+        return str(body["message"])
     if body is not None and isinstance(body.get("code"), str):
         return str(body["code"])
     return f"control_error_{response.status_code}"
@@ -113,7 +119,7 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
         )
         if not response.ok:
             return RedirectResponse(
-                f"/setup?error={quote_plus(_error_text(response))}", status_code=303
+                f"/setup?step=identity&error={quote_plus(_error_text(response))}", status_code=303
             )
         return RedirectResponse("/setup?step=passkey", status_code=303)
 

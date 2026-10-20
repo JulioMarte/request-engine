@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import uuid4
 
@@ -21,7 +22,8 @@ from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.context import PrincipalKind
 from request_engine.platform.security.freshness import (
-    PhishingResistantAuthenticationRequired,
+    RecentAuthenticationRequired,
+    RecoveryCompletionRequired,
 )
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.platform_http import PlatformActorResolver
@@ -182,11 +184,33 @@ def test_stage_payload_rejects_embedded_secret_material(
         )
 
 
-def test_configuration_mutation_requires_phishing_resistant_step_up() -> None:
-    with pytest.raises(PhishingResistantAuthenticationRequired):
-        require_platform_configuration_step_up(_actor(strong=False))
-
+def test_configuration_mutation_accepts_recent_password_and_passkey_proofs() -> None:
+    password_actor = _actor(strong=False)
+    require_platform_configuration_step_up(password_actor)
+    assert password_actor.authentication_assurance is AuthenticationAssurance.SINGLE_FACTOR
+    assert password_actor.user_verified is False
     require_platform_configuration_step_up(_actor(strong=True))
+
+
+@pytest.mark.parametrize("strong", [False, True])
+def test_configuration_mutation_rejects_stale_credential_proofs(strong: bool) -> None:
+    actor = replace(
+        _actor(strong=strong), authenticated_at=datetime.now(UTC) - timedelta(minutes=6)
+    )
+    with pytest.raises(RecentAuthenticationRequired):
+        require_platform_configuration_step_up(actor)
+
+
+@pytest.mark.parametrize("flag", ["recovery_derived", "recovery_restricted"])
+def test_configuration_mutation_rejects_recovery_evidence(flag: str) -> None:
+    actor = _actor(strong=False)
+    actor = replace(
+        actor,
+        recovery_derived=flag == "recovery_derived",
+        recovery_restricted=flag == "recovery_restricted",
+    )
+    with pytest.raises(RecoveryCompletionRequired):
+        require_platform_configuration_step_up(actor)
 
 
 def test_stage_contract_accepts_governed_oidc_without_secret_binding() -> None:

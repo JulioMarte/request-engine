@@ -305,6 +305,109 @@ async def test_setup_wizard_renders() -> None:
 
 
 @pytest.mark.asyncio
+async def test_setup_can_skip_optional_passkey_and_project_recovery_then_claim() -> None:
+    class PasswordSetup(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if method == "POST" and path in {
+                "/v1/setup/native-identity",
+                "/v1/setup/recovery-codes",
+                "/v1/setup:finalize",
+            }:
+                self.calls.append(f"{method} {path}")
+                assert kwargs["setup_bearer"] == "setup-token"
+                if path == "/v1/setup/native-identity":
+                    return ControlResponse(204, None, {})
+                if path == "/v1/setup/recovery-codes":
+                    return ControlResponse(201, {"codes": ["synthetic-one-time-recovery"]}, {})
+                return ControlResponse(201, {"instance_id": "claimed-instance"}, {})
+            return await super().request(method, path, **kwargs)
+
+    control = PasswordSetup()
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await client.post("/setup/session")
+        identity = await client.get("/setup?step=identity")
+        csrf = _CSRF_RE.search(identity.text)
+        assert csrf is not None
+        submitted = await client.post(
+            "/setup/identity",
+            data={
+                "csrf_token": csrf.group(1),
+                "login_handle": "owner",
+                "password": "owner-password",
+            },
+        )
+        passkey = await client.get(submitted.headers["location"])
+        assert 'href="/setup?step=recovery"' in passkey.text
+        assert "Continue without a passkey" in passkey.text
+        recovery = await client.get("/setup?step=recovery")
+        assert 'action="/setup/recovery-codes"' in recovery.text
+        codes = await client.post("/setup/recovery-codes")
+        assert "synthetic-one-time-recovery" in codes.text
+        assert 'action="/setup/finalize"' in codes.text
+        finished = await client.post(
+            "/setup/finalize",
+            data={"csrf_token": csrf.group(1), "claim_provenance": "browser-setup"},
+        )
+        assert finished.status_code == 200
+        assert "Instance claimed successfully" in finished.text
+        assert not any("webauthn" in path for path in control.calls)
+        assert control.calls.index("POST /v1/setup/recovery-codes") < control.calls.index(
+            "POST /v1/setup:finalize"
+        )
+
+
+@pytest.mark.asyncio
+async def test_setup_password_policy_error_keeps_identity_step_and_safe_feedback() -> None:
+    class PasswordRejected(FakeControl):
+        async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+            if method == "POST" and path == "/v1/setup/native-identity":
+                self.calls.append(f"{method} {path}")
+                return ControlResponse(
+                    422,
+                    {
+                        "error": {
+                            "code": "password_policy_violation",
+                            "message": (
+                                "password must be valid UTF-8 with at least 12 characters "
+                                "and at most 1024 bytes"
+                            ),
+                            "retryable": False,
+                        }
+                    },
+                    {},
+                )
+            return await super().request(method, path, **kwargs)
+
+    control = PasswordRejected()
+    app = create_admin_console_app(_settings(), client=control)
+    async with _client(app) as client:
+        started = await client.post("/setup/session")
+        assert started.status_code == 303
+        identity = await client.get(started.headers["location"])
+        csrf = _CSRF_RE.search(identity.text)
+        assert csrf is not None
+        rejected = await client.post(
+            "/setup/identity",
+            data={
+                "csrf_token": csrf.group(1),
+                "login_handle": "owner@example.test",
+                "password": "tiny-pw",
+            },
+        )
+        assert rejected.status_code == 303
+        assert "step=identity" in rejected.headers["location"]
+        assert "tiny-pw" not in rejected.headers["location"]
+        feedback = await client.get(rejected.headers["location"])
+        assert feedback.status_code == 200
+        assert "at least 12 characters" in feedback.text
+        assert "at most 1024 bytes" in feedback.text
+        assert 'action="/setup/identity"' in feedback.text
+        assert 'minlength="12"' in feedback.text
+        assert "tiny-pw" not in feedback.text
+        assert control.calls.count("POST /v1/setup/native-identity") == 1
+
+
+@pytest.mark.asyncio
 async def test_login_page_separates_passkey_from_password() -> None:
     app = create_admin_console_app(_settings(), client=FakeControl())
     async with _client(app) as client:

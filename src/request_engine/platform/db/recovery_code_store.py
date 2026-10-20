@@ -14,6 +14,7 @@ from request_engine.platform.security.recovery_codes import (
     NativeRecoveryReadiness,
     RecoveryCodeConsumed,
     RecoveryCodeSetSummary,
+    RecoverySessionPasswordCredential,
 )
 
 
@@ -138,6 +139,52 @@ class PostgresRecoveryCodeStore:
         return await self._call_boolean(
             "SELECT request_auth.complete_native_recovery(:native_identity_id)",
             {"native_identity_id": native_identity_id},
+        )
+
+    async def read_recovery_session_password_credential(
+        self, *, session_id: UUID
+    ) -> RecoverySessionPasswordCredential | None:
+        async with self._session_factory() as session, session.begin():
+            row = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT credential_id, native_identity_id, verifier, recovery_epoch "
+                            "FROM request_auth.read_native_recovery_session_password_credential("
+                            ":session_id)"
+                        ),
+                        {"session_id": session_id},
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            return None
+        return RecoverySessionPasswordCredential(
+            credential_id=UUID(str(row["credential_id"])),
+            native_identity_id=UUID(str(row["native_identity_id"])),
+            recovery_epoch=int(row["recovery_epoch"]),
+            verifier=str(row["verifier"]),
+        )
+
+    async def complete_recovery_with_password(
+        self,
+        *,
+        session_id: UUID,
+        credential_id: UUID,
+        expected_recovery_epoch: int,
+        expected_verifier: str,
+    ) -> bool:
+        return await self._call_boolean(
+            "SELECT request_auth.complete_native_recovery_with_password("
+            ":session_id, :credential_id, :expected_recovery_epoch, :expected_verifier)",
+            {
+                "session_id": session_id,
+                "credential_id": credential_id,
+                "expected_recovery_epoch": expected_recovery_epoch,
+                "expected_verifier": expected_verifier,
+            },
         )
 
     async def promote(self, *, set_id: UUID, native_identity_id: UUID) -> bool:

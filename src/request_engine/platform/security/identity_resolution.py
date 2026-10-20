@@ -162,7 +162,8 @@ class IdentityPrincipalResolver:
             principal_id=binding.principal_id,
             capabilities=recovery_safe_capabilities(
                 authority.capabilities,
-                recovery_restricted=recovery_restricted,
+                recovery_restricted=recovery_restricted
+                or _metadata_flag(subject, "recovery_derived"),
             ),
             principal_kind=principal_kind,
             authentication_method=authentication_method,
@@ -205,7 +206,8 @@ class IdentityPrincipalResolver:
             principal_id=binding.principal_id,
             capabilities=recovery_safe_capabilities(
                 authority.capabilities,
-                recovery_restricted=recovery_restricted,
+                recovery_restricted=recovery_restricted
+                or _metadata_flag(subject, "recovery_derived"),
             ),
             authority_revision=authority.authority_revision,
             principal_kind=principal_kind,

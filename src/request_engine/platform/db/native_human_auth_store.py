@@ -9,6 +9,7 @@ from request_engine.platform.security.native_human_auth import (
     NativeEnrollmentOutcomeInvalid,
     NativeHumanAuthStore,
     NativePasswordCredentialSnapshot,
+    NativeSessionPasswordCredential,
 )
 from request_engine.platform.security.native_session import (
     NativeCredentialStatus,
@@ -288,7 +289,7 @@ class PostgresNativeHumanAuthStore(NativeHumanAuthStore):
         )
 
     async def reauthenticate_session(
-        self, *, session_id: UUID, credential_id: UUID
+        self, *, session_id: UUID, credential_id: UUID, expected_verifier: str
     ) -> datetime | None:
         async with self._session_factory() as session, session.begin():
             value = (
@@ -296,11 +297,15 @@ class PostgresNativeHumanAuthStore(NativeHumanAuthStore):
                     text(
                         """
                         SELECT request_auth.reauthenticate_native_session(
-                            :session_id, :credential_id
+                            :session_id, :credential_id, :expected_verifier
                         )
                         """
                     ),
-                    {"session_id": session_id, "credential_id": credential_id},
+                    {
+                        "session_id": session_id,
+                        "credential_id": credential_id,
+                        "expected_verifier": expected_verifier,
+                    },
                 )
             ).scalar_one_or_none()
         if value is None:
@@ -308,6 +313,31 @@ class PostgresNativeHumanAuthStore(NativeHumanAuthStore):
         if not isinstance(value, datetime):
             raise RuntimeError("native session reauthentication did not return a timestamp")
         return value
+
+    async def read_session_password_credential(
+        self, *, session_id: UUID
+    ) -> NativeSessionPasswordCredential | None:
+        async with self._session_factory() as session, session.begin():
+            row = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT credential_id, native_identity_id, verifier "
+                            "FROM request_auth.read_native_session_password_credential(:session_id)"
+                        ),
+                        {"session_id": session_id},
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            return None
+        return NativeSessionPasswordCredential(
+            credential_id=UUID(str(row["credential_id"])),
+            native_identity_id=UUID(str(row["native_identity_id"])),
+            verifier=str(row["verifier"]),
+        )
 
     async def _call_boolean(self, statement: str, parameters: dict[str, object]) -> bool:
         async with self._session_factory() as session, session.begin():

@@ -17,6 +17,20 @@ from request_engine.entrypoints.http.admin_console.forms import FormField, build
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
 
 _BROWSER_TIME = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\.[0-9]{1,3})?)?")
+# Credential inputs never render as visible text, including in the generic
+# operations form that has no workspace-specific secret field list.
+_CREDENTIAL_FIELDS = frozenset(
+    {
+        "password",
+        "current_password",
+        "new_password",
+        "recovery_code",
+        "recovery_token",
+        "verification_token",
+        "invitation_token",
+        "workload_token",
+    }
+)
 
 
 def build_inputs(
@@ -29,7 +43,7 @@ def build_inputs(
     """Render values; only explicit owner-read revisions get a loaded-state label."""
 
     provided = values or {}
-    secrets = frozenset(secret_fields)
+    secrets = frozenset(secret_fields) | _CREDENTIAL_FIELDS
     inputs: list[dict[str, Any]] = []
     for field in build_fields(operation):
         value = provided.get(field.name, field.default)

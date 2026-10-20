@@ -306,7 +306,7 @@ class WebAuthnService:
             )
         raw_challenge = challenge or generate_challenge()
         user = PublicKeyCredentialUserEntity(
-            name=user_name, id=user_handle, display_name=user_display_name
+            name=user_name, id=user_handle, display_name=user_display_name or user_name
         )
         exclude = [
             PublicKeyCredentialDescriptor(type=PublicKeyCredentialType.PUBLIC_KEY, id=credential_id)

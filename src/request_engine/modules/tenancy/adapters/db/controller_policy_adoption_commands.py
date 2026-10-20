@@ -30,7 +30,7 @@ from request_engine.platform.db.session import (
 from request_engine.platform.idempotency.postgres import command_fingerprint
 from request_engine.platform.security.context import ActorContext, PrincipalKind
 from request_engine.platform.security.freshness import (
-    require_phishing_resistant_authentication,
+    require_recent_admin_authentication,
 )
 from request_engine.platform.security.platform_context import PlatformActorContext
 
@@ -63,7 +63,7 @@ def _require_tenant_root_context(actor: ActorContext) -> None:
         raise ControllerPolicyAdoptionForbidden()
     if actor.identity_binding_id is None:
         raise ControllerPolicyAdoptionForbidden()
-    require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+    require_recent_admin_authentication(actor, now=datetime.now(UTC))
 
 
 def _require_platform_context(actor: PlatformActorContext) -> None:
@@ -71,7 +71,7 @@ def _require_platform_context(actor: PlatformActorContext) -> None:
         _PLATFORM_APPLY_CAPABILITY
     ):
         raise ControllerPolicyAdoptionForbidden()
-    require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+    require_recent_admin_authentication(actor, now=datetime.now(UTC))
 
 
 def _digests(key: str, capability: str, values: dict[str, object]) -> tuple[str, str]:

@@ -508,6 +508,10 @@ def test_build_inputs_marks_secrets_and_prefills() -> None:
     assert provision is not None
     provision_inputs = build_inputs(provision, secret_fields=("password",))
     assert {item["name"]: item["secret"] for item in provision_inputs}["password"] is True
+    # The generic operations form passes no workspace secret list; a credential
+    # must still never render as visible text there.
+    generic = {item["name"]: item["secret"] for item in build_inputs(provision)}
+    assert generic == {"login_handle": False, "password": True}
 
 
 def test_summarize_payload_buckets_scalars_and_nested() -> None:

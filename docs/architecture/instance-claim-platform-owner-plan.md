@@ -4,6 +4,15 @@ Date: 2026-09-18
 Branch of reference: `cohesion/system-optimization`  
 Status: **accepted architecture and implementation handoff; not production certification.**
 
+Current authentication policy (2026-10-14): [ADR 0017](../adr/0017-optional-passkeys-administrative-authentication.md)
+supersedes this plan's mandatory initial passkey and exclusive phishing-resistant
+administrative admission assumptions. Password plus recovery codes can finalize
+claim; passkeys are optional. Recent password or verified WebAuthn can confirm
+administrative actions through the same API operations projected by the console.
+Explicit password-based recovery completion is bound to its session and epoch,
+and requires a fresh ordinary sign-in afterwards. Historical migration numbers
+and delivery checkpoints below are provenance, not the current Alembic head.
+
 The reference software-authenticator runner keeps Python `3.13-slim` and the
 same isolated TCP/WebAuthn claim journey. Its base image is now Docker's
 official `public.ecr.aws/docker/library/python:3.13-slim` publication, avoiding

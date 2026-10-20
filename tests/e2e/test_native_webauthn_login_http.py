@@ -149,6 +149,58 @@ def _session_row(conn: PgConnection, token: str) -> tuple[str, bool, list[str], 
 
 
 @pytest.mark.asyncio
+async def test_password_reauth_of_passkey_session_preserves_token_and_initial_binding(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        authenticator = await _claim_owner(client)
+        _, token = await _webauthn_login(client, authenticator)
+        session_id = parse_opaque_token(token).token_id
+        before = e2e_admin_conn.execute(
+            "SELECT webauthn_credential_id, password_credential_id, token_digest, "
+            "last_authenticated_at FROM request_engine.native_sessions WHERE id = %s",
+            (session_id,),
+        ).fetchone()
+        assert before is not None and before[0] is not None and before[1] is None
+        headers = {"Authorization": f"Bearer {token}"}
+        wrong = await client.post(
+            "/auth/native/sessions:reauth", headers=headers, json={"password": "incorrect"}
+        )
+        assert wrong.status_code == 401
+        assert _session_row(e2e_admin_conn, token) == (
+            "phishing_resistant",
+            True,
+            ["webauthn"],
+            False,
+        )
+        reauthenticated = await client.post(
+            "/auth/native/sessions:reauth", headers=headers, json={"password": PASSWORD}
+        )
+        assert reauthenticated.status_code == 200, reauthenticated.text
+        assert reauthenticated.headers["cache-control"] == "no-store"
+        after = e2e_admin_conn.execute(
+            "SELECT webauthn_credential_id, password_credential_id, token_digest, "
+            "last_authenticated_at FROM request_engine.native_sessions WHERE id = %s",
+            (session_id,),
+        ).fetchone()
+        assert after is not None and after[:3] == before[:3] and after[3] > before[3]
+        assert _session_row(e2e_admin_conn, token) == ("single_factor", False, ["password"], False)
+        current = await client.get("/auth/native/sessions/current", headers=headers)
+        assert current.status_code == 200
+        assert current.json()["authentication_assurance"] == "single_factor"
+        assert current.json()["authentication_methods"] == ["password"]
+        assert current.json()["user_verified"] is False
+
+
+@pytest.mark.asyncio
 async def test_platform_owner_authenticates_with_passkey_and_steps_up(
     private_runtime_configuration: UUID,
     e2e_admin_conn: PgConnection,
@@ -267,13 +319,17 @@ async def test_current_identity_can_enroll_passkey_then_issue_offline_recovery_c
         token = login.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        # A password-only session cannot mint offline break-glass material.
-        denied = await client.post(
+        # ADR 0017: a recent password proof may replenish offline recovery codes
+        # (for example after recovering with the last code) without a passkey,
+        # and doing so never raises the session's reported assurance.
+        password_issued = await client.post(
             "/auth/native/sessions/current/recovery-codes",
             headers=headers,
         )
-        assert denied.status_code == 403
-        assert denied.json()["error"]["code"] == "phishing_resistant_auth_required"
+        assert password_issued.status_code == 201, password_issued.text
+        assert len(password_issued.json()["codes"]) == 10
+        unchanged = await client.get("/auth/native/sessions/current", headers=headers)
+        assert unchanged.json()["authentication_assurance"] == "single_factor"
 
         options = (
             await client.post(
@@ -1125,9 +1181,12 @@ async def test_platform_configuration_http_is_governed_and_never_replays_secret_
         assert password_login.status_code == 201
         password_headers = {
             "Authorization": f"Bearer {password_login.json()['access_token']}",
-            "Idempotency-Key": "config-password-denied",
+            "Idempotency-Key": "config-password-admitted",
         }
-        denied = await client.post(
+        # ADR 0017: a recent password proof is admitted to the owner operation,
+        # which still validates the input contract. This incomplete revision
+        # (no sender) is rejected by validation and stages nothing.
+        admitted = await client.post(
             "/v1/platform/configurations/email.delivery/revisions",
             headers=password_headers,
             json={
@@ -1139,8 +1198,10 @@ async def test_platform_configuration_http_is_governed_and_never_replays_secret_
                 },
             },
         )
-        assert denied.status_code == 403
-        assert denied.json()["error"]["code"] == "phishing_resistant_auth_required"
+        assert admitted.status_code == 422, admitted.text
+        assert admitted.json()["error"]["code"] != "phishing_resistant_auth_required"
+        still_empty = await client.get("/v1/platform/configurations", headers=owner_headers)
+        assert still_empty.json() == {"items": []}
 
         rejected_secret = await client.post(
             "/v1/platform/configurations/email.delivery/revisions",

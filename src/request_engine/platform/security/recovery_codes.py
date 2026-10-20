@@ -17,12 +17,16 @@ import base64
 import hashlib
 import secrets
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID, uuid4
 
-from request_engine.platform.security.native_auth import hash_password
+from request_engine.platform.security.native_auth import (
+    CredentialInvalid,
+    hash_password,
+    verify_password,
+)
 from request_engine.platform.security.password_work import run_password_work
 
 _RECOVERY_CODE_BYTES = 16
@@ -71,7 +75,28 @@ class NativeRecoveryReadiness:
         return self.recovery_state == "recovery_restricted"
 
 
+@dataclass(frozen=True, slots=True)
+class RecoverySessionPasswordCredential:
+    credential_id: UUID
+    native_identity_id: UUID
+    recovery_epoch: int
+    verifier: str = field(repr=False)
+
+
 class RecoveryCodeStore(Protocol):
+    async def read_recovery_session_password_credential(
+        self, *, session_id: UUID
+    ) -> RecoverySessionPasswordCredential | None: ...
+
+    async def complete_recovery_with_password(
+        self,
+        *,
+        session_id: UUID,
+        credential_id: UUID,
+        expected_recovery_epoch: int,
+        expected_verifier: str,
+    ) -> bool: ...
+
     async def create_set(
         self,
         *,
@@ -199,6 +224,26 @@ class NativeRecoveryCodeService:
         if not completed:
             raise RecoveryCodeInvalid("native recovery cannot be completed")
         return await self.readiness(native_identity_id=native_identity_id)
+
+    async def complete_recovery_with_password(
+        self, *, session_id: UUID, password: str
+    ) -> NativeRecoveryReadiness:
+        credential = await self._store.read_recovery_session_password_credential(
+            session_id=session_id
+        )
+        if credential is None or not await run_password_work(
+            verify_password, password, credential.verifier
+        ):
+            raise CredentialInvalid("native credential is invalid")
+        completed = await self._store.complete_recovery_with_password(
+            session_id=session_id,
+            credential_id=credential.credential_id,
+            expected_recovery_epoch=credential.recovery_epoch,
+            expected_verifier=credential.verifier,
+        )
+        if not completed:
+            raise CredentialInvalid("native recovery session is no longer usable")
+        return await self.readiness(native_identity_id=credential.native_identity_id)
 
     async def _issue(
         self,

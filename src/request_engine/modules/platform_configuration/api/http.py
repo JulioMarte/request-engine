@@ -104,7 +104,7 @@ from request_engine.platform.security.appointment_option_keyring import (
     validate_appointment_option_key_id,
 )
 from request_engine.platform.security.context import PrincipalKind
-from request_engine.platform.security.freshness import require_phishing_resistant_authentication
+from request_engine.platform.security.freshness import require_recent_admin_authentication
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.platform_http import PlatformActorResolver
 
@@ -1064,7 +1064,7 @@ def install_platform_configuration_http(
 
 
 def require_platform_configuration_step_up(actor: PlatformActorContext) -> None:
-    require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+    require_recent_admin_authentication(actor, now=datetime.now(UTC))
 
 
 def _secret_mutation_view(result: SecretMutationResult) -> SecretMutationView:

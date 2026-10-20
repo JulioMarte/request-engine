@@ -25,7 +25,7 @@
   {% else %}
     <ol class="steps">
       <li class="{% if step == 'identity' %}active{% endif %}">Owner identity</li>
-      <li class="{% if step == 'passkey' %}active{% endif %}">Passkey</li>
+      <li class="{% if step == 'passkey' %}active{% endif %}">Passkey (optional)</li>
       <li class="{% if step == 'recovery' %}active{% endif %}">Recovery codes</li>
       <li class="{% if step not in ('identity', 'passkey', 'recovery') %}active{% endif %}">Claim</li>
     </ol>
@@ -45,17 +45,19 @@
           <input name="login_handle" type="text" required autofocus />
         </label>
         <label>Owner password
-          <input name="password" type="password" required />
+          <input name="password" type="password" minlength="12" maxlength="1024" required aria-describedby="setup-password-policy" />
+          <small id="setup-password-policy" class="muted">Use at least 12 characters and at most 1024 UTF-8 bytes. The server checks this limit.</small>
         </label>
         <button type="submit">Continue</button>
         <p class="muted" data-setup-form-status role="status"></p>
       </form>
 
     {% elif step == 'passkey' %}
-      <h2>Register the owner passkey</h2>
-      <p class="muted">The Platform Owner must enroll a user-verified passkey. Passkeys are required for privileged step-up.</p>
+      <h2>Add an optional passkey</h2>
+      <p class="muted">You can administer this instance with your password. Add a passkey for another way to sign in and confirm actions, or continue without one.</p>
       <button id="setup-passkey-btn" type="button">Register passkey</button>
-      <p id="setup-passkey-status" class="muted"></p>
+      <p id="setup-passkey-status" class="muted" role="status" aria-live="polite"></p>
+      <p><a class="button secondary" href="/setup?step=recovery">Continue without a passkey</a></p>
 
     {% elif step == 'recovery' and not codes %}
       <h2>Issue recovery codes</h2>

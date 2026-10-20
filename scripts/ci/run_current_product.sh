@@ -169,6 +169,9 @@ uv run pytest \
   tests/db/test_native_multi_session.py \
   tests/db/test_platform_instance_setup.py \
   tests/db/test_instance_claim.py \
+  tests/db/test_native_reauth_freshness.py \
+  tests/db/test_native_password_proof_finalization.py \
+  tests/db/test_password_rehash.py \
   tests/db/test_platform_configuration_foundation.py \
   tests/db/test_platform_configuration_governance.py \
   tests/db/test_recovery_code_persistence.py \

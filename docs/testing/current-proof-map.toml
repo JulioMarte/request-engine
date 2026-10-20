@@ -770,3 +770,33 @@ evidence = ["contract"]
 guarantee = "INV-HTTP-AUTH-ADMISSION-001"
 path = "tests/db/test_shared_http_auth_admission.py"
 evidence = ["invariant", "adversarial", "security", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/unit/platform/security/test_privileged_authentication.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/db/test_native_password_proof_finalization.py"
+evidence = ["invariant", "adversarial", "security", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/e2e/test_native_session_reauth_http.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/unit/admin_console/test_password_reauthentication.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/db/test_native_reauth_freshness.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/e2e/test_instance_setup_http.py"
+evidence = ["contract", "security"]

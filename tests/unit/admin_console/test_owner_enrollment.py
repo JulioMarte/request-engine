@@ -111,6 +111,29 @@ def _csrf(page: httpx.Response) -> str:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["normal", "recovery_restricted"])
+async def test_account_security_offers_optional_passkey_and_password_recovery(state: str) -> None:
+    control = EnrollmentControl()
+    control.override["/auth/native/sessions/current/recovery-readiness"] = {
+        "active_webauthn_credentials": 0,
+        "active_code_set": True,
+        "remaining_codes": 2,
+        "recovery_state": state,
+    }
+    async with _client(control) as client:
+        await client.post("/login", data={"login_handle": "owner", "password": _PASSWORD})
+        page = await client.get("/account/security")
+        assert page.status_code == 200
+        assert "Optional: add a passkey" in page.text
+        assert "Confirm with password" in page.text
+        assert "Register passkey" in page.text
+        assert ("data-password-recovery-complete" in page.text) is (state == "recovery_restricted")
+        if state == "recovery_restricted":
+            assert "Completion does not upgrade this recovery session" in page.text
+            assert "Sign out to sign in again" in page.text
+
+
+@pytest.mark.asyncio
 async def test_owner_recipient_can_enroll_without_login_and_secrets_never_return(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

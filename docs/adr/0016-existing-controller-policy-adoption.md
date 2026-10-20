@@ -1,5 +1,7 @@
 # 0016 — Explicit adoption of a newer policy by an existing tenant controller
 
+
+Current authentication policy amendment: [ADR 0017](0017-optional-passkeys-administrative-authentication.md) accepts recent normal password or verified WebAuthn proof for administrative admission. Earlier exclusive phishing-resistant requirements below retain decision provenance. Capability, consent, continuity, recovery and transactional authority remain binding.
 Status: Accepted — implementation present; exact-head production verification in progress
 Date: 2026-10-04
 Owner: Tenancy

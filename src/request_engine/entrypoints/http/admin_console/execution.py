@@ -38,7 +38,8 @@ _HUMAN_ERRORS = {
         "Confirm your identity with a passkey to continue. Your entries will be preserved."
     ),
     "recent_authentication_required": (
-        "Confirm your identity with a passkey to continue. Your entries will be preserved."
+        "Confirm your current session with your password or a passkey to continue. "
+        "Your entries will be preserved."
     ),
     "forbidden": "You do not have permission to perform this action.",
     "not_found": "This item is unavailable or you no longer have access to it.",

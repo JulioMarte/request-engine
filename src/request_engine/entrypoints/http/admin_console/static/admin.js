@@ -67,6 +67,43 @@
     });
   });
 
+  // Fetch also supplies Origin for password login without weakening the
+  // same-origin guard. Server-rendered errors retain the GET login address.
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (!(form instanceof HTMLFormElement) || (!form.matches("form[data-password-login]") && !form.matches("form[data-session-logout]"))) return;
+    event.preventDefault();
+    if (form.getAttribute("aria-busy") === "true") return;
+    var button = form.querySelector("button[type=submit]");
+    var status = form.querySelector("[data-password-login-status]");
+    form.setAttribute("aria-busy", "true");
+    if (button) button.disabled = true;
+    if (status) status.textContent = "Signing in…";
+    fetch(form.action, {
+      method: "POST",
+      body: new FormData(form),
+      credentials: "same-origin",
+      redirect: "follow",
+    }).then(function (response) {
+      if (response.redirected) {
+        window.location.assign(response.url);
+        return;
+      }
+      // Invalid credentials return rendered HTML with a non-success status.
+      return response.text().then(function (html) {
+        document.open();
+        document.write(html);
+        document.close();
+      });
+    }).catch(function (error) {
+      form.removeAttribute("aria-busy");
+      if (button) button.disabled = false;
+      var password = form.querySelector('input[name="password"]');
+      if (password) password.value = "";
+      if (status) status.textContent = String(error.message || error);
+    });
+  });
+
   function initializeFormIntents(root) {
     var fields = (root || document).querySelectorAll("input[data-form-intent]");
     fields.forEach(function (field) {
@@ -278,6 +315,53 @@
       });
   }
 
+  function reauthenticationStatus(element) {
+    var section = element.closest("[data-reauthentication]");
+    return section ? section.querySelector(".step-up-status") : document.querySelector(".step-up-status");
+  }
+
+  function retryConfirmedForm(element, status) {
+    var formId = element.getAttribute("data-retry-form");
+    var form = formId ? document.getElementById(formId) : null;
+    if (status) status.textContent = formId ? "Confirmed. Retrying…" : "Current session confirmed.";
+    if (form && form.requestSubmit) form.requestSubmit();
+  }
+
+  function enablePasswordConfirmation(root) {
+    (root || document).querySelectorAll("form[data-password-step-up] button[type=submit], form[data-password-recovery-complete] button[type=submit]").forEach(function (button) {
+      button.disabled = false;
+    });
+  }
+  document.addEventListener("DOMContentLoaded", function () { enablePasswordConfirmation(document); });
+  document.addEventListener("htmx:afterSwap", function (event) { enablePasswordConfirmation(event.detail.target || document); });
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (!(form instanceof HTMLFormElement) || (!form.matches("form[data-password-step-up]") && !form.matches("form[data-password-recovery-complete]"))) return;
+    event.preventDefault();
+    if (form.getAttribute("aria-busy") === "true") return;
+    var password = form.querySelector('input[name="password"]');
+    var value = password ? password.value : "";
+    if (password) password.value = "";
+    var status = reauthenticationStatus(form);
+    var button = form.querySelector("button[type=submit]");
+    form.setAttribute("aria-busy", "true");
+    if (button) button.disabled = true;
+    if (status) status.textContent = "Confirming current session…";
+    var recovery = form.matches("form[data-password-recovery-complete]");
+    postJson(recovery ? "/account/security/recovery-complete" : "/step-up/password", { password: value })
+      .then(function () {
+        if (recovery) {
+          if (status) status.textContent = "Recovery completed. Sign out, then sign in with your password to start a normal session.";
+        } else retryConfirmedForm(form, status);
+      })
+      .catch(function (error) { if (status) status.textContent = String(error.message || error); })
+      .finally(function () {
+        value = "";
+        form.removeAttribute("aria-busy");
+        if (button) button.disabled = false;
+      });
+  });
+
   function setupPasskey() {
     return postJson("/setup/webauthn/options")
       .then(function (data) {
@@ -393,15 +477,11 @@
     var target = event.target;
     if (!(target instanceof Element)) return;
     if (target.classList.contains("step-up-btn")) {
-      var status = document.querySelector(".step-up-status");
-      var formId = target.getAttribute("data-retry-form");
+      var status = reauthenticationStatus(target);
       if (status) status.textContent = "Waiting for passkey…";
       stepUp()
         .then(function () {
-          if (status) status.textContent = "Confirmed. Retrying…";
-          var form = formId ? document.getElementById(formId) : null;
-          if (form && form.requestSubmit) form.requestSubmit();
-          else window.location.reload();
+          retryConfirmedForm(target, status);
         })
         .catch(function (error) { if (status) status.textContent = String(error.message || error); });
     }

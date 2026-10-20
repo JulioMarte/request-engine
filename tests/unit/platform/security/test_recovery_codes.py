@@ -9,6 +9,7 @@ from request_engine.platform.security.recovery_codes import (
     NativeRecoveryReadiness,
     RecoveryCodeConsumed,
     RecoveryCodeSetSummary,
+    RecoverySessionPasswordCredential,
     generate_recovery_codes,
     normalize_recovery_code,
     recovery_code_digest,
@@ -32,6 +33,27 @@ class FakeRecoveryCodeStore:
         self.consumed: list[bytes] = []
         self.promoted: list[tuple[UUID, UUID]] = []
         self.revoked: list[tuple[UUID, str]] = []
+        self.password_credential: RecoverySessionPasswordCredential | None = None
+        self.password_completion: tuple[UUID, UUID, int] | None = None
+        self.password_completion_allowed = True
+
+    async def read_recovery_session_password_credential(
+        self, *, session_id: UUID
+    ) -> RecoverySessionPasswordCredential | None:
+        return self.password_credential
+
+    async def complete_recovery_with_password(
+        self,
+        *,
+        session_id: UUID,
+        credential_id: UUID,
+        expected_recovery_epoch: int,
+        expected_verifier: str,
+    ) -> bool:
+        assert self.password_credential is not None
+        assert expected_verifier == self.password_credential.verifier
+        self.password_completion = (session_id, credential_id, expected_recovery_epoch)
+        return self.password_completion_allowed
 
     async def create_set(
         self,
@@ -99,6 +121,43 @@ def test_generated_codes_are_grouped_base32() -> None:
         assert len(code) == 26 + 6  # 26 base32 chars in 4-char groups
         assert all(character.isalnum() or character == "-" for character in code)
     assert len(set(codes)) == 3
+
+
+@pytest.mark.asyncio
+async def test_explicit_password_recovery_completion_verifies_before_writing_posture() -> None:
+    from request_engine.platform.security.native_auth import CredentialInvalid, hash_password
+
+    store = FakeRecoveryCodeStore()
+    password = "current recovered password proof"
+    credential = RecoverySessionPasswordCredential(uuid4(), uuid4(), 7, hash_password(password))
+    store.password_credential = credential
+    service = NativeRecoveryCodeService(store=store)
+    session_id = uuid4()
+    with pytest.raises(CredentialInvalid):
+        await service.complete_recovery_with_password(session_id=session_id, password="wrong")
+    assert store.password_completion is None
+    assert credential.verifier not in repr(credential)
+
+    readiness = await service.complete_recovery_with_password(
+        session_id=session_id, password=password
+    )
+    assert readiness.recovery_state == "normal"
+    assert store.password_completion == (session_id, credential.credential_id, 7)
+
+
+@pytest.mark.asyncio
+async def test_password_completion_rejects_a_concurrently_invalidated_recovery_proof() -> None:
+    from request_engine.platform.security.native_auth import CredentialInvalid, hash_password
+
+    store = FakeRecoveryCodeStore()
+    password = "current recovered password proof"
+    store.password_credential = RecoverySessionPasswordCredential(
+        uuid4(), uuid4(), 7, hash_password(password)
+    )
+    store.password_completion_allowed = False
+    service = NativeRecoveryCodeService(store=store)
+    with pytest.raises(CredentialInvalid):
+        await service.complete_recovery_with_password(session_id=uuid4(), password=password)
 
 
 def test_digest_is_stable_across_normalization() -> None:

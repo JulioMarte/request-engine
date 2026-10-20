@@ -6,7 +6,7 @@ const {resolve} = require('node:path');
 const {runInNewContext} = require('node:vm');
 const source = readFileSync(resolve(__dirname, '../../../src/request_engine/entrypoints/http/admin_console/static/admin.js'), 'utf8');
 
-function world(confirm = true, next = null) {
+function world(confirm = true, next = null, passwordLogin = {}) {
   const events = {};
   const classes = new Set();
   const document = {
@@ -27,6 +27,7 @@ function world(confirm = true, next = null) {
     setAttribute(name, value) {this.attributes.set(name, value);}
     removeAttribute(name) {this.attributes.delete(name);}
     getAttribute(name) {return this.attributes.get(name);}
+    matches(selector) {return (selector === 'form[data-password-login]' && this.passwordLogin === true) || (selector === 'form[data-password-step-up]' && this.passwordStepUp === true) || (selector === 'form[data-password-recovery-complete]' && this.passwordRecovery === true) || (selector === 'form[data-session-logout]' && this.sessionLogout === true);}
     closest(selector) {
       if (selector === 'form') return this.form || null;
       return selector === this.kind ? this : null;
@@ -48,20 +49,28 @@ function world(confirm = true, next = null) {
     addEventListener(name, fn) {windowEvents[name] = fn;},
     confirm(message) {dialogs.push(message); return confirm;},
     crypto: {randomUUID: () => '1111-2222'},
-    location: {href: ""},
+    location: {href: "", assign(url) {this.href = url;}},
   };
   document.getElementById = id => ({'admin-sidebar': sidebar, 'admin-frame': frame}[id] || null);
   document.querySelector = selector => selector === 'input[name="next"]' && next !== null ? {value: next} : ({'.menu-toggle': toggle, '.nav-scrim': scrim}[selector] || null);
   const calls = [];
+  const written = [];
+  document.open = () => written.push('open');
+  document.write = html => written.push(html);
+  document.close = () => written.push('close');
+  class FormDataDouble {
+    constructor(form) {this.entries = new Map(form.fields || []);}
+    get(name) {return this.entries.get(name);}
+  }
   const credential = {id: "fixture", type: "public-key", rawId: new ArrayBuffer(0),
     response: {clientDataJSON: new ArrayBuffer(0), authenticatorData: new ArrayBuffer(0), signature: new ArrayBuffer(0), userHandle: null}};
-  runInNewContext(source, {document, window, Element, HTMLFormElement: Element, HTMLInputElement: Element, Array, Date, Math, btoa, atob,
+  runInNewContext(source, {document, window, Element, HTMLFormElement: Element, HTMLInputElement: Element, FormData: FormDataDouble, Array, Date, Math, btoa, atob,
     navigator: {credentials: {get: async () => credential}},
-    fetch: async (url, options) => {calls.push({url, options}); return {ok: true, json: async () => ({public_key: {challenge: "", allowCredentials: []}})};},
+    fetch: async (url, options) => {calls.push({url, options}); if (passwordLogin.fetch) return passwordLogin.fetch(url, options); return {ok: true, json: async () => ({public_key: {challenge: "", allowCredentials: []}})};},
   });
   function emit(name, data = {}) {(events[name] || []).forEach(fn => fn(data));}
   emit('DOMContentLoaded');
-  return {emit, first, last, sidebar, toggle, scrim, frame, document, dialogs, Element, window, calls,
+  return {emit, first, last, sidebar, toggle, scrim, frame, document, dialogs, Element, window, calls, written,
     desktop() {mobile = false; windowEvents.resize();}};
 }
 
@@ -183,3 +192,183 @@ for (const next of ['/account/security', '/staff-invitations/accept', '/', 'http
     assert.equal(s.calls[1].url, '/login/webauthn/complete');
   });
 }
+
+// Executes the real submit handler with transport/DOM doubles. Browser Origin,
+// cookie acceptance and HTML parsing require separate browser evidence.
+function passwordForm(s) {
+  const form = new s.Element('form');
+  form.passwordLogin = true;
+  form.action = 'http://localhost:8002/login';
+  const button = new s.Element('button');
+  const status = {textContent: ''};
+  const password = {value: 'audit-password-not-a-real-secret'};
+  form.fields = [['login_handle', 'audit@example.invalid'], ['password', password.value], ['next', '/account/security']];
+  form.querySelector = selector => ({'button[type=submit]': button, '[data-password-login-status]': status, 'input[name="password"]': password}[selector] || null);
+  let prevented = 0;
+  return {form, button, status, password, submit() {
+    s.emit('submit', {target: form, preventDefault() {prevented++;}});
+  }, get prevented() {return prevented;}};
+}
+
+test('password login posts credential form with same-origin cookies and follows the server redirect', async () => {
+  const s = world(true, null, {fetch: async () => ({redirected: true, url: 'http://localhost:8002/account/security'})});
+  const login = passwordForm(s);
+  login.submit();
+  assert.equal(login.prevented, 1);
+  assert.equal(login.form.getAttribute('aria-busy'), 'true');
+  assert.equal(login.button.disabled, true);
+  assert.equal(login.status.textContent, 'Signing in…');
+  assert.equal(s.calls.length, 1);
+  const {url, options} = s.calls[0];
+  assert.equal(url, 'http://localhost:8002/login');
+  assert.equal(options.method, 'POST');
+  assert.equal(options.credentials, 'same-origin');
+  assert.equal(options.redirect, 'follow');
+  assert.equal(options.body.get('login_handle'), 'audit@example.invalid');
+  assert.equal(options.body.get('password'), 'audit-password-not-a-real-secret');
+  assert.equal(options.body.get('next'), '/account/security');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.window.location.href, 'http://localhost:8002/account/security');
+  assert.deepEqual(s.written, []);
+});
+
+test('pending password login rejects a second submit without creating another session request', async () => {
+  let finish;
+  const response = new Promise(resolve => {finish = resolve;});
+  const s = world(true, null, {fetch: () => response});
+  const login = passwordForm(s);
+  login.submit();
+  login.submit();
+  assert.equal(login.prevented, 2);
+  assert.equal(s.calls.length, 1);
+  assert.equal(login.form.getAttribute('aria-busy'), 'true');
+  finish({redirected: true, url: 'http://localhost:8002/'});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.window.location.href, 'http://localhost:8002/');
+});
+
+test('invalid password renders the server error document without treating HTTP 401 as a transport failure', async () => {
+  const html = '<!doctype html><html><body><p role="alert">Invalid login or password</p><input name="password" type="password"></body></html>';
+  const s = world(true, null, {fetch: async () => ({ok: false, status: 401, redirected: false, text: async () => html})});
+  const login = passwordForm(s);
+  login.submit();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(s.written, ['open', html, 'close']);
+  assert.equal(s.window.location.href, '');
+  assert.equal(s.calls.length, 1);
+});
+
+test('password login network failure clears the secret, reports the error and permits a retry', async () => {
+  const s = world(true, null, {fetch: async () => {throw new Error('Network unavailable');}});
+  const login = passwordForm(s);
+  login.submit();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(login.form.getAttribute('aria-busy'), undefined);
+  assert.equal(login.button.disabled, false);
+  assert.equal(login.password.value, '');
+  assert.equal(login.status.textContent, 'Network unavailable');
+  assert.equal(s.window.location.href, '');
+  assert.deepEqual(s.written, []);
+  login.submit();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.calls.length, 2);
+});
+
+test('ordinary form submissions keep their native behavior and do not send credentials through the login handler', () => {
+  const s = world();
+  const form = new s.Element('form');
+  let prevented = false;
+  s.emit('submit', {target: form, preventDefault() {prevented = true;}});
+  assert.equal(prevented, false);
+  assert.equal(s.calls.length, 0);
+});
+
+function confirmationForm(s) {
+  const form = new s.Element('form');
+  form.passwordStepUp = true;
+  form.setAttribute('data-retry-form', 'pending-operation');
+  const password = {value: 'synthetic-current-password'};
+  const button = new s.Element('button');
+  const status = {textContent: ''};
+  const section = {querySelector: () => status};
+  form.closest = selector => selector === '[data-reauthentication]' ? section : null;
+  form.querySelector = selector => ({'input[name="password"]': password, 'button[type=submit]': button}[selector] || null);
+  const pending = {intent: 'unchanged-intent', revision: '17', submissions: 0, requestSubmit() {this.submissions++;}};
+  const originalLookup = s.document.getElementById;
+  s.document.getElementById = id => id === 'pending-operation' ? pending : originalLookup(id);
+  return {form, password, button, status, pending, submit() {s.emit('submit', {target: form, preventDefault() {}});}};
+}
+
+test('password confirmation uses the current session, clears the secret and retries the unchanged pending form', async () => {
+  const s = world(true, null, {fetch: async () => ({ok: true, json: async () => ({ok: true})})});
+  const confirmation = confirmationForm(s);
+  confirmation.submit();
+  assert.equal(confirmation.password.value, '');
+  assert.equal(s.calls[0].url, '/step-up/password');
+  assert.equal(s.calls[0].options.credentials, 'same-origin');
+  assert.equal(s.calls[0].options.headers['X-CSRF-Token'], 'csrf');
+  assert.deepEqual(JSON.parse(s.calls[0].options.body), {password: 'synthetic-current-password'});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(confirmation.pending.submissions, 1);
+  assert.equal(confirmation.pending.intent, 'unchanged-intent');
+  assert.equal(confirmation.pending.revision, '17');
+  assert.equal(confirmation.button.disabled, false);
+  assert.equal(s.window.location.href, '');
+});
+
+test('denied password confirmation does not retry or retain a password', async () => {
+  const s = world(true, null, {fetch: async () => ({ok: false, status: 401, json: async () => ({error: {code: 'credential_invalid'}})})});
+  const confirmation = confirmationForm(s);
+  confirmation.submit();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(confirmation.password.value, '');
+  assert.equal(confirmation.pending.submissions, 0);
+  assert.equal(confirmation.pending.intent, 'unchanged-intent');
+  assert.equal(confirmation.status.textContent, 'credential_invalid');
+  assert.equal(confirmation.form.getAttribute('aria-busy'), undefined);
+  assert.equal(confirmation.button.disabled, false);
+});
+
+test('pending password confirmation admits one request and keeps the original revision', async () => {
+  let finish;
+  const response = new Promise(resolve => {finish = resolve;});
+  const s = world(true, null, {fetch: () => response});
+  const confirmation = confirmationForm(s);
+  confirmation.submit();
+  confirmation.submit();
+  assert.equal(s.calls.length, 1);
+  assert.equal(confirmation.password.value, '');
+  finish({ok: true, json: async () => ({ok: true})});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(confirmation.pending.submissions, 1);
+  assert.equal(confirmation.pending.revision, '17');
+});
+
+test('password recovery completion requires a new sign-in and never retries the admin action', async () => {
+  const s = world(true, null, {fetch: async () => ({ok: true, json: async () => ({ok: true, requires_sign_in: true})})});
+  const confirmation = confirmationForm(s);
+  confirmation.form.passwordStepUp = false;
+  confirmation.form.passwordRecovery = true;
+  confirmation.submit();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.calls[0].url, '/account/security/recovery-complete');
+  assert.equal(confirmation.password.value, '');
+  assert.equal(confirmation.pending.submissions, 0);
+  assert.match(confirmation.status.textContent, /Sign out, then sign in with your password/);
+  assert.equal(s.window.location.href, '');
+});
+
+test('sign out uses same-origin fetch and follows the owner-backed logout redirect', async () => {
+  const s = world(true, null, {fetch: async () => ({redirected: true, url: 'http://localhost:8002/login'})});
+  const form = new s.Element('form');
+  form.sessionLogout = true;
+  form.action = 'http://localhost:8002/logout';
+  const button = new s.Element('button');
+  form.querySelector = selector => selector === 'button[type=submit]' ? button : null;
+  s.emit('submit', {target: form, preventDefault() {}});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.calls.length, 1);
+  assert.equal(s.calls[0].url, 'http://localhost:8002/logout');
+  assert.equal(s.calls[0].options.credentials, 'same-origin');
+  assert.equal(s.window.location.href, 'http://localhost:8002/login');
+});

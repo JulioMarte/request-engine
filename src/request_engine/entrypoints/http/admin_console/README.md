@@ -33,9 +33,15 @@ tenant runtime API  -->  PostgreSQL / OpenBao / providers
 - The browser talks only to the console origin, so no CORS and no ambient
   cross-site credential are introduced.
 - Mutating forms get an intent-scoped `Idempotency-Key` automatically. The key
-  survives passkey step-up and resubmission of the same browser intent.
-- `phishing_resistant_auth_required` / `recent_authentication_required`
-  responses surface a passkey step-up action and retry.
+  survives current-session confirmation and resubmission of the same browser intent.
+- `recent_authentication_required` offers password confirmation of the existing
+  owner session or an enrolled passkey, then retries the unchanged intent and
+  loaded revision. Password confirmation forwards `/auth/native/sessions:reauth`;
+  it neither replaces the session nor invents stronger assurance. A remaining
+  `phishing_resistant_auth_required` response offers only the required passkey proof.
+- Recovery completion projects `/auth/native/sessions/current/recovery:complete`.
+  After password completion the user must sign out and sign in with the password
+  to start a normal session; the recovery session never becomes an admin session.
 - Security headers: `Cache-Control: no-store`, `X-Frame-Options: DENY`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a
   restrictive `Content-Security-Policy` (`script-src 'self'` only).
@@ -84,12 +90,14 @@ against local PostgreSQL 18 with three least-privilege runtime logins — the te
 runtime API (`server:create_app`), and the console, all detached:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/dev/run_local_panel.ps1
+pwsh -ExecutionPolicy Bypass -File scripts/dev/run_local_panel.ps1
 ```
 
 Open `http://localhost:8002` (use `localhost`, not `127.0.0.1`, so the WebAuthn
 RP id `localhost` is a valid secure context) and complete `/setup` -> `/login`.
-While the instance is unclaimed, `/setup` drives the full first-run ceremony;
+Use PowerShell 7.4 or later (`pwsh`). While the instance is unclaimed, `/setup`
+collects the owner password, offers optional passkey registration, issues required
+offline recovery codes, and finalizes the first claim through the same owner APIs;
 afterwards `/login` and `/operations` expose the real platform surface.
 
 Prerequisites: the local PostgreSQL container is up and the selected database is migrated
@@ -134,8 +142,8 @@ the control plane runs a discoverable, usernameless ceremony (empty allow-list,
 unbound challenge, identity resolved from the presented credential), so the
 console signs in with a passkey and no username or password. When a handle is
 supplied the original handle-first flow with the anti-enumeration decoy is
-preserved. The console uses the usernameless flow; the password form remains as a
-fallback.
+preserved. The console offers this usernameless passkey flow as an optional
+alternative to the visible password form.
 
 ## Resource workspaces
 
@@ -157,7 +165,7 @@ operation, capability, idempotency and step-up rules as the API.
   plus the canonical organization-provisioning command.
 - **Platform owners** — owners and invitations list, detail and revision-bound
   lifecycle actions. An invited recipient enrolls at `/owner-invitations/enroll`,
-  then prepares their own passkey and recovery codes at `/account/security`;
+  then prepares recovery codes and may add a passkey at `/account/security`;
   enrollment does not activate ownership.
 - **Recovery operators** — no read/list operation is mounted, so this page states
   that explicitly and exposes only the available commands.
@@ -182,8 +190,10 @@ requires them; the console does not invent configuration defaults.
 
 Both the workspaces and the generic `/operations` browser execute through a
 single `execution.execute_operation` path, so there is no second execution path.
-A `phishing_resistant_auth_required` response surfaces a passkey step-up that
-retries the exact form that was submitted. Mutating actions with a
+A `recent_authentication_required` response offers current-session password or
+passkey confirmation; a remaining `phishing_resistant_auth_required` response
+requires the passkey proof. Confirmation retries the same form without changing
+its intent or loaded revision. Mutating actions with a
 `data-confirm` prompt are confirmed before the request is issued.
 
 ## Coverage

@@ -22,6 +22,7 @@
           <a href="/" class="{% if current_path == '/' %}active{% endif %}" {% if current_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true">⌂</span>Overview</a>
           <a href="/resources" class="{% if current_path == '/resources' %}active{% endif %}" {% if current_path == '/resources' %}aria-current="page"{% endif %}><span aria-hidden="true">▦</span>Workspaces</a>
           <p class="nav-label">People &amp; access</p>
+          <a href="/account/security" class="{% if current_path == '/account/security' %}active{% endif %}" {% if current_path == '/account/security' %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>Account security</a>
           <a href="/my-organizations" class="{% if current_path == '/my-organizations' or current_path.startswith('/tenants/') %}active{% endif %}" {% if current_path == '/my-organizations' %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>My organizations</a>
           <a href="/resources/native-identities" class="{% if current_path.startswith('/resources/native-identities') %}active{% endif %}" {% if current_path.startswith('/resources/native-identities') %}aria-current="page"{% endif %}><span aria-hidden="true">◎</span>Native identities</a>
           <a href="/resources/provisioners" class="{% if current_path.startswith('/resources/provisioners') %}active{% endif %}" {% if current_path.startswith('/resources/provisioners') %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>Provisioners</a>
@@ -51,7 +52,7 @@
             <span aria-hidden="true">⌕</span>
             <input id="global-search" name="q" type="search" placeholder="Find a platform task…" value="{{ query | default('') }}" />
           </form>
-          <div class="top-actions"><a href="/account/security">Account security</a><a href="/diagnostics">Status</a><form method="post" action="/logout" class="inline"><button type="submit" class="signout-button"><span aria-hidden="true">↪</span>Sign out</button></form></div>
+          <div class="top-actions"><a href="/account/security">Account security</a><a href="/diagnostics">Status</a><form method="post" action="/logout" class="inline" data-session-logout><button type="submit" class="signout-button"><span aria-hidden="true">↪</span>Sign out</button></form></div>
         </header>
         {% endif %}
         <main id="main-content" tabindex="-1">

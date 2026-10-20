@@ -358,33 +358,85 @@ async def test_exact_finalize_replay_returns_same_result(
 
 
 @pytest.mark.asyncio
-async def test_finalize_requires_verified_webauthn(
+async def test_password_only_claim_requires_recovery_and_promotes_no_passkey(
     admin_conn: PgConnection,
     platform_control_session_factory: SessionFactory,
     command_session_factory: SessionFactory,
 ) -> None:
     _instance(admin_conn)
     setup_session_id, _token = await _create_setup_session(platform_control_session_factory)
-    await _pending_identity(
+    identity_id = await _pending_identity(
         platform_control_session_factory,
         setup_session_id=setup_session_id,
         login_handle="no-passkey@example.test",
     )
+    # No runtime identity, credential, Principal or grant exists before finalize.
+    for table in ("native_identities", "native_credentials", "principals", "identity_bindings"):
+        assert admin_conn.execute(f"SELECT count(*) FROM request_engine.{table}").fetchone() == (0,)
+    statement = (
+        "SELECT owner_principal_id, native_identity_id "
+        "FROM request_platform.finalize_instance_claim("
+        ":setup, :key, :intent, 'fresh-install', 'setup_session', NULL)"
+    )
+    args = {
+        "setup": setup_session_id,
+        "key": hashlib.sha256(b"nw").hexdigest(),
+        "intent": hashlib.sha256(b"ni").hexdigest(),
+    }
+    # A missing recovery set must still fail atomically with no trust root.
+    with pytest.raises(DBAPIError):
+        await _control(platform_control_session_factory, statement, args)
+    assert admin_conn.execute("SELECT state FROM request_engine.platform_instance").fetchone() == (
+        "unclaimed",
+    )
+    assert admin_conn.execute("SELECT count(*) FROM request_engine.principals").fetchone() == (0,)
+    await _recovery_codes(command_session_factory, setup_session_id=setup_session_id)
+    receipt = await _control(platform_control_session_factory, statement, args)
+    assert receipt is not None and receipt[1] == identity_id
+    assert await _control(platform_control_session_factory, statement, args) == receipt
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.webauthn_credentials"
+    ).fetchone() == (0,)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.native_credentials "
+        "WHERE native_identity_id=%s AND status='active'",
+        (identity_id,),
+    ).fetchone() == (1,)
+    assert admin_conn.execute(
+        "SELECT request_platform.native_identity_ready_for_platform_owner("
+        "identity_authority_id,id) FROM request_engine.native_identities WHERE id=%s",
+        (identity_id,),
+    ).fetchone() == (True,)
+    with pytest.raises(DBAPIError):
+        await _control(
+            platform_control_session_factory,
+            statement,
+            {**args, "intent": hashlib.sha256(b"different-payload").hexdigest()},
+        )
+    with pytest.raises(DBAPIError):
+        await _create_setup_session(platform_control_session_factory)
+
+
+@pytest.mark.asyncio
+async def test_password_only_claim_still_rejects_missing_pending_identity(
+    admin_conn: PgConnection,
+    platform_control_session_factory: SessionFactory,
+    command_session_factory: SessionFactory,
+) -> None:
+    _instance(admin_conn)
+    setup_session_id, _token = await _create_setup_session(platform_control_session_factory)
     await _recovery_codes(command_session_factory, setup_session_id=setup_session_id)
     with pytest.raises(DBAPIError):
         await _control(
             platform_control_session_factory,
-            "SELECT request_platform.finalize_instance_claim("
-            ":setup, :key, :intent, 'fresh-install', 'setup_session', NULL)",
-            {
-                "setup": setup_session_id,
-                "key": hashlib.sha256(b"nw").hexdigest(),
-                "intent": hashlib.sha256(b"ni").hexdigest(),
-            },
+            "SELECT instance_id FROM request_platform.finalize_instance_claim("
+            ":setup,:key,:intent,'fresh-install','setup_session',NULL)",
+            {"setup": setup_session_id, "key": "a" * 64, "intent": "b" * 64},
         )
     assert admin_conn.execute("SELECT state FROM request_engine.platform_instance").fetchone() == (
         "unclaimed",
     )
+    assert admin_conn.execute("SELECT count(*) FROM request_engine.principals").fetchone() == (0,)
 
 
 @pytest.mark.asyncio

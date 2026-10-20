@@ -15,10 +15,20 @@ Discover each boundary's actual schema from its advertised OpenAPI URL.
 Authenticate first. A native identity is a login identity, not an organization
 membership or an authorization grant. Creating it does not create all three.
 An unclaimed installation must first complete the supported first-owner setup
-ceremony, including a real human passkey, recovery and claim; see the
-[trust-root contract](instance-claim-platform-owner-plan.md). Software
-authenticators in tests are not production enrollment evidence. Agents do not
-claim the installation or manufacture a human passkey ceremony.
+ceremony with a policy-compliant password, recovery codes and atomic claim; a
+verified passkey is optional under [ADR 0017](../adr/0017-optional-passkeys-administrative-authentication.md).
+See the [trust-root contract](instance-claim-platform-owner-plan.md). Explicitly
+authorized deployment automation can drive the same setup HTTP operations;
+ordinary business-agent identities and tools receive no setup authority.
+Software authenticators in tests are not production passkey enrollment evidence.
+
+For administrative confirmation, `POST /auth/native/sessions:reauth` verifies
+`password` against the bearer-owning identity and refreshes that exact session.
+Password proof remains SINGLE_FACTOR. WebAuthn step-up is an alternative, not a
+prerequisite. Both paths retain capability/revision checks and exclude recovery
+sessions; the console invokes these same owner operations. Explicit recovery
+completion restores posture separately and requires a fresh ordinary sign-in
+before a recovery-derived session can be replaced for administrative use.
 
 ## Organization and authority discovery
 

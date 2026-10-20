@@ -20,7 +20,7 @@ and [configuration readback](administrative-configuration-readback.md).
 
 | Task | Console destination | Required behavior |
 | --- | --- | --- |
-| First installation and sign-in | `/setup`, `/login` | Existing owner ceremony, passkey authentication, origin/CSRF protection, opaque persistent sessions and logout |
+| First installation and sign-in | `/setup`, `/login` | Password and recovery-code claim, optional verified passkey, password or passkey sign-in, origin/CSRF protection, opaque persistent sessions and logout |
 | Operational overview | `/` | Timestamped read-only snapshot, reported readiness values, incomplete data never green, no fabricated activity totals |
 | Platform owners | `/resources/owners` | Owners/invitations pagination, details, revision-bound lifecycle actions and explicit denied/error states |
 | Invited owner enrollment and account readiness | `/owner-invitations/enroll`, `/account/security` | Anonymous invitation redemption without a logged-in account; invitation material absent from URLs/logs; account readiness remains distinct from operator activation |
@@ -72,6 +72,15 @@ owner response. Such forms remain explicit about that requirement. No missing re
 replaced by a fabricated empty collection, revision zero, or automatic grant.
 
 ## Interaction and safety
+
+Administrative confirmation follows ADR 0017: recent password proof or verified
+WebAuthn, using the same canonical API owner operation. Password confirmation
+refreshes only the current session and never manufactures phishing-resistant
+assurance. A failed confirmation leaves the pending business command unexecuted;
+a successful confirmation preserves its exact revision and idempotency intent.
+Recovery completion is explicit and requires ordinary sign-in afterwards when
+the current session was created through recovery. Passkey registration remains
+optional in normal setup and administration.
 
 - Private invitation redemption and recovery-code issuance require JavaScript;
   submit buttons stay disabled until the fetch handler is installed, and native

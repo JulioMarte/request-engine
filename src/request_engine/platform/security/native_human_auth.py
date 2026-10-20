@@ -104,7 +104,18 @@ class NativeRecoveryIssued:
     expires_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class NativeSessionPasswordCredential:
+    credential_id: UUID
+    native_identity_id: UUID
+    verifier: str = field(repr=False)
+
+
 class NativeHumanAuthStore(Protocol):
+    async def read_session_password_credential(
+        self, *, session_id: UUID
+    ) -> NativeSessionPasswordCredential | None: ...
+
     async def read_password_credential(
         self, *, identity_authority_id: UUID, login_handle: str
     ) -> NativePasswordCredentialSnapshot | None: ...
@@ -178,7 +189,7 @@ class NativeHumanAuthStore(Protocol):
     ) -> bool: ...
 
     async def reauthenticate_session(
-        self, *, session_id: UUID, credential_id: UUID
+        self, *, session_id: UUID, credential_id: UUID, expected_verifier: str
     ) -> datetime | None: ...
 
 
@@ -378,17 +389,17 @@ class NativeHumanAuthService:
         self,
         *,
         session_id: UUID,
-        credential_id: UUID,
         password: str,
     ) -> datetime:
-        verifier = await self._store.read_credential_verifier(credential_id=credential_id)
-        if verifier is None:
+        credential = await self._store.read_session_password_credential(session_id=session_id)
+        if credential is None:
             raise CredentialInvalid("native credential is invalid")
-        if not await run_password_work(verify_password, password, verifier):
+        if not await run_password_work(verify_password, password, credential.verifier):
             raise CredentialInvalid("native credential is invalid")
         authenticated_at = await self._store.reauthenticate_session(
             session_id=session_id,
-            credential_id=credential_id,
+            credential_id=credential.credential_id,
+            expected_verifier=credential.verifier,
         )
         if authenticated_at is None:
             raise CredentialInvalid("native session is no longer usable")

@@ -227,6 +227,37 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
             return JSONResponse({"error": "Passkey options were incomplete."}, status_code=502)
         return JSONResponse({"public_key": as_mapping(public_key)})
 
+    async def recovery_complete_password(request: Request) -> Response:
+        session = state.session(request)
+        if session is None:
+            return JSONResponse({"error": "Sign in again."}, status_code=401)
+        if not state.csrf_matches(request.headers.get("X-CSRF-Token"), session.csrf_token):
+            return JSONResponse({"error": "Security form expired."}, status_code=403)
+        try:
+            body = as_mapping(await request.json())
+        except ValueError:
+            return JSONResponse({"error": "Current password is required."}, status_code=422)
+        password = body.get("password")
+        if set(body) != {"password"} or not isinstance(password, str) or not password:
+            return JSONResponse({"error": "Current password is required."}, status_code=422)
+        response = await state.control_request(
+            "POST",
+            "/auth/native/sessions/current/recovery:complete",
+            bearer=session.access_token,
+            json_body={"password": password},
+        )
+        if not response.ok:
+            return JSONResponse(content=response.payload, status_code=response.status_code)
+        result = as_mapping(response.payload)
+        if (
+            not isinstance(result.get("completed_at"), str)
+            or not result["completed_at"]
+            or not isinstance(result.get("recovery_state"), str)
+            or result["recovery_state"] == "recovery_restricted"
+        ):
+            return JSONResponse({"error": "Recovery completion was incomplete."}, status_code=502)
+        return JSONResponse({"ok": True, "requires_sign_in": True})
+
     async def passkey_options(request: Request) -> Response:
         return await passkey_proxy(request, complete=False)
 
@@ -270,7 +301,7 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
                     available=False,
                     codes=None,
                     error=(
-                        "Codes could not be issued. Confirm with your passkey, "
+                        "Codes could not be issued. Confirm your current session, "
                         "then reload account security and retry."
                     ),
                 ),
@@ -308,3 +339,6 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
     app.add_api_route(_SECURITY_PATH + "/passkey/options", passkey_options, methods=["POST"])
     app.add_api_route(_SECURITY_PATH + "/passkey/complete", passkey_complete, methods=["POST"])
     app.add_api_route(_SECURITY_PATH + "/recovery-codes", recovery_codes, methods=["POST"])
+    app.add_api_route(
+        _SECURITY_PATH + "/recovery-complete", recovery_complete_password, methods=["POST"]
+    )
