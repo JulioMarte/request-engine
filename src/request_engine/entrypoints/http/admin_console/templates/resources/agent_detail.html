@@ -1,0 +1,78 @@
+{% extends "base.html" %}{% import "partials/agent_connect.html" as connect %}{% import "partials/capabilities.html" as capabilities %}
+{% block title %}{{ agent.display_name if agent else "Agent" }} · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div>
+    <p class="breadcrumb"><a href="/tenants/{{ organization_id }}/agents">Agents and API access</a></p>
+    <h1>{{ agent.display_name if agent else "Agent unavailable" }}</h1>
+    {% if agent %}<p>{{ agent.purpose }}</p>{% endif %}
+  </div>
+  {% if agent %}<div class="page-actions"><span class="badge {{ agent.status }}">{{ agent.status }}</span></div>{% endif %}
+</header>
+{% if request.query_params.get("done") %}<div class="alert notice" role="status">Agent {{ {"pause": "paused", "resume": "turned back on", "revoke": "revoked"}.get(request.query_params.get("done"), "updated") }}.</div>{% endif %}
+
+{% if not agent %}
+<div class="panel"><div class="error-state"><span aria-hidden="true">!</span><div><strong>This agent could not be loaded</strong><p>{% if agent_status == 403 %}Your permissions do not include seeing agents.{% elif agent_status == 404 %}It does not exist or you no longer have access to it.{% else %}Reload the page to try again.{% endif %}</p></div></div></div>
+{% else %}
+<div class="home-grid">
+  <div>
+    <section class="panel">
+      <div class="panel-heading"><h2>What it may do</h2></div>
+      <div class="panel-body">{{ capabilities.groups(agent.standing_capabilities, "No permissions yet.") }}</div>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><h2>Safety limits</h2></div>
+      <div class="panel-body">
+        {% if policy %}
+        <dl class="detail">
+          <dt>How far it may go</dt><dd>{{ {"read": "Only look things up", "low_impact_write": "Small changes", "reversible_write": "Changes that can be undone", "external_commitment": "Commitments to customers"}.get(policy.risk_ceiling, policy.risk_ceiling) }}</dd>
+          <dt>Changes per minute</dt><dd>{{ policy.max_mutations_per_minute }}</dd>
+          <dt>How it works</dt><dd>{{ "Acts on someone's behalf" if agent.operating_mode == "assisted" else "Works on its own" }}</dd>
+        </dl>
+        {% elif policy_status == 404 %}<p class="alert warning">No safety limits are set, so the agent cannot act yet.</p>
+        {% else %}<p class="muted">Safety limits could not be loaded.</p>{% endif %}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><h2>Connect</h2></div>
+      <div class="panel-body">{{ connect.render(connection, "The key is only shown when it is created or replaced. If it was lost, replace it below.") }}</div>
+    </section>
+  </div>
+  <div>
+    <section class="panel">
+      <div class="panel-heading"><h2>Key</h2></div>
+      <div class="panel-body">
+        {% for credential in agent.credentials %}
+        <p><span class="badge {{ 'active' if credential.status == 'active' else 'revoked' }}">{{ credential.status }}</span> expires <time datetime="{{ credential.expires_at }}">{{ credential.expires_at[:10] }}</time></p>
+        {% else %}<p class="muted">No key.</p>{% endfor %}
+        {% if agent.status != "revoked" %}
+        <form id="agent-rotate" method="post" action="/tenants/{{ organization_id }}/agents/{{ agent.principal_id }}/rotate" class="stack" data-plain-action data-confirm="Replace the key? The current key stops working immediately.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="intent" value="{{ intent }}" />
+          <input type="hidden" name="expected_authority_revision" value="{{ agent.authority_revision }}" />
+          <label>New key expires after<select name="expires_days">{% for days in expiry_choices %}<option value="{{ days }}" {% if days == 90 %}selected{% endif %}>{{ days }} days</option>{% endfor %}</select></label>
+          <button type="submit" class="secondary">Replace key</button>
+        </form>
+        {% endif %}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><h2>Status</h2></div>
+      <div class="panel-body stack">
+        {% for action, label, target, style, confirm in [("pause", "Pause agent", "active", "secondary", "Pause this agent? It stops working until you turn it back on."), ("resume", "Turn back on", "suspended", "", ""), ("revoke", "Revoke agent", "any", "danger", "Revoke this agent permanently? Its key stops working and it cannot be turned back on.")] %}
+        {% if (target == "any" and agent.status != "revoked") or agent.status == target %}
+        <form id="agent-{{ action }}" method="post" action="/tenants/{{ organization_id }}/agents/{{ agent.principal_id }}/status/{{ action }}" data-plain-action {% if confirm %}data-confirm="{{ confirm }}"{% endif %}>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="intent" value="{{ intent }}" />
+          <input type="hidden" name="expected_revision" value="{{ agent.profile_revision }}" />
+          <button type="submit" class="{{ style }}">{{ label }}</button>
+        </form>
+        {% endif %}
+        {% endfor %}
+        {% if agent.status == "revoked" %}<p class="muted">This agent is revoked permanently.</p>{% endif %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,4 @@
+{% macro groups(keys, empty) -%}
+{% set grouped = grouped_capabilities(keys or []) %}
+{% if grouped %}<div class="capability-groups">{% for group, items in grouped %}<section class="capability-group"><h3>{{ group }}</h3><ul>{% for item in items %}<li>{{ item.label }}<small>{{ item.key }}</small></li>{% endfor %}</ul></section>{% endfor %}</div>{% else %}<p class="muted">{{ empty }}</p>{% endif %}
+{%- endmacro %}

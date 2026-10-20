@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Today · {{ business_name or "Business" }} · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div>
+    <p class="eyebrow">{{ business_name or "Your business" }}</p>
+    <h1>Today</h1>
+    <p><time datetime="{{ local_date.isoformat() }}">{{ local_date.strftime("%A %d %B") }}</time>, {{ local_now }} business time ({{ zone_name }}).</p>
+  </div>
+  <div class="page-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/today">Refresh</a></div>
+</header>
+
+<div class="today-grid">
+  <section class="queue-board" aria-labelledby="queues-title">
+    <h2 id="queues-title" class="sr-only">Queues</h2>
+    {% if queues_status == 403 %}
+    <div class="panel"><div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Queues are not available to you</strong><p>Your current permissions do not include "See queues" and "See the live queue". Someone who manages team permissions can add them.</p></div></div></div>
+    {% elif queues_status not in range(200, 300) %}
+    <div class="panel"><div class="error-state"><span aria-hidden="true">!</span><div><strong>Queues could not be loaded</strong><p>Refresh to try again. Nothing is shown as empty until the business API confirms it.</p></div></div></div>
+    {% elif not queues %}
+    <div class="panel"><div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>No active queues</strong><p>Walk-in queues appear here once one is created in business configuration.</p></div><a class="button secondary" href="/tenants/{{ organization_id }}/configuration">Set up a queue</a></div></div>
+    {% endif %}
+    {% for queue in queues %}
+    <article class="panel queue-card" aria-labelledby="queue-{{ queue.queue_id }}">
+      <div class="panel-heading"><div><h2 id="queue-{{ queue.queue_id }}">{{ queue.name }}</h2><p>{{ queue.waiting | length }} waiting</p></div></div>
+      {% if queue.status == 403 %}
+      <p class="unavailable-note">You can see this queue exists, but not who is in it.</p>
+      {% elif queue.status not in range(200, 300) %}
+      <p class="unavailable-note">This queue could not be loaded. Refresh to try again.</p>
+      {% else %}
+      {% set current = (queue.serving + queue.called) | first %}
+      {% if current %}
+      <div class="ticket {% if notice and current in queue.called %}called{% endif %}" role="status" aria-live="polite">
+        <span class="ticket-number" aria-hidden="true">{{ ((current.subject_display_name or "?").split() | map("first") | join(""))[:2] | upper }}</span>
+        <div><small>{% if current in queue.serving %}Being served{% else %}Called to the counter{% endif %}</small><strong>{{ current.subject_display_name }}</strong></div>
+      </div>
+      {% else %}
+      <div class="ticket idle"><span class="ticket-number">—</span><div><small>Nobody at the counter</small><strong>Call the next customer when ready</strong></div></div>
+      {% endif %}
+      <div class="queue-actions">
+        <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/queues/{{ queue.queue_id }}/call-next">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="_intent_id" value="{{ intent_id }}-{{ queue.queue_id }}" data-form-intent />
+          <button type="submit">Call next</button>
+        </form>
+        {% for entry in queue.serving %}{% if entry.service_session_id and entry.service_revision %}
+        <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/sessions/{{ entry.service_session_id }}/complete">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="_intent_id" value="{{ intent_id }}-c-{{ entry.service_session_id }}" data-form-intent />
+          <input type="hidden" name="expected_revision" value="{{ entry.service_revision }}" />
+          <button type="submit" class="secondary">Finish {{ entry.subject_display_name }}</button>
+        </form>
+        {% endif %}{% endfor %}
+      </div>
+      <ol class="waiting-list" aria-label="Waiting in {{ queue.name }}">
+        {% for entry in queue.called + queue.waiting %}
+        <li>
+          <span class="waiting-pos">{{ loop.index }}</span>
+          <div><strong>{{ entry.subject_display_name }}</strong><small>{% if entry.status == 'called' %}Called{% else %}Waiting{% endif %}{% if entry.scheduled_at %} · booked{% endif %}{% if entry.active_skip_reason %} · skipped: {{ entry.active_skip_reason }}{% endif %}</small></div>
+          <div class="entry-actions">
+            <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/no-show" data-confirm="Mark {{ entry.subject_display_name }} as a no-show?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="_intent_id" value="{{ intent_id }}-n-{{ entry.queue_entry_id }}" data-form-intent />
+              <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
+              <button type="submit" class="secondary">No-show</button>
+            </form>
+            <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/skip">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="_intent_id" value="{{ intent_id }}-s-{{ entry.queue_entry_id }}" data-form-intent />
+              <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
+              <input type="hidden" name="reason" value="not_present" />
+              <button type="submit" class="secondary">Skip</button>
+            </form>
+          </div>
+        </li>
+        {% else %}
+        <li><span class="waiting-pos">0</span><div><strong>Nobody waiting</strong><small>New arrivals appear here.</small></div></li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </section>
+
+  <section class="panel" aria-labelledby="day-title">
+    <div class="panel-heading"><h2 id="day-title">Appointments today</h2></div>
+    {% if board_status in range(200, 300) %}
+    <div class="day-summary">
+      <div><strong>{{ board_entries | length }}</strong><span>Booked</span></div>
+      <div><strong>{{ checked_in_count }}</strong><span>Checked in</span></div>
+      <div><strong>{{ waiting_count }}</strong><span>Waiting in queues</span></div>
+    </div>
+    {% if board_entries %}
+    <ol class="day-sheet">
+      {% for row in sheet %}
+      <li class="day-hour {% if row.now %}now{% endif %}">
+        <time>{{ row.hour }}</time>
+        <div class="day-slots">
+          {% for booking in row.bookings %}
+          <div class="booking {{ booking.css }}">
+            <time>{{ booking.start }}</time>
+            <div><strong>{{ booking.name }}</strong><small>{{ booking.start }}–{{ booking.end }} · {{ booking.status }}</small></div>
+            {% if booking.checked_in %}<span class="badge active">Checked in</span>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>No appointments today</strong><p>Bookings made by staff, customers or your chief of staff appear here.</p></div></div>
+    {% endif %}
+    {% elif board_status == 403 %}
+    <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>The appointment board is not available to you</strong><p>Your current permissions do not include "See the day's appointments".</p></div></div>
+    {% else %}
+    <div class="error-state"><span aria-hidden="true">!</span><div><strong>Appointments could not be loaded</strong><p>Refresh to try again.</p></div></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -3,7 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <title>{% block title %}Request Engine admin{% endblock %}</title>
+    <link rel="preload" href="/static/fonts/AtkinsonHyperlegibleNext-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/static/app.css" />
     <script defer src="/static/htmx.min.js"></script>
     <script defer src="/static/admin.js"></script>
@@ -12,34 +14,55 @@
     <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="app-shell {% if not authenticated %}public{% endif %}">
       {% if authenticated %}
+      {% macro nav_link(href, label, icon, active, exact=False) -%}
+      <a href="{{ href }}" class="{% if active %}active{% endif %}" {% if active %}aria-current="page"{% endif %}><span aria-hidden="true">{{ icon }}</span>{{ label }}</a>
+      {%- endmacro %}
+      {% set org = nav_organization_id %}
       <aside class="sidebar" id="admin-sidebar" aria-label="Primary navigation">
-        <a class="brand" href="/" aria-label="Request Engine overview">
+        <a class="brand" href="{% if nav_business_only and org %}/tenants/{{ org }}{% else %}/{% endif %}" aria-label="Request Engine home">
           <span class="brand-mark" aria-hidden="true">RE</span>
-          <span><strong>Request Engine</strong><small>Control plane</small></span>
+          <span><strong>Request Engine</strong><small>{% if nav_business_only %}Business workspace{% else %}Operations console{% endif %}</small></span>
         </a>
+        {% if org %}
+        <div class="org-switch">
+          <small>Business</small>
+          <strong>{{ nav_organization_name or "Selected business" }}</strong>
+          {% if nav_organization_count != 1 %}<a href="/my-organizations">Switch business</a>{% endif %}
+        </div>
+        {% endif %}
         <nav class="side-nav" aria-label="Administration">
-          <p class="nav-label">Operate</p>
-          <a href="/" class="{% if current_path == '/' %}active{% endif %}" {% if current_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true">⌂</span>Overview</a>
-          <a href="/resources" class="{% if current_path == '/resources' %}active{% endif %}" {% if current_path == '/resources' %}aria-current="page"{% endif %}><span aria-hidden="true">▦</span>Workspaces</a>
-          <p class="nav-label">People &amp; access</p>
-          <a href="/account/security" class="{% if current_path == '/account/security' %}active{% endif %}" {% if current_path == '/account/security' %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>Account security</a>
-          <a href="/my-organizations" class="{% if current_path == '/my-organizations' or current_path.startswith('/tenants/') %}active{% endif %}" {% if current_path == '/my-organizations' %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>My organizations</a>
-          <a href="/resources/native-identities" class="{% if current_path.startswith('/resources/native-identities') %}active{% endif %}" {% if current_path.startswith('/resources/native-identities') %}aria-current="page"{% endif %}><span aria-hidden="true">◎</span>Native identities</a>
-          <a href="/resources/provisioners" class="{% if current_path.startswith('/resources/provisioners') %}active{% endif %}" {% if current_path.startswith('/resources/provisioners') %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>Provisioners</a>
-          <a href="/resources/recovery-cases" class="{% if current_path.startswith('/resources/recovery-cases') %}active{% endif %}" {% if current_path.startswith('/resources/recovery-cases') %}aria-current="page"{% endif %}><span aria-hidden="true">↻</span>Recovery cases</a>
-          <a href="/resources/owners" class="{% if current_path.startswith('/resources/owners') %}active{% endif %}" {% if current_path.startswith('/resources/owners') %}aria-current="page"{% endif %}><span aria-hidden="true">◇</span>Platform owners</a>
-          <a href="/resources/recovery-operators" class="{% if current_path.startswith('/resources/recovery-operators') %}active{% endif %}" {% if current_path.startswith('/resources/recovery-operators') %}aria-current="page"{% endif %}><span aria-hidden="true">◎</span>Recovery operators</a>
+          {% if org %}
+          <p class="nav-label">Your business</p>
+          {{ nav_link('/tenants/' ~ org, 'Home', '⌂', current_path == '/tenants/' ~ org) }}
+          {{ nav_link('/tenants/' ~ org ~ '/today', 'Today', '◷', current_path.startswith('/tenants/' ~ org ~ '/today')) }}
+          {{ nav_link('/tenants/' ~ org ~ '/staff', 'Team', '◎', current_path.startswith('/tenants/' ~ org ~ '/staff')) }}
+          {{ nav_link('/tenants/' ~ org ~ '/approvals', 'Approvals', '✓', current_path.startswith('/tenants/' ~ org ~ '/approvals')) }}
+          {{ nav_link('/tenants/' ~ org ~ '/agents', 'Agents & API', '✦', current_path.startswith('/tenants/' ~ org ~ '/agents')) }}
+          {{ nav_link('/tenants/' ~ org ~ '/configuration', 'Business configuration', '▤', current_path.startswith('/tenants/' ~ org ~ '/configuration')) }}
+          {% endif %}
+          <p class="nav-label">{% if org %}Other businesses{% else %}Businesses{% endif %}</p>
+          {{ nav_link('/my-organizations', 'My organizations', '◇', current_path == '/my-organizations' or (current_path.startswith('/tenants/') and not org)) }}
+          {% if nav_platform %}
           <p class="nav-label">Platform</p>
-          <a href="/resources/configurations" class="{% if current_path.startswith('/resources/configurations') %}active{% endif %}" {% if current_path.startswith('/resources/configurations') %}aria-current="page"{% endif %}><span aria-hidden="true">◫</span>Configuration</a>
-          <a href="/resources/secrets" class="{% if current_path.startswith('/resources/secrets') %}active{% endif %}" {% if current_path.startswith('/resources/secrets') %}aria-current="page"{% endif %}><span aria-hidden="true">⌁</span>Secrets &amp; keys</a>
-          <a href="/resources/controller-policy-adoptions" class="{% if current_path.startswith('/resources/controller-policy-adoptions') %}active{% endif %}" {% if current_path.startswith('/resources/controller-policy-adoptions') %}aria-current="page"{% endif %}><span aria-hidden="true">◫</span>Controller policy</a>
-          <p class="nav-label">Reliability</p>
-          <a href="/resources/deployment-recovery" class="{% if current_path.startswith('/resources/deployment-recovery') %}active{% endif %}" {% if current_path.startswith('/resources/deployment-recovery') %}aria-current="page"{% endif %}><span aria-hidden="true">◉</span>Deployment recovery</a>
-          <a href="/diagnostics" class="{% if current_path.startswith('/diagnostics') %}active{% endif %}" {% if current_path.startswith('/diagnostics') %}aria-current="page"{% endif %}><span aria-hidden="true">⌁</span>Diagnostics</a>
-          <p class="nav-label">Advanced</p>
-          <a href="/operations" class="{% if current_path.startswith('/operations') %}active{% endif %}" {% if current_path.startswith('/operations') %}aria-current="page"{% endif %}><span aria-hidden="true">⌘</span>All operations</a>
+          {{ nav_link('/', 'Overview', '◉', current_path == '/') }}
+          {{ nav_link('/resources', 'Workspaces', '▦', current_path == '/resources') }}
+          {{ nav_link('/resources/owners', 'Platform owners', '◇', current_path.startswith('/resources/owners')) }}
+          {{ nav_link('/resources/native-identities', 'Native identities', '◎', current_path.startswith('/resources/native-identities')) }}
+          {{ nav_link('/resources/provisioners', 'Provisioners', '◇', current_path.startswith('/resources/provisioners')) }}
+          {{ nav_link('/resources/recovery-cases', 'Recovery cases', '↻', current_path.startswith('/resources/recovery-cases')) }}
+          {{ nav_link('/resources/recovery-operators', 'Recovery operators', '◎', current_path.startswith('/resources/recovery-operators')) }}
+          <p class="nav-label">Platform settings</p>
+          {{ nav_link('/resources/configurations', 'Configuration', '◫', current_path.startswith('/resources/configurations')) }}
+          {{ nav_link('/resources/secrets', 'Secrets & keys', '⌁', current_path.startswith('/resources/secrets')) }}
+          {{ nav_link('/resources/controller-policy-adoptions', 'Controller policy', '◫', current_path.startswith('/resources/controller-policy-adoptions')) }}
+          {{ nav_link('/resources/deployment-recovery', 'Deployment recovery', '◉', current_path.startswith('/resources/deployment-recovery')) }}
+          {{ nav_link('/diagnostics', 'Diagnostics', '⌁', current_path.startswith('/diagnostics')) }}
+          {{ nav_link('/operations', 'All operations', '⌘', current_path.startswith('/operations')) }}
+          {% endif %}
+          <p class="nav-label">You</p>
+          {{ nav_link('/account/security', 'Account security', '◈', current_path == '/account/security') }}
         </nav>
-        <div class="environment-card"><span class="environment-mark" aria-hidden="true">◆</span><div><strong>Admin console</strong><small>Private operator surface</small></div></div>
+        <div class="environment-card"><span class="environment-mark" aria-hidden="true">◆</span><div><strong>Private console</strong><small>Access is checked on every action</small></div></div>
       </aside>
       <button class="nav-scrim" type="button" aria-label="Close navigation" tabindex="-1"></button>
       {% endif %}
@@ -47,12 +70,14 @@
         {% if authenticated %}
         <header class="topbar">
           <button class="menu-toggle" type="button" aria-controls="admin-sidebar" aria-expanded="false" aria-label="Toggle navigation">☰</button>
+          {% if nav_platform %}
           <form class="global-search" method="get" action="/operations" role="search">
             <label class="sr-only" for="global-search">Search platform operations and workspaces</label>
             <span aria-hidden="true">⌕</span>
             <input id="global-search" name="q" type="search" placeholder="Find a platform task…" value="{{ query | default('') }}" />
           </form>
-          <div class="top-actions"><a href="/account/security">Account security</a><a href="/diagnostics">Status</a><form method="post" action="/logout" class="inline" data-session-logout><button type="submit" class="signout-button"><span aria-hidden="true">↪</span>Sign out</button></form></div>
+          {% endif %}
+          <div class="top-actions">{% if nav_platform %}<a href="/diagnostics">Status</a>{% endif %}<form method="post" action="/logout" class="inline" data-session-logout><button type="submit" class="signout-button"><span aria-hidden="true">↪</span>Sign out</button></form></div>
         </header>
         {% endif %}
         <main id="main-content" tabindex="-1">
@@ -61,7 +86,7 @@
           {% block content %}{% endblock %}
         </main>
         {% if authenticated %}
-        <footer class="foot"><span>Request Engine admin · {{ current_year }}</span><a href="/resources">Browse administrative workspaces</a></footer>
+        <footer class="foot"><span>Request Engine · {{ current_year }}</span>{% if nav_platform %}<a href="/resources">Browse administrative workspaces</a>{% else %}<a href="/my-organizations">Your businesses</a>{% endif %}</footer>
         {% endif %}
       </div>
     </div>

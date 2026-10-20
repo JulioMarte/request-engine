@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Agents and API access · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div>
+    <p class="eyebrow">{{ nav_organization_name or "Your business" }}</p>
+    <h1>Agents and API access</h1>
+    <p>Give an assistant or another program its own key to work with this business. Each agent only does what you allow, within safety limits you set, and you can pause it at any time.</p>
+  </div>
+  <div class="page-actions">
+    {% if not has_chief %}<a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Set up chief of staff</a>{% endif %}
+    <a class="button {% if not has_chief %}secondary{% endif %}" href="/tenants/{{ organization_id }}/agents/new">Create agent</a>
+  </div>
+</header>
+
+<section class="panel" aria-labelledby="agents-title">
+  <div class="panel-heading"><h2 id="agents-title">Agents</h2></div>
+  {% if agents is none %}
+    {% if agents_status == 403 %}
+    <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Agents are not available to you</strong><p>Your current permissions do not include "See agents".</p></div></div>
+    {% else %}
+    <div class="error-state"><span aria-hidden="true">!</span><div><strong>Agents could not be loaded</strong><p>Reload the page to try again.</p></div></div>
+    {% endif %}
+  {% elif not agents %}
+  <div class="empty-state neutral"><span aria-hidden="true">✦</span><div><strong>No agents yet</strong><p>Start with a chief of staff: an assistant you talk to from Claude that carries out what you ask.</p></div><a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Set up chief of staff</a></div>
+  {% else %}
+  <ul class="agent-list">
+    {% for agent in agents %}
+    <li>
+      <span class="agent-mark {% if agent.chief %}cos{% endif %}" aria-hidden="true">{{ agent.display_name[:2] | upper }}</span>
+      <div>
+        <strong>{{ agent.display_name }}</strong>{% if agent.chief %} <span class="badge pending">Chief of staff</span>{% endif %}
+        <p class="muted small">{{ agent.standing_capabilities | length }} permission{% if agent.standing_capabilities | length != 1 %}s{% endif %} · {{ "acts on your behalf" if agent.operating_mode == "assisted" else "works on its own" }}</p>
+      </div>
+      <div class="entry-actions"><span class="badge {{ agent.status }}">{{ agent.status }}</span><a class="button secondary" href="/tenants/{{ organization_id }}/agents/{{ agent.principal_id }}">Open</a></div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<section class="panel" aria-labelledby="connect-title">
+  <div class="panel-heading"><h2 id="connect-title">How agents connect</h2></div>
+  <div class="panel-body">
+    <p>Agents use the same business API as this console. Claude and other MCP clients connect to the address below with the agent's key; programs can call the HTTP API directly.</p>
+    <dl class="detail"><dt>MCP address</dt><dd><code>{{ connection.mcp_url }}</code></dd><dt>HTTP API</dt><dd><code>{{ connection.api_base }}</code></dd></dl>
+    <p class="muted small">Voice works through Claude: you speak, Claude turns it into requests, and the business API checks each one against the agent's permissions.</p>
+  </div>
+</section>
+{% endblock %}

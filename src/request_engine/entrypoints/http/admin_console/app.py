@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from time import monotonic
+from typing import Any, cast
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -22,6 +23,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from request_engine.entrypoints.http.admin_console.capability_labels import (
+    capability_label,
+    grouped_capabilities,
+)
 from request_engine.entrypoints.http.admin_console.client import (
     ControlPlaneClient,
     ControlPlanePort,
@@ -52,11 +57,20 @@ from request_engine.entrypoints.http.admin_console.routes_setup import install_s
 from request_engine.entrypoints.http.admin_console.routes_staff_invitations import (
     install_staff_invitation_routes,
 )
+from request_engine.entrypoints.http.admin_console.routes_tenant_agents import (
+    install_tenant_agent_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_tenant_approvals import (
+    install_tenant_approval_routes,
+)
 from request_engine.entrypoints.http.admin_console.routes_tenant_configuration import (
     install_tenant_configuration_routes,
 )
 from request_engine.entrypoints.http.admin_console.routes_tenant_staff import (
     install_tenant_staff_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_tenant_workspace import (
+    install_tenant_workspace_routes,
 )
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
@@ -66,6 +80,7 @@ _CONTENT_SECURITY_POLICY = (
     "script-src 'self'; "
     "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data:; "
+    "font-src 'self'; "
     "connect-src 'self'; "
     "form-action 'self'; "
     "frame-ancestors 'none'; "
@@ -136,6 +151,9 @@ def create_admin_console_app(
         lifespan=lifespan,
     )
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+    template_globals = cast(dict[str, Any], templates.env.globals)
+    template_globals["grouped_capabilities"] = grouped_capabilities
+    template_globals["capability_label"] = capability_label
     app.mount(
         "/static",
         StaticFiles(directory=str(Path(__file__).parent / "static")),
@@ -226,7 +244,11 @@ def create_admin_console_app(
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        # Same-origin keeps paths away from other sites while letting browsers send a
+        # real Origin on ordinary form posts (Chromium sends "null" under
+        # no-referrer). Pages holding one-time secrets keep their own no-referrer.
+        if "referrer-policy" not in response.headers:
+            response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Content-Security-Policy"] = _CONTENT_SECURITY_POLICY
         return response
 
@@ -264,6 +286,9 @@ def create_admin_console_app(
     install_business_setup_routes(app, state)
     install_resource_routes(app, state)
     install_tenant_staff_routes(app, state)
+    install_tenant_workspace_routes(app, state)
+    install_tenant_agent_routes(app, state)
+    install_tenant_approval_routes(app, state)
     install_tenant_configuration_routes(app, state)
     install_staff_invitation_routes(app, state)
     install_my_organization_routes(app, state)

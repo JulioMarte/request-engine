@@ -217,6 +217,13 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             response = RedirectResponse("/login", status_code=303)
             state.clear_session(response, request)
             return response
+        if readiness_status == 403 and observability_status == 403:
+            # Not a platform operator: the platform overview has nothing to show.
+            # Send business staff to their businesses; authority stays upstream.
+            state.viewer.record_platform_access(session, False)
+            return RedirectResponse("/my-organizations?home=1", status_code=303)
+        if readiness_status in range(200, 300):
+            state.viewer.record_platform_access(session, True)
         deployment_status = readiness_status
         deployment = {
             key: readiness[key]

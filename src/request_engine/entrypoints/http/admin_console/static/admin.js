@@ -541,6 +541,62 @@
       if (nextButton) nextButton.focus();
     }
   });
+  // Plain (non-htmx) action forms: confirm with the shared dialog when asked,
+  // then block repeated clicks while the full-page request is in flight.
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (!form || typeof form.hasAttribute !== "function" || !form.hasAttribute("data-plain-action")) return;
+    var message = form.getAttribute("data-confirm");
+    if (message && form.dataset.confirmed !== "true") {
+      event.preventDefault();
+      var dialog = document.getElementById("confirm-dialog");
+      var proceed = function () {
+        form.dataset.confirmed = "true";
+        if (typeof form.requestSubmit === "function") form.requestSubmit();
+        else form.submit();
+      };
+      if (!dialog || typeof dialog.showModal !== "function") {
+        if (window.confirm(message)) proceed();
+        return;
+      }
+      if (dialog.open) return;
+      dialog.returnValue = "cancel";
+      var messageNode = document.getElementById("confirm-message");
+      if (messageNode) messageNode.textContent = message;
+      dialog.showModal();
+      dialog.addEventListener("close", function onClose() {
+        dialog.removeEventListener("close", onClose);
+        if (dialog.returnValue === "confirm") proceed();
+      });
+      return;
+    }
+    if (form.getAttribute("aria-busy") === "true") {
+      event.preventDefault();
+      return;
+    }
+    form.setAttribute("aria-busy", "true");
+    window.setTimeout(function () {
+      form.querySelectorAll("button[type=submit]").forEach(function (button) {
+        button.disabled = true;
+        button.setAttribute("data-request-disabled", "");
+      });
+    }, 0);
+  });
+  // Copy-to-clipboard for one-time values (agent keys, connection snippets).
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!(target instanceof Element)) return;
+    var button = target.closest("[data-copy-target]");
+    if (!button) return;
+    var source = document.getElementById(button.getAttribute("data-copy-target") || "");
+    if (!source || !navigator.clipboard) return;
+    var text = "value" in source ? source.value : source.textContent;
+    navigator.clipboard.writeText(text || "").then(function () {
+      var original = button.textContent;
+      button.textContent = "Copied";
+      window.setTimeout(function () { button.textContent = original; }, 1600);
+    });
+  });
   // Hide the mobile sidebar only after its controls are actually installed.
   document.documentElement.classList.add("js-navigation");
 })();

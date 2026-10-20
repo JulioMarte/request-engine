@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{% if values.template == "chief-of-staff" %}Set up chief of staff{% else %}Create agent{% endif %} · Request Engine{% endblock %}
+{% block content %}
+{% set chief = values.template == "chief-of-staff" %}
+<header class="page-heading">
+  <div>
+    <p class="breadcrumb"><a href="/tenants/{{ organization_id }}/agents">Agents and API access</a></p>
+    <h1>{% if chief %}Set up your chief of staff{% else %}Create an agent{% endif %}</h1>
+    <p>{% if chief %}Your chief of staff carries out what you ask from Claude, by text or voice. It can only use permissions you already have and are allowed to share. Adding people to the team always comes back to you as a suggestion to approve.{% else %}Choose what the agent may do and its safety limits. You get its key once, at the end.{% endif %}</p>
+  </div>
+</header>
+
+{% if form_errors %}<div class="alert error" role="alert"><strong>Check the form.</strong><ul>{% for message in form_errors %}<li>{{ message }}</li>{% endfor %}</ul></div>{% endif %}
+
+<form id="agent-create" class="stack" method="post" action="/tenants/{{ organization_id }}/agents" data-plain-action>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <input type="hidden" name="intent" value="{{ values.intent }}" />
+  <input type="hidden" name="template" value="{{ values.template }}" />
+
+  <section class="card">
+    <h2>About the agent</h2>
+    <label>Name<input name="display_name" value="{{ values.display_name }}" maxlength="200" required /></label>
+    <label>What it does<textarea name="purpose" maxlength="2000" required>{{ values.purpose }}</textarea></label>
+    <fieldset><legend>How it works</legend>
+      <label class="check"><input type="radio" name="operating_mode" value="assisted" {% if values.operating_mode == "assisted" %}checked{% endif %} /> Acts on someone's behalf when they ask (recommended for a chief of staff)</label>
+      <label class="check"><input type="radio" name="operating_mode" value="autonomous" {% if values.operating_mode == "autonomous" %}checked{% endif %} /> Works on its own, for example answering customers</label>
+    </fieldset>
+    {% if needs_authority_field %}
+    <label>Workload identity authority
+      <input name="identity_authority_id" value="{{ values.identity_authority_id | default('') }}" required pattern="[0-9a-fA-F-]{36}" />
+      <small class="muted">The workload authority shown when this installation was first claimed. Ask your platform administrator to configure it for the console so this field disappears.</small>
+    </label>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>What it may do</h2>
+    {% if ceiling_status not in range(200, 300) %}
+    <p class="alert warning">Your shareable permissions could not be loaded. Reload the page before creating an agent.</p>
+    {% elif not usable_capabilities %}
+    <p class="alert warning">You have no permissions you can share with an agent. Ask someone who manages team permissions.</p>
+    {% else %}
+    <p class="muted">Only permissions you hold and may share are listed. Actions that change who can do what are never available to agents.</p>
+    {% for group, items in grouped_capabilities(usable_capabilities) %}
+    <fieldset><legend>{{ group }}</legend>
+      {% for item in items %}
+      <label class="permission-choice"><input type="checkbox" name="capabilities" value="{{ item.key }}" {% if item.key in values.capabilities %}checked{% endif %} /><span>{{ item.label }}</span><code>{{ item.key }}</code></label>
+      {% endfor %}
+    </fieldset>
+    {% endfor %}
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Safety limits</h2>
+    <fieldset><legend>How far it may go</legend>
+      {% for value, label in risk_choices %}
+      <label class="check"><input type="radio" name="risk_ceiling" value="{{ value }}" {% if values.risk_ceiling == value %}checked{% endif %} /> {{ label }}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="row">
+      <label>Changes per minute, at most<input type="number" name="max_mutations_per_minute" min="1" max="600" step="1" value="{{ values.max_mutations_per_minute }}" required /></label>
+      <label>Key expires after
+        <select name="expires_days">{% for days in expiry_choices %}<option value="{{ days }}" {% if values.expires_days == days | string %}selected{% endif %}>{{ days }} days</option>{% endfor %}</select>
+      </label>
+    </div>
+  </section>
+
+  <div class="page-actions">
+    <button type="submit">{% if chief %}Create chief of staff{% else %}Create agent{% endif %}</button>
+    <a class="button secondary" href="/tenants/{{ organization_id }}/agents">Cancel</a>
+  </div>
+</form>
+{% endblock %}

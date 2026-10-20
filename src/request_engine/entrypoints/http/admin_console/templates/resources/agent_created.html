@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% import "partials/agent_connect.html" as connect %}
+{% block title %}{{ display_name }} · Agents · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div>
+    <p class="breadcrumb"><a href="/tenants/{{ organization_id }}/agents">Agents and API access</a></p>
+    <h1>{% if complete %}{{ display_name }} is ready{% else %}{{ display_name }} is not ready yet{% endif %}</h1>
+    <p>{% if complete %}Copy the key now and connect it to Claude. You will not see this key again; if it is lost, create a new one from the agent page.{% else %}Some steps did not finish. Nothing was granted beyond the finished steps. Retry to continue from where it stopped.{% endif %}</p>
+  </div>
+</header>
+
+{% if token %}
+<section class="secret-reveal" aria-labelledby="key-title">
+  <strong id="key-title">Agent key, shown once</strong>
+  <p class="small">Treat it like a password. Anyone with it can act as this agent within its permissions.</p>
+  <div class="secret-value"><input id="agent-key" readonly value="{{ token }}" aria-label="Agent key" autocomplete="off" spellcheck="false" /><button type="button" data-copy-target="agent-key">Copy key</button></div>
+</section>
+{% elif principal_id %}
+<p class="alert warning">This attempt resumed an agent that was already created, so its key is not shown again. If you did not save it, create a new key from the agent page once setup finishes.</p>
+{% endif %}
+
+<section class="panel" aria-labelledby="steps-title">
+  <div class="panel-heading"><h2 id="steps-title">Setup steps</h2></div>
+  <div class="panel-body">
+    <ol class="task-steps">
+      {% for step in steps %}
+      <li class="{% if step.status == 'done' %}done{% elif step.status == 'failed' %}current{% endif %}"><span>{% if step.status == 'done' %}✓{% elif step.status == 'failed' %}!{% else %}{{ loop.index }}{% endif %}</span><div><strong>{{ step.label }}</strong>{% if step.message %}<small>{{ step.message }}</small>{% endif %}</div></li>
+      {% endfor %}
+    </ol>
+  </div>
+</section>
+
+{% if not complete %}
+<section class="card">
+  <h2>Finish setup</h2>
+  <form id="agent-retry" method="post" action="/tenants/{{ organization_id }}/agents" data-plain-action>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    {% for key, value in retry_values.items() %}{% if key not in ("csrf_token", "capabilities") %}<input type="hidden" name="{{ key }}" value="{{ value }}" />{% endif %}{% endfor %}
+    {% for key in retry_values.capabilities %}<input type="hidden" name="capabilities" value="{{ key }}" />{% endfor %}
+    {% if not step_up %}<button type="submit">Retry remaining steps</button>{% endif %}
+  </form>
+  {% if step_up %}
+  <p class="alert error">Confirm your current session to continue. Your choices are kept and finished steps are not repeated.</p>
+  {% import "partials/reauthentication.html" as authentication %}
+  {{ authentication.render("agent-retry", false) }}
+  {% endif %}
+</section>
+{% endif %}
+
+{% if principal_id %}
+<section class="panel" aria-labelledby="connect-title">
+  <div class="panel-heading"><h2 id="connect-title">Connect {% if is_chief %}your chief of staff {% endif %}to Claude</h2></div>
+  <div class="panel-body">{{ connect.render(connection, "Talk to it naturally, for example: “Book María for a haircut tomorrow at 10” or “Add Pedro Gómez, pedro@example.com, to the team”. Team additions arrive in Approvals for you to confirm.") }}</div>
+</section>
+<p><a class="button secondary" href="/tenants/{{ organization_id }}/agents/{{ principal_id }}">Open agent</a></p>
+{% endif %}
+{% endblock %}

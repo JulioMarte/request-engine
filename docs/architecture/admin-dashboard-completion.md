@@ -30,6 +30,10 @@ and [configuration readback](administrative-configuration-readback.md).
 | People and access | `/tenants/{organization_id}/staff`, `/staff-invitations` | Real tenant context, valid parent IDs/revisions, permission preview/apply, lifecycle/history and invitation delivery/acceptance |
 | Business configuration | `/tenants/{organization_id}/configuration` | 99 current owner operations grouped into organization, locations/catalog, supply, queues, channels, Requests, Discovery, agents, integrations, authority/controller policy, identity connections and capacity/recovery policies; owner reads guide supported revision-sensitive actions |
 | Advanced operations | `/operations` | Complete control-plane catalog search and typed forms; it remains an escape hatch, not a substitute for missing recipient journeys |
+| Business home | `/tenants/{organization_id}` | Setup progress, team counts, chief of staff status and pending agent suggestions from owner reads; unavailable reads are shown as unavailable |
+| Today (employees and administrators) | `/tenants/{organization_id}/today` | Live queues with call next, no-show, skip and finish service; the day's appointments in business time; denied reads are explained, never shown as empty |
+| Agents and API access | `/tenants/{organization_id}/agents` | Chief of staff template and custom agents through the owner provision/activate/authority/policy sequence; one-time key reveal; MCP/HTTP connection instructions; key rotation, pause and revoke |
+| Approvals | `/tenants/{organization_id}/approvals` | Agent-proposed staff invitations approved or rejected by a person with the exact proposal revision (ADR 0019) |
 | Diagnostics | `/diagnostics` | Redacted process counters/errors and correlation IDs, without claiming installation-wide history |
 
 The business workspace uses the same configured `runtime_api_base_url` as the
@@ -48,10 +52,12 @@ operation. Visibility and grouping do not grant execution permission.
 
 `TENANT_RUNTIME_EXTERNAL_DESTINATIONS` explicitly accounts for the other runtime
 operator operations: 14 staff/invitation operations already have dedicated tenant
-workspaces; readiness is read by the configuration overview; 27 daily-service execution
-operations remain in the operational API; 20 migration-era copilot projections remain
-outside this business setup interface. This work does not claim a new daily-service
-client or a bespoke editor for every typed configuration schema.
+workspaces; readiness is read by the configuration overview; 6 daily-service operations
+(day board, live queue, call next, no-show, skip, finish service) are projected by the
+Today workspace; the remaining 21 daily-service execution operations stay in the
+operational API; 20 migration-era copilot projections remain outside this business setup
+interface. Today is a front-desk view, not a complete daily-service client, and there is
+no bespoke editor for every typed configuration schema.
 
 Inventory lists show active and inactive Location, Offering and ServiceQueue rows.
 Their links open exact detail forms, and pagination opens a form carrying the same
@@ -70,6 +76,15 @@ profile list. Discovery has no current administrative configuration inventory/de
 Query for every control; existing identifiers and current revisions must come from an
 owner response. Such forms remain explicit about that requirement. No missing read is
 replaced by a fabricated empty collection, revision zero, or automatic grant.
+
+## Role-aware navigation
+
+Navigation is display only. The console learns platform access from the
+platform readiness/observability reads it already performs (both `403` means
+not a platform operator) and business membership from self-organization
+discovery. Business staff land in their business; platform sections are hidden
+from them, and nothing about authority is cached as permission. See the console
+README for the hint lifetime and the business workspace operation map.
 
 ## Interaction and safety
 

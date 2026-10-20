@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Approvals · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div>
+    <p class="eyebrow">{{ nav_organization_name or "Your business" }}</p>
+    <h1>Approvals</h1>
+    <p>Suggestions from your chief of staff and other agents that need your decision. Agents can suggest people for the team; only a person can invite them.</p>
+  </div>
+</header>
+
+<section class="panel" aria-labelledby="pending-title">
+  <div class="panel-heading"><h2 id="pending-title">Waiting for you</h2>{% if proposals %}<span class="count-badge">{{ proposals | length }}</span>{% endif %}</div>
+  {% if not supported %}
+  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Approvals are not available on this installation yet</strong><p>Update Request Engine to let agents suggest new team members.</p></div></div>
+  {% elif status == 403 %}
+  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Approvals are not available to you</strong><p>Your current permissions do not include "See the team".</p></div></div>
+  {% elif status not in range(200, 300) %}
+  <div class="error-state"><span aria-hidden="true">!</span><div><strong>Approvals could not be loaded</strong><p>Reload the page to try again.</p></div></div>
+  {% elif not proposals %}
+  <div class="empty-state"><span aria-hidden="true">✓</span><div><strong>Nothing to decide</strong><p>When your chief of staff suggests adding someone, it appears here.</p></div></div>
+  {% else %}
+  <ul class="approval-list">
+    {% for item in proposals %}
+    <li>
+      <div>
+        <strong>Invite {{ item.display_name or item.email }}{% if item.display_name %} ({{ item.email }}){% endif %}</strong>
+        <p>Suggested by {{ item.proposer_label }}{% if item.created_at %} · <time datetime="{{ item.created_at }}">{{ item.created_at[:16] | replace("T", " ") }}</time>{% endif %}</p>
+        {% if item.note %}<p>“{{ item.note }}”</p>{% endif %}
+      </div>
+      <div class="approval-actions">
+        <form id="approve-{{ item.proposal_id }}" method="post" action="/tenants/{{ organization_id }}/approvals/{{ item.proposal_id }}/approve" data-plain-action data-confirm="Send a team invitation to {{ item.email }}? They join with no permissions until you grant them.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="intent" value="{{ intent }}-{{ loop.index }}" />
+          <input type="hidden" name="expected_revision" value="{{ item.revision }}" />
+          <button type="submit">Approve and invite</button>
+        </form>
+        <form id="reject-{{ item.proposal_id }}" method="post" action="/tenants/{{ organization_id }}/approvals/{{ item.proposal_id }}/reject" data-plain-action>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="intent" value="{{ intent }}-r{{ loop.index }}" />
+          <input type="hidden" name="expected_revision" value="{{ item.revision }}" />
+          <button type="submit" class="secondary">Decline</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}

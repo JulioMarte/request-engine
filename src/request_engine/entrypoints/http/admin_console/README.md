@@ -43,7 +43,8 @@ tenant runtime API  -->  PostgreSQL / OpenBao / providers
   After password completion the user must sign out and sign in with the password
   to start a normal session; the recovery session never becomes an admin session.
 - Security headers: `Cache-Control: no-store`, `X-Frame-Options: DENY`,
-  `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` (pages carrying one-time invitation
+  material keep `no-referrer`) and a
   restrictive `Content-Security-Policy` (`script-src 'self'` only).
 - FastAPI's `/docs`, `/redoc` and `/openapi.json` are disabled on the console.
 - Every unsafe browser request (`POST`, `PUT`, `PATCH`, `DELETE`), including
@@ -225,6 +226,37 @@ silently unreachable while diagnostics are being performed.
   and the bounded recent-error ring; `/diagnostics/errors.json` returns the same as
   JSON. With `debug=true` the error page and diagnostics include the traceback.
 - Config: `log_level` (default `INFO`), `debug` (default `false`).
+
+## Business workspace (owners, administrators and employees)
+
+The same console serves platform owners and the people of each business. It
+never decides who someone is: navigation hints come only from reads it already
+makes. A platform readiness read that returns `403` for both readiness and
+observability sends the person to `/my-organizations?home=1`, which opens their
+business directly when they belong to exactly one. Hints live in process memory
+(digest of the upstream session, bounded, 15 minutes) and only show or hide
+navigation; every page and action is still authorized by the owner API.
+
+| Page | Owner operations | Notes |
+| --- | --- | --- |
+| `/tenants/{org}` Home | `business_get_info`, `onboarding_read`, `staff_overview_get`, `agent_list`, `staff_invitation_proposal_list` | Setup progress, team counts, chief of staff and pending suggestions; failed reads are shown as unavailable, never as ready or empty |
+| `/tenants/{org}/today` | `business_get_info`, `queue_list`, `queue_staff_read`, `appointments_day_board`, `queue_call_next`, `queue_mark_no_show`, `queue_skip`, `service_session_complete` | Business clock = default timezone, else first location, else UTC. Actions are post/redirect/get with the form intent as `Idempotency-Key` |
+| `/tenants/{org}/agents` | `agent_list/get/provision/suspend/manage_authority/policy_read/policy_replace/credential_rotate`, `authority_read_self`, `staff_overview_get` | Creation runs provision → activate → authority → policy, each with `{intent}:{step}` keys so a retry replays finished steps. Only operational, risk-classified capabilities in the caller's delegable ceiling are offered. The one-time key is rendered once with `no-referrer`/`no-store` and never stored |
+| `/tenants/{org}/approvals` | `staff_invitation_proposal_list/approve/reject` | Agent suggestions decided by a person (ADR 0019); approval carries the exact proposal revision |
+
+The chief of staff is an ordinary AGENT principal in `assisted` mode sponsored by
+the person who creates it; its purpose text starts with `Chief of staff`, which
+the console uses only to label it. It receives no authority change capability;
+adding people goes through proposals.
+
+Settings used by the business workspace:
+
+```text
+REQUEST_ENGINE_ADMIN_CONSOLE_PUBLIC_RUNTIME_API_BASE_URL  address shown to agents/MCP clients (defaults to the runtime URL)
+REQUEST_ENGINE_ADMIN_CONSOLE_WORKLOAD_AUTHORITY_ID        built-in workload authority from the instance claim receipt
+```
+
+Without the workload authority the agent form asks for it explicitly.
 
 ## UI-only mode (mock control plane)
 
