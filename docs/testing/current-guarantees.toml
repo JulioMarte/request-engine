@@ -308,6 +308,13 @@ required_evidence = ["invariant", "adversarial", "concurrency"]
 risk = ["security"]
 
 [[guarantees]]
+id = "INV-MCP-PROJECTION-001"
+statement = "The MCP tool gateway is a projection, never an authority: tools/list advertises only operations in the caller's current authorized operation catalog that carry explicit tool metadata, and tools/call re-resolves the tool in that current catalog and executes the same owner HTTP operation with the caller's own credential, so authentication, tenant and agent policy, risk ceiling, budgets, idempotency and owner validation are unchanged; unauthorized tools are indistinguishable from unknown ones and execute nothing, and model arguments cannot supply organization, principal or other inputs outside the owner operation's documented contract."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
 id = "INV-IDENTITY-TOPOLOGY-GATE-001"
 statement = "Every command that can alter identity bindings, control grants, staff memberships or the reachability they express acquires the transaction-scoped identity-topology advisory gate as its first statement, before any row lock; global disable or global authority modification takes it exclusively, ordinary reads and native login never acquire it, and any unclassified topology writer fails a deterministic inventory proof."
 severity = "critical"

@@ -26,6 +26,10 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "native_auth.py",
     "native_auth_errors.py",
     "native_runtime.py",
+    # MCP transport projection of the authorized operation catalog (ADR 0018). It
+    # owns no business transport: tools re-enter the owner operations over HTTP.
+    "mcp_gateway.py",
+    "mcp_tools.py",
     "operation_catalog.py",
     "operational_app.py",
     "operational_composition.py",

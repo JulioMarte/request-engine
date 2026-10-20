@@ -212,6 +212,14 @@ def create_router(
         slots,
         capability="appointments.find_slots",
         methods=["GET"],
+        operation_id="appointments_find_slots",
+        tool_name="appointments_find_slots",
+        tool_audiences=("operator",),
+        summary="Find appointment slots",
+        description=(
+            "Find bookable appointment options for an offering version in a time window. "
+            "Each returned option_id is a signed, short-lived token used to book or reschedule."
+        ),
         response_model=tuple[AppointmentSlotView, ...],
         response_model_exclude_none=True,
     )
@@ -221,6 +229,14 @@ def create_router(
         book,
         capability="appointments.book",
         methods=["POST"],
+        operation_id="appointments_book",
+        tool_name="appointments_book",
+        tool_audiences=("operator",),
+        summary="Book an appointment",
+        description=(
+            "Book an appointment for a registered Party using an option_id returned by "
+            "appointments_find_slots."
+        ),
         response_model=ReservationView,
         status_code=status.HTTP_201_CREATED,
     )
@@ -230,6 +246,11 @@ def create_router(
         reservation_status,
         capability="appointments.read",
         methods=["GET"],
+        operation_id="appointments_read",
+        tool_name="appointments_read",
+        tool_audiences=("operator",),
+        summary="Read an appointment",
+        description=("Read the current state and revision of one appointment reservation."),
         response_model=ReservationView,
     )
     add_capability_route(
@@ -238,6 +259,14 @@ def create_router(
         cancel,
         capability="appointments.cancel",
         methods=["POST"],
+        operation_id="appointments_cancel",
+        tool_name="appointments_cancel",
+        tool_audiences=("operator",),
+        summary="Cancel an appointment",
+        description=(
+            "Cancel an appointment reservation. Requires the reservation's current revision "
+            "from appointments_read."
+        ),
         response_model=ReservationView,
     )
     add_capability_route(
@@ -246,6 +275,14 @@ def create_router(
         reschedule,
         capability="appointments.reschedule",
         methods=["POST"],
+        operation_id="appointments_reschedule",
+        tool_name="appointments_reschedule",
+        tool_audiences=("operator",),
+        summary="Reschedule an appointment",
+        description=(
+            "Move an appointment to a new option_id from appointments_find_slots. Requires "
+            "the reservation's current revision from appointments_read."
+        ),
         response_model=ReservationView,
     )
     add_capability_route(
