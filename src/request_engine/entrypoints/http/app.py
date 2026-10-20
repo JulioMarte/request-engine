@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request, Response
 import request_engine.modules.booking.api as booking_api
 from request_engine.entrypoints.http.capabilities import create_capability_router
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
+from request_engine.entrypoints.http.mcp_gateway import create_mcp_router
 from request_engine.entrypoints.http.module_composition import install_business_modules
 from request_engine.entrypoints.http.native_auth import create_native_auth_router
 from request_engine.entrypoints.http.native_runtime import (
@@ -211,6 +212,8 @@ def create_app(
         actor_resolver=execution_actor_resolver,
     )
     app.include_router(create_operation_catalog_router(actor_resolver=execution_actor_resolver))
+    # MCP transport projection (ADR 0018): grants nothing and re-enters this same app.
+    app.include_router(create_mcp_router())
     install_authentication_schema(
         app,
         scheme_name="SubjectBearer",

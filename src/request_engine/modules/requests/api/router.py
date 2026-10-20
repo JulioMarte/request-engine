@@ -233,6 +233,14 @@ def create_router(
         submit_request,
         capability="requests.submit",
         methods=["POST"],
+        operation_id="requests_submit",
+        tool_name="requests_submit",
+        tool_audiences=("operator",),
+        summary="Submit a business Request",
+        description=(
+            "Submit a durable business Request against an active Request definition "
+            "version, with a payload that matches that version's schema."
+        ),
         response_model=SubmittedRequestView,
         status_code=status.HTTP_201_CREATED,
         responses={
@@ -257,6 +265,11 @@ def create_router(
         read_request,
         capability="requests.read",
         methods=["GET"],
+        operation_id="requests_read",
+        tool_name="requests_read",
+        tool_audiences=("operator",),
+        summary="Read a business Request",
+        description="Read the current state of one submitted business Request.",
         response_model=RequestView,
         responses={
             404: {"model": ErrorEnvelope, "description": "Request not found"},

@@ -277,7 +277,7 @@ Tool projection requires:
 - trusted authority injected server-side;
 - same idempotency/revision/failure semantics as owner operation.
 
-See `16-canonical-operation-and-tool-projection-pattern.md` for the full design and migration plan.
+See `16-canonical-operation-and-tool-projection-pattern.md` for the full design and migration plan, and ADR 0018 for the current MCP gateway.
 
 ## 17. Versioning and deprecation
 

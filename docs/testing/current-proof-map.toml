@@ -293,6 +293,16 @@ path = "tests/e2e/test_native_agent_lifecycle.py"
 evidence = ["contract", "invariant", "adversarial", "security"]
 
 [[proofs]]
+guarantee = "INV-MCP-PROJECTION-001"
+path = "tests/e2e/test_mcp_gateway_http.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-POLICY-001"
+path = "tests/e2e/test_mcp_gateway_http.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
 guarantee = "INV-AGENT-BUDGET-001"
 path = "tests/db/test_agent_policy.py"
 evidence = ["invariant", "adversarial", "concurrency", "security"]

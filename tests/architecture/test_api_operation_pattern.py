@@ -1,9 +1,16 @@
-from typing import cast
+from typing import Any, cast
+from uuid import uuid4
 
 import pytest
 from fastapi import APIRouter, FastAPI
 
+from request_engine.entrypoints.http.app import create_native_app
+from request_engine.entrypoints.http.mcp_tools import project_tool
+from request_engine.platform.db.session import create_postgres_engine, create_session_factory
 from request_engine.platform.http.capability_routes import add_capability_route
+from request_engine.platform.security.capabilities import capability_definition
+from request_engine.platform.security.capability_types import AuthorityPlane
+from request_engine.platform.security.operation_risk import OperationRiskClass
 
 
 def _operation(app: FastAPI, path: str, method: str) -> dict[str, object]:
@@ -128,3 +135,46 @@ def test_tool_metadata_never_replaces_owner_capability_metadata() -> None:
     assert operation["x-request-engine-tool-name"] == "onboarding.readiness.get"
     assert operation["x-request-engine-capability"] == "onboarding.read"
     assert operation["x-request-engine-owner"] == "onboarding"
+
+
+def test_mounted_tool_projections_are_operational_classified_and_mcp_mappable() -> None:
+    """Every projected tool names one explicit owner operation the MCP gateway can map.
+
+    Protects ADR 0018: a tool is only a projection of an explicit, owner-identified,
+    agent-admissible operation (OPERATIONAL plane, classified risk that is not an
+    authority change); the gateway must never guess or widen its input contract.
+    """
+
+    engine = create_postgres_engine("postgresql+psycopg://unused:unused@127.0.0.1:1/unused")
+    app = create_native_app(
+        session_factory=create_session_factory(engine),
+        native_identity_authority_id=uuid4(),
+        appointment_option_signing_key=b"tool-projection-architecture-key-01",
+    )
+    openapi = app.openapi()
+    projected: dict[str, str] = {}
+    for path, path_item in cast(dict[str, dict[str, dict[str, Any]]], openapi["paths"]).items():
+        for method, operation in path_item.items():
+            tool_name = operation.get("x-request-engine-tool-name")
+            if tool_name is None:
+                continue
+            operation_id = operation["operationId"]
+            assert operation["x-request-engine-operation-id"] == operation_id
+            assert operation.get("x-request-engine-owner"), operation_id
+            assert set(operation["x-request-engine-tool-audiences"]) <= {
+                "public",
+                "operator",
+                "admin",
+                "system",
+            }
+            definition = capability_definition(operation["x-request-engine-capability"])
+            assert definition is not None and definition.runtime_available, operation_id
+            assert definition.authority_plane is AuthorityPlane.OPERATIONAL, operation_id
+            risk = definition.effective_risk_class
+            assert risk is not None, f"{operation_id} has unclassified agent risk"
+            assert risk is not OperationRiskClass.AUTHORITY_CHANGE, operation_id
+            pointer = "/paths/" + path.replace("~", "~0").replace("/", "~1") + "/" + method
+            assert project_tool(openapi, pointer, tool_name) is not None, operation_id
+            assert tool_name not in projected, f"duplicate tool name {tool_name}"
+            projected[tool_name] = operation_id
+    assert projected, "the MCP gateway would expose no tools"

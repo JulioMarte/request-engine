@@ -90,6 +90,15 @@ def add_party_registry_routes(
         register_party_route,
         capability="parties.register",
         methods=["POST"],
+        operation_id="parties_register",
+        tool_name="parties_register",
+        tool_audiences=("operator",),
+        summary="Register a Party",
+        description=(
+            "Register a new person or organization Party (customer, patient, client) "
+            "in this business, with optional contact points and identity documents. "
+            "Look the Party up first to avoid creating a duplicate."
+        ),
         response_model=RegisteredPartyView,
         status_code=status.HTTP_201_CREATED,
     )
