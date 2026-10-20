@@ -3,7 +3,7 @@
 {% block content %}
 <header class="page-heading"><div><p class="breadcrumb"><a href="/tenants/{{ organization_id }}/approvals">Approvals</a></p><h1>{% if step_up %}Confirm it's you{% else %}Decision not saved{% endif %}</h1></div></header>
 {% if not step_up %}
-<div class="result fail" role="alert"><div class="result-summary"><span aria-hidden="true">!</span><div><strong>{{ message or "The business API did not accept this decision." }}</strong><p>Status {{ status }}{% if error_code %} · <code>{{ error_code }}</code>{% endif %}{% if error_code in ("revision_conflict", "conflict", "stale_revision") %} · Someone else may have decided already. Reload approvals.{% endif %}</p></div></div></div>
+<div class="result fail" role="alert"><div class="result-summary"><span aria-hidden="true">!</span><div><strong>{{ message or "The business API did not accept this decision." }}</strong><p>Status {{ status }}{% if error_code %} · <code>{{ error_code }}</code>{% endif %}{% if error_code == "staff_invitation_delivery_unavailable" %} · Invitation email is not set up on this installation, so nothing was sent and the suggestion is still waiting. A platform administrator needs to configure email delivery.{% endif %}{% if error_code in ("revision_conflict", "conflict", "stale_revision", "staff_membership_revision_conflict", "staff_invitation_proposal_not_pending") %} · Someone else may have decided already. Reload approvals.{% endif %}</p></div></div></div>
 {% endif %}
 <form id="approval-retry" method="post" action="/tenants/{{ organization_id }}/approvals/{{ proposal_id }}/{{ decision }}" data-plain-action>
   {% for key, value in retry_values.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}" />{% endfor %}

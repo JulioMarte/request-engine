@@ -39,7 +39,9 @@ def _proposer_label(item: dict[str, Any]) -> str:
     name = proposer.get("display_name")
     if isinstance(name, str) and name:
         return name
-    kind = item.get("proposer_kind") or proposer.get("kind")
+    kind = (
+        item.get("proposed_by_principal_kind") or item.get("proposer_kind") or proposer.get("kind")
+    )
     return "An agent" if kind == "agent" else "A team member"
 
 
