@@ -74,7 +74,7 @@
           </div>
         </li>
         {% else %}
-        <li><span class="waiting-pos">0</span><div><strong>Nobody waiting</strong><small>New arrivals appear here.</small></div></li>
+        <li><span class="waiting-pos" aria-hidden="true">–</span><div><strong>Nobody waiting</strong><small>New arrivals appear here.</small></div></li>
         {% endfor %}
       </ol>
       {% endif %}
@@ -98,7 +98,6 @@
         <div class="day-slots">
           {% for booking in row.bookings %}
           <div class="booking {{ booking.css }}">
-            <time>{{ booking.start }}</time>
             <div><strong>{{ booking.name }}</strong><small>{{ booking.start }}–{{ booking.end }} · {{ booking.status }}</small></div>
             {% if booking.checked_in %}<span class="badge active">Checked in</span>{% endif %}
           </div>

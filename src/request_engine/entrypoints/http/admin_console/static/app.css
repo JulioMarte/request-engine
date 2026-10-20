@@ -464,7 +464,7 @@ dl.detail dd { margin: 0; overflow-wrap: anywhere; }
 .day-hour > time { padding: .55rem .9rem; color: var(--muted); font-size: .86rem; border-right: 1px solid var(--line); }
 .day-hour.now > time { color: var(--sun-ink); font-weight: 700; background: var(--sun-tint); }
 .day-slots { display: grid; gap: .35rem; padding: .4rem .6rem; }
-.booking { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .6rem; padding: .45rem .7rem; background: var(--sea-tint); border-left: 3px solid var(--sea); border-radius: 0 var(--r-control) var(--r-control) 0; }
+.booking { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .6rem; padding: .45rem .7rem; background: var(--sea-tint); border-left: 3px solid var(--sea); border-radius: 0 var(--r-control) var(--r-control) 0; }
 .booking strong { display: block; font-size: .95rem; overflow-wrap: anywhere; }
 .booking small { color: var(--ink-soft); font-size: .84rem; }
 .booking time { color: var(--ink-2); font-weight: 700; font-size: .88rem; }
