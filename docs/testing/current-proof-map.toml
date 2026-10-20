@@ -800,3 +800,18 @@ evidence = ["invariant", "adversarial", "security"]
 guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
 path = "tests/e2e/test_instance_setup_http.py"
 evidence = ["contract", "security"]
+
+[[proofs]]
+guarantee = "INV-STAFF-INVITATION-PROPOSAL-001"
+path = "tests/db/test_staff_invitation_proposals.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-STAFF-INVITATION-PROPOSAL-001"
+path = "tests/e2e/test_staff_invitation_proposals_http.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-STAFF-INVITATION-PROPOSAL-001"
+path = "tests/unit/test_staff_invitation_proposal_http.py"
+evidence = ["contract", "security"]

@@ -5,6 +5,9 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0043: trusted-context proposer gate (active HUMAN staff or active AGENT holding
+    # staff.propose_invitation); returns the actor id, performs no business write.
+    "request_cmd.assert_staff_invitation_proposer()",
     # 0042: current-password proof bound to one trusted session; no identity selector.
     "request_auth.read_native_session_password_credential(p_session_id uuid)",
     "request_auth.read_native_recovery_session_password_credential(p_session_id uuid)",

@@ -153,6 +153,7 @@ uv run pytest \
   tests/db/test_temporary_proof_cleanup_worker.py \
   tests/db/test_staff_email_invitations.py \
   tests/db/test_staff_invitation_delivery.py \
+  tests/db/test_staff_invitation_proposals.py \
   tests/db/test_identity_governance_audit.py \
   tests/db/test_controller_policy_upgrade.py \
   tests/db/test_identity_onboarding_readiness.py \

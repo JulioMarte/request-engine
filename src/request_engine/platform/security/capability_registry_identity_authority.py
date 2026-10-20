@@ -224,6 +224,15 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Inspect tenant staff membership, standing grants and current revisions.",
         authority_plane=AuthorityPlane.TENANT_CONTROL,
     ),
+    # ADR 0019: a proposal grants, sends and invites nothing. Only a current HUMAN
+    # holding staff.invite (AUTHORITY_CHANGE) can turn it into an invitation.
+    command_capability(
+        "staff.propose_invitation",
+        CapabilityExposure.OPERATOR,
+        "Propose a staff email invitation for later HUMAN approval; grants and sends nothing.",
+        authority_plane=AuthorityPlane.OPERATIONAL,
+        risk_class=OperationRiskClass.LOW_IMPACT_WRITE,
+    ),
     _staff_capability(
         "staff.manage_membership",
         "Activate, suspend, or revoke human staff membership in the current tenant.",

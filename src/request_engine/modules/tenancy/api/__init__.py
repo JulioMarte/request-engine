@@ -74,6 +74,9 @@ from request_engine.modules.tenancy.adapters.db.staff_history_reader import (
 from request_engine.modules.tenancy.adapters.db.staff_invitation_commands import (
     PostgresStaffInvitationCommands,
 )
+from request_engine.modules.tenancy.adapters.db.staff_invitation_proposal_commands import (
+    PostgresStaffInvitationProposalCommands,
+)
 from request_engine.modules.tenancy.adapters.db.staff_membership_commands import (
     PostgresStaffMembershipCommands,
 )
@@ -134,6 +137,9 @@ from request_engine.modules.tenancy.api.self_organizations import create_self_or
 from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
 from request_engine.modules.tenancy.api.staff_history_reads import add_staff_history_reads
+from request_engine.modules.tenancy.api.staff_invitation_proposals import (
+    create_staff_invitation_proposal_router,
+)
 from request_engine.modules.tenancy.api.staff_invitations import create_staff_invitation_router
 from request_engine.modules.tenancy.api.staff_membership_errors import (
     add_staff_membership_error_handlers,
@@ -272,15 +278,24 @@ def install_http(
     async def authenticated_actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
+    invitation_commands = PostgresStaffInvitationCommands(
+        session_factory,
+        secret_delivery=invitation_secret_delivery,
+        delivery_recorder=invitation_delivery_recorder,
+    )
     app.include_router(
         create_staff_invitation_router(
-            commands=PostgresStaffInvitationCommands(
-                session_factory,
-                secret_delivery=invitation_secret_delivery,
-                delivery_recorder=invitation_delivery_recorder,
-            ),
+            commands=invitation_commands,
             authenticated_actor=authenticated_actor,
             subject_resolver=subject_resolver,
+        )
+    )
+    app.include_router(
+        create_staff_invitation_proposal_router(
+            commands=PostgresStaffInvitationProposalCommands(
+                session_factory, invitations=invitation_commands
+            ),
+            authenticated_actor=authenticated_actor,
         )
     )
 

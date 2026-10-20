@@ -153,6 +153,23 @@ same proof, without creating membership or grants. It rejects tenant/query
 selectors and returns an advisory, no-store projection; acceptance independently
 revalidates current proof and authority.
 
+## Staff invitation proposals (ADR 0019)
+
+`POST /v1/staff/invitation-proposals` (`staff_invitation_proposal_create`, tool
+`staff_invitation_propose`, audience `operator`) lets an AGENT or HUMAN holding the
+operational `staff.propose_invitation` capability record an inert pending proposal
+(email, optional display name/note, provenance). It grants, stages and sends nothing.
+`GET /v1/staff/invitation-proposals?status=pending` (`staff_invitation_proposal_list`)
+is the owner's approvals inbox under HUMAN `staff.read`; it projects the proposer's
+kind and agent display name. `GET .../{proposal_id}` serves `staff.read` holders and
+a proposer reading its own proposal (others get 404). `:approve` / `:reject` require
+current HUMAN `staff.invite`, recent administrative authentication, `expected_revision`
+and `Idempotency-Key`; approval creates the invitation through the same write path as
+`staff_invitation_create` in one transaction. PostgreSQL enforces tenant RLS, one
+pending proposal per email, the proposer gate and a HUMAN-manager decision guard.
+Initial controller policy `tenant-controller-v8` adds delegable
+`staff.propose_invitation` so controllers can grant it to agents.
+
 ## Staff administration reads
 
 `GET /v1/staff/members/{membership_id}/history` (`staff_history_list`) exposes
