@@ -161,6 +161,14 @@ class StaffInvitationIdentityAlreadyLinked(StaffMembershipConflict):
     """Invitation acceptance cannot duplicate or revive an existing tenant identity link."""
 
 
+class StaffInvitationProposalDuplicate(StaffMembershipConflict):
+    """A pending proposal or pending invitation already covers this email."""
+
+
+class StaffInvitationProposalNotPending(StaffMembershipConflict):
+    """The proposal was already approved or rejected."""
+
+
 class StaffMembershipInputInvalid(StaffMembershipError):
     """The requested Staff lifecycle mutation violates an input contract."""
 

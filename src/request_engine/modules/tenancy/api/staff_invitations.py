@@ -116,7 +116,7 @@ class StaffInvitationParams(BaseModel):
     limit: int = Field(default=50, ge=1, le=100)
 
 
-def _delivery_failure(
+def delivery_failure_response(
     exc: RecoveryDeliveryError, *, allow_same_request_retry: bool = False
 ) -> JSONResponse:
     temporary = allow_same_request_retry and isinstance(exc, RecoveryDeliveryRetryable)
@@ -161,7 +161,7 @@ def create_staff_invitation_router(
                 CreateStaffInvitationCommand(**body.model_dump(), idempotency_key=idempotency_key),
             )
         except RecoveryDeliveryError as exc:
-            return _delivery_failure(exc, allow_same_request_retry=True)
+            return delivery_failure_response(exc, allow_same_request_retry=True)
         return StaffInvitationView(**asdict(result))
 
     async def list_invitations(
@@ -204,7 +204,7 @@ def create_staff_invitation_router(
                 ),
             )
         except RecoveryDeliveryError as exc:
-            return _delivery_failure(exc, allow_same_request_retry=True)
+            return delivery_failure_response(exc, allow_same_request_retry=True)
         return StaffInvitationView(**asdict(result))
 
     async def revoke(
@@ -224,7 +224,7 @@ def create_staff_invitation_router(
                 ),
             )
         except RecoveryDeliveryError as exc:
-            return _delivery_failure(exc)
+            return delivery_failure_response(exc)
         return StaffInvitationView(**asdict(result))
 
     async def subject(
@@ -254,7 +254,7 @@ def create_staff_invitation_router(
         try:
             result = await commands.accept(authenticated, invitation_id, body.token)
         except RecoveryDeliveryError as exc:
-            return _delivery_failure(exc)
+            return delivery_failure_response(exc)
         return StaffInvitationView(**asdict(result))
 
     async def preview(

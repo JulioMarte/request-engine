@@ -122,7 +122,7 @@ class PostgresStaffInvitationCommands:
         if not 1 <= limit <= 101:
             raise StaffMembershipInputInvalid("Invalid page size")
         async with actor_transaction(self._sessions, actor) as session:
-            await self._assert_read_authority(session, actor)
+            await self.assert_read_authority(session, actor)
             rows = (
                 (
                     await session.execute(
@@ -158,10 +158,10 @@ class PostgresStaffInvitationCommands:
     async def get(self, actor: ActorContext, invitation_id: UUID) -> StaffInvitation:
         _require_actor(actor, "staff.read")
         async with actor_transaction(self._sessions, actor) as session:
-            await self._assert_read_authority(session, actor)
-            return await self._view(session, invitation_id)
+            await self.assert_read_authority(session, actor)
+            return await self.view(session, invitation_id)
 
-    async def _assert_read_authority(self, session: AsyncSession, actor: ActorContext) -> None:
+    async def assert_read_authority(self, session: AsyncSession, actor: ActorContext) -> None:
         permitted = (
             await session.execute(
                 text("""SELECT EXISTS (
@@ -180,7 +180,7 @@ class PostgresStaffInvitationCommands:
         if not permitted:
             raise StaffMembershipForbidden("Current staff inspection authority was withdrawn")
 
-    async def _view(self, session: AsyncSession, invitation_id: UUID) -> StaffInvitation:
+    async def view(self, session: AsyncSession, invitation_id: UUID) -> StaffInvitation:
         row = (
             (await session.execute(text(_PROJECTION + " WHERE i.id = :id"), {"id": invitation_id}))
             .mappings()
@@ -241,7 +241,7 @@ class PostgresStaffInvitationCommands:
                 if row["request_fingerprint"] != fingerprint:
                     raise IdempotencyConflict("staff.invite", key)
                 if row["status"] == "completed":
-                    return await self._view(session, UUID(str(row["result_data"]["invitation_id"])))
+                    return await self.view(session, UUID(str(row["result_data"]["invitation_id"])))
                 return None
         except DBAPIError as exc:
             _db_error(exc)
@@ -269,9 +269,7 @@ class PostgresStaffInvitationCommands:
         replay = await self._completed_replay(actor, command.idempotency_key, fingerprint)
         if replay is not None:
             return replay
-        staged = await self._stage(
-            invitation_id, 1, datetime.now(UTC) + timedelta(hours=command.expires_in_hours)
-        )
+        staged = await self.stage_invitation_secret(invitation_id, command.expires_in_hours)
         try:
             async with actor_transaction(self._sessions, actor) as session:
                 await session.execute(text("SELECT request_cmd.lock_staff_invitation_admin(NULL)"))
@@ -284,47 +282,86 @@ class PostgresStaffInvitationCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return await self._view(session, UUID(str(replay["invitation_id"])))
-                await session.execute(
-                    text(
-                        "UPDATE request_engine.staff_invitations SET status='expired',"
-                        "revision=revision+1,updated_at=clock_timestamp() "
-                        "WHERE email=:email AND status='pending' "
-                        "AND expires_at <= clock_timestamp()"
-                    ),
-                    {"email": email},
-                )
-                await session.execute(
-                    text("""INSERT INTO request_engine.staff_invitations
-                    (id,organization_id,email,invited_by_principal_id,provenance_reference,token_digest,expires_at)
-                    VALUES(:id,:org,:email,:actor,:provenance,:digest,:expiry)"""),
-                    {
-                        "id": invitation_id,
-                        "org": actor.organization_id,
-                        "email": email,
-                        "actor": actor.principal_id,
-                        "provenance": provenance,
-                        "digest": staged.digest,
-                        "expiry": staged.expires_at,
-                    },
-                )
-                assert self._recorder is not None
-                await self._recorder.record(
+                    return await self.view(session, UUID(str(replay["invitation_id"])))
+                await self.insert_staged_invitation(
                     session,
-                    organization_id=actor.organization_id,
+                    actor,
                     invitation_id=invitation_id,
-                    generation=1,
-                    destination_address=email,
-                    secret_reference=staged.reference,
-                    secret_digest=staged.digest,
-                    expires_at=staged.expires_at,
+                    email=email,
+                    provenance=provenance,
+                    staged=staged,
+                    idempotency_id=idem,
                 )
-                await self._audit(session, actor, invitation_id, idem, "create", 0, 1, provenance)
                 await complete_idempotency(session, idem, {"invitation_id": str(invitation_id)})
-                return await self._view(session, invitation_id)
+                return await self.view(session, invitation_id)
         except DBAPIError as exc:
             _db_error(exc)
             raise
+
+    async def stage_invitation_secret(
+        self, invitation_id: UUID, expires_in_hours: int
+    ) -> StagedRecoverySecret:
+        """Stage generation-1 proof outside every authoritative DB transaction."""
+
+        return await self._stage(
+            invitation_id, 1, datetime.now(UTC) + timedelta(hours=expires_in_hours)
+        )
+
+    async def insert_staged_invitation(
+        self,
+        session: AsyncSession,
+        actor: ActorContext,
+        *,
+        invitation_id: UUID,
+        email: str,
+        provenance: str,
+        staged: StagedRecoverySecret,
+        idempotency_id: UUID,
+    ) -> None:
+        """The single pending-invitation write path, inside the caller's transaction.
+
+        Callers must already hold ``request_cmd.lock_staff_invitation_admin(NULL)``
+        (topology gate, tenant staff root and current HUMAN ``staff.invite``). The
+        row guard independently re-asserts the inviter, and Communications records
+        the closed-purpose delivery intent in this same transaction.
+        """
+
+        await session.execute(
+            text(
+                "UPDATE request_engine.staff_invitations SET status='expired',"
+                "revision=revision+1,updated_at=clock_timestamp() "
+                "WHERE email=:email AND status='pending' "
+                "AND expires_at <= clock_timestamp()"
+            ),
+            {"email": email},
+        )
+        await session.execute(
+            text("""INSERT INTO request_engine.staff_invitations
+            (id,organization_id,email,invited_by_principal_id,provenance_reference,token_digest,expires_at)
+            VALUES(:id,:org,:email,:actor,:provenance,:digest,:expiry)"""),
+            {
+                "id": invitation_id,
+                "org": actor.organization_id,
+                "email": email,
+                "actor": actor.principal_id,
+                "provenance": provenance,
+                "digest": staged.digest,
+                "expiry": staged.expires_at,
+            },
+        )
+        if self._recorder is None:
+            raise RecoveryDeliveryUnavailable("Invitation delivery recorder unavailable")
+        await self._recorder.record(
+            session,
+            organization_id=actor.organization_id,
+            invitation_id=invitation_id,
+            generation=1,
+            destination_address=email,
+            secret_reference=staged.reference,
+            secret_digest=staged.digest,
+            expires_at=staged.expires_at,
+        )
+        await self._audit(session, actor, invitation_id, idempotency_id, "create", 0, 1, provenance)
 
     async def resend(
         self, actor: ActorContext, command: ChangeStaffInvitationCommand
@@ -345,7 +382,7 @@ class PostgresStaffInvitationCommands:
         try:
             async with actor_transaction(self._sessions, actor) as session:
                 await session.execute(text("SELECT request_cmd.lock_staff_invitation_admin(NULL)"))
-                current = await self._view(session, command.invitation_id)
+                current = await self.view(session, command.invitation_id)
         except DBAPIError as exc:
             _db_error(exc)
             raise
@@ -403,7 +440,7 @@ class PostgresStaffInvitationCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return await self._view(session, command.invitation_id)
+                    return await self.view(session, command.invitation_id)
                 if row["revision"] != command.expected_revision:
                     raise StaffMembershipRevisionConflict("Invitation changed")
                 if row["status"] != "pending" or row["expires_at"] <= datetime.now(UTC):
@@ -459,7 +496,7 @@ class PostgresStaffInvitationCommands:
                 await complete_idempotency(
                     session, idem, {"invitation_id": str(command.invitation_id)}
                 )
-                return await self._view(session, command.invitation_id)
+                return await self.view(session, command.invitation_id)
         except DBAPIError as exc:
             _db_error(exc)
             raise
@@ -503,7 +540,7 @@ class PostgresStaffInvitationCommands:
                     .one()
                 )
                 if row["status"] == "accepted":
-                    return await self._view(session, invitation_id)
+                    return await self.view(session, invitation_id)
                 membership, principal, binding = uuid4(), uuid4(), uuid4()
                 await session.execute(
                     text(
@@ -526,7 +563,7 @@ class PostgresStaffInvitationCommands:
                 await self._recorder.cancel(
                     session, organization_id=row["organization_id"], invitation_id=invitation_id
                 )
-                return await self._view(session, invitation_id)
+                return await self.view(session, invitation_id)
         except DBAPIError as exc:
             _db_error(exc, acceptance=True)
             raise

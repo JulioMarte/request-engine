@@ -2,7 +2,10 @@
 
 > **Current scope (2026-10-11):** this document governs **tenant** initial-controller
 > policy only. It does not define the new platform-owner policy from ADR 0014.
-> Current application code selects `tenant-controller-v7` for new organizations.
+> Current application code selects `tenant-controller-v8` for new organizations
+> (migration `0043_staff_invitation_proposals`: v7 plus delegable operational
+> `staff.propose_invitation`, ADR 0019; v1-v7 roots reach v8 only through
+> dual-consent adoption, and apply accepts v1-v5→v6, v1-v6→v7 and v1-v7→v8).
 > Immutable v1–v6 remain historical authority manifests, not rewritten defaults.
 
 Current migration: `0040_tenant_controller_v7` appends v7 after

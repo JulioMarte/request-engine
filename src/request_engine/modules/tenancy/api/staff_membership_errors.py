@@ -3,6 +3,8 @@ from fastapi.responses import JSONResponse
 
 from request_engine.modules.tenancy.application.errors import (
     StaffInvitationIdentityAlreadyLinked,
+    StaffInvitationProposalDuplicate,
+    StaffInvitationProposalNotPending,
     StaffMembershipConflict,
     StaffMembershipError,
     StaffMembershipForbidden,
@@ -37,6 +39,18 @@ def _staff_membership_error(exc: StaffMembershipError) -> tuple[int, ErrorBody]:
                 "resending an invitation will not restore access."
             ),
             resolution=ErrorResolution.REQUEST_AUTHORITY,
+        )
+    if isinstance(exc, StaffInvitationProposalDuplicate):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="staff_invitation_proposal_duplicate",
+            message="a pending proposal or pending invitation already exists for this email",
+            resolution=ErrorResolution.FIX_REQUEST,
+        )
+    if isinstance(exc, StaffInvitationProposalNotPending):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="staff_invitation_proposal_not_pending",
+            message="the staff invitation proposal was already decided",
+            resolution=ErrorResolution.FIX_REQUEST,
         )
     if isinstance(exc, StaffMembershipForbidden):
         return status.HTTP_403_FORBIDDEN, ErrorBody(

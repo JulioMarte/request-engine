@@ -315,6 +315,13 @@ required_evidence = ["invariant", "adversarial", "contract"]
 risk = ["security"]
 
 [[guarantees]]
+id = "INV-STAFF-INVITATION-PROPOSAL-001"
+statement = "An AGENT (or HUMAN) holding operational staff.propose_invitation may only record an inert, tenant-isolated pending staff invitation proposal that grants, stages and sends nothing and is unique per organization and normalized email while pending; only a current recently authenticated HUMAN staff.invite manager can approve it (creating exactly one invitation through the ordinary staff invitation path in the same transaction) or reject it, decisions are revision-checked with exactly one concurrent winner, and agents are denied decisions in Python, by the AUTHORITY_CHANGE risk ban and by the PostgreSQL manager gate and decision guard (ADR 0019)."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency", "contract"]
+risk = ["security"]
+
+[[guarantees]]
 id = "INV-IDENTITY-TOPOLOGY-GATE-001"
 statement = "Every command that can alter identity bindings, control grants, staff memberships or the reachability they express acquires the transaction-scoped identity-topology advisory gate as its first statement, before any row lock; global disable or global authority modification takes it exclusively, ordinary reads and native login never acquire it, and any unclassified topology writer fails a deterministic inventory proof."
 severity = "critical"
