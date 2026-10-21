@@ -253,6 +253,22 @@ async def test_owner_calls_starts_and_finishes_a_booked_customer_from_today(
         assert finished.status_code == 303, finished.text
         assert finished.headers["location"] == f"/tenants/{org}/today?done=completed"
 
+        # After the visit the owner day board still reports it as a served visit
+        # (Today renders only the real current business day, so the "Seen at"
+        # rendering itself is proven by the console unit tests).
+        served_board = await owner.runtime.get(
+            "/v1/appointments/day-board",
+            params={"window_start": f"{_DAY}T00:00:00+00:00", "window_end": "2030-01-08T00:00:00Z"},
+            headers=headers,
+        )
+        assert served_board.status_code == 200, served_board.text
+        (served,) = [
+            item for item in served_board.json() if item["reservation_id"] == str(reservation_id)
+        ]
+        assert served["active_queue_entry_count"] == 0
+        assert served["served_queue_entry_id"] == str(entry_id)
+        assert served["served_at"] is not None and served["visit_arrived_at"] is not None
+
     session_row = _one(
         conn,
         "SELECT status, completed_at IS NOT NULL FROM request_engine.service_sessions "

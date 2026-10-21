@@ -34,3 +34,9 @@ class ReservationDayBoardEntry:
     recall_hold_event_key: str | None
     recall_hold_reason: str | None
     active_skip_reason: str | None
+    # The reservation's most recent completed visit (ServiceSession completion)
+    # and when the customer of the current or served visit first arrived. Unlike
+    # the active queue fields above, these stay set after the visit completes.
+    served_queue_entry_id: UUID | None = None
+    served_at: datetime | None = None
+    visit_arrived_at: datetime | None = None

@@ -41,7 +41,8 @@ class PostgresReservationDayBoardReader:
                                active_queue_entry_count, queue_entry_id,
                                queue_entry_status, recall_eligible,
                                recall_hold_id, recall_hold_kind, recall_hold_until_at,
-                               recall_hold_event_key, recall_hold_reason, active_skip_reason
+                               recall_hold_event_key, recall_hold_reason, active_skip_reason,
+                               served_queue_entry_id, served_at, visit_arrived_at
                           FROM request_read.reservation_day_v1
                          WHERE organization_id = :organization_id
                            AND during && tstzrange(:window_start, :window_end, '[)')
@@ -97,4 +98,7 @@ def _entry_from_row(row: RowMapping) -> ReservationDayBoardEntry:
         recall_hold_event_key=cast(str | None, row["recall_hold_event_key"]),
         recall_hold_reason=cast(str | None, row["recall_hold_reason"]),
         active_skip_reason=cast(str | None, row["active_skip_reason"]),
+        served_queue_entry_id=cast(UUID | None, row["served_queue_entry_id"]),
+        served_at=cast(datetime | None, row["served_at"]),
+        visit_arrived_at=cast(datetime | None, row["visit_arrived_at"]),
     )

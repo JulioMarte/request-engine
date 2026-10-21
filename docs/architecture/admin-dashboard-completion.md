@@ -70,8 +70,13 @@ person represents with `operations.manage_supply` (from `authority_read_self`). 
 three are business-configuration reads; Today only reads them and the architecture proof
 rejects any configuration command in `TODAY_OPERATION_IDS`. Someone without those reads
 is told which permission is missing instead of being shown a form. Arrival on the day
-board counts both owner facts: the reservation's attendance check-in and the active queue
-entry created by queue check-in.
+board counts the owner facts: the reservation's attendance check-in, the active queue
+entry created by queue check-in, and the served visit the day board keeps after
+completion (`served_at` from the completed ServiceSession, `visit_arrived_at` from the
+visit's queue entries). A served booking reads "Seen at HH:MM" in business time, counts
+as checked in and seen, and is offered no check-in, attendance or arrival-estimate
+action. Move and cancel stay offered because the booking owner still accepts them for a
+confirmed reservation whose visit completed.
 
 Today also projects public owner operations for the receptionist journey:
 `parties_lookup`, `parties_register`, `catalog_search_offerings`,
