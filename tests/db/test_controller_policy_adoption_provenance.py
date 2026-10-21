@@ -65,6 +65,24 @@ def test_tenant_controller_cannot_be_recorded_as_platform_approver(
     ).fetchone()
     assert root is not None
     binding_id = cast(UUID, root[0])
+    # A pending adoption request snapshots the controller's native recovery
+    # posture at consent time (0035); take it from the provisioned binding.
+    posture = admin_conn.execute(
+        """
+        SELECT native.id, COALESCE(state.recovery_epoch, 0)
+          FROM request_engine.identity_bindings binding
+          JOIN request_engine.native_identities native
+            ON native.identity_authority_id = binding.identity_authority_id
+           AND native.id::text = binding.subject_id
+          LEFT JOIN request_engine.native_identity_recovery_state state
+            ON state.native_identity_id = native.id
+         WHERE binding.id = %s
+        """,
+        (binding_id,),
+    ).fetchone()
+    assert posture is not None
+    native_identity_id = cast(UUID, posture[0])
+    recovery_epoch = cast(int, posture[1])
     # The isolated fixture's platform provisioner is used only to establish the
     # valid organization/root/binding references. The guard under test concerns
     # the separate platform-approver reference, not the policy transition.
@@ -79,9 +97,10 @@ def test_tenant_controller_cannot_be_recorded_as_platform_approver(
         INSERT INTO request_engine.controller_policy_adoption_requests(
             id,organization_id,controller_principal_id,controller_binding_id,
             source_policy_key,target_policy_key,expected_authority_revision,reason,
-            idempotency_key_digest,intent_digest,correlation_id,expires_at
+            idempotency_key_digest,intent_digest,correlation_id,expires_at,
+            controller_native_identity_id,controller_recovery_epoch
         ) VALUES (%s,%s,%s,%s,%s,'tenant-controller-v6',%s,'provenance backstop test',
-                  %s,%s,%s,clock_timestamp()+interval '1 hour')
+                  %s,%s,%s,clock_timestamp()+interval '1 hour',%s,%s)
         """,
         (
             request_id,
@@ -93,6 +112,8 @@ def test_tenant_controller_cannot_be_recorded_as_platform_approver(
             request_digest,
             intent_digest,
             correlation_id,
+            native_identity_id,
+            recovery_epoch,
         ),
     )
 
