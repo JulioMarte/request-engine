@@ -6,6 +6,8 @@ are the owner's, not a hand-written copy. Responses are controlled; runtime
 authorization itself is proven by owner and PostgreSQL E2E tests.
 """
 
+import html
+import re
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from functools import cache
@@ -20,6 +22,12 @@ from pydantic import SecretStr
 
 from request_engine.entrypoints.http.admin_console.app import create_admin_console_app
 from request_engine.entrypoints.http.admin_console.client import ControlResponse
+from request_engine.entrypoints.http.admin_console.routes_tenant_workspace import (
+    arrival_label,
+    attendance_label,
+    booking_status_label,
+    checked_in_count,
+)
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
 from request_engine.entrypoints.http.app import create_native_app
 
@@ -503,3 +511,331 @@ async def test_slot_search_uses_business_day_and_offers_signed_options(tmp_path:
     # The business day 2026-10-22 in Santo Domingo starts at 04:00 UTC.
     assert params["window_start"] == "2026-10-22T04:00:00+00:00"
     assert params["window_end"] == "2026-10-23T04:00:00+00:00"
+
+
+RESOURCE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+OTHER_RESOURCE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+OTHER_LOCATION = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+RETIRED_RESOURCE = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+SUPPLY_PARTY = "f0f0f0f0-f0f0-4f0f-8f0f-f0f0f0f0f0f0"
+PROFILE_PARTY = "f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1"
+SESSION = "abababab-abab-4bab-8bab-abababababab"
+
+
+def _html_text(markup: str) -> str:
+    """Visible text with tags removed and whitespace collapsed (entities decoded)."""
+
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", markup)).split())
+
+
+def _called_entry(**changes: Any) -> dict[str, Any]:
+    return {
+        "queue_entry_id": ENTRY,
+        "subject_display_name": "Luis Rojas",
+        "status": "called",
+        "admitted_at": "2026-10-20T13:00:00Z",
+        "queue_revision": 5,
+        "service_session_id": None,
+        "service_status": None,
+        "service_revision": None,
+        "recall_hold_id": None,
+        **changes,
+    }
+
+
+def _assignment(resource: str, location: str, **changes: Any) -> dict[str, Any]:
+    return {
+        "assignment_id": resource,
+        "resource_id": resource,
+        "location_id": location,
+        "status": "active",
+        "effective_from": "2026-01-01T00:00:00Z",
+        "effective_until": None,
+        "assignment_revision": 1,
+        "resource_availability_revision": 1,
+        **changes,
+    }
+
+
+def _service_routes() -> dict[tuple[str, str], ControlResponse]:
+    routes = _today_routes()
+    routes[("GET", f"/v1/queues/{QUEUE}/staff")] = _ok([_called_entry()])
+    routes[("GET", "/v1/me/authority")] = _ok(
+        {
+            "representations": [
+                {"scope_key": "operations.manage_profile", "represented_party_id": PROFILE_PARTY},
+                {"scope_key": "operations.manage_supply", "represented_party_id": SUPPLY_PARTY},
+            ],
+            "next_after": None,
+        }
+    )
+    routes[("GET", "/v1/booking/resources")] = _ok(
+        {
+            "items": [
+                {"resource_id": RESOURCE, "display_name": "Dra. Ana Pérez", "active": True},
+                {"resource_id": OTHER_RESOURCE, "display_name": "Dr. Otro Sitio", "active": True},
+                {"resource_id": RETIRED_RESOURCE, "display_name": "Sala vieja", "active": True},
+            ],
+            "next_cursor": None,
+        }
+    )
+    routes[("GET", "/v1/operations/resource-assignments")] = _ok(
+        {
+            "items": [
+                _assignment(RESOURCE, LOCATION),
+                _assignment(OTHER_RESOURCE, OTHER_LOCATION),
+                _assignment(RETIRED_RESOURCE, LOCATION, effective_until="2026-02-01T00:00:00Z"),
+            ],
+            "next_cursor": None,
+        }
+    )
+    return routes
+
+
+@pytest.mark.asyncio
+async def test_called_customer_can_start_service_with_staff_at_the_queue_location(
+    tmp_path: Path,
+) -> None:
+    runtime = _Upstream(_service_routes())
+    async with _signed_in(_console(tmp_path, runtime)) as client:
+        page = await client.get(f"/tenants/{ORG}/today")
+    text = page.text
+    assert page.status_code == 200, text
+    assert f"/today/entries/{ENTRY}/start-service" in text
+    assert 'name="expected_queue_revision" value="5"' in text
+    # Only the resource assigned NOW to this queue's location is offered.
+    assert f'value="{RESOURCE}@{LOCATION}"' in text and "Dra. Ana Pérez" in text
+    assert OTHER_RESOURCE not in text and RETIRED_RESOURCE not in text
+    # Supply reads are scoped to the Party represented for supply, not another scope.
+    supply_reads = [
+        call
+        for call in runtime.calls
+        if call[1] in {"/v1/booking/resources", "/v1/operations/resource-assignments"}
+    ]
+    assert len(supply_reads) == 2
+    assert all(call[2]["params"]["authority_party_id"] == SUPPLY_PARTY for call in supply_reads)
+
+
+@pytest.mark.asyncio
+async def test_supply_reads_are_skipped_when_nobody_is_waiting_to_start(tmp_path: Path) -> None:
+    runtime = _Upstream(_today_routes())
+    async with _signed_in(_console(tmp_path, runtime)) as client:
+        await client.get(f"/tenants/{ORG}/today")
+    assert not [call for call in runtime.calls if call[1] == "/v1/booking/resources"]
+
+
+@pytest.mark.parametrize(
+    ("route", "answer", "explanation"),
+    [
+        (
+            ("GET", "/v1/booking/resources"),
+            _error(403, "capability_required"),
+            'you need the "See availability and resources" and "Start a service" permissions',
+        ),
+        (
+            ("GET", "/v1/me/authority"),
+            _ok({"representations": [], "next_after": None}),
+            "you don't manage this business's doctors and rooms",
+        ),
+        (
+            ("GET", "/v1/operations/resource-assignments"),
+            _error(503, "unavailable"),
+            "The list of doctors and rooms could not be loaded",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_missing_staff_read_is_explained_instead_of_a_broken_form(
+    tmp_path: Path, route: tuple[str, str], answer: ControlResponse, explanation: str
+) -> None:
+    routes = _service_routes()
+    routes[route] = answer
+    runtime = _Upstream(routes)
+    async with _signed_in(_console(tmp_path, runtime)) as client:
+        page = await client.get(f"/tenants/{ORG}/today")
+    assert page.status_code == 200, page.text
+    assert explanation in _html_text(page.text)
+    assert "/start-service" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_no_staff_at_the_location_invites_adding_one(tmp_path: Path) -> None:
+    routes = _service_routes()
+    routes[("GET", "/v1/operations/resource-assignments")] = _ok(
+        {"items": [_assignment(OTHER_RESOURCE, OTHER_LOCATION)], "next_cursor": None}
+    )
+    runtime = _Upstream(routes)
+    async with _signed_in(_console(tmp_path, runtime)) as client:
+        page = await client.get(f"/tenants/{ORG}/today")
+    assert "No doctor or room works at this location right now" in page.text
+    assert f'href="/tenants/{ORG}/setup?step=providers"' in page.text
+    assert "/start-service" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_customer_in_service_offers_finish_not_start(tmp_path: Path) -> None:
+    routes = _service_routes()
+    routes[("GET", f"/v1/queues/{QUEUE}/staff")] = _ok(
+        [
+            _called_entry(
+                status="serving",
+                service_session_id=SESSION,
+                # The owner read carries the ServiceSession status column itself.
+                service_status="active",
+                service_revision=1,
+                queue_revision=6,
+            )
+        ]
+    )
+    runtime = _Upstream(routes)
+    async with _signed_in(_console(tmp_path, runtime)) as client:
+        page = await client.get(f"/tenants/{ORG}/today")
+    text = page.text
+    assert f"/today/sessions/{SESSION}/complete" in text
+    assert 'name="expected_revision" value="1"' in text
+    assert "Being served" in text
+    assert "/start-service" not in text
+    assert not [call for call in runtime.calls if call[1] == "/v1/booking/resources"]
+
+
+@pytest.mark.asyncio
+async def test_start_service_posts_owner_payload_with_intent_key(tmp_path: Path) -> None:
+    routes = _service_routes()
+    upstream = f"/v1/queue-entries/{ENTRY}/service/start"
+    routes[("POST", upstream)] = _ok({"id": SESSION, "status": "in_progress"}, 201)
+    runtime = _Upstream(routes)
+    async with _signed_in(_console(tmp_path, runtime)) as client:
+        csrf = await _today_csrf(client)
+        response = await client.post(
+            f"/tenants/{ORG}/today/entries/{ENTRY}/start-service",
+            data={
+                "csrf_token": csrf,
+                "_intent_id": "start-service-intent-1",
+                "staff": f"{RESOURCE}@{LOCATION}",
+                "expected_queue_revision": "5",
+            },
+        )
+    assert response.status_code == 303, response.text
+    assert response.headers["location"] == f"/tenants/{ORG}/today?done=started"
+    (call,) = runtime.posted(upstream)
+    assert call["json_body"] == {
+        "resource_id": RESOURCE,
+        "location_id": LOCATION,
+        "expected_queue_revision": 5,
+    }
+    assert call["extra_headers"]["idempotency-key"] == "start-service-intent-1"
+    assert call["bearer"] == "verified-token"
+
+
+@pytest.mark.asyncio
+async def test_start_service_without_a_choice_never_reaches_the_owner(tmp_path: Path) -> None:
+    runtime = _Upstream(_service_routes())
+    async with _signed_in(_console(tmp_path, runtime)) as client:
+        csrf = await _today_csrf(client)
+        response = await client.post(
+            f"/tenants/{ORG}/today/entries/{ENTRY}/start-service",
+            data={
+                "csrf_token": csrf,
+                "_intent_id": "start-service-intent-2",
+                "staff": "",
+                "expected_queue_revision": "5",
+            },
+        )
+    assert response.status_code == 422
+    assert "Choose the doctor or room" in response.text
+    assert not runtime.posted(f"/v1/queue-entries/{ENTRY}/service/start")
+
+
+@pytest.mark.asyncio
+async def test_counts_and_labels_follow_the_owner_day_board(tmp_path: Path) -> None:
+    routes = _today_routes()
+    board = cast(list[dict[str, Any]], routes[("GET", "/v1/appointments/day-board")].payload)
+    # Checked in through the queue: the reservation's own attendance check-in
+    # stays empty and the owner reports the active queue entry instead.
+    board[0] = {
+        **board[0],
+        "attendance_status": "accepted",
+        "active_queue_entry_count": 1,
+        "queue_entry_id": ENTRY,
+        "queue_entry_status": "called",
+    }
+    board.append(
+        {
+            **board[0],
+            "reservation_id": VERSION,
+            "subject_display_name": "Pedro Gil",
+            "attendance_status": "pending",
+            "active_queue_entry_count": 0,
+            "queue_entry_id": None,
+            "queue_entry_status": None,
+        }
+    )
+    runtime = _Upstream(routes)
+    async with _signed_in(_console(tmp_path, runtime)) as client:
+        page = await client.get(f"/tenants/{ORG}/today")
+    text = _html_text(page.text)
+    assert "2 Booked" in text
+    assert "1 Checked in" in text
+    assert "Called to the counter" in text
+    assert "Booked · Said they're coming" in text
+    assert "Booked · No answer yet" in text
+    assert "confirmed" not in text.casefold()
+    # The arrived customer is not offered a second check-in; the other one is.
+    assert f"/today/appointments/{RESERVATION}/check-in" not in page.text
+    assert f"/today/appointments/{VERSION}/check-in" in page.text
+
+
+@pytest.mark.parametrize(
+    ("entry", "label"),
+    [
+        ({"checked_in_at": "2026-10-21T14:01:00Z"}, "Checked in"),
+        ({"active_queue_entry_count": 1}, "Checked in"),
+        ({"active_queue_entry_count": 1, "queue_entry_status": "waiting"}, "Waiting in line"),
+        ({"active_queue_entry_count": 1, "queue_entry_status": "serving"}, "Being served"),
+        ({"active_queue_entry_count": 0, "checked_in_at": None}, ""),
+    ],
+)
+def test_arrival_label_reads_both_owner_arrival_facts(entry: dict[str, Any], label: str) -> None:
+    assert arrival_label(entry) == label
+    assert checked_in_count([entry]) == (1 if label else 0)
+
+
+@pytest.mark.parametrize(
+    ("status", "attendance", "status_label", "attendance_text"),
+    [
+        ("confirmed", "accepted", "Booked", "Said they're coming"),
+        ("confirmed", "declined", "Booked", "Said they're not coming"),
+        ("confirmed", "pending", "Booked", "No answer yet"),
+        ("cancelled", "", "Cancelled", "No answer yet"),
+        ("pending_payment", "maybe_later", "Pending payment", "Maybe later"),
+    ],
+)
+def test_booking_and_attendance_labels_are_distinct_and_readable(
+    status: str, attendance: str, status_label: str, attendance_text: str
+) -> None:
+    assert booking_status_label(status) == status_label
+    assert attendance_label(attendance) == attendance_text
+
+
+@pytest.mark.asyncio
+async def test_signed_out_page_keeps_its_place_but_a_form_post_does_not(tmp_path: Path) -> None:
+    app = _console(tmp_path, _Upstream(_today_routes()))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://console",
+        headers={"Origin": "http://console"},
+    ) as client:
+        page = await client.get(f"/tenants/{ORG}/today", params={"done": "called"})
+        slots = await client.get(
+            f"/tenants/{ORG}/today/visit/{PARTY}", params={"offering_version_id": VERSION}
+        )
+        posted = await client.post(
+            f"/tenants/{ORG}/today/queues/{QUEUE}/call-next", data={"csrf_token": "x"}
+        )
+    assert page.status_code == 303
+    assert page.headers["location"] == f"/login?next=%2Ftenants%2F{ORG}%2Ftoday%3Fdone%3Dcalled"
+    assert slots.headers["location"] == (
+        f"/login?next=%2Ftenants%2F{ORG}%2Ftoday%2Fvisit%2F{PARTY}"
+        f"%3Foffering_version_id%3D{VERSION}"
+    )
+    assert posted.status_code == 303 and posted.headers["location"] == "/login"

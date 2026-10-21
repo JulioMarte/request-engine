@@ -457,13 +457,16 @@ dl.detail dd { margin: 0; overflow-wrap: anywhere; }
 
 .queue-actions { display: flex; flex-wrap: wrap; gap: .5rem; padding: 0 1.2rem 1rem; }
 .waiting-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
-.waiting-list li { display: grid; grid-template-columns: 2.6rem 1fr auto; align-items: center; gap: .7rem; padding: .7rem 1.2rem; border-bottom: 1px solid var(--line); }
+.waiting-list li { display: grid; grid-template-columns: 2.6rem minmax(8rem, 1fr) auto; align-items: center; gap: .7rem; padding: .7rem 1.2rem; border-bottom: 1px solid var(--line); }
 .waiting-list li:last-child { border-bottom: 0; }
 .waiting-pos { display: grid; place-items: center; width: 2.2rem; height: 2.2rem; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--r-control); font-weight: 700; }
 .waiting-list strong { display: block; overflow-wrap: anywhere; }
 .waiting-list small { color: var(--muted); font-size: .85rem; }
 .entry-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; justify-content: flex-end; }
 .entry-actions button { min-height: 34px; padding: .3rem .65rem; font-size: .84rem; }
+.entry-actions .start-service { flex-basis: 100%; justify-content: flex-end; }
+.entry-actions .start-service label { font-size: .84rem; font-weight: 600; }
+.entry-actions .unavailable-note { flex-basis: 100%; padding: 0; text-align: right; font-size: .84rem; }
 
 /* Day sheet: hour rows with booked blocks. */
 .day-sheet { margin: 0; padding: 0; list-style: none; }
@@ -584,6 +587,8 @@ dl.detail dd { margin: 0; overflow-wrap: anywhere; }
   .permission-choice { flex-wrap: wrap; }
   .waiting-list li { grid-template-columns: 2.4rem 1fr; }
   .entry-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .entry-actions .start-service { justify-content: flex-start; }
+  .entry-actions .unavailable-note { text-align: left; }
   .booking { grid-template-columns: 1fr; }
   .agent-list li, .approval-list li { grid-template-columns: 1fr; }
   .secret-value { flex-direction: column; }

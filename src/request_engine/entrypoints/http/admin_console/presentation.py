@@ -330,8 +330,9 @@ for _destination, _reason, _ids in (
         "tenant-today",
         (
             "The Today front desk reads the live queue and day board and runs check-in, "
-            "call next/now, set aside, no-show, skip and finish service; it also projects "
-            "public booking, customer lookup and attendance operations (TODAY_OPERATION_IDS)"
+            "call next/now, set aside, no-show, skip, start and finish service; it also "
+            "projects public booking, customer lookup and attendance operations "
+            "(TODAY_OPERATION_IDS)"
         ),
         (
             "appointments_day_board",
@@ -344,6 +345,7 @@ for _destination, _reason, _ids in (
             "queue_skip",
             "queue_staff_read",
             "service_session_complete",
+            "service_session_start",
         ),
     ),
     (
@@ -369,7 +371,6 @@ for _destination, _reason, _ids in (
             "service_session_pause",
             "service_session_read",
             "service_session_resume",
-            "service_session_start",
         ),
     ),
     (

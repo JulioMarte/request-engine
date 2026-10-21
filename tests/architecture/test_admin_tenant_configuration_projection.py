@@ -354,9 +354,22 @@ def test_today_front_desk_projects_only_mounted_owner_operations(
         for operation_id, (destination, _) in TENANT_RUNTIME_EXTERNAL_DESTINATIONS.items()
         if destination == "tenant-today"
     }
+    # Operator business-configuration operations keep their configuration
+    # destination. Today may only READ them (who works where, for "Start
+    # service"); it never runs an operator configuration command.
+    configuration_today = {
+        operation_id
+        for operation_id in TODAY_OPERATION_IDS & TENANT_CONFIGURATION_OPERATION_IDS
+        if by_id[operation_id].exposure == "operator"
+    }
+    assert configuration_today, "Today reads who works where from business configuration"
+    for operation_id in configuration_today:
+        assert by_id[operation_id].method.upper() == "GET", operation_id
+        assert not by_id[operation_id].is_mutating, operation_id
+    assert not declared_today & TENANT_CONFIGURATION_OPERATION_IDS
     operator_today = {
         operation_id
-        for operation_id in TODAY_OPERATION_IDS
+        for operation_id in TODAY_OPERATION_IDS - configuration_today
         if by_id[operation_id].exposure == "operator"
     }
     assert declared_today == operator_today

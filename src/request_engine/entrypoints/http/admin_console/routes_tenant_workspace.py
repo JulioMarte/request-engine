@@ -34,7 +34,13 @@ from request_engine.entrypoints.http.admin_console.execution import (
     execute_operation,
     form_error,
 )
+from request_engine.entrypoints.http.admin_console.front_desk_service import (
+    SERVICE_STAFF_OPERATION_IDS,
+    ServiceStaff,
+    load_service_staff,
+)
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.session import AdminSession
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
@@ -74,6 +80,7 @@ _DONE_NOTICES = {
     "called": "Next customer called.",
     "no_show": "Marked as no-show.",
     "skipped": "Customer skipped.",
+    "started": "Service started.",
     "completed": "Service finished.",
     "checked_in": "Customer checked in.",
     "walk_in": "Customer added to the queue.",
@@ -89,6 +96,61 @@ _DONE_NOTICES = {
 }
 _OPEN_RESERVATION_STATUSES = frozenset({"confirmed"})
 _ANSWERED_ATTENDANCE = frozenset({"accepted", "declined"})
+# Reservation status (is the booking still held?) and the customer's attendance
+# answer (did they say they will come?) are distinct owner facts; the labels keep
+# them distinct for a receptionist instead of printing both as "confirmed".
+_BOOKING_STATUS_LABELS = {
+    "confirmed": "Booked",
+    "cancelled": "Cancelled",
+    "canceled": "Cancelled",
+    "released": "Released",
+    "expired": "Expired",
+}
+_ATTENDANCE_LABELS = {
+    "accepted": "Said they're coming",
+    "declined": "Said they're not coming",
+    "pending": "No answer yet",
+}
+# Arrival as the day board reports it: the reservation's own attendance check-in,
+# or the active queue entry the front desk created by checking the customer in.
+_ARRIVAL_LABELS = {
+    "waiting": "Waiting in line",
+    "called": "Called to the counter",
+    "serving": "Being served",
+}
+
+
+def _readable(value: str) -> str:
+    return value.replace("_", " ").strip().capitalize()
+
+
+def booking_status_label(status: str) -> str:
+    return _BOOKING_STATUS_LABELS.get(status) or _readable(status) or "Unknown"
+
+
+def attendance_label(answer: str) -> str:
+    return _ATTENDANCE_LABELS.get(answer or "pending") or _readable(answer)
+
+
+def _count(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def arrival_label(entry: Mapping[str, Any]) -> str:
+    """How far the customer got today, from the owner's day-board row ("" = not arrived)."""
+
+    queue_status = entry.get("queue_entry_status")
+    if isinstance(queue_status, str) and queue_status in _ARRIVAL_LABELS:
+        return _ARRIVAL_LABELS[queue_status]
+    if entry.get("checked_in_at") or _count(entry.get("active_queue_entry_count")) > 0:
+        return "Checked in"
+    return ""
+
+
+def checked_in_count(entries: list[dict[str, Any]]) -> int:
+    """Bookings whose customer arrived: checked in on the reservation or present in a queue."""
+
+    return sum(1 for entry in entries if arrival_label(entry))
 
 
 @dataclass
@@ -165,7 +227,8 @@ def day_sheet(entries: list[dict[str, Any]], zone: ZoneInfo, now: datetime) -> l
         local_start = start.astimezone(zone)
         status = str(entry.get("status") or "")
         outcome = str(entry.get("attendance_outcome") or "")
-        css = "checked-in" if entry.get("checked_in_at") else ""
+        arrival = arrival_label(entry)
+        css = "checked-in" if arrival else ""
         if entry.get("no_show_at") or outcome == "no_show":
             css = "no-show"
         elif status in {"cancelled", "canceled", "released", "expired"}:
@@ -183,20 +246,20 @@ def day_sheet(entries: list[dict[str, Any]], zone: ZoneInfo, now: datetime) -> l
                 "name": entry.get("subject_display_name") or "Customer",
                 "start": local_start.strftime("%H:%M"),
                 "end": end.astimezone(zone).strftime("%H:%M") if end else "",
-                "status": status.replace("_", " "),
+                "status": booking_status_label(status),
                 "css": css,
-                "checked_in": bool(entry.get("checked_in_at")),
+                "checked_in": bool(arrival),
+                "arrival": arrival,
                 "reservation_id": entry.get("reservation_id"),
                 "revision": entry.get("revision"),
                 "subject_party_id": entry.get("subject_party_id"),
                 "offering_version_id": entry.get("offering_version_id"),
                 "location_id": entry.get("location_id"),
                 "attendance": str(entry.get("attendance_status") or ""),
+                "attendance_label": attendance_label(str(entry.get("attendance_status") or "")),
                 "eta": estimate.astimezone(zone).strftime("%H:%M") if estimate else "",
                 "open": open_booking and bool(entry.get("reservation_id")),
-                "can_check_in": open_booking
-                and not entry.get("checked_in_at")
-                and not entry.get("active_queue_entry_count"),
+                "can_check_in": open_booking and not arrival,
                 "needs_answer": open_booking
                 and str(entry.get("attendance_status") or "") not in _ANSWERED_ATTENDANCE,
             }
@@ -220,8 +283,9 @@ def _queue_view(queue: dict[str, Any], read: RuntimeRead) -> _QueueView:
         return view
     for raw in as_list(read.payload):
         entry = dict(as_mapping(raw))
-        service = entry.get("service_status")
-        if service in {"in_progress", "paused"}:
+        # A started service makes the queue entry "serving"; its ServiceSession
+        # status is "active" or "paused" (never "in_progress" in the owner read).
+        if entry.get("status") == "serving" or entry.get("service_status") in {"active", "paused"}:
             view.serving.append(entry)
         elif entry.get("status") == "called":
             view.called.append(entry)
@@ -337,7 +401,7 @@ async def front_desk_post(
 ) -> FrontDeskPost | Response:
     session = state.session(request)
     if session is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if state.runtime is None:
         return workspace_unavailable(state, request, "Today unavailable")
     form = await request.form()
@@ -448,6 +512,27 @@ def _with_local_instant(target: str, names: tuple[str, ...], **fixed: str) -> Su
     return build
 
 
+def start_service_submission(queue_entry_id: str) -> SubmissionBuilder:
+    """Map the Start service form onto ``service_session_start``.
+
+    The doctor/room choice carries the resource and the location of the
+    assignment it was offered from; the queue revision comes from the staff read.
+    The owner validates all three.
+    """
+
+    def build(values: Mapping[str, str]) -> dict[str, str] | ExecutionOutcome:
+        resource_id, _, location_id = values.get("staff", "").partition("@")
+        if not resource_id or not location_id:
+            return form_error("Choose the doctor or room who will see this customer.")
+        submitted = _picked(values, ("expected_queue_revision",), {})
+        submitted.update(
+            queue_entry_id=queue_entry_id, resource_id=resource_id, location_id=location_id
+        )
+        return submitted
+
+    return build
+
+
 def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def _operations(names: tuple[str, ...]) -> dict[str, AdminOperation | None]:
         return await runtime_operations(state, names)
@@ -472,10 +557,18 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
     def _unavailable(request: Request, title: str) -> Response:
         return workspace_unavailable(state, request, title)
 
+    async def _service_staff(org: str, bearer: str, now: datetime) -> ServiceStaff:
+        ops = await _operations(SERVICE_STAFF_OPERATION_IDS)
+
+        async def read_page(operation_id: str, params: dict[str, str]) -> RuntimeRead:
+            return await _read(ops[operation_id], organization_id=org, bearer=bearer, params=params)
+
+        return await load_service_staff(read_page, now)
+
     async def home(request: Request, organization_id: UUID) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse(f"/login?next=/tenants/{organization_id}", status_code=303)
+            return login_redirect(request)
         if state.runtime is None:
             return _unavailable(request, "Business home unavailable")
         org = str(organization_id)
@@ -505,7 +598,7 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
             ),
         )
         if 401 in {business.status, readiness.status, team.status}:
-            response = RedirectResponse("/login", status_code=303)
+            response = login_redirect(request)
             state.clear_session(response, request)
             return response
         agent_items = [
@@ -549,9 +642,7 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
     async def today(request: Request, organization_id: UUID, done: str = "") -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse(
-                f"/login?next=/tenants/{organization_id}/today", status_code=303
-            )
+            return login_redirect(request)
         if state.runtime is None:
             return _unavailable(request, "Today unavailable")
         org = str(organization_id)
@@ -567,7 +658,7 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
             _read(ops["queue_list"], organization_id=org, bearer=bearer),
         )
         if 401 in {business.status, queues.status}:
-            response = RedirectResponse("/login", status_code=303)
+            response = login_redirect(request)
             state.clear_session(response, request)
             return response
         zone, zone_name = business_zone(business.payload)
@@ -611,6 +702,12 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
         queue_views = [
             _queue_view(queue, read) for queue, read in zip(active_queues, queue_reads, strict=True)
         ]
+        # Who can see a called customer is read only when someone is waiting to start.
+        service_staff = (
+            await _service_staff(org, bearer, now)
+            if any(view.called for view in queue_views)
+            else ServiceStaff()
+        )
         return state.templates.TemplateResponse(
             request,
             "resources/today.html",
@@ -628,7 +725,8 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
                 board_status=board.status,
                 board_entries=board_entries,
                 sheet=day_sheet(board_entries, zone, now) if board.ok else [],
-                checked_in_count=sum(1 for entry in board_entries if entry.get("checked_in_at")),
+                checked_in_count=checked_in_count(board_entries),
+                service_staff=service_staff,
                 waiting_count=sum(len(view.waiting) for view in queue_views),
                 notice=_DONE_NOTICES.get(done),
                 today_iso=local_day.isoformat(),
@@ -701,6 +799,15 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
             "released",
         )
 
+    async def start_service(request: Request, organization_id: UUID, entry_id: UUID) -> Response:
+        return await _act(
+            request,
+            organization_id,
+            "service_session_start",
+            start_service_submission(str(entry_id)),
+            "started",
+        )
+
     async def complete(request: Request, organization_id: UUID, session_id: UUID) -> Response:
         return await _act(
             request,
@@ -764,6 +871,7 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
         ("/entries/{entry_id}/operator-select", operator_select),
         ("/entries/{entry_id}/recall-hold", recall_hold),
         ("/entries/{entry_id}/recall-hold/release", release_hold),
+        ("/entries/{entry_id}/start-service", start_service),
         ("/sessions/{session_id}/complete", complete),
         ("/appointments/{reservation_id}/check-in", check_in),
         ("/appointments/{reservation_id}/attendance", attendance),
@@ -785,6 +893,9 @@ TODAY_OPERATION_IDS = frozenset(
         "appointments_find_slots",
         "appointments_record_arrival_estimate",
         "appointments_reschedule",
+        "authority_read_self",
+        "booking_resource_assignment_list",
+        "booking_resource_list",
         "business_get_info",
         "catalog_search_offerings",
         "parties_lookup",
@@ -799,6 +910,7 @@ TODAY_OPERATION_IDS = frozenset(
         "queue_skip",
         "queue_staff_read",
         "service_session_complete",
+        "service_session_start",
     }
 )
 
@@ -807,7 +919,11 @@ __all__ = [
     "TODAY_OPERATION_IDS",
     "FrontDeskPost",
     "RuntimeRead",
+    "arrival_label",
+    "attendance_label",
+    "booking_status_label",
     "business_zone",
+    "checked_in_count",
     "day_sheet",
     "front_desk_action",
     "front_desk_failure",
@@ -817,6 +933,7 @@ __all__ = [
     "pick",
     "runtime_operations",
     "runtime_read",
+    "start_service_submission",
     "today_path",
     "workspace_unavailable",
 ]

@@ -21,13 +21,14 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 
 from request_engine.entrypoints.http.admin_console.execution import (
     ExecutionOutcome,
     form_error,
 )
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.routes_tenant_workspace import (
     FrontDeskPost,
     business_zone,
@@ -134,9 +135,9 @@ def install_front_desk_booking_routes(app: FastAPI, state: AdminConsoleState) ->
         }
         return zone, zone_name, names, business
 
-    def _signed_in(request: Request, next_path: str) -> Response | None:
+    def _signed_in(request: Request) -> Response | None:
         if state.session(request) is None:
-            return RedirectResponse(f"/login?next={next_path}", status_code=303)
+            return login_redirect(request)
         if state.runtime is None:
             return workspace_unavailable(state, request, "Today unavailable")
         return None
@@ -161,7 +162,7 @@ def install_front_desk_booking_routes(app: FastAPI, state: AdminConsoleState) ->
         )
 
     async def visit(request: Request, organization_id: UUID) -> Response:
-        blocked = _signed_in(request, f"{today_path(organization_id)}/visit")
+        blocked = _signed_in(request)
         if blocked is not None:
             return blocked
         return _visit_page(request, organization_id)
@@ -262,7 +263,7 @@ def install_front_desk_booking_routes(app: FastAPI, state: AdminConsoleState) ->
             runtime_read(state, ops["queue_list"], organization_id=org, bearer=bearer),
         )
         if 401 in {offerings.status, slots.status, queues.status}:
-            response = RedirectResponse("/login", status_code=303)
+            response = login_redirect(request)
             state.clear_session(response, request)
             return response
         offering_rows = [
@@ -312,7 +313,7 @@ def install_front_desk_booking_routes(app: FastAPI, state: AdminConsoleState) ->
         day: str = "",
         done: str = "",
     ) -> Response:
-        blocked = _signed_in(request, f"{today_path(organization_id)}/visit/{party_id}")
+        blocked = _signed_in(request)
         if blocked is not None:
             return blocked
         return await _slot_page(
@@ -354,9 +355,7 @@ def install_front_desk_booking_routes(app: FastAPI, state: AdminConsoleState) ->
         revision: str = "",
         day: str = "",
     ) -> Response:
-        blocked = _signed_in(
-            request, f"{today_path(organization_id)}/appointments/{reservation_id}/reschedule"
-        )
+        blocked = _signed_in(request)
         if blocked is not None:
             return blocked
         return await _slot_page(
