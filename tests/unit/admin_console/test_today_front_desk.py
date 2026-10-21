@@ -27,6 +27,7 @@ from request_engine.entrypoints.http.admin_console.routes_tenant_workspace impor
     attendance_label,
     booking_status_label,
     checked_in_count,
+    seen_count,
 )
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
 from request_engine.entrypoints.http.app import create_native_app
@@ -793,11 +794,64 @@ async def test_counts_and_labels_follow_the_owner_day_board(tmp_path: Path) -> N
         ({"active_queue_entry_count": 1, "queue_entry_status": "waiting"}, "Waiting in line"),
         ({"active_queue_entry_count": 1, "queue_entry_status": "serving"}, "Being served"),
         ({"active_queue_entry_count": 0, "checked_in_at": None}, ""),
+        # After the visit completes no queue entry is active any more; the
+        # owner's served-visit facts keep the arrival truthful.
+        ({"active_queue_entry_count": 0, "visit_arrived_at": "2026-10-21T13:50:00Z"}, "Checked in"),
+        (
+            {
+                "active_queue_entry_count": 0,
+                "visit_arrived_at": "2026-10-21T13:50:00Z",
+                "served_at": "2026-10-21T14:25:00Z",
+            },
+            "Seen",
+        ),
+        # Sent back to a queue after being seen: the live queue position wins.
+        (
+            {
+                "active_queue_entry_count": 1,
+                "queue_entry_status": "waiting",
+                "served_at": "2026-10-21T14:25:00Z",
+            },
+            "Waiting in line",
+        ),
     ],
 )
 def test_arrival_label_reads_both_owner_arrival_facts(entry: dict[str, Any], label: str) -> None:
     assert arrival_label(entry) == label
     assert checked_in_count([entry]) == (1 if label else 0)
+    assert seen_count([entry]) == (1 if entry.get("served_at") else 0)
+
+
+@pytest.mark.asyncio
+async def test_seen_booking_reads_as_seen_and_offers_no_arrival_actions(tmp_path: Path) -> None:
+    routes = _today_routes()
+    board = cast(list[dict[str, Any]], routes[("GET", "/v1/appointments/day-board")].payload)
+    # The day board after book -> check in -> call -> start -> finish: no active
+    # queue entry and no reservation attendance check-in, only the served visit.
+    board[0] = {
+        **board[0],
+        "active_queue_entry_count": 0,
+        "queue_entry_id": None,
+        "queue_entry_status": None,
+        "served_queue_entry_id": ENTRY,
+        "served_at": "2026-10-21T14:25:00Z",
+        "visit_arrived_at": "2026-10-21T13:50:00Z",
+    }
+    runtime = _Upstream(routes)
+    async with _signed_in(_console(tmp_path, runtime)) as client:
+        page = await client.get(f"/tenants/{ORG}/today")
+    text = _html_text(page.text)
+    # 14:25 UTC is 10:25 in Santo Domingo (UTC-4): business time, not UTC.
+    assert "Seen at 10:25" in text
+    assert "1 Checked in" in text
+    assert "1 Seen" in text
+    assert "No answer yet" not in text
+    assert f"/today/appointments/{RESERVATION}/check-in" not in page.text
+    assert f"/today/appointments/{RESERVATION}/attendance" not in page.text
+    assert f"/today/appointments/{RESERVATION}/arrival-estimate" not in page.text
+    # The owner still accepts cancel/reschedule of a confirmed reservation after
+    # its visit, so the console keeps offering what the owner would accept.
+    assert f"/today/appointments/{RESERVATION}/cancel" in page.text
 
 
 @pytest.mark.parametrize(

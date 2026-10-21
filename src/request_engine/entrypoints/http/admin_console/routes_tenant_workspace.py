@@ -111,21 +111,38 @@ def _count(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
-def arrival_label(entry: Mapping[str, Any]) -> str:
-    """How far the customer got today, from the owner's day-board row ("" = not arrived)."""
+def arrival_label(entry: Mapping[str, Any], zone: ZoneInfo | None = None) -> str:
+    """How far the customer got today, from the owner's day-board row ("" = not arrived).
+
+    An active queue entry wins (a customer sent back to a queue is in line now);
+    otherwise a completed visit reads "Seen at HH:MM" in business time.
+    """
 
     queue_status = entry.get("queue_entry_status")
     if isinstance(queue_status, str) and queue_status in _ARRIVAL_LABELS:
         return _ARRIVAL_LABELS[queue_status]
-    if entry.get("checked_in_at") or _count(entry.get("active_queue_entry_count")) > 0:
+    served = _parse_instant(entry.get("served_at"))
+    if served is not None:
+        return f"Seen at {served.astimezone(zone).strftime('%H:%M')}" if zone else "Seen"
+    if (
+        entry.get("checked_in_at")
+        or entry.get("visit_arrived_at")
+        or _count(entry.get("active_queue_entry_count")) > 0
+    ):
         return "Checked in"
     return ""
 
 
 def checked_in_count(entries: list[dict[str, Any]]) -> int:
-    """Bookings whose customer arrived: checked in on the reservation or present in a queue."""
+    """Bookings whose customer arrived: checked in, in a queue, or already seen."""
 
     return sum(1 for entry in entries if arrival_label(entry))
+
+
+def seen_count(entries: list[dict[str, Any]]) -> int:
+    """Bookings whose visit the owner reports as completed (a finished ServiceSession)."""
+
+    return sum(1 for entry in entries if _parse_instant(entry.get("served_at")) is not None)
 
 
 @dataclass
@@ -202,7 +219,8 @@ def day_sheet(entries: list[dict[str, Any]], zone: ZoneInfo, now: datetime) -> l
         local_start = start.astimezone(zone)
         status = str(entry.get("status") or "")
         outcome = str(entry.get("attendance_outcome") or "")
-        arrival = arrival_label(entry)
+        arrival = arrival_label(entry, zone)
+        served = _parse_instant(entry.get("served_at")) is not None
         css = "checked-in" if arrival else ""
         if entry.get("no_show_at") or outcome == "no_show":
             css = "no-show"
@@ -234,8 +252,11 @@ def day_sheet(entries: list[dict[str, Any]], zone: ZoneInfo, now: datetime) -> l
                 "attendance_label": attendance_label(str(entry.get("attendance_status") or "")),
                 "eta": estimate.astimezone(zone).strftime("%H:%M") if estimate else "",
                 "open": open_booking and bool(entry.get("reservation_id")),
+                "seen": served,
                 "can_check_in": open_booking and not arrival,
+                # Asking whether a customer will come is meaningless once seen.
                 "needs_answer": open_booking
+                and not served
                 and str(entry.get("attendance_status") or "") not in _ANSWERED_ATTENDANCE,
             }
         )
@@ -701,6 +722,7 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
                 board_entries=board_entries,
                 sheet=day_sheet(board_entries, zone, now) if board.ok else [],
                 checked_in_count=checked_in_count(board_entries),
+                seen_count=seen_count(board_entries),
                 service_staff=service_staff,
                 waiting_count=sum(len(view.waiting) for view in queue_views),
                 notice=_DONE_NOTICES.get(done),
@@ -908,6 +930,7 @@ __all__ = [
     "pick",
     "runtime_operations",
     "runtime_read",
+    "seen_count",
     "start_service_submission",
     "today_path",
     "workspace_unavailable",

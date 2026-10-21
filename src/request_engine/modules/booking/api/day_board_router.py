@@ -46,6 +46,9 @@ class ReservationDayBoardEntryView(BaseModel):
     recall_hold_event_key: str | None
     recall_hold_reason: str | None
     active_skip_reason: str | None
+    served_queue_entry_id: UUID | None = None
+    served_at: datetime | None = None
+    visit_arrived_at: datetime | None = None
 
     @classmethod
     def from_contract(cls, item: ReservationDayBoardEntry) -> "ReservationDayBoardEntryView":

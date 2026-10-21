@@ -154,6 +154,7 @@
     <div class="day-summary">
       <div><strong>{{ board_entries | length }}</strong><span>Booked</span></div>
       <div><strong>{{ checked_in_count }}</strong><span>Checked in</span></div>
+      <div><strong>{{ seen_count }}</strong><span>Seen</span></div>
       <div><strong>{{ waiting_count }}</strong><span>Waiting in queues</span></div>
     </div>
     {% if board_entries %}
@@ -164,7 +165,7 @@
         <div class="day-slots">
           {% for booking in row.bookings %}
           <div class="booking {{ booking.css }}">
-            <div><strong>{{ booking.name }}</strong><small>{{ booking.start }}–{{ booking.end }} · {{ booking.status }}{% if booking.open %} · {{ booking.attendance_label }}{% endif %}{% if booking.eta %} · arriving {{ booking.eta }}{% endif %}</small></div>
+            <div><strong>{{ booking.name }}</strong><small>{{ booking.start }}–{{ booking.end }} · {{ booking.status }}{% if booking.open and not booking.seen %} · {{ booking.attendance_label }}{% endif %}{% if booking.eta %} · arriving {{ booking.eta }}{% endif %}</small></div>
             {% if booking.arrival %}<span class="badge active">{{ booking.arrival }}</span>{% endif %}
             {% if booking.open %}
             <div class="booking-actions">
