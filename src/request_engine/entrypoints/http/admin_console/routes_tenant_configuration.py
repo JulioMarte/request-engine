@@ -23,6 +23,11 @@ from request_engine.entrypoints.http.admin_console.presentation import (
     TENANT_CONFIGURATION_OPERATION_IDS,
     TENANT_CONFIGURATION_SECTIONS,
 )
+from request_engine.entrypoints.http.admin_console.readiness_copy import (
+    readiness_guidance,
+    readiness_label,
+    readiness_state,
+)
 from request_engine.entrypoints.http.admin_console.resources import list_items
 from request_engine.entrypoints.http.admin_console.routes_clinic_setup import (
     resolve_business_party,
@@ -107,7 +112,12 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                         and isinstance(section.get("blockers"), list)
                     ):
                         readiness_sections.append(
-                            {"title": key.replace("_", " ").title(), **section}
+                            {
+                                **section,
+                                "title": readiness_label(key),
+                                "state_label": readiness_state(status),
+                                "guidance": readiness_guidance(key) if status != "ready" else "",
+                            }
                         )
                 if not readiness_sections:
                     readiness_result = local_error(

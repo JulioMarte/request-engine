@@ -485,8 +485,9 @@ async def test_unknown_owner_readiness_is_displayed_as_unknown(tmp_path: Path) -
     ) as client:
         await _login(client)
         page = await client.get(_ROOT)
-        assert '<span class="badge">unknown</span>' in page.text
-        assert '<span class="badge">ready</span>' not in page.text
+        # Unknown stays visibly unknown and is never shown as ready.
+        assert '<span class="badge ">Not checked</span>' in page.text
+        assert ">Ready</span>" not in page.text
 
 
 @pytest.mark.asyncio
