@@ -182,6 +182,14 @@ the runtime API must materialize and revalidate the tenant actor independently.
 Selecting a tenant or holding platform-owner authority never grants tenant access.
 Permission assignment remains separate from invitation acceptance.
 
+**Clinic setup** (`/tenants/{organization_id}/setup`) is the plain-language
+guided path for owners: clinic profile, location and hours, services and prices,
+doctors and rooms, an optional walk-in line, then readiness and a preview of the
+first free times. It projects only the owner operations in
+`CLINIC_SETUP_OPERATION_IDS` (`routes_clinic_setup.py`), resolves the business
+Party from `authority_read_self`, and converges on resubmission instead of
+duplicating. See `docs/architecture/admin-dashboard-completion.md`.
+
 **Business configuration** (`/tenants/{organization_id}/configuration`) projects
 99 current organization, catalog, booking supply, queue, communications, Requests,
 Discovery, agent, integration, authority, identity and operational-policy owner operations through the runtime API. Inventory reads and current revisions

@@ -597,6 +597,28 @@
       window.setTimeout(function () { button.textContent = original; }, 1600);
     });
   });
+  // --- Clinic setup: weekday editor helper (progressive; the form works without it) ---
+  function initializeWeekEditors(root) {
+    (root || document).querySelectorAll("[data-week-editor]").forEach(function (editor) {
+      var copy = editor.querySelector("[data-week-copy]");
+      if (!copy) return;
+      copy.hidden = false;
+      copy.addEventListener("click", function () {
+        var field = function (name) { return editor.querySelector('input[name="' + name + '"]'); };
+        var open = field("day0_open"), start = field("day0_start"), end = field("day0_end");
+        if (!open || !start || !end) return;
+        for (var day = 1; day <= 4; day += 1) {
+          field("day" + day + "_open").checked = open.checked;
+          field("day" + day + "_start").value = start.value;
+          field("day" + day + "_end").value = end.value;
+        }
+        // Treat the copy as an edit so the form gets a fresh intent.
+        open.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    });
+  }
+  document.addEventListener("DOMContentLoaded", function () { initializeWeekEditors(document); });
+  // --- end clinic setup ---
   // Hide the mobile sidebar only after its controls are actually installed.
   document.documentElement.classList.add("js-navigation");
 })();

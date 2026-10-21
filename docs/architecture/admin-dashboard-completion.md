@@ -28,6 +28,7 @@ and [configuration readback](administrative-configuration-readback.md).
 | Platform identities, configuration and recovery | `/resources` | Native identities, provisioners, recovery cases, configuration revisions, governed secret bindings and deployment recovery; initial recovery binding setup at `/resources/deployment-recovery/new` |
 | Organization selection | `/my-organizations` | Only memberships returned by self-discovery; platform directory never manufactures tenant access |
 | People and access | `/tenants/{organization_id}/staff`, `/staff-invitations` | Real tenant context, valid parent IDs/revisions, permission preview/apply, lifecycle/history and invitation delivery/acceptance |
+| Clinic setup (owners) | `/tenants/{organization_id}/setup` | Plain-language guided steps: clinic profile/contacts, location with address and weekly opening hours, services with length and price, doctors/rooms with services and weekly availability, optional walk-in line, then owner readiness and a live preview of the first free times; the business Party comes from the owner self-authority read; resumable without duplicates; owner refusals (for example a missing profile or queue permission) are explained and optional steps can be skipped |
 | Business configuration | `/tenants/{organization_id}/configuration` | 99 current owner operations grouped into organization, locations/catalog, supply, queues, channels, Requests, Discovery, agents, integrations, authority/controller policy, identity connections and capacity/recovery policies; owner reads guide supported revision-sensitive actions |
 | Advanced operations | `/operations` | Complete control-plane catalog search and typed forms; it remains an escape hatch, not a substitute for missing recipient journeys |
 | Business home | `/tenants/{organization_id}` | Setup progress, team counts, chief of staff status and pending agent suggestions from owner reads; unavailable reads are shown as unavailable |
@@ -182,8 +183,8 @@ for the setup link; a partial response supplies no fabricated continuation.
 Creation does not prove onboarding readiness or grant the platform operator
 implicit membership in the business.
 
-Tenant setup presents an ordered route through business information, locations,
-services, availability and staff. Existing location, service, queue and request
+Advanced configuration tasks (the catalog below the clinic setup card) cover
+every individual setting. Existing location, service, queue and request
 definition choices come from tenant-scoped owner Queries. Current revisions stay
 inside loaded edit forms rather than becoming a manual input. Changing the edited
 identity requires another read. A stale revision remains an owner conflict and is
@@ -206,9 +207,41 @@ Optional groups and list additions require JavaScript, with a visible explanatio
 when it is unavailable. Required account/resource choices start without a selected
 item; an administrator must make a deliberate choice.
 
-No Party directory is currently exposed. A Party reference can be carried from
-the actual organization creation result or selected explicitly for an existing
-workspace; it remains subject to owner authorization. Missing owner readback and
+No Party directory is currently exposed. The tenant console therefore resolves
+the represented business Party from the signed-in owner's own self-authority
+snapshot (`authority_read_self`, the representation with
+`operations.manage_profile` scope) and carries it as `authority_party_id`; it is
+never typed by a person and remains subject to owner authorization. An explicit
+reference from the organization creation result still prefills advanced tasks.
+
+### Guided clinic setup
+
+`/tenants/{organization_id}/setup` (`routes_clinic_setup.py`, form helpers in
+`clinic_setup.py`) is the normal owner path; the configuration page links to it
+and labels the task catalog as advanced settings. It is a projection of the
+owner operations listed in `CLINIC_SETUP_OPERATION_IDS`, resolved by operationId
+from the live runtime catalog and sent as JSON with `Idempotency-Key`
+`clinic-setup:<form intent>:<part>`. The chains are: profile PATCH + contacts
+replace; location create (generated slug key, business or Santo Domingo time
+zone) + hours replace with the read `operational_revision` + location contacts;
+resource capability ("Provides <service>") + offering with one requirement +
+base booking terms (price is required because slots need terms; 0 is free);
+exclusive resource with location, capability ids and weekly availability; and
+service queue. Before creating, the current owner inventory is read; an item
+with the same generated key and name is treated as a resubmission (no
+duplicate), a key held by a differently named item moves to `-2`, `-3`, and
+identical hours are not replaced. Local phone numbers are written in the
+international form the owner requires (+1 for 10-digit numbers); the owner
+still validates every value. The finish step shows owner readiness with blocker
+codes translated into next actions and the first slots from
+`appointments_find_slots` for the next seven days.
+
+With controller policy v8 the owner lacks `organization.manage_profile` and
+`queue.configure`: those two steps are refused by the owner and shown as
+"the platform administrator has to upgrade" with a skip action. The PostgreSQL
+E2E journey `tests/e2e/test_console_clinic_setup_journey.py` runs the whole flow
+as a freshly provisioned v8 owner and proves Locations and Appointments
+readiness and returned slots. Missing owner readback and
 free-form configuration documents still require advanced input. This is a guided
 normal setup path, not a claim that every administrative operation can yet be
 completed without technical knowledge.

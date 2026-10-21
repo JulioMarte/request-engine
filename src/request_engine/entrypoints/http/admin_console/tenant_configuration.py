@@ -380,59 +380,6 @@ def _valid_preconditions(
     return True
 
 
-_SETUP_STEPS = (
-    (
-        "Business details",
-        "Add the business name and contacts.",
-        (
-            "business_get_info",
-            "tenancy_organization_profile_update",
-            "tenancy_organization_contacts_replace",
-        ),
-    ),
-    (
-        "Locations",
-        "Create a place where your team provides services.",
-        ("catalog_location_create", "catalog_location_configuration_list"),
-    ),
-    (
-        "Services",
-        "Define what customers can request or book.",
-        ("catalog_manage_offerings", "catalog_offering_configuration_list"),
-    ),
-    (
-        "Hours and resources",
-        "Set opening hours, then the people or equipment available.",
-        ("catalog_location_configuration_list", "booking_resource_create", "booking_resource_list"),
-    ),
-    (
-        "Queues",
-        "Create queues if customers wait for service.",
-        ("queue_service_queue_create", "queue_service_queue_configuration_list"),
-    ),
-)
-
-
-def guided_setup_steps(catalog: AdminCatalog, root: str, party_id: str) -> list[dict[str, Any]]:
-    """A presentation sequence; actual completion comes from owner readiness."""
-    suffix = f"?{urlencode({'authority_party_id': party_id})}" if _uuid_value(party_id) else ""
-    return [
-        {
-            "title": title,
-            "description": description,
-            "tasks": [
-                {
-                    "label": catalog.by_id()[key].summary or key.replace("_", " "),
-                    "href": f"{root}/{key}{suffix}",
-                }
-                for key in keys
-                if key in catalog.by_id()
-            ],
-        }
-        for title, description, keys in _SETUP_STEPS
-    ]
-
-
 def _location_children_valid(body: Mapping[str, Any]) -> bool:
     """Required child snapshots must not turn a partial success into an empty replacement."""
     windows = body.get("hours_windows")
