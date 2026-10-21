@@ -31,6 +31,7 @@ from request_engine.entrypoints.http.admin_console.client import (
     ControlPlaneClient,
     ControlPlanePort,
 )
+from request_engine.entrypoints.http.admin_console.configuration_labels import task_label
 from request_engine.entrypoints.http.admin_console.routes_auth import install_auth_routes
 from request_engine.entrypoints.http.admin_console.routes_business_setup import (
     install_business_setup_routes,
@@ -162,6 +163,7 @@ def create_admin_console_app(
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
     template_globals = cast(dict[str, Any], templates.env.globals)
     template_globals["grouped_capabilities"] = grouped_capabilities
+    template_globals["task_label"] = task_label
     template_globals["capability_label"] = capability_label
     app.mount(
         "/static",

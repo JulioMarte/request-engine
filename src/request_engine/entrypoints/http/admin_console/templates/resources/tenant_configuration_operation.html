@@ -2,7 +2,7 @@
 {% import "partials/inputs.html" as ui %}
 {% block title %}{{ operation.summary }} · Request Engine admin{% endblock %}
 {% block content %}
-<header class="page-heading"><div><a href="{{ root }}">← Business configuration</a><h1>{{ operation.summary or operation.operation_id | replace('_', ' ') }}</h1><p>Organization <code>{{ organization_id }}</code></p></div></header>
+<header class="page-heading"><div><a href="{{ root }}">← Business configuration</a><h1>{{ task_label(operation) }}</h1><p>Organization <code>{{ organization_id }}</code></p></div></header>
 <section class="card">
 {% if operation.description %}<p>{{ operation.description }}</p>{% endif %}
 <p class="muted">The current owner's API checks your permissions and revisions. Party selection identifies whom you represent; it does not grant permission. Review pre-filled values before submitting.</p>
