@@ -582,3 +582,46 @@ async def test_finish_shows_plain_readiness_and_real_free_times(tmp_path: Path) 
     assert f'href="/tenants/{ORG}/today">Open today' in page.text
     (slots,) = runtime.sent("GET", "/v1/appointments/slots")
     assert slots["params"]["offering_version_id"] == VERSION
+
+
+def _existing_service(amount: str | None) -> dict[tuple[str, str], Any]:
+    return {
+        ("GET", "/v1/catalog/offerings/configuration"): _ok(
+            {
+                "items": [
+                    {
+                        "offering_id": OFFERING,
+                        "offering_version_id": VERSION,
+                        "offering_key": "consulta-general",
+                        "display_name": "Consulta general",
+                        "active": True,
+                        "bookable": True,
+                        "duration_minutes": 30,
+                    }
+                ],
+                "next_cursor": None,
+            }
+        ),
+        ("GET", "/v1/catalog/offerings/consulta-general"): _ok(
+            {"latest_version": {"id": VERSION, "amount": amount, "currency": "DOP"}}
+        ),
+        ("PUT", f"/v1/operations/offering-versions/{VERSION}/booking-terms"): _error(409),
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("price", "done"), [("1500", "service_exists"), ("2000", "service_price_kept")]
+)
+async def test_resubmitted_service_with_a_price_is_never_priced_twice(
+    tmp_path: Path, price: str, done: str
+) -> None:
+    # Base terms are set once per version; a second configure is the owner's 409,
+    # which must not be shown as someone else's concurrent change.
+    runtime = _Upstream(_existing_service("1500.00"))
+    form = {"display_name": "Consulta general", "duration_minutes": "30", "price": price}
+    async with _signed_in(runtime, tmp_path) as client:
+        response = await _submit(client, "services", form)
+    assert response.status_code == 303, response.text
+    assert response.headers["location"].endswith(f"step=services&done={done}")
+    assert runtime.writes() == []

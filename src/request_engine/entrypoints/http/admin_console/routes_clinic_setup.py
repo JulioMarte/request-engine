@@ -24,6 +24,7 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from secrets import token_urlsafe
 from typing import Any
 from urllib.parse import quote
@@ -63,6 +64,7 @@ CLINIC_SETUP_OPERATION_IDS = frozenset(
         "catalog_offering_version_configuration_read",
         "catalog_manage_offerings",
         "catalog_offering_booking_terms_configure",
+        "catalog_get_offering_details",
         "booking_resource_list",
         "booking_resource_create",
         "queue_service_queue_configuration_list",
@@ -98,6 +100,11 @@ _NOTICES = {
     "service": "Service saved. Add another one, or continue when you are done.",
     "provider": "Saved. Add another doctor or room, or continue when you are done.",
     "provider_exists": "That doctor or room was already added, so nothing was changed.",
+    "service_exists": "That service is already added with that price, so nothing was changed.",
+    "service_price_kept": (
+        "That service already has a different price. Changing a price isn't available yet, "
+        "so nothing was changed."
+    ),
     "queue": "Walk-in line created.",
     "queue_exists": "That walk-in line already exists, so nothing was changed.",
 }
@@ -682,6 +689,9 @@ async def _save_service(
     saved: list[str] = []
     if existing is not None:
         version_id = str(existing.get("offering_version_id"))
+        kept = await _existing_price_outcome(owner, offering_key, version_id, amount, currency)
+        if kept is not None:
+            return kept
     else:
         capability_key = f"provides-{offering_key}"
         capabilities, status = await owner.collect(
@@ -732,6 +742,26 @@ async def _save_service(
     if not terms.ok:
         return _failure(terms, "set prices", saved), terms.status
     return _setup_path(owner.organization_id, "services", "service")
+
+
+async def _existing_price_outcome(
+    owner: _Owner, offering_key: str, version_id: str, amount: str, currency: str
+) -> _Outcome | None:
+    """A resubmitted service whose price is already set is never priced twice.
+
+    Base booking terms are set once per offering version (the owner answers 409
+    otherwise), so the owner's current price decides what to tell the person.
+    """
+
+    current = await owner.call("catalog_get_offering_details", path={"offering_key": offering_key})
+    latest = as_mapping(as_mapping(current.payload).get("latest_version")) if current.ok else {}
+    if str(latest.get("id")) != version_id or latest.get("amount") is None:
+        return None
+    same = Decimal(str(latest.get("amount"))) == Decimal(amount) and (
+        latest.get("currency") == currency
+    )
+    done = "service_exists" if same else "service_price_kept"
+    return _setup_path(owner.organization_id, "services", done)
 
 
 def _known_location(world: _World, values: Mapping[str, str]) -> str:
