@@ -1,5 +1,14 @@
 # Handoff 07 — Open Decisions, Technical Debt and First-Deployment Checklist
 
+> **Status update (2026-10-21).** Checklist item 3 now has a concrete RE surface: the
+> HMAC-signed provider-event callback route (`docs/v3/10`); the gateway must sign with
+> the per-organization/connection key derived from
+> `REQUEST_ENGINE_PROVIDER_CALLBACK_SECRET`. A dev-only publisher/receiver exists for
+> local runs (`scripts/dev/dev_gateway.py`, never a production default). Everything
+> else in §3 remains undone. Known local-runner gap: 20 unit tests under
+> `tests/unit/operations/` and `tests/unit/scripts/` fail on Windows workstations
+> (symlink privilege, bash/compose, POSIX paths) and pass on Linux CI.
+
 Status: honest backlog, verified against the repo at `development` merge `a8760d9f`
 (working tree Sep 2026). Companion: `docs/handoff/00..06`.
 

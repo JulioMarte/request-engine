@@ -1,5 +1,26 @@
 # Handoff 01 — Product Roadmap State
 
+> **Status update (2026-10-21, branch `feature/admin-dashboard-completion`).** Sections
+> below are the Sep 2026 snapshot; this note supersedes them where they disagree.
+> Migrations were rebaselined (`0001_initial` + appended revisions; ask Alembic for
+> the head instead of trusting a number here).
+>
+> - **Day board (FU-1): built.** `GET /v1/appointments/day-board`
+>   (`appointments.day_board`) and the console *Today* workspace. Today now runs the
+>   receptionist day through owner operations: patient lookup/registration, slot
+>   search and booking, walk-in queue join, check-in, attendance confirmation, arrival
+>   estimate, reschedule, cancel, call-next/skip/no-show/complete, and S5 triage.
+> - **S5 triage: built.** `operator-select`, `recall-hold` (+ release) and `skip` under
+>   `/v1/queue-entries/{id}/…`; `until_event` recall holds are not offered in the console.
+> - **Delivery outcome callbacks: built.** `POST /v1/provider-events/{provider_key}/{connection_key}`
+>   (HMAC-signed, per-organization/connection key, persist-before-interpret; mounted only
+>   when `REQUEST_ENGINE_PROVIDER_CALLBACK_SECRET` is set). See `docs/v3/10`.
+> - **Local whole-system run: built (dev-only).** `scripts/dev/local_stack.ps1 up` /
+>   `scripts/dev/local_stack.sh up` start migrate, runtime API, control plane, console,
+>   worker and a dev-only loopback gateway. See `README.md`.
+> - **Still NOT built:** S4 inbound interpretation (F7c), S6 after-hours intake, the
+>   real communication gateway with WhatsApp/Chatwoot, and any production deployment.
+
 What the product is, what is actually shipped, what comes next, and what does **not**
 exist despite sounding like it might. Verified against `development` at `a8760d9f`
 (Sep 2026); migrations head `0026_s3_escalation_lineage`.
