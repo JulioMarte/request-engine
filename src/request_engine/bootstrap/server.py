@@ -13,6 +13,7 @@ from request_engine.bootstrap.appointment_signing import (
     AppointmentSigningSecretStoreSettings,
     build_appointment_signing_secret_store,
 )
+from request_engine.bootstrap.communication_providers import PROVIDER_CALLBACK_CONNECTIONS
 from request_engine.bootstrap.outbound_fence import OutboundSideEffectFence
 from request_engine.bootstrap.recovery_delivery import (
     RecoveryDeliverySettings,
@@ -42,6 +43,7 @@ from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.platform.db.execution_budget import PostgresExecutionBudget
 from request_engine.platform.db.oidc_authority_reader import PostgresOidcAuthorityReader
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
+from request_engine.platform.events.callback_signature import HmacProviderCallbackAuthenticator
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
 from request_engine.platform.security.webauthn import WebAuthnPolicy
 
@@ -89,6 +91,16 @@ def create_app() -> FastAPI:
         )
     )
 
+    provider_callback_authenticator = (
+        None
+        if settings.provider_callback_secret is None
+        else HmacProviderCallbackAuthenticator(
+            settings.provider_callback_secret.get_secret_value().encode(),
+            connections=PROVIDER_CALLBACK_CONNECTIONS,
+            max_skew_seconds=settings.provider_callback_max_skew_seconds,
+        )
+    )
+
     app = create_native_app(
         session_factory=sessions,
         native_identity_authority_id=settings.native_identity_authority_id,
@@ -114,6 +126,7 @@ def create_app() -> FastAPI:
             capacity=CapacitySafeSlotOfferCapacity(),
             notification=PostgresSlotOfferNotificationIntent(),
         ),
+        provider_callback_authenticator=provider_callback_authenticator,
     )
     existing_lifespan = app.router.lifespan_context
 

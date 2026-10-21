@@ -182,6 +182,51 @@ A delivery outcome report is the persisted provider-event payload. Contract:
 
 Finalize runs in one tenant transaction through the same fenced path as reconcile polling: terminal-monotonic, replay no-op. A malformed report becomes a rejected durable ProviderEvent fact (`RejectedWorkError`), never silence or invented delivery state.
 
+### Authenticated HTTP callback surface
+
+The runtime HTTP app exposes the ingest boundary as
+`POST /v1/provider-events/{provider_key}/{connection_key}` (stable `operationId`
+`recordProviderEvent`; composed in `entrypoints/http/provider_callbacks.py`, not a
+Principal capability operation and not published in the OpenAPI document).
+
+- **Fail closed when unconfigured.** The route is mounted only when
+  `REQUEST_ENGINE_PROVIDER_CALLBACK_SECRET` (at least 32 bytes) is set; otherwise the
+  path does not exist (404) and the app still starts. Optional
+  `REQUEST_ENGINE_PROVIDER_CALLBACK_MAX_SKEW_SECONDS` (default 300, 1..900).
+- **Credential.** HMAC-SHA256, scheme `v1`
+  (`platform/events/callback_signature.py`). The per-connection key is
+  `HMAC(secret, "request-engine.provider-callback.v1
+<organization_id>
+<provider_key>
+<connection_key>")`;
+  the caller sends `X-Request-Engine-Organization` (canonical UUID),
+  `X-Request-Engine-Timestamp` (unix seconds) and
+  `X-Request-Engine-Signature: v1=<hex HMAC(key, "v1
+<timestamp>
+" + raw body)>`.
+  The organization header and path segments are key selectors only: the request verifies
+  only with the key derived for exactly that organization + provider + connection, so the
+  body can never name tenant or connection authority. Only connections with a registered
+  ProviderEvent handler (`PROVIDER_CALLBACK_CONNECTIONS` in
+  `bootstrap/communication_providers.py`) are accepted. A deployment may hand a per-tenant
+  gateway only its derived key; a deployment-wide gateway holds the secret.
+- **Gateway input.** The webhook transport handoff carries `organization_id` so the
+  gateway can select the key for its outcome report.
+- **Body.** `{"provider_event_id": <non-empty string <= 200>, "payload": <object>}`, at
+  most 64 KiB, no other members. `payload` is the outcome report above.
+- **Responses.** `202` recorded (`{"provider_event_id", "replay": false}`); `200` identical
+  replay (`replay: true`); `409 provider_event_conflict` same identity with a different
+  payload; `401 provider_callback_authentication_failed` for every credential failure,
+  including an unknown organization with a valid signature (uniform, no tenant existence
+  signal); `413` body too large; `422 invalid_provider_event` malformed body.
+- **Ordering.** Authenticate over the raw body, then parse, then persist in one tenant
+  transaction; no network I/O and no business interpretation on the request path. A replay
+  inside the skew window is absorbed by the ProviderEvent dedupe identity.
+
+Proofs: `tests/modules/platform/test_provider_callback_authentication.py` and the
+PostgreSQL loop `tests/e2e/test_provider_callback_delivery_loop.py`
+(guarantee `INV-PROVIDER-CALLBACK-AUTH-001`).
+
 ## Manual replay
 
 Dead ScheduledActions and OutboxMessages, and dead/rejected ProviderEvents, can be replayed only through `request_admin` functions.

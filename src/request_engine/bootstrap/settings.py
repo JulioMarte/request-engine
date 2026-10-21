@@ -28,6 +28,9 @@ class HttpSettings(BaseSettings):
     webauthn_rp_name: str = "Request Engine"
     webauthn_allowed_origins: str = "https://localhost"
     database_probe_timeout_seconds: float = Field(default=5, gt=0, le=30)
+    # Optional: without it the provider-event callback route is not mounted.
+    provider_callback_secret: SecretStr | None = None
+    provider_callback_max_skew_seconds: int = Field(default=300, ge=1, le=900)
 
     @field_validator("database_url")
     @classmethod
@@ -50,6 +53,7 @@ class HttpSettings(BaseSettings):
         "appointment_option_signing_key",
         "identity_exchange_fingerprint_key",
         "webauthn_decoy_key",
+        "provider_callback_secret",
     )
     @classmethod
     def validate_signing_key(cls, value: SecretStr | None) -> SecretStr | None:

@@ -37,6 +37,8 @@ module-owned HTTP adapter
 module application/domain
 ```
 
+Non-capability trust boundaries also live here when they authenticate a caller that is not a Principal: `provider_callbacks.py` mounts `POST /v1/provider-events/{provider_key}/{connection_key}` only when a provider callback authenticator is configured, and persists the authenticated provider fact before any interpretation (contract: `docs/v3/10-worker-runtime-hardening.md`).
+
 See `docs/13-connection-surfaces.md`.
 
 ## Authentication boundary

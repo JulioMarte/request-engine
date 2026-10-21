@@ -253,6 +253,13 @@ business scheduling intent
   -> owner command
 ```
 
+The current inbound provider callback surface is
+`POST /v1/provider-events/{provider_key}/{connection_key}`: a trust boundary composed in
+`entrypoints/http/provider_callbacks.py` whose authenticator derives organization,
+provider and connection from a verified credential, persists before interpretation and
+leaves semantic interpretation to the fenced ProviderEvent worker (contract:
+`docs/v3/10-worker-runtime-hardening.md`, "Authenticated HTTP callback surface").
+
 Each asynchronous surface defines dedupe identity, retry schedule, lease/fence behavior where applicable, terminal/dead-letter semantics and reconciliation for ambiguous outcomes.
 
 ## 11. Capability locality rule

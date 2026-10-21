@@ -22,6 +22,12 @@ from request_engine.modules.platform_configuration.contracts.runtime import (
 from request_engine.platform.db.session import SessionFactory
 
 WEBHOOK_PROVIDER_CONNECTION_KEY = "primary"
+# Every (provider_key, connection_key) with a registered ProviderEvent handler
+# is exactly the set the HTTP callback authenticator may accept: a callback for
+# a connection without a handler is never admitted.
+PROVIDER_CALLBACK_CONNECTIONS: frozenset[ProviderEventKey] = frozenset(
+    {(webhook.WEBHOOK_PROVIDER_KEY, WEBHOOK_PROVIDER_CONNECTION_KEY)}
+)
 
 
 def build_communication_delivery_providers(
@@ -65,9 +71,5 @@ def build_communication_provider_event_handlers(
     being silently dropped.
     """
 
-    return {
-        (
-            webhook.WEBHOOK_PROVIDER_KEY,
-            WEBHOOK_PROVIDER_CONNECTION_KEY,
-        ): DeliveryOutcomeEventHandler(session_factory),
-    }
+    handler = DeliveryOutcomeEventHandler(session_factory)
+    return dict.fromkeys(PROVIDER_CALLBACK_CONNECTIONS, handler)

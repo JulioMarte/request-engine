@@ -20,6 +20,7 @@ from request_engine.entrypoints.http.operator_resolution import (
     DeploymentOperatorActorResolver,
     OperatorCapabilitySource,
 )
+from request_engine.entrypoints.http.provider_callbacks import create_provider_callback_router
 from request_engine.entrypoints.http.security import build_identity_principal_resolver
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.tenancy.api import build_principal_authority_reader
@@ -32,6 +33,7 @@ from request_engine.platform.db.native_recovery_address_store import (
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
+from request_engine.platform.events.callbacks import ProviderCallbackAuthenticator
 from request_engine.platform.http.authentication_schema import install_authentication_schema
 from request_engine.platform.http.request_budget import install_request_budget
 from request_engine.platform.secrets.delivery import RecoverySecretStaging
@@ -108,6 +110,7 @@ def create_app(
     native_webauthn_login: NativeWebAuthnLoginService | None = None,
     native_webauthn_auth: NativeWebAuthnAuthService | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
+    provider_callback_authenticator: ProviderCallbackAuthenticator | None = None,
 ) -> FastAPI:
     """Compose the full single-app HTTP surface (business + operational configuration).
 
@@ -212,6 +215,15 @@ def create_app(
         actor_resolver=execution_actor_resolver,
     )
     app.include_router(create_operation_catalog_router(actor_resolver=execution_actor_resolver))
+    if provider_callback_authenticator is not None:
+        # Fail closed: without a configured callback authenticator the
+        # provider-event surface is not mounted at all.
+        app.include_router(
+            create_provider_callback_router(
+                session_factory=session_factory,
+                authenticator=provider_callback_authenticator,
+            )
+        )
     # MCP transport projection (ADR 0018): grants nothing and re-enters this same app.
     app.include_router(create_mcp_router())
     install_authentication_schema(
@@ -279,6 +291,7 @@ def create_native_app(
     webauthn_policy: WebAuthnPolicy | None = None,
     webauthn_decoy_key: bytes | None = None,
     native_recovery_messenger: NativeRecoveryMessenger | None = None,
+    provider_callback_authenticator: ProviderCallbackAuthenticator | None = None,
 ) -> FastAPI:
     """Compose a providerless deployment whose protected routes trust Native evidence.
 
@@ -351,4 +364,5 @@ def create_native_app(
         native_webauthn_login=webauthn_login,
         native_webauthn_auth=webauthn_auth,
         identity_link_verifier=identity_link_verifier,
+        provider_callback_authenticator=provider_callback_authenticator,
     )

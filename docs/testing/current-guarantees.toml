@@ -252,6 +252,13 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["provenance"]
 
 [[guarantees]]
+id = "INV-PROVIDER-CALLBACK-AUTH-001"
+statement = "The provider-event HTTP callback derives organization, provider and connection only from a verified per-connection credential (HMAC over timestamp and raw body with a key derived from the deployment secret for exactly that organization + provider + connection, inside a bounded skew window), never from the body; it is not mounted when unconfigured, accepts only connections with a registered ProviderEvent handler, answers every credential failure (including an unknown organization) with one uniform 401, and a rejected callback persists nothing."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
 id = "INV-CONTACT-VERIFICATION-001"
 statement = "Party and staff contact points are created unverified and become verified only through the explicit confirmation command; verification is monotonic (no role can downgrade a verified contact point through direct mutation) and deactivation never rewrites verification provenance."
 severity = "critical"
