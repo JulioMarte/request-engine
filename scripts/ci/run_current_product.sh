@@ -122,6 +122,7 @@ uv run pytest \
   tests/db/test_native_identity_admin_provision.py \
   tests/db/test_initial_controller_policy.py \
   tests/db/test_tenant_controller_v7_populated_upgrade.py \
+  tests/db/test_tenant_controller_v9_populated_upgrade.py \
   tests/db/test_native_tenant_root_bootstrap.py \
   tests/db/test_native_identity_actor_runtime.py \
   tests/db/test_native_human_auth_runtime.py \

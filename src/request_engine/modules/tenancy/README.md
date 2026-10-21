@@ -169,6 +169,11 @@ and `Idempotency-Key`; approval creates the invitation through the same write pa
 pending proposal per email, the proposer gate and a HUMAN-manager decision guard.
 Initial controller policy `tenant-controller-v8` adds delegable
 `staff.propose_invitation` so controllers can grant it to agents.
+Initial controller policy `tenant-controller-v9` (migration `0044`) adds the fifteen
+delegable operational front-desk capabilities (queue setup, live queue and triage,
+service start/complete, attendance/arrival estimate and `organization.manage_profile`)
+listed in `docs/architecture/initial-controller-policy.md`; existing roots adopt it
+only through platform-approved controller policy adoption.
 
 ## Staff administration reads
 
