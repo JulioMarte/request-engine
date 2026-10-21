@@ -27,6 +27,10 @@ class ProviderSendRequest:
     attempt_no: int
     expires_at: datetime | None = None
     reconcile_after_seconds: int | None = None
+    # Owning tenant. Transports that report outcomes back through the signed
+    # provider-event callback need it to select the per-organization callback
+    # key; it is a key selector, never callback authority by itself.
+    organization_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

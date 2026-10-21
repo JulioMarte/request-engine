@@ -228,6 +228,21 @@ path = "tests/integration/v3_worker_runtime/test_delivery_outcome_event_fencing.
 evidence = ["invariant", "adversarial"]
 
 [[proofs]]
+guarantee = "INV-DELIVERY-OUTCOME-001"
+path = "tests/e2e/test_provider_callback_delivery_loop.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-PROVIDER-CALLBACK-AUTH-001"
+path = "tests/e2e/test_provider_callback_delivery_loop.py"
+evidence = ["invariant", "adversarial", "contract", "security"]
+
+[[proofs]]
+guarantee = "INV-PROVIDER-CALLBACK-AUTH-001"
+path = "tests/modules/platform/test_provider_callback_authentication.py"
+evidence = ["adversarial", "contract", "security"]
+
+[[proofs]]
 guarantee = "INV-CONTACT-VERIFICATION-001"
 path = "tests/integration/s0b_party_registry/test_contact_point_verification_guard.py"
 evidence = ["invariant", "adversarial", "security"]

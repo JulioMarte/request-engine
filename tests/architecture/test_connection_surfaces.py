@@ -35,6 +35,10 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "operational_composition.py",
     "operational_errors.py",
     "operator_resolution.py",
+    # Provider-event callback trust boundary: authenticates a provider
+    # connection and persists before interpretation; it owns no business
+    # transport (interpretation runs in the fenced ProviderEvent worker).
+    "provider_callbacks.py",
     # Private platform-plane composition only; Tenancy owns its DTOs and commands.
     "platform_control_app.py",
     "security.py",

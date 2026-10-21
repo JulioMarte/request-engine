@@ -4,7 +4,7 @@ import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from request_engine.modules.communications.contracts.delivery import (
     ProviderLookupRequest,
@@ -37,6 +37,9 @@ class FakeTransport:
         return self.outcome
 
 
+ORGANIZATION_ID = UUID("6f1c2d7e-0a4b-4c8e-9d3f-2b5a7e9c1d40")
+
+
 def http_error(code: int) -> urllib.error.HTTPError:
     return urllib.error.HTTPError(BASE_URL, code, "failure", email.message.Message(), None)
 
@@ -59,6 +62,7 @@ def send_request() -> ProviderSendRequest:
         attempt_no=2,
         expires_at=datetime(2026, 9, 1, 12, 0, tzinfo=UTC),
         reconcile_after_seconds=300,
+        organization_id=ORGANIZATION_ID,
     )
 
 
