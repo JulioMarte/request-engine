@@ -9,7 +9,24 @@
 >   (`appointments.day_board`) and the console *Today* workspace. Today now runs the
 >   receptionist day through owner operations: patient lookup/registration, slot
 >   search and booking, walk-in queue join, check-in, attendance confirmation, arrival
->   estimate, reschedule, cancel, call-next/skip/no-show/complete, and S5 triage.
+>   estimate, reschedule, cancel, call-next/skip/no-show, start service (choosing the
+>   doctor or room at that location) and finish, and S5 triage. The day board read
+>   (`request_read.reservation_day_v1`, migration `0045`) reports `served_at` and
+>   `visit_arrived_at`, so a finished visit shows "Seen at" instead of looking untouched.
+> - **Owner front-desk authority: built.** `tenant-controller-v9` (migration `0044`)
+>   gives business owners, delegably, the queue, check-in, service and profile
+>   capabilities the front desk needs. New businesses get v9; existing ones move through
+>   the owner's *Owner permissions* request plus approval by a second platform owner
+>   (ADR 0016; the first-claim owner cannot approve by design).
+> - **Guided clinic setup: built.** `/tenants/{org}/setup` composes owner operations for
+>   clinic details, location and hours, services with prices, doctors/rooms with weekly
+>   availability and a walk-in line, then shows readiness and real free times.
+> - **Open owner-rule gaps (decisions pending):** a reservation whose visit was completed
+>   can be checked in again (`require_reservation_match` / `ensure_subject_not_active`
+>   only look at reservation status and active entries) and can still be cancelled or
+>   rescheduled. The console no longer offers check-in, attendance or arrival actions for
+>   a served booking but still offers move and cancel; the owner commands refuse none of
+>   these yet.
 > - **S5 triage: built.** `operator-select`, `recall-hold` (+ release) and `skip` under
 >   `/v1/queue-entries/{id}/…`; `until_event` recall holds are not offered in the console.
 > - **Delivery outcome callbacks: built.** `POST /v1/provider-events/{provider_key}/{connection_key}`
