@@ -295,6 +295,7 @@ details summary { cursor: pointer; font-weight: 600; color: var(--sea); }
 .quick-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); }
 .quick-grid > a { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .7rem; min-height: 76px; padding: .8rem 1.2rem; color: var(--ink); text-decoration: none; background: var(--surface); }
 .quick-grid > a:hover { background: var(--surface-2); }
+.panel > .quick-grid:last-child { border-radius: 0 0 calc(var(--r-panel) - 1px) calc(var(--r-panel) - 1px); overflow: hidden; }
 .quick-grid > a > span:first-child { display: grid; place-items: center; width: 32px; height: 32px; color: var(--sea); background: var(--sea-tint); border-radius: var(--r-control); }
 .quick-grid strong, .quick-grid small { display: block; }
 .quick-grid strong { font-size: .95rem; }

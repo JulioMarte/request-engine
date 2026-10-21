@@ -491,9 +491,11 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
 
 def _label_reason_fields(inputs: list[dict[str, Any]]) -> None:
-    """Name the owner's provenance field by what the person writes in it."""
+    """Name owner fields by what the person chooses or writes in them."""
 
     for view in inputs:
+        if view.get("name") == "target_status":
+            view["label"] = "New status"
         if view.get("name") == "provenance_reference":
             view["label"] = "Reason for this change"
             view["description"] = "Kept in the team history so others know why it changed."
