@@ -5,13 +5,19 @@ OpenAPI catalog by operationId. Unavailable or denied reads are shown as such;
 nothing is inferred, counted or defaulted on the owner's behalf. Actions reuse
 the shared executor (form intent -> Idempotency-Key) and follow
 post/redirect/get so a refresh never repeats a command.
+
+The console never decides whether the signed-in person may act for a patient:
+reservation-backed actions carry the identifiers and revisions the owner read
+returned, and the owner API applies Party scope or its subject-override
+capability exactly as it does for any other caller.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from secrets import token_urlsafe
 from typing import Any
 from urllib.parse import quote
@@ -23,8 +29,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, Response
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
-from request_engine.entrypoints.http.admin_console.execution import execute_operation
+from request_engine.entrypoints.http.admin_console.execution import (
+    ExecutionOutcome,
+    execute_operation,
+    form_error,
+)
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.session import AdminSession
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 CHIEF_OF_STAFF_PURPOSE_PREFIX = "Chief of staff"
@@ -46,11 +57,23 @@ _DONE_NOTICES = {
     "skipped": "Customer skipped.",
     "completed": "Service finished.",
     "checked_in": "Customer checked in.",
+    "walk_in": "Customer added to the queue.",
+    "booked": "Appointment booked.",
+    "rescheduled": "Appointment moved.",
+    "cancelled": "Appointment cancelled.",
+    "attendance": "Attendance answer recorded.",
+    "eta": "Arrival time noted.",
+    "selected": "Customer called to the counter.",
+    "held": "Customer set aside.",
+    "released": "Customer back in line.",
+    "registered": "Customer registered.",
 }
+_OPEN_RESERVATION_STATUSES = frozenset({"confirmed"})
+_ANSWERED_ATTENDANCE = frozenset({"accepted", "declined"})
 
 
 @dataclass
-class _Read:
+class RuntimeRead:
     status: int = 0
     payload: Any = None
 
@@ -128,6 +151,14 @@ def day_sheet(entries: list[dict[str, Any]], zone: ZoneInfo, now: datetime) -> l
             css = "no-show"
         elif status in {"cancelled", "canceled", "released", "expired"}:
             css = "cancelled"
+        estimate = _parse_instant(entry.get("estimated_arrival_at"))
+        # Offered actions mirror what the owner read reports; the owner still
+        # validates status, revision and subject authority on every command.
+        open_booking = (
+            status in _OPEN_RESERVATION_STATUSES
+            and not entry.get("no_show_at")
+            and outcome != "no_show"
+        )
         hours.setdefault(local_start.hour, []).append(
             {
                 "name": entry.get("subject_display_name") or "Customer",
@@ -136,6 +167,19 @@ def day_sheet(entries: list[dict[str, Any]], zone: ZoneInfo, now: datetime) -> l
                 "status": status.replace("_", " "),
                 "css": css,
                 "checked_in": bool(entry.get("checked_in_at")),
+                "reservation_id": entry.get("reservation_id"),
+                "revision": entry.get("revision"),
+                "subject_party_id": entry.get("subject_party_id"),
+                "offering_version_id": entry.get("offering_version_id"),
+                "location_id": entry.get("location_id"),
+                "attendance": str(entry.get("attendance_status") or ""),
+                "eta": estimate.astimezone(zone).strftime("%H:%M") if estimate else "",
+                "open": open_booking and bool(entry.get("reservation_id")),
+                "can_check_in": open_booking
+                and not entry.get("checked_in_at")
+                and not entry.get("active_queue_entry_count"),
+                "needs_answer": open_booking
+                and str(entry.get("attendance_status") or "") not in _ANSWERED_ATTENDANCE,
             }
         )
     current_hour = now.astimezone(zone).hour
@@ -146,7 +190,7 @@ def day_sheet(entries: list[dict[str, Any]], zone: ZoneInfo, now: datetime) -> l
     ]
 
 
-def _queue_view(queue: dict[str, Any], read: _Read) -> _QueueView:
+def _queue_view(queue: dict[str, Any], read: RuntimeRead) -> _QueueView:
     view = _QueueView(
         queue_id=str(queue.get("id")),
         name=str(queue.get("display_name") or queue.get("queue_key") or "Queue"),
@@ -191,10 +235,202 @@ def _readiness(payload: object) -> list[dict[str, Any]]:
     return rows
 
 
+async def runtime_operations(
+    state: AdminConsoleState, names: tuple[str, ...]
+) -> dict[str, AdminOperation | None]:
+    """Resolve owner operations by operationId from the live runtime catalog."""
+
+    catalog = (await state.runtime_catalog()).by_id()
+    return {name: catalog.get(name) for name in names}
+
+
+async def runtime_read(
+    state: AdminConsoleState,
+    operation: AdminOperation | None,
+    *,
+    organization_id: str,
+    bearer: str,
+    path_values: dict[str, str] | None = None,
+    params: dict[str, str] | None = None,
+) -> RuntimeRead:
+    """Run one owner Query; a missing or non-GET operation is reported as unread."""
+
+    if operation is None or operation.method.upper() != "GET":
+        return RuntimeRead(status=0)
+    path = operation.path_template
+    for name, value in (path_values or {}).items():
+        path = path.replace("{" + name + "}", quote(value, safe=""))
+    try:
+        response = await state.runtime_request(
+            "GET", path, organization_id=organization_id, bearer=bearer, params=params
+        )
+    except (httpx.HTTPError, RuntimeError):
+        return RuntimeRead(status=503)
+    return RuntimeRead(status=response.status_code, payload=response.payload)
+
+
+def workspace_unavailable(state: AdminConsoleState, request: Request, title: str) -> Response:
+    return state.templates.TemplateResponse(
+        request,
+        "unavailable.html",
+        state.context(
+            request,
+            title=title,
+            message="Configure the runtime API URL to open this business workspace.",
+        ),
+        status_code=503,
+    )
+
+
+def local_instant(day: str, clock: str, zone_name: str) -> str | None:
+    """Turn a business-local date and HH:MM into an absolute ISO instant.
+
+    This is presentation only: the owner validates the resulting instant.
+    """
+
+    zone = _zone(zone_name)
+    if zone is None:
+        return None
+    try:
+        local_day = date.fromisoformat(day)
+        local_clock = time.fromisoformat(clock)
+    except ValueError:
+        return None
+    instant = datetime.combine(local_day, local_clock.replace(tzinfo=None), tzinfo=zone)
+    return instant.astimezone(UTC).isoformat()
+
+
+def today_path(organization_id: UUID | str) -> str:
+    return f"/tenants/{organization_id}/today"
+
+
+@dataclass(frozen=True)
+class FrontDeskPost:
+    """A CSRF-verified front-desk form submission for the signed-in session."""
+
+    session: AdminSession
+    values: dict[str, str]
+
+
+async def front_desk_post(
+    state: AdminConsoleState, request: Request, organization_id: UUID
+) -> FrontDeskPost | Response:
+    session = state.session(request)
+    if session is None:
+        return RedirectResponse("/login", status_code=303)
+    if state.runtime is None:
+        return workspace_unavailable(state, request, "Today unavailable")
+    form = await request.form()
+    values = {key: str(value) for key, value in form.items()}
+    if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
+        # A forged or stale form never reaches the owner API.
+        return RedirectResponse(today_path(organization_id) + "?done=", status_code=303)
+    return FrontDeskPost(session=session, values=values)
+
+
+def front_desk_failure(
+    state: AdminConsoleState,
+    request: Request,
+    organization_id: UUID,
+    outcome: ExecutionOutcome,
+    *,
+    back: str,
+) -> Response:
+    return state.templates.TemplateResponse(
+        request,
+        "resources/today_action_failed.html",
+        state.context(
+            request,
+            organization_id=str(organization_id),
+            result=outcome.to_view(),
+            revision_conflict=outcome.error_code == "revision_conflict",
+            back=back,
+        ),
+        status_code=outcome.status if 400 <= outcome.status < 600 else 502,
+    )
+
+
+SubmissionBuilder = Callable[[Mapping[str, str]], "dict[str, str] | ExecutionOutcome"]
+
+
+async def front_desk_action(
+    state: AdminConsoleState,
+    request: Request,
+    organization_id: UUID,
+    operation_id: str,
+    build: SubmissionBuilder,
+    *,
+    done: str,
+    back: str | None = None,
+    success_location: Callable[[ExecutionOutcome], str | None] | None = None,
+) -> Response:
+    """Execute one owner command through the shared executor (PRG on success).
+
+    ``build`` maps the browser form onto the owner operation's own field names;
+    the executor then validates them against the runtime OpenAPI schema and uses
+    the form intent as the ``Idempotency-Key``.
+    """
+
+    back = back or today_path(organization_id)
+    post = await front_desk_post(state, request, organization_id)
+    if not isinstance(post, FrontDeskPost):
+        return post
+    operation = (await runtime_operations(state, (operation_id,)))[operation_id]
+    if operation is None:
+        return Response("This action is not available on this installation", status_code=503)
+    submitted = build(post.values)
+    if isinstance(submitted, ExecutionOutcome):
+        return front_desk_failure(state, request, organization_id, submitted, back=back)
+    submitted["_intent_id"] = post.values.get("_intent_id", "")
+    outcome = await execute_operation(
+        state,
+        operation,
+        bearer=post.session.access_token,
+        form=submitted,
+        surface="runtime",
+        organization_id=str(organization_id),
+    )
+    if not outcome.ok:
+        return front_desk_failure(state, request, organization_id, outcome, back=back)
+    location = success_location(outcome) if success_location is not None else None
+    location = location or f"{today_path(organization_id)}?done={done}"
+    return RedirectResponse(location, status_code=303)
+
+
+def _picked(
+    values: Mapping[str, str], names: tuple[str, ...], fixed: dict[str, str]
+) -> dict[str, str]:
+    submitted = {name: values[name] for name in names if values.get(name, "") != ""}
+    submitted.update(fixed)
+    return submitted
+
+
+def pick(*names: str, **fixed: str) -> SubmissionBuilder:
+    """Forward only the named non-empty form fields plus fixed path values."""
+
+    return lambda values: _picked(values, names, fixed)
+
+
+def _with_local_instant(target: str, names: tuple[str, ...], **fixed: str) -> SubmissionBuilder:
+    """Like :func:`pick`, adding ``target`` from business-local date/time fields."""
+
+    def build(values: Mapping[str, str]) -> dict[str, str] | ExecutionOutcome:
+        submitted = _picked(values, names, fixed)
+        clock = values.get("local_time", "").strip()
+        if not clock:
+            return submitted
+        instant = local_instant(values.get("local_date", ""), clock, values.get("zone_name", ""))
+        if instant is None:
+            return form_error("Enter a valid time, for example 10:30.")
+        submitted[target] = instant
+        return submitted
+
+    return build
+
+
 def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def _operations(names: tuple[str, ...]) -> dict[str, AdminOperation | None]:
-        catalog = (await state.runtime_catalog()).by_id()
-        return {name: catalog.get(name) for name in names}
+        return await runtime_operations(state, names)
 
     async def _read(
         operation: AdminOperation | None,
@@ -203,31 +439,18 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
         bearer: str,
         path_values: dict[str, str] | None = None,
         params: dict[str, str] | None = None,
-    ) -> _Read:
-        if operation is None or operation.method.upper() != "GET":
-            return _Read(status=0)
-        path = operation.path_template
-        for name, value in (path_values or {}).items():
-            path = path.replace("{" + name + "}", quote(value, safe=""))
-        try:
-            response = await state.runtime_request(
-                "GET", path, organization_id=organization_id, bearer=bearer, params=params
-            )
-        except (httpx.HTTPError, RuntimeError):
-            return _Read(status=503)
-        return _Read(status=response.status_code, payload=response.payload)
+    ) -> RuntimeRead:
+        return await runtime_read(
+            state,
+            operation,
+            organization_id=organization_id,
+            bearer=bearer,
+            path_values=path_values,
+            params=params,
+        )
 
     def _unavailable(request: Request, title: str) -> Response:
-        return state.templates.TemplateResponse(
-            request,
-            "unavailable.html",
-            state.context(
-                request,
-                title=title,
-                message="Configure the runtime API URL to open this business workspace.",
-            ),
-            status_code=503,
-        )
+        return workspace_unavailable(state, request, title)
 
     async def home(request: Request, organization_id: UUID) -> Response:
         session = state.session(request)
@@ -388,6 +611,7 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
                 checked_in_count=sum(1 for entry in board_entries if entry.get("checked_in_at")),
                 waiting_count=sum(len(view.waiting) for view in queue_views),
                 notice=_DONE_NOTICES.get(done),
+                today_iso=local_day.isoformat(),
                 intent_id=token_urlsafe(16),
             ),
         )
@@ -396,51 +620,16 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
         request: Request,
         organization_id: UUID,
         operation_id: str,
-        path_values: dict[str, str],
-        allowed_fields: tuple[str, ...],
+        build: SubmissionBuilder,
         done: str,
     ) -> Response:
-        session = state.session(request)
-        if session is None:
-            return RedirectResponse("/login", status_code=303)
-        if state.runtime is None:
-            return _unavailable(request, "Today unavailable")
-        form = await request.form()
-        values = {key: str(value) for key, value in form.items()}
-        back = f"/tenants/{organization_id}/today"
-        if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
-            return RedirectResponse(back + "?done=", status_code=303)
-        operation = (await _operations((operation_id,)))[operation_id]
-        if operation is None:
-            return Response("This action is not available on this installation", status_code=503)
-        submitted = {name: values[name] for name in allowed_fields if values.get(name, "") != ""}
-        submitted.update(path_values)
-        submitted["_intent_id"] = values.get("_intent_id", "")
-        outcome = await execute_operation(
-            state,
-            operation,
-            bearer=session.access_token,
-            form=submitted,
-            surface="runtime",
-            organization_id=str(organization_id),
-        )
-        if outcome.ok:
-            return RedirectResponse(f"{back}?done={done}", status_code=303)
-        return state.templates.TemplateResponse(
-            request,
-            "resources/today_action_failed.html",
-            state.context(
-                request,
-                organization_id=str(organization_id),
-                result=outcome.to_view(),
-                back=back,
-            ),
-            status_code=outcome.status if 400 <= outcome.status < 600 else 502,
+        return await front_desk_action(
+            state, request, organization_id, operation_id, build, done=done
         )
 
     async def call_next(request: Request, organization_id: UUID, queue_id: UUID) -> Response:
         return await _act(
-            request, organization_id, "queue_call_next", {"queue_id": str(queue_id)}, (), "called"
+            request, organization_id, "queue_call_next", pick(queue_id=str(queue_id)), "called"
         )
 
     async def no_show(request: Request, organization_id: UUID, entry_id: UUID) -> Response:
@@ -448,8 +637,7 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
             request,
             organization_id,
             "queue_mark_no_show",
-            {"queue_entry_id": str(entry_id)},
-            ("expected_revision",),
+            pick("expected_revision", queue_entry_id=str(entry_id)),
             "no_show",
         )
 
@@ -458,9 +646,39 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
             request,
             organization_id,
             "queue_skip",
-            {"queue_entry_id": str(entry_id)},
-            ("expected_revision", "reason"),
+            pick("expected_revision", "reason", queue_entry_id=str(entry_id)),
             "skipped",
+        )
+
+    async def operator_select(request: Request, organization_id: UUID, entry_id: UUID) -> Response:
+        return await _act(
+            request,
+            organization_id,
+            "queue_operator_select",
+            pick("expected_revision", "reason", queue_entry_id=str(entry_id)),
+            "selected",
+        )
+
+    async def recall_hold(request: Request, organization_id: UUID, entry_id: UUID) -> Response:
+        return await _act(
+            request,
+            organization_id,
+            "queue_recall_hold",
+            _with_local_instant(
+                "until_at",
+                ("expected_revision", "condition_kind", "reason"),
+                queue_entry_id=str(entry_id),
+            ),
+            "held",
+        )
+
+    async def release_hold(request: Request, organization_id: UUID, entry_id: UUID) -> Response:
+        return await _act(
+            request,
+            organization_id,
+            "queue_release_recall_hold",
+            pick("expected_revision", "hold_id", queue_entry_id=str(entry_id)),
+            "released",
         )
 
     async def complete(request: Request, organization_id: UUID, session_id: UUID) -> Response:
@@ -468,34 +686,96 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
             request,
             organization_id,
             "service_session_complete",
-            {"service_session_id": str(session_id)},
-            ("expected_revision",),
+            pick("expected_revision", service_session_id=str(session_id)),
             "completed",
+        )
+
+    async def check_in(request: Request, organization_id: UUID, reservation_id: UUID) -> Response:
+        # The queue is the operation's path resource; the reservation and its
+        # subject come from the day-board read and are validated by the owner.
+        return await _act(
+            request,
+            organization_id,
+            "queue_check_in",
+            pick("queue_id", "subject_party_id", reservation_id=str(reservation_id)),
+            "checked_in",
+        )
+
+    async def attendance(request: Request, organization_id: UUID, reservation_id: UUID) -> Response:
+        return await _act(
+            request,
+            organization_id,
+            "appointments_confirm_attendance",
+            pick("response", "expected_revision", reservation_id=str(reservation_id)),
+            "attendance",
+        )
+
+    async def arrival_estimate(
+        request: Request, organization_id: UUID, reservation_id: UUID
+    ) -> Response:
+        return await _act(
+            request,
+            organization_id,
+            "appointments_record_arrival_estimate",
+            _with_local_instant(
+                "estimated_arrival_at",
+                ("expected_revision",),
+                reservation_id=str(reservation_id),
+            ),
+            "eta",
+        )
+
+    async def cancel(request: Request, organization_id: UUID, reservation_id: UUID) -> Response:
+        return await _act(
+            request,
+            organization_id,
+            "appointments_cancel",
+            pick("expected_revision", "reason", reservation_id=str(reservation_id)),
+            "cancelled",
         )
 
     app.add_api_route("/tenants/{organization_id}", home, methods=["GET"])
     app.add_api_route("/tenants/{organization_id}/today", today, methods=["GET"])
-    app.add_api_route(
-        "/tenants/{organization_id}/today/queues/{queue_id}/call-next", call_next, methods=["POST"]
-    )
-    app.add_api_route(
-        "/tenants/{organization_id}/today/entries/{entry_id}/no-show", no_show, methods=["POST"]
-    )
-    app.add_api_route(
-        "/tenants/{organization_id}/today/entries/{entry_id}/skip", skip, methods=["POST"]
-    )
-    app.add_api_route(
-        "/tenants/{organization_id}/today/sessions/{session_id}/complete",
-        complete,
-        methods=["POST"],
-    )
+    root = "/tenants/{organization_id}/today"
+    for path, handler in (
+        ("/queues/{queue_id}/call-next", call_next),
+        ("/entries/{entry_id}/no-show", no_show),
+        ("/entries/{entry_id}/skip", skip),
+        ("/entries/{entry_id}/operator-select", operator_select),
+        ("/entries/{entry_id}/recall-hold", recall_hold),
+        ("/entries/{entry_id}/recall-hold/release", release_hold),
+        ("/sessions/{session_id}/complete", complete),
+        ("/appointments/{reservation_id}/check-in", check_in),
+        ("/appointments/{reservation_id}/attendance", attendance),
+        ("/appointments/{reservation_id}/arrival-estimate", arrival_estimate),
+        ("/appointments/{reservation_id}/cancel", cancel),
+    ):
+        app.add_api_route(root + path, handler, methods=["POST"])
 
 
+# Owner operations projected by the Today front desk (here and in
+# ``routes_front_desk_booking``). Discoverability only: authority, schemas and
+# revisions stay on each owner operation.
 TODAY_OPERATION_IDS = frozenset(
     {
+        "appointments_book",
+        "appointments_cancel",
+        "appointments_confirm_attendance",
         "appointments_day_board",
+        "appointments_find_slots",
+        "appointments_record_arrival_estimate",
+        "appointments_reschedule",
+        "business_get_info",
+        "catalog_search_offerings",
+        "parties_lookup",
+        "parties_register",
         "queue_call_next",
+        "queue_check_in",
+        "queue_list",
         "queue_mark_no_show",
+        "queue_operator_select",
+        "queue_recall_hold",
+        "queue_release_recall_hold",
         "queue_skip",
         "queue_staff_read",
         "service_session_complete",
@@ -505,7 +785,18 @@ TODAY_OPERATION_IDS = frozenset(
 __all__ = [
     "CHIEF_OF_STAFF_PURPOSE_PREFIX",
     "TODAY_OPERATION_IDS",
+    "FrontDeskPost",
+    "RuntimeRead",
     "business_zone",
     "day_sheet",
+    "front_desk_action",
+    "front_desk_failure",
+    "front_desk_post",
     "install_tenant_workspace_routes",
+    "local_instant",
+    "pick",
+    "runtime_operations",
+    "runtime_read",
+    "today_path",
+    "workspace_unavailable",
 ]

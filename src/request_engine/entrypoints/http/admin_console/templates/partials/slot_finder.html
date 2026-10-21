@@ -1,0 +1,45 @@
+{# Slot search and choice for the front desk. Expects: finder_action, finder_hidden,
+   choose_action, choose_hidden, choose_label, offerings, offerings_status,
+   offering_version_id, day, slots, slots_status, zone_name, intent_id. #}
+<form method="get" action="{{ finder_action }}" class="stack">
+  {% for name, value in finder_hidden.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}" />{% endfor %}
+  {% if offerings_status == 403 %}
+  <p class="alert warn">Your permissions do not include "Search services".</p>
+  {% elif offerings_status not in range(200, 300) %}
+  <p class="alert error">Services could not be loaded. Refresh to try again.</p>
+  {% elif not offerings %}
+  <p class="alert notice">No bookable services yet. Add one in business configuration.</p>
+  {% endif %}
+  <label>Service
+    <select name="offering_version_id" required>
+      {% for offering in offerings %}<option value="{{ offering.version_id }}" {% if offering.version_id == offering_version_id %}selected{% endif %}>{{ offering.name }}{% if offering.minutes %} · {{ offering.minutes }} min{% endif %}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Day<input type="date" name="day" value="{{ day }}" required /></label>
+  <button type="submit" class="secondary">Show free times</button>
+</form>
+{% if offering_version_id %}
+<h3>Free times on {{ day }} <small class="muted">({{ zone_name }})</small></h3>
+{% if slots_status == 403 %}
+<p class="alert warn">Your permissions do not include "Find free times".</p>
+{% elif slots_status not in range(200, 300) %}
+<p class="alert error">Free times could not be loaded. Choose the service and day again.</p>
+{% elif not slots %}
+<p class="alert notice">No free times that day. Try another day.</p>
+{% else %}
+<ul class="slot-list">
+  {% for slot in slots %}
+  <li>
+    <form method="post" data-plain-action action="{{ choose_action }}" data-confirm="{{ choose_label }} {{ slot.start }}–{{ slot.end }}?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="_intent_id" value="{{ intent_id }}-{{ loop.index }}" data-form-intent />
+      <input type="hidden" name="option_id" value="{{ slot.option_id }}" />
+      {% for name, value in choose_hidden.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}" />{% endfor %}
+      <button type="submit" class="secondary"><strong>{{ slot.start }}–{{ slot.end }}</strong>{% if slot.location or slot.price %}<small>{{ slot.location }}{% if slot.location and slot.price %} · {% endif %}{{ slot.price }}</small>{% endif %}</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+<p class="muted">Free times are offers, not reservations. The booking is only made when you choose one, and another person may take it first.</p>
+{% endif %}
+{% endif %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Book or queue · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div><p class="eyebrow">New visit</p><h1>Book or add to the queue</h1><p>For the customer you selected. The business decides whether you may act for them.</p></div>
+  <div class="page-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/today/visit">Choose another customer</a><a class="button secondary" href="/tenants/{{ organization_id }}/today">Back to today</a></div>
+</header>
+{% if registered %}<p class="alert notice" role="status">Customer registered.</p>{% endif %}
+<div class="split-layout">
+  <section class="card" aria-labelledby="book-title">
+    <h2 id="book-title">Book an appointment</h2>
+    {% set finder_action = "/tenants/" ~ organization_id ~ "/today/visit/" ~ party_id %}
+    {% set finder_hidden = {} %}
+    {% set choose_action = finder_action ~ "/book" %}
+    {% set choose_hidden = {} %}
+    {% set choose_label = "Book" %}
+    {% include "partials/slot_finder.html" %}
+  </section>
+  <section class="card" aria-labelledby="walkin-title">
+    <h2 id="walkin-title">Walk-in now</h2>
+    {% if queues %}
+    <p>Add the customer to a live queue without an appointment.</p>
+    {% for queue in queues %}
+    <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/visit/{{ party_id }}/walk-in">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="_intent_id" value="{{ intent_id }}-w-{{ queue.id }}" data-form-intent />
+      <input type="hidden" name="queue_id" value="{{ queue.id }}" />
+      <button type="submit" class="secondary">Add to {{ queue.name }}</button>
+    </form>
+    {% endfor %}
+    {% else %}
+    <p class="muted">No active queue is available to you.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

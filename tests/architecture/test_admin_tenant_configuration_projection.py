@@ -13,6 +13,9 @@ from request_engine.entrypoints.http.admin_console.presentation import (
     TENANT_CONFIGURATION_OPERATION_IDS,
     TENANT_RUNTIME_EXTERNAL_DESTINATIONS,
 )
+from request_engine.entrypoints.http.admin_console.routes_tenant_workspace import (
+    TODAY_OPERATION_IDS,
+)
 from request_engine.entrypoints.http.admin_console.tenant_configuration import (
     inventory_read_valid,
     read_action_links,
@@ -334,6 +337,34 @@ def test_every_runtime_operator_operation_has_an_explicit_admin_destination_or_s
     assert set(external) <= operators
     assert not TENANT_CONFIGURATION_OPERATION_IDS & external.keys()
     assert all(destination and reason for destination, reason in external.values())
+
+
+def test_today_front_desk_projects_only_mounted_owner_operations(
+    runtime_catalog: AdminCatalog,
+) -> None:
+    # Every operation Today executes must exist in the real runtime OpenAPI, and
+    # every operator operation it projects must be declared under tenant-today
+    # (and nothing declared there may be absent from Today). Public owner
+    # operations such as appointments_book keep their own exposure: Today
+    # projects them without changing capability or authority metadata.
+    by_id = runtime_catalog.by_id()
+    assert not TODAY_OPERATION_IDS - by_id.keys()
+    declared_today = {
+        operation_id
+        for operation_id, (destination, _) in TENANT_RUNTIME_EXTERNAL_DESTINATIONS.items()
+        if destination == "tenant-today"
+    }
+    operator_today = {
+        operation_id
+        for operation_id in TODAY_OPERATION_IDS
+        if by_id[operation_id].exposure == "operator"
+    }
+    assert declared_today == operator_today
+    for operation_id in TODAY_OPERATION_IDS:
+        operation = by_id[operation_id]
+        assert operation.capability, operation_id
+        if operation.is_mutating:
+            assert operation.requires_idempotency_key, operation_id
 
 
 _DEFINITION = {
