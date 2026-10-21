@@ -29,6 +29,7 @@ from request_engine.entrypoints.http.admin_console.inputs import (
     summarize_payload,
 )
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.resources import (
     CONFIGURATION_OPERATION_IDS,
     DEPLOYMENT_OPERATION_IDS,
@@ -113,7 +114,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def _run_action(request: Request, operation_id: str, *, form_id: str) -> Response:
         session = _session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         try:
             operation = resolve_operation(await _catalog(), operation_id)
         except MissingOperation:
@@ -173,7 +174,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def resources_index(request: Request) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         sections = {
             "People & access": (
                 "native-identities",
@@ -202,7 +203,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def resource_list(request: Request, resource_key: str) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         spec = spec_by_key(resource_key)
         if spec is None:
             return RedirectResponse("/resources", status_code=303)
@@ -265,7 +266,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def resource_detail(request: Request, resource_key: str, item_id: str) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         spec = spec_by_key(resource_key)
         if spec is None or spec.get_operation_id is None or spec.item_param is None:
             return RedirectResponse("/resources", status_code=303)
@@ -339,7 +340,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def configurations(request: Request) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await _catalog()
         try:
             list_operation = resolve_operation(catalog, CONFIGURATION_OPERATION_IDS["list"])
@@ -403,7 +404,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def configuration_kind(request: Request, kind: str) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await _catalog()
         try:
             revision_list = resolve_operation(catalog, CONFIGURATION_OPERATION_IDS["revision_list"])
@@ -445,7 +446,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def configuration_revision(request: Request, kind: str, revision: str) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await _catalog()
         try:
             revision_get = resolve_operation(catalog, CONFIGURATION_OPERATION_IDS["revision_get"])
@@ -545,7 +546,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def secrets(request: Request) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await _catalog()
         try:
             create_operation = resolve_operation(catalog, SECRET_OPERATION_IDS["create"])
@@ -573,7 +574,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def secret_detail(request: Request, binding_id: str) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await _catalog()
         try:
             metadata = resolve_operation(catalog, SECRET_OPERATION_IDS["metadata_get"])
@@ -647,7 +648,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def deployment(request: Request) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await _catalog()
         try:
             plan = resolve_operation(catalog, DEPLOYMENT_OPERATION_IDS["plan"])
@@ -703,7 +704,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def deployment_initial_setup(request: Request) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         try:
             configure = resolve_operation(await _catalog(), DEPLOYMENT_OPERATION_IDS["configure"])
         except MissingOperation as exc:
@@ -733,7 +734,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def provisioning(request: Request) -> Response:
         if _session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await _catalog()
         try:
             resolved = {

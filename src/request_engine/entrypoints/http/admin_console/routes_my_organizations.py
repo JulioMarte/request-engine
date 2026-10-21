@@ -8,6 +8,7 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 from request_engine.entrypoints.http.admin_console.viewer import OrganizationHint
 
@@ -34,7 +35,7 @@ def install_my_organization_routes(app: FastAPI, state: AdminConsoleState) -> No
     ) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         page: _OrganizationPage | None = None
         status = 503
         error = "Your organizations are temporarily unavailable. Try again shortly."

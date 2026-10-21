@@ -37,6 +37,7 @@ from fastapi.responses import RedirectResponse, Response
 from request_engine.entrypoints.http.admin_console import clinic_setup as forms
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.routes_tenant_workspace import (
     business_zone,
     runtime_operations,
@@ -493,7 +494,7 @@ def install_clinic_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
         return session
 
     def _relogin(request: Request) -> Response:
-        response = RedirectResponse("/login", status_code=303)
+        response = login_redirect(request)
         state.clear_session(response, request)
         return response
 

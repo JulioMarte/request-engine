@@ -29,6 +29,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.routes_tenant_workspace import (
     CHIEF_OF_STAFF_PURPOSE_PREFIX,
 )
@@ -175,7 +176,7 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     def _signed_in(request: Request):  # noqa: ANN202
         session = state.session(request)
-        return session if session is not None else RedirectResponse("/login", status_code=303)
+        return session if session is not None else login_redirect(request)
 
     def _unavailable(request: Request) -> Response:
         return state.templates.TemplateResponse(
@@ -204,7 +205,7 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
             params={"limit": "100"},
         )
         if status == 401:
-            response = RedirectResponse("/login", status_code=303)
+            response = login_redirect(request)
             state.clear_session(response, request)
             return response
         items = [dict(as_mapping(item)) for item in as_list(as_mapping(payload).get("items"))]
@@ -496,7 +497,7 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
             ),
         )
         if status == 401:
-            response = RedirectResponse("/login", status_code=303)
+            response = login_redirect(request)
             state.clear_session(response, request)
             return response
         info = dict(as_mapping(agent)) if 200 <= status < 300 else None

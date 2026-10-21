@@ -21,7 +21,7 @@ def login_redirect(request: Request) -> RedirectResponse:
     target = request.url.path
     if request.url.query:
         target = f"{target}?{request.url.query}"
-    if not target.startswith("/") or target.startswith("//"):
+    if target == "/" or not target.startswith("/") or target.startswith("//"):
         return RedirectResponse("/login", status_code=303)
     return RedirectResponse(f"/login?next={quote(target, safe='')}", status_code=303)
 

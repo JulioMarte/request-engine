@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, Response
 
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 _STEP_UP_CODES = frozenset({"recent_authentication_required", "phishing_resistant_auth_required"})
@@ -81,7 +82,7 @@ def install_tenant_approval_routes(app: FastAPI, state: AdminConsoleState) -> No
                 except (httpx.HTTPError, RuntimeError):
                     status = 503
         if status == 401:
-            redirect = RedirectResponse("/login", status_code=303)
+            redirect = login_redirect(request)
             state.clear_session(redirect, request)
             return redirect
         for item in items:
@@ -110,7 +111,7 @@ def install_tenant_approval_routes(app: FastAPI, state: AdminConsoleState) -> No
             return Response(status_code=404)
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         if state.runtime is None:
             return Response("Runtime API is not configured", status_code=503)
         org = str(organization_id)

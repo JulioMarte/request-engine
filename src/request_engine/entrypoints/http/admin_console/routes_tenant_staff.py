@@ -14,6 +14,7 @@ from pydantic import AwareDatetime, BaseModel, Field, StrictBool, StrictStr, Val
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 
@@ -95,7 +96,7 @@ _OPS = {
 def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
     def session_or_redirect(request: Request):  # noqa: ANN202
         session = state.session(request)
-        return session if session is not None else RedirectResponse("/login", status_code=303)
+        return session if session is not None else login_redirect(request)
 
     async def workspace(
         request: Request,

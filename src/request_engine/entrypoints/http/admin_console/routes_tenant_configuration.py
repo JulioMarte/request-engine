@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import UUID
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, Response
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminCatalog, AdminOperation
 from request_engine.entrypoints.http.admin_console.execution import execute_operation, local_error
@@ -18,6 +18,7 @@ from request_engine.entrypoints.http.admin_console.inputs import (
     summarize_payload,
 )
 from request_engine.entrypoints.http.admin_console.json_types import as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.presentation import (
     TENANT_CONFIGURATION_OPERATION_IDS,
     TENANT_CONFIGURATION_SECTIONS,
@@ -44,7 +45,7 @@ _SELECTOR_READS = {
 def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def catalog_or_error(request: Request) -> AdminCatalog | Response:
         if state.session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         if state.runtime is None:
             return Response(
                 "Configure the runtime API to manage tenant configuration.", status_code=503

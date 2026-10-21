@@ -14,6 +14,7 @@ from pydantic import AwareDatetime, BaseModel, Field, StrictStr, ValidationError
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 
@@ -112,7 +113,7 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
     ) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         try:
             catalog = (await state.runtime_catalog()).by_id()
             operation = catalog.get("staff_invitation_list")
@@ -198,7 +199,7 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
     ) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         if action not in ({"create"} if invitation_id is None else {"resend", "revoke"}):
             return Response("Unknown invitation action", status_code=404)
         form = {key: str(value) for key, value in (await request.form()).items()}

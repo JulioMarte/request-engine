@@ -8,7 +8,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, Response
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
 from request_engine.entrypoints.http.admin_console.client import ControlResponse
@@ -20,6 +20,7 @@ from request_engine.entrypoints.http.admin_console.execution import (
 from request_engine.entrypoints.http.admin_console.forms import render_path
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs, summarize_payload
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.resources import (
     OWNER_OPERATION_IDS,
     MissingOperation,
@@ -220,7 +221,7 @@ def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def collection(request: Request, *, invitations: bool) -> Response:
         if state.session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         response = await read(request, "invitation_list" if invitations else "list")
         action_forms: list[dict[str, Any]] = []
         drift = False
@@ -261,7 +262,7 @@ def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def detail(request: Request, item_id: UUID, *, invitation: bool) -> Response:
         if state.session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         response = await read(request, "invitation_get" if invitation else "get", item_id=item_id)
         item = as_mapping(response.payload) if response.ok else {}
         base = "/resources/owners" + ("/invitations" if invitation else "")
@@ -310,7 +311,7 @@ def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
     ) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         submitted = await request.form()
         values = {name: str(value) for name, value in submitted.items()}
         if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):

@@ -11,8 +11,9 @@ from dataclasses import asdict
 from typing import Any
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 
@@ -44,7 +45,7 @@ def install_diagnostics_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def diagnostics_page(request: Request) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         return state.templates.TemplateResponse(
             request,
             "diagnostics.html",

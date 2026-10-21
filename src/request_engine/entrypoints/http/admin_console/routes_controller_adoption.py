@@ -10,7 +10,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, Response
 
 from request_engine.entrypoints.http.admin_console.execution import (
     ExecutionOutcome,
@@ -18,6 +18,7 @@ from request_engine.entrypoints.http.admin_console.execution import (
     local_error,
 )
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.resources import (
     CONTROLLER_ADOPTION_OPERATION_IDS,
     MissingOperation,
@@ -51,7 +52,7 @@ def install_controller_adoption_routes(app: FastAPI, state: AdminConsoleState) -
 
     async def listing(request: Request) -> Response:
         if state.session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         values = {
             key: request.query_params[key]
             for key in ("after", "limit")
@@ -85,7 +86,7 @@ def install_controller_adoption_routes(app: FastAPI, state: AdminConsoleState) -
 
     async def review(request: Request, request_id: str) -> Response:
         if state.session(request) is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         outcome = await run(request, "review", {"request_id": request_id})
         item = as_mapping(json.loads(outcome.payload_json)) if outcome.ok else {}
         if outcome.ok and not _valid_review(item, request_id):
@@ -112,7 +113,7 @@ def install_controller_adoption_routes(app: FastAPI, state: AdminConsoleState) -
     async def apply(request: Request, request_id: str) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         form = await request.form()
         values = {key: str(value) for key, value in form.items()}
         if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):

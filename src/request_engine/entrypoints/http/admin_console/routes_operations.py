@@ -24,6 +24,7 @@ from request_engine.entrypoints.http.admin_console.execution import (
 )
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs, summarize_payload
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.resources import RESOURCE_SPECS, WORKSPACE_SPECS
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
@@ -200,7 +201,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def dashboard(request: Request) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog_error: str | None = None
         try:
             await state.catalog()
@@ -214,7 +215,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             _probe(session, "GET", "/v1/platform/observability"),
         )
         if readiness_status == 401 or observability_status == 401:
-            response = RedirectResponse("/login", status_code=303)
+            response = login_redirect(request)
             state.clear_session(response, request)
             return response
         if readiness_status == 403 and observability_status == 403:
@@ -354,7 +355,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
     ) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         try:
             catalog = await state.catalog()
         except Exception:
@@ -414,7 +415,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def operation_detail(request: Request, operation_id: str) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await state.catalog()
         operation = catalog.by_id().get(operation_id)
         if operation is None:
@@ -433,7 +434,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def run_operation(request: Request, operation_id: str) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await state.catalog()
         operation = catalog.by_id().get(operation_id)
         if operation is None:
