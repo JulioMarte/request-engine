@@ -122,6 +122,10 @@ def foreign_request(
         return (operation.probe.path, {}, operation.probe.body, 403)
     if operation.name.startswith("staff.invitation."):
         return (operation.probe.path, {}, operation.probe.body, 403)
+    if operation.name.startswith("staff.invitation_proposal."):
+        # ADR 0019: proposing, reading and deciding all require persisted tenant
+        # authority; injected capability claims alone must not reach a proposal.
+        return (operation.probe.path, {}, operation.probe.body, 403)
     if operation.name == "staff.overview":
         return ("/v1/staff/overview", {}, None, 403)
     if operation.name == "staff.authority.plan":
