@@ -59,6 +59,30 @@
           <span class="waiting-pos">{{ loop.index }}</span>
           <div><strong>{{ entry.subject_display_name }}</strong><small>{% if entry.status == 'called' %}Called{% else %}Waiting{% endif %}{% if entry.scheduled_at %} · booked{% endif %}{% if entry.active_skip_reason %} · skipped: {{ entry.active_skip_reason }}{% endif %}{% if entry.recall_hold_id %} · set aside{% if entry.recall_hold_reason %}: {{ entry.recall_hold_reason }}{% endif %}{% endif %}</small></div>
           <div class="entry-actions">
+            {% if entry.status == 'called' and not entry.service_session_id %}
+            {% set staff = service_staff.at(queue.location_id) %}
+            {% if service_staff.problem == 'capability' %}
+            <p class="unavailable-note">To start service here you need the "See availability and resources" and "Start a service" permissions. Someone who manages team permissions can add them.</p>
+            {% elif service_staff.problem == 'authority' %}
+            <p class="unavailable-note">You can't see which doctors and rooms work here, because you don't manage this business's doctors and rooms. Ask the business owner to give you that responsibility.</p>
+            {% elif service_staff.problem %}
+            <p class="unavailable-note">The list of doctors and rooms could not be loaded. Refresh to try again.</p>
+            {% elif not staff %}
+            <p class="unavailable-note">No doctor or room works at this location right now. <a href="/tenants/{{ organization_id }}/setup?step=providers">Add a doctor or room</a> to start service.</p>
+            {% else %}
+            <form method="post" data-plain-action class="inline-form start-service" action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/start-service">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="_intent_id" value="{{ intent_id }}-v-{{ entry.queue_entry_id }}" data-form-intent />
+              <input type="hidden" name="expected_queue_revision" value="{{ entry.queue_revision }}" />
+              <label for="staff-{{ entry.queue_entry_id }}">Seen by</label>
+              <select id="staff-{{ entry.queue_entry_id }}" name="staff" required>
+                {% if staff | length > 1 %}<option value="">Choose a doctor or room</option>{% endif %}
+                {% for person in staff %}<option value="{{ person.resource_id }}@{{ person.location_id }}">{{ person.name }}</option>{% endfor %}
+              </select>
+              <button type="submit">Start service</button>
+            </form>
+            {% endif %}
+            {% endif %}
             {% if entry.status != 'called' and entry.recall_hold_id %}
             <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/recall-hold/release">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -140,8 +164,8 @@
         <div class="day-slots">
           {% for booking in row.bookings %}
           <div class="booking {{ booking.css }}">
-            <div><strong>{{ booking.name }}</strong><small>{{ booking.start }}–{{ booking.end }} · {{ booking.status }}{% if booking.attendance == 'accepted' %} · confirmed coming{% elif booking.attendance == 'declined' %} · not coming{% endif %}{% if booking.eta %} · arriving {{ booking.eta }}{% endif %}</small></div>
-            {% if booking.checked_in %}<span class="badge active">Checked in</span>{% endif %}
+            <div><strong>{{ booking.name }}</strong><small>{{ booking.start }}–{{ booking.end }} · {{ booking.status }}{% if booking.open %} · {{ booking.attendance_label }}{% endif %}{% if booking.eta %} · arriving {{ booking.eta }}{% endif %}</small></div>
+            {% if booking.arrival %}<span class="badge active">{{ booking.arrival }}</span>{% endif %}
             {% if booking.open %}
             <div class="booking-actions">
               {% if booking.can_check_in and queues %}
@@ -166,14 +190,14 @@
                 <input type="hidden" name="_intent_id" value="{{ intent_id }}-a-{{ booking.reservation_id }}" data-form-intent />
                 <input type="hidden" name="expected_revision" value="{{ booking.revision }}" />
                 <input type="hidden" name="response" value="accepted" />
-                <button type="submit" class="secondary">Confirmed coming</button>
+                <button type="submit" class="secondary">Mark as coming</button>
               </form>
               <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/attendance" data-confirm="Record that {{ booking.name }} will not come?">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                 <input type="hidden" name="_intent_id" value="{{ intent_id }}-d-{{ booking.reservation_id }}" data-form-intent />
                 <input type="hidden" name="expected_revision" value="{{ booking.revision }}" />
                 <input type="hidden" name="response" value="declined" />
-                <button type="submit" class="secondary">Not coming</button>
+                <button type="submit" class="secondary">Mark as not coming</button>
               </form>
               {% endif %}
               <details class="entry-more">

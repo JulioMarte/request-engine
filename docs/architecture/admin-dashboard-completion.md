@@ -32,7 +32,7 @@ and [configuration readback](administrative-configuration-readback.md).
 | Business configuration | `/tenants/{organization_id}/configuration` | 99 current owner operations grouped into organization, locations/catalog, supply, queues, channels, Requests, Discovery, agents, integrations, authority/controller policy, identity connections and capacity/recovery policies; owner reads guide supported revision-sensitive actions |
 | Advanced operations | `/operations` | Complete control-plane catalog search and typed forms; it remains an escape hatch, not a substitute for missing recipient journeys |
 | Business home | `/tenants/{organization_id}` | Setup progress, team counts, chief of staff status and pending agent suggestions from owner reads; unavailable reads are shown as unavailable |
-| Today (employees and administrators) | `/tenants/{organization_id}/today` | Live queues with call next, call now (with reason), set aside/back in line, no-show, skip and finish service; the day's appointments in business time with check-in, attendance answer, late arrival time, move and cancel; a New visit journey that finds or registers the customer, then books a free time or adds them to a queue; denied reads are explained, never shown as empty |
+| Today (employees and administrators) | `/tenants/{organization_id}/today` | Live queues with call next, call now (with reason), set aside/back in line, no-show, skip, start service (choosing the doctor or room at that location) and finish service; the day's appointments in business time with check-in, attendance answer, late arrival time, move and cancel; a New visit journey that finds or registers the customer, then books a free time or adds them to a queue; denied reads are explained, never shown as empty |
 | Agents and API access | `/tenants/{organization_id}/agents` | Chief of staff template and custom agents through the owner provision/activate/authority/policy sequence; one-time key reveal; MCP/HTTP connection instructions; key rotation, pause and revoke |
 | Approvals | `/tenants/{organization_id}/approvals` | Agent-proposed staff invitations approved or rejected by a person with the exact proposal revision (ADR 0019) |
 | Diagnostics | `/diagnostics` | Redacted process counters/errors and correlation IDs, without claiming installation-wide history |
@@ -53,14 +53,25 @@ operation. Visibility and grouping do not grant execution permission.
 
 `TENANT_RUNTIME_EXTERNAL_DESTINATIONS` explicitly accounts for the other runtime
 operator operations: 14 staff/invitation operations already have dedicated tenant
-workspaces; readiness is read by the configuration overview; 10 daily-service operations
+workspaces; readiness is read by the configuration overview; 11 daily-service operations
 (day board, live queue, check-in, call next, call now, set aside, back in line, no-show,
-skip, finish service) are projected by the Today workspace; the remaining 17
-daily-service execution operations (service start/pause/resume/read, staff history,
+skip, start service, finish service) are projected by the Today workspace; the remaining 16
+daily-service execution operations (service pause/resume/read, staff history,
 workload classification, resource activity and operational recovery) stay in the
 operational API; 20 migration-era copilot projections remain outside this business setup
 interface. Today is a front-desk view, not a complete daily-service client, and there is
 no bespoke editor for every typed configuration schema.
+
+Start service (`service_session_start`) needs a resource with an active assignment at
+the queue's location. Neither the staff queue read nor the day board carries a planned
+resource, so Today offers the resources that `booking_resource_list` and
+`booking_resource_assignment_list` report as assigned there now, scoped to the Party the
+person represents with `operations.manage_supply` (from `authority_read_self`). These
+three are business-configuration reads; Today only reads them and the architecture proof
+rejects any configuration command in `TODAY_OPERATION_IDS`. Someone without those reads
+is told which permission is missing instead of being shown a form. Arrival on the day
+board counts both owner facts: the reservation's attendance check-in and the active queue
+entry created by queue check-in.
 
 Today also projects public owner operations for the receptionist journey:
 `parties_lookup`, `parties_register`, `catalog_search_offerings`,
