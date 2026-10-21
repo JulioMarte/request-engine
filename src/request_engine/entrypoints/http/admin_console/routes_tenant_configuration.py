@@ -23,9 +23,11 @@ from request_engine.entrypoints.http.admin_console.presentation import (
     TENANT_CONFIGURATION_SECTIONS,
 )
 from request_engine.entrypoints.http.admin_console.resources import list_items
+from request_engine.entrypoints.http.admin_console.routes_clinic_setup import (
+    resolve_business_party,
+)
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 from request_engine.entrypoints.http.admin_console.tenant_configuration import (
-    guided_setup_steps,
     inventory_read_valid,
     read_action_links,
 )
@@ -114,6 +116,11 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                     ).to_view()
             else:
                 readiness_result = outcome.to_view()
+        # Advanced tasks are prefilled with the business Party the signed-in owner
+        # represents, read from the owner; nobody is asked to type its identifier.
+        party_id = request.query_params.get("authority_party_id", "") or (
+            await resolve_business_party(state, str(organization_id), session.access_token) or ""
+        )
         return state.templates.TemplateResponse(
             request,
             "resources/tenant_configuration.html",
@@ -127,10 +134,7 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                 readiness_result=readiness_result,
                 readiness_available=readiness is not None,
                 supported=TENANT_CONFIGURATION_OPERATION_IDS,
-                setup_steps=guided_setup_steps(
-                    catalog, root, request.query_params.get("authority_party_id", "")
-                ),
-                authority_party_id=request.query_params.get("authority_party_id", ""),
+                authority_party_id=party_id,
                 form_id="tenant-readiness",
             ),
         )

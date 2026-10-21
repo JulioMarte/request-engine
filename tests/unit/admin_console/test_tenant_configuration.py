@@ -675,11 +675,14 @@ async def test_guided_steps_preserve_explicit_party_without_assuming_readiness(
     async with _client(tmp_path, Port(), Port()) as client:
         await _login(client)
         page = await client.get(f"{_ROOT}?authority_party_id={_OTHER}")
-        assert "Start your business" in page.text
-        assert f"booking_resource_create?authority_party_id={_OTHER}" not in page.text
+        # The party-identifier card is gone: setup is the guided flow, and advanced
+        # tasks keep the explicitly supplied Party without asking anyone to type it.
+        assert "Set up your clinic" in page.text
+        assert f'href="/tenants/{_TENANT}/setup"' in page.text
+        assert "Represented business party" not in page.text
+        assert "Advanced settings" in page.text
         assert f"booking_resource_list?authority_party_id={_OTHER}" in page.text
         assert "blocked" in page.text
-        assert "Enter this reference once" in page.text
 
 
 @pytest.mark.asyncio
@@ -810,7 +813,7 @@ async def test_loaded_edit_keeps_identity_bound_to_its_current_settings(tmp_path
         assert 'name="expected_operational_revision"' not in chooser.text
         setup = await client.get(f"{_ROOT}/setup?authority_party_id={_TENANT}")
         assert setup.status_code == 200
-        assert "Start your business" in setup.text
+        assert "Set up your clinic" in setup.text
         assert all(method == "GET" for method, _, _ in runtime.calls)
 
 

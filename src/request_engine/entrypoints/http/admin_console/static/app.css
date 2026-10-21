@@ -595,3 +595,77 @@ dl.detail dd { margin: 0; overflow-wrap: anywhere; }
 .config-tasks a { text-decoration: none; font-weight: 600; }
 .filter-panel.row { align-items: flex-end; }
 @media (max-width: 1024px) { .config-sections { grid-template-columns: 1fr; } }
+
+/* === Clinic setup flow (/tenants/{org}/setup) ============================ */
+/* Owned by the guided setup flow; keep all its rules inside this section.     */
+.setup-layout { display: grid; grid-template-columns: minmax(220px, 270px) minmax(0, 1fr); gap: 1.6rem; align-items: start; }
+.setup-steps { position: sticky; top: 1rem; }
+.setup-steps ol { position: relative; margin: 0; padding: 0; list-style: none; }
+.setup-steps ol::before { content: ""; position: absolute; left: 1.05rem; top: 1.2rem; bottom: 1.2rem; width: 2px; background: var(--line); }
+.setup-steps li { position: relative; }
+.setup-steps a { display: flex; align-items: flex-start; gap: .8rem; padding: .55rem .6rem .55rem 0; color: var(--ink); text-decoration: none; border-radius: var(--r-control); }
+.setup-steps a:hover .step-text strong { text-decoration: underline; }
+.step-mark { position: relative; z-index: 1; flex: none; display: grid; place-items: center; width: 2.1rem; height: 2.1rem; border-radius: 50%; background: var(--surface); border: 2px solid var(--line-strong); color: var(--muted); font-weight: 700; }
+.setup-steps li.done .step-mark { background: var(--leaf-tint); border-color: var(--leaf); color: var(--leaf); }
+.setup-steps li.current .step-mark { background: var(--sea); border-color: var(--sea); color: var(--accent-ink); }
+.step-text { display: flex; flex-direction: column; gap: .1rem; padding-top: .25rem; min-width: 0; }
+.step-text small { color: var(--muted); font-size: .84rem; }
+.setup-steps li.current .step-text strong { color: var(--sea-strong); }
+.setup-progress { display: none; margin: 0 0 .4rem; color: var(--muted); font-weight: 600; font-size: .9rem; }
+.setup-main { min-width: 0; max-width: 46rem; }
+.setup-step-head h2 { margin: 0; font-size: 1.45rem; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.setup-step-head p { margin: .3rem 0 1rem; color: var(--muted); }
+.setup-main .card-title { margin: 0 0 .9rem; font-size: 1.08rem; }
+.setup-form { gap: 1rem; }
+.field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem; }
+.field-row.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.field-hint { margin: .2rem 0 0; color: var(--muted); font-size: .88rem; font-weight: 400; }
+.optional { color: var(--muted); font-weight: 400; }
+.setup-fact { display: flex; flex-direction: column; gap: .1rem; margin: 0; }
+.setup-fact span { color: var(--muted); font-size: .88rem; }
+.setup-fact strong { font-size: 1.15rem; }
+.setup-fact-hint { margin-bottom: 1rem; }
+.setup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem 1.4rem; margin-top: .4rem; }
+.setup-actions a:not(.button) { font-weight: 600; }
+.setup-actions.final { margin-top: 1.2rem; }
+.setup-existing { margin: 0 0 1.1rem; padding: .9rem 1.1rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-panel); }
+.setup-existing h3 { margin: 0 0 .5rem; font-size: .95rem; }
+.setup-existing ul { margin: 0; padding: 0; list-style: none; display: grid; gap: .55rem; }
+.setup-existing li { display: flex; flex-direction: column; gap: .1rem; }
+.setup-existing small { color: var(--muted); }
+.setup-note { margin: 0 0 1rem; }
+.setup-problem p { margin: .25rem 0; }
+.setup-blocked { border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); }
+.choice-group { display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; }
+.week-editor { margin: 0; }
+.week-rows { display: grid; gap: .35rem; margin-top: .6rem; }
+.week-row { display: grid; grid-template-columns: minmax(7.5rem, 10rem) minmax(8.5rem, 11rem) auto minmax(8.5rem, 11rem); justify-content: start; align-items: center; gap: .6rem; padding: .2rem 0; }
+.week-row:not(:has(input[type="checkbox"]:checked)) .week-time input { opacity: .45; }
+.week-to { color: var(--muted); font-size: .9rem; }
+.week-copy { margin-top: .8rem; }
+.setup-finish { display: grid; gap: 1rem; }
+.setup-finish .card { margin-bottom: 0; }
+.slot-preview { margin: .6rem 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: .5rem; }
+.slot-preview li { padding: .45rem .75rem; border-radius: var(--r-control); background: var(--sea-tint); color: var(--sea-strong); font-weight: 600; }
+.setup-readiness { margin: 0; padding: 0; list-style: none; display: grid; gap: .8rem; }
+.setup-readiness li { display: flex; gap: .7rem; align-items: flex-start; }
+.status-word { color: var(--muted); font-size: .88rem; }
+.setup-readiness li.ready .status-word { color: var(--leaf); }
+.setup-readiness li.blocked .status-word { color: var(--sun-ink); }
+@media (max-width: 900px) {
+  .setup-layout { grid-template-columns: 1fr; gap: 1rem; }
+  .setup-steps { position: static; }
+  .setup-progress { display: block; }
+  .setup-steps ol { display: flex; gap: .35rem; overflow-x: auto; padding-bottom: .3rem; }
+  .setup-steps ol::before { display: none; }
+  .setup-steps a { padding: 0; }
+  .setup-steps .step-text { display: none; }
+  .setup-steps li.current .step-text { display: flex; padding-top: .35rem; }
+}
+@media (max-width: 560px) {
+  .field-row, .field-row.three { grid-template-columns: 1fr; }
+  .week-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); justify-content: stretch; }
+  .week-day { grid-column: 1 / -1; }
+  .week-to { display: none; }
+}
+/* === end clinic setup flow ================================================ */
