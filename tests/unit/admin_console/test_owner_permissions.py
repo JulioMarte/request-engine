@@ -42,10 +42,6 @@ def _ok(payload: object, status: int = 200) -> ControlResponse:
     return ControlResponse(status, payload, {})
 
 
-def _readiness(control: str) -> ControlResponse:
-    return _ok({"tenant_control": {"status": control, "blockers": []}})
-
-
 class _Upstream:
     def __init__(self, routes: dict[tuple[str, str], ControlResponse]) -> None:
         self.routes = {
@@ -106,7 +102,6 @@ async def test_outdated_owner_requests_upgrade_without_typing_internal_numbers(
 ) -> None:
     runtime = _Upstream(
         {
-            ("GET", "/v1/onboarding/readiness"): _readiness("blocked"),
             ("POST", "/v1/controller-policy-adoptions"): _ok(
                 {"request_id": REQUEST, "status": "pending"}, status=201
             ),
@@ -115,7 +110,7 @@ async def test_outdated_owner_requests_upgrade_without_typing_internal_numbers(
     async with _signed_in(runtime, tmp_path) as client:
         page = await client.get(PAGE)
         assert page.status_code == 200, page.text
-        assert "New owner permissions are available" in page.text
+        assert "Get the newest owner permissions" in page.text
         # The owner's own revision is read for them, never typed.
         assert 'type="hidden" name="expected_authority_revision" value="72"' in page.text
         assert "Expected Authority Revision" not in page.text
@@ -143,7 +138,6 @@ async def test_outdated_owner_requests_upgrade_without_typing_internal_numbers(
 async def test_pending_request_tells_owner_to_wait_for_approval(tmp_path: Path) -> None:
     runtime = _Upstream(
         {
-            ("GET", "/v1/onboarding/readiness"): _readiness("blocked"),
             ("GET", f"/v1/controller-policy-adoptions/{REQUEST}"): _ok(
                 {"request_id": REQUEST, "status": "pending"}
             ),
@@ -153,14 +147,33 @@ async def test_pending_request_tells_owner_to_wait_for_approval(tmp_path: Path) 
         page = await client.get(f"{PAGE}?requested={REQUEST}")
     assert page.status_code == 200, page.text
     assert "Upgrade requested" in page.text
-    assert "Request the upgrade" not in page.text
+    assert "Request the newest permissions" not in page.text
 
 
 @pytest.mark.asyncio
-async def test_current_owner_is_told_nothing_is_needed(tmp_path: Path) -> None:
-    runtime = _Upstream({("GET", "/v1/onboarding/readiness"): _readiness("ready")})
+async def test_owner_refusal_is_explained_on_the_same_page(tmp_path: Path) -> None:
+    # The page never claims "up to date" itself; the owner command decides.
+    runtime = _Upstream(
+        {
+            ("POST", "/v1/controller-policy-adoptions"): ControlResponse(
+                409,
+                {"error": {"code": "controller_policy_adoption_conflict", "message": "x"}},
+                {},
+            ),
+        }
+    )
     async with _signed_in(runtime, tmp_path) as client:
         page = await client.get(PAGE)
-    assert page.status_code == 200, page.text
-    assert "You have the latest owner permissions" in page.text
-    assert runtime.posted("/v1/controller-policy-adoptions") == []
+        assert "already has the newest" not in page.text
+        response = await client.post(
+            PAGE,
+            data={
+                "csrf_token": _csrf(page.text),
+                "_intent_id": "adopt-intent-0002",
+                "expected_authority_revision": "72",
+                "reason": "Use the latest owner permissions for this business.",
+            },
+        )
+    assert response.status_code == 409
+    assert "Your business already has the newest owner permissions" in response.text
+    assert len(runtime.posted("/v1/controller-policy-adoptions")) == 1

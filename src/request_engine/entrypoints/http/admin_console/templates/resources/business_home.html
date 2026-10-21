@@ -49,7 +49,7 @@
         <div><strong>{{ team.invited }}</strong><span>Invited</span></div>
         <div><strong>{{ team.suspended }}</strong><span>Suspended</span></div>
       </div>
-      <div class="panel-body"><a href="/tenants/{{ organization_id }}/staff-invitations">Invite someone by email</a></div>
+      <div class="panel-body"><a href="/tenants/{{ organization_id }}/staff-invitations">Invite someone by email</a> <span aria-hidden="true">·</span> <a href="/tenants/{{ organization_id }}/permissions-update">Owner permissions</a></div>
       {% elif team_status == 403 %}
       <p class="unavailable-note">Team information is not available to you.</p>
       {% else %}
