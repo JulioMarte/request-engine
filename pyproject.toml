@@ -70,6 +70,9 @@ max-complexity = 10
 [tool.pyright]
 include = ["src", "tests"]
 pythonVersion = "3.13"
+# Type-check against the deployment platform (Linux containers, Linux CI) so a
+# Windows workstation reaches the same verdict as exact-head CI.
+pythonPlatform = "Linux"
 typeCheckingMode = "strict"
 extraPaths = ["src", "tests/fixtures"]
 venvPath = "."
