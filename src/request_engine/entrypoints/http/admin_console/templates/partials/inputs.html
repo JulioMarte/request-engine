@@ -22,7 +22,7 @@
         </label>
       {% endif %}
       <fieldset data-structured-controls{% if not field.included or field.null_value %} disabled{% endif %}>
-        <legend>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}</legend>
+        <legend><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span></legend>
         {% if field.description %}<p class="muted">{{ field.description }}</p>{% endif %}
         {% if field.kind == 'object' %}
           {{ render(field.children) }}
@@ -41,7 +41,7 @@
     </section>
   {% elif field.enum or field.enum_options is defined or field.choices is defined %}
     {% set choices = field.enum_options if field.enum_options is defined else field.choices if field.choices is defined else none %}
-    <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+    <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <select name="{{ field.name }}"{% if field.required %} required{% endif %}{% if field.readonly or choices == [] %} disabled{% endif %}>
         <option value=""{% if not field.value %} selected{% endif %}>{% if field.required %}Choose {{ field.label }}{% else %}Leave unchanged / use default{% endif %}</option>
         {% if choices is not none %}
@@ -54,7 +54,7 @@
       {% if field.description %}<small class="muted">{{ field.description }}</small>{% endif %}
     </label>
   {% elif field.kind == 'boolean' %}
-    <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+    <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <select name="{{ field.name }}"{% if field.required %} required{% endif %}>
         <option value=""{% if not field.value %} selected{% endif %}>{% if field.required %}Choose yes or no{% else %}Leave unchanged / use default{% endif %}</option>
         <option value="true"{% if field.value in ('true', 'True', '1', 'on', 'yes') %} selected{% endif %}>Yes</option>
@@ -70,17 +70,17 @@
       <small class="muted">This operation accepts an open structure. It needs a configuration document.{% if field.description %} {{ field.description }}{% endif %}</small>
     </details>
   {% elif field.secret %}
-    <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+    <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <input type="password" name="{{ field.name }}" value="" autocomplete="new-password"{% if field.required %} required{% endif %} />
       <small class="muted">Secret value is never echoed{% if field.description %} &middot; {{ field.description }}{% endif %}</small>
     </label>
   {% elif field.kind in ('integer', 'number') %}
-    <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+    <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <input type="number" step="{% if field.kind == 'integer' %}1{% else %}any{% endif %}" name="{{ field.name }}" value="{{ field.value }}"{% if field.required %} required{% endif %}{% if field.readonly %} readonly{% endif %} />
       {% if field.description %}<small class="muted">{{ field.description }}</small>{% endif %}
     </label>
   {% else %}
-    <label>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+    <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <input type="{% if field.format in ('date', 'time') %}{{ field.format }}{% else %}text{% endif %}"{% if field.format == 'time' %} step="any"{% endif %} name="{{ field.name }}" value="{{ field.value }}"{% if field.required %} required{% endif %}{% if field.readonly %} readonly{% endif %} />
       {% if field.exact_time %}<small class="muted">This exact time contains precision or an offset that the browser picker cannot retain. Its value is preserved here.</small>{% endif %}
       {% if field.description %}<small class="muted">{{ field.description }}</small>{% endif %}
