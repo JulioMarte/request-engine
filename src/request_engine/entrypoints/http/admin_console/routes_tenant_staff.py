@@ -299,6 +299,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                             "expected_revision": str(item.get("membership_revision", "")),
                             "desired_capabilities": authority_draft,
                         },
+                        loaded_revisions=("expected_authority_revision", "expected_revision"),
                     ),
                     "url": f"/tenants/{organization_id}/staff/{membership_id}/{key}",
                     "intent_id": token_urlsafe(24),
@@ -313,10 +314,13 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                             "expected_profile_revision": str(item.get("profile_revision", 0)),
                             "display_name": str(item.get("display_name") or ""),
                         },
+                        loaded_revisions=("expected_profile_revision",),
                     ),
                     "url": f"/tenants/{organization_id}/staff/{membership_id}/profile",
                     "intent_id": token_urlsafe(24),
                 }
+        for entry in operations.values():
+            _label_reason_fields(entry["inputs"])
         return state.templates.TemplateResponse(
             request,
             "resources/staff_detail.html",
@@ -484,3 +488,12 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
     app.add_api_route(
         "/tenants/{organization_id}/staff/{membership_id}/{action}", run, methods=["POST"]
     )
+
+
+def _label_reason_fields(inputs: list[dict[str, Any]]) -> None:
+    """Name the owner's provenance field by what the person writes in it."""
+
+    for view in inputs:
+        if view.get("name") == "provenance_reference":
+            view["label"] = "Reason for this change"
+            view["description"] = "Kept in the team history so others know why it changed."

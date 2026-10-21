@@ -51,6 +51,26 @@ _READINESS_LABELS = {
     "staff_administration": "Team administration",
     "recovery": "Recovery",
 }
+# Owner-facing next steps. The onboarding API's resolution hints are written for
+# integrations; the console says what the person should do in their own terms.
+_READINESS_GUIDANCE = {
+    "business_party": "Your business record is incomplete. Ask your platform administrator.",
+    "locations": "Add the place where you see customers, with its opening hours.",
+    "appointments": (
+        "Add a service with its price, and a person or room with weekly hours, "
+        "so customers can book."
+    ),
+    "walk_in_queue": "Create a waiting line for customers who arrive without an appointment.",
+    "communications": "Choose how confirmations and reminders reach your customers.",
+    "identity": "Sign-in for this business is not ready. Ask your platform administrator.",
+    "tenant_control": "Owner control is not ready. Ask your platform administrator.",
+    "staff_administration": "Team management is not ready. Ask your platform administrator.",
+    "recovery": (
+        "Save recovery codes in Account security so you can get back in "
+        "if you lose your password."
+    ),
+}
+_READINESS_STATES = {"ready": "Ready", "blocked": "To do", "unknown": "Not checked"}
 _DONE_NOTICES = {
     "called": "Next customer called.",
     "no_show": "Marked as no-show.",
@@ -229,7 +249,8 @@ def _readiness(payload: object) -> list[dict[str, Any]]:
                 "key": key,
                 "label": _READINESS_LABELS.get(key, key.replace("_", " ").capitalize()),
                 "status": status,
-                "hint": hints[0] if hints else "",
+                "state_label": _READINESS_STATES.get(status, status.capitalize()),
+                "hint": _READINESS_GUIDANCE.get(key) or (hints[0] if hints else ""),
             }
         )
     return rows

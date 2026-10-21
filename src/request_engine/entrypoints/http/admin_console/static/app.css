@@ -152,6 +152,8 @@ form[aria-busy="true"] button[data-request-disabled]::after { content: " …"; }
 
 /* Shell ------------------------------------------------------------------- */
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0, 1fr); }
+/* Paint the rail on the column so it reaches the bottom of long pages. */
+@media (min-width: 901px) { .app-shell:not(.public) { background: linear-gradient(90deg, var(--rail) 248px, transparent 248px); } }
 .app-shell.public { display: block; }
 .app-shell.public .app-frame { min-height: 100vh; display: grid; place-items: center; padding: 2rem 1rem; }
 .app-shell.public main { width: min(100%, 460px); padding: 0; margin: 0; }
@@ -400,6 +402,8 @@ dl.detail dd { margin: 0; overflow-wrap: anywhere; }
 .permission-choice input[type="checkbox"] { width: 1.1rem; height: 1.1rem; flex: none; }
 .permission-choice span { flex: 1; }
 .permission-choice code { font-size: .74rem; color: var(--muted); }
+.permission-group { margin: 0 0 1rem; padding: 0; border: 0; }
+.permission-group legend { padding: 0 0 .2rem; font-weight: 700; color: var(--ink); }
 #invitation-preview[hidden], #invitation-accept-form[hidden], #invitation-cancel[hidden] { display: none !important; }
 
 /* Capabilities in plain language ----------------------------------------- */
@@ -414,6 +418,9 @@ dl.detail dd { margin: 0; overflow-wrap: anywhere; }
 .auth .brand-mark { width: 44px; height: 44px; margin: 0 0 .9rem; font-size: 1rem; }
 .auth .auth-block { margin-top: 1rem; }
 .auth h2 { margin-top: 0; }
+.auth details.auth-block summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
+.auth details.auth-block[open] summary { margin-bottom: .7rem; }
+.auth-footnote { margin: 1.4rem 0 0; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: .92rem; }
 
 /* Dialog ------------------------------------------------------------------ */
 .confirm-dialog { width: min(92vw, 470px); padding: 0; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); box-shadow: 0 24px 60px rgba(17, 25, 33, .3); }

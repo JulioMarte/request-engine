@@ -206,7 +206,7 @@
       {% endfor %}
     </ol>
     {% else %}
-    <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>No appointments today</strong><p>Bookings made by staff, customers or your chief of staff appear here.</p></div></div>
+    <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>No appointments today</strong><p>Book a customer now, or wait: bookings made by your team, customers or your chief of staff appear here.</p><p><a class="button secondary" href="/tenants/{{ organization_id }}/today/visit">Book an appointment</a></p></div></div>
     {% endif %}
     {% elif board_status == 403 %}
     <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>The appointment board is not available to you</strong><p>Your current permissions do not include "See the day's appointments".</p></div></div>

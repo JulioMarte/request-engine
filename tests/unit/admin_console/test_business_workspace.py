@@ -262,7 +262,9 @@ async def test_business_home_shows_setup_team_and_chief_of_staff_invitation(
         page = await client.get(f"/tenants/{ORG}")
     assert page.status_code == 200
     assert "1 of 2 areas ready" in page.text
-    assert "Create an active service queue." in page.text
+    # Owner-facing guidance replaces the integration-facing API hint.
+    assert "Create a waiting line for customers who arrive without an appointment." in page.text
+    assert "Create an active service queue." not in page.text
     assert f'href="/tenants/{ORG}/agents/new?template=chief-of-staff"' in page.text
     reads = {call[1]: call[2] for call in runtime.calls if call[0] == "GET"}
     assert reads["/v1/business"]["extra_headers"]["X-RE-Organization-ID"] == ORG

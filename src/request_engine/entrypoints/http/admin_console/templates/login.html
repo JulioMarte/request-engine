@@ -1,34 +1,31 @@
 {% extends "base.html" %}
-{% block title %}Sign in &middot; Request Engine admin{% endblock %}
+{% block title %}Sign in &middot; Request Engine{% endblock %}
 {% block content %}
 <section class="card narrow auth">
-  <div class="brand-mark">RE</div>
-  <h1>Request Engine</h1>
-  <p class="muted">Platform administration</p>
-  <p><a href="/owner-invitations/enroll">Enroll with an owner invitation</a></p>
+  <div class="brand-mark" aria-hidden="true">RE</div>
+  <h1>Sign in</h1>
+  <p class="muted">Your business workspace: today's appointments, queues and team.</p>
+
+  <form method="post" action="/login" class="stack" data-password-login>
+    <input type="hidden" name="next" value="{{ next_url | default('/') }}" />
+    <label>Email or username
+      <input name="login_handle" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required />
+    </label>
+    <label>Password
+      <input name="password" type="password" autocomplete="current-password" required />
+    </label>
+    <button type="submit" class="wide">Sign in</button>
+    <p data-password-login-status class="muted" role="status" aria-live="polite"></p>
+  </form>
 
   <details class="auth-block">
-    <summary>Optional: sign in with a passkey</summary>
-    <h2>Sign in with a passkey</h2>
-    <button id="passkey-login-btn" type="button" class="wide">Continue with passkey</button>
+    <summary>Use a passkey instead</summary>
+    <button id="passkey-login-btn" type="button" class="secondary wide">Continue with passkey</button>
     <p id="passkey-login-status" class="muted small">
-      No password or username needed. Your browser shows your passkeys.
+      No password or username needed. Your browser shows the passkeys saved on this device.
     </p>
   </details>
 
-  <div class="auth-block">
-    <h2>Sign in with password</h2>
-    <form method="post" action="/login" class="stack" autocomplete="off" data-password-login>
-      <input type="hidden" name="next" value="{{ next_url | default('/') }}" />
-      <label>Login handle
-        <input name="login_handle" type="text" required />
-      </label>
-      <label>Password
-        <input name="password" type="password" required />
-      </label>
-      <button type="submit">Sign in with password</button>
-      <p data-password-login-status class="muted" role="status" aria-live="polite"></p>
-    </form>
-  </div>
+  <p class="auth-footnote">Invited to own a business? <a href="/owner-invitations/enroll">Create your account</a></p>
 </section>
 {% endblock %}

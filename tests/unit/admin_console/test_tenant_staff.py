@@ -503,8 +503,8 @@ async def test_staff_detail_warns_that_native_session_revocation_is_global() -> 
         response = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
 
     assert response.status_code == 200
-    assert "sessions globally" in response.text
-    assert "other tenant contexts" in response.text
+    assert "ends all of their sessions" in response.text
+    assert "other businesses they belong to" in response.text
 
 
 @pytest.mark.asyncio
