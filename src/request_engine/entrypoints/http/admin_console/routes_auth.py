@@ -53,8 +53,32 @@ def _new_session(
     )
 
 
+# Where sign-in may return a person: console pages only. Anything else (other
+# hosts, protocol-relative or backslash tricks, control characters) goes home.
+_LOGIN_RETURN_PREFIXES = (
+    "/tenants/",
+    "/resources",
+    "/account/",
+    "/my-organizations",
+    "/operations",
+    "/diagnostics",
+    "/staff-invitations/accept",
+)
+_LOGIN_RETURN_MAX = 512
+
+
 def _login_next(value: object) -> str:
-    return str(value) if value in ("/staff-invitations/accept", "/account/security") else "/"
+    if not isinstance(value, str) or not value or len(value) > _LOGIN_RETURN_MAX:
+        return "/"
+    unsafe = (
+        not value.startswith("/")
+        or value.startswith("//")
+        or "\\" in value
+        or any(ord(char) < 0x20 or ord(char) == 0x7F for char in value)
+    )
+    if unsafe or not value.startswith(_LOGIN_RETURN_PREFIXES):
+        return "/"
+    return value
 
 
 def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
