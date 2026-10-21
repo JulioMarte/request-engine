@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}New visit · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div><p class="eyebrow">Today</p><h1>New visit</h1><p>Find the customer first. Register them only if they are not on file yet.</p></div>
+  <div class="page-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/today">Back to today</a></div>
+</header>
+<div class="split-layout">
+  <section class="card" aria-labelledby="find-title">
+    <h2 id="find-title">Find a customer</h2>
+    <form method="post" action="/tenants/{{ organization_id }}/today/visit/lookup" class="stack" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <label>Search by
+        <select name="mode">
+          <option value="phone" {% if lookup and lookup.mode == 'phone' %}selected{% endif %}>Phone</option>
+          <option value="document" {% if lookup and lookup.mode == 'document' %}selected{% endif %}>Cédula</option>
+          <option value="name" {% if lookup and lookup.mode == 'name' %}selected{% endif %}>Name (starts with)</option>
+        </select>
+      </label>
+      <label>Search for<input type="text" name="value" maxlength="128" required /></label>
+      <button type="submit">Search</button>
+    </form>
+    {% if lookup %}
+    <div role="status" aria-live="polite">
+    {% if lookup.status == 403 %}
+      <p class="alert warn">Your permissions do not include "Look up customers". Someone who manages team permissions can add it.</p>
+    {% elif lookup.status == 422 %}
+      <p class="alert error">Choose how to search and enter what to look for.</p>
+    {% elif lookup.status not in range(200, 300) %}
+      <p class="alert error">The search could not be completed. Try again.</p>
+    {% elif not lookup.matches %}
+      <p class="alert notice">Nobody matches. Register the customer on the right.</p>
+    {% else %}
+      <ul class="result-list">
+        {% for match in lookup.matches %}
+        <li><a href="/tenants/{{ organization_id }}/today/visit/{{ match.party_id }}"><strong>{{ match.name }}</strong></a>{% if match.contacts %} <small>{{ match.contacts }}</small>{% endif %}{% if not match.active %} <span class="badge">inactive</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    </div>
+    {% endif %}
+  </section>
+  <section class="card" aria-labelledby="register-title">
+    <h2 id="register-title">Register a new customer</h2>
+    <form method="post" action="/tenants/{{ organization_id }}/today/visit/register" class="stack" autocomplete="off" data-plain-action>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="_intent_id" value="{{ intent_id }}-register" data-form-intent />
+      <label>Full name<input type="text" name="display_name" maxlength="512" required /></label>
+      <label>Phone (optional)<input type="tel" name="phone" maxlength="256" /></label>
+      <label>Cédula (optional)<input type="text" name="cedula" maxlength="256" inputmode="numeric" /></label>
+      <button type="submit">Register and continue</button>
+    </form>
+    <p class="muted">Search first so the same person is not registered twice.</p>
+  </section>
+</div>
+{% endblock %}

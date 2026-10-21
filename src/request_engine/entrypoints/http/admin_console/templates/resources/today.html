@@ -7,8 +7,9 @@
     <h1>Today</h1>
     <p><time datetime="{{ local_date.isoformat() }}">{{ local_date.strftime("%A %d %B") }}</time>, {{ local_now }} business time ({{ zone_name }}).</p>
   </div>
-  <div class="page-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/today">Refresh</a></div>
+  <div class="page-actions"><a class="button" href="/tenants/{{ organization_id }}/today/visit">New visit</a><a class="button secondary" href="/tenants/{{ organization_id }}/today">Refresh</a></div>
 </header>
+{% if notice %}<p class="alert notice" role="status">{{ notice }}</p>{% endif %}
 
 <div class="today-grid">
   <section class="queue-board" aria-labelledby="queues-title">
@@ -56,8 +57,49 @@
         {% for entry in queue.called + queue.waiting %}
         <li>
           <span class="waiting-pos">{{ loop.index }}</span>
-          <div><strong>{{ entry.subject_display_name }}</strong><small>{% if entry.status == 'called' %}Called{% else %}Waiting{% endif %}{% if entry.scheduled_at %} · booked{% endif %}{% if entry.active_skip_reason %} · skipped: {{ entry.active_skip_reason }}{% endif %}</small></div>
+          <div><strong>{{ entry.subject_display_name }}</strong><small>{% if entry.status == 'called' %}Called{% else %}Waiting{% endif %}{% if entry.scheduled_at %} · booked{% endif %}{% if entry.active_skip_reason %} · skipped: {{ entry.active_skip_reason }}{% endif %}{% if entry.recall_hold_id %} · set aside{% if entry.recall_hold_reason %}: {{ entry.recall_hold_reason }}{% endif %}{% endif %}</small></div>
           <div class="entry-actions">
+            {% if entry.status != 'called' and entry.recall_hold_id %}
+            <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/recall-hold/release">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="_intent_id" value="{{ intent_id }}-r-{{ entry.queue_entry_id }}" data-form-intent />
+              <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
+              <input type="hidden" name="hold_id" value="{{ entry.recall_hold_id }}" />
+              <button type="submit" class="secondary">Back in line</button>
+            </form>
+            {% elif entry.status != 'called' %}
+            <form method="post" data-plain-action class="inline-form" action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/operator-select" data-confirm="Call {{ entry.subject_display_name }} ahead of the line?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="_intent_id" value="{{ intent_id }}-o-{{ entry.queue_entry_id }}" data-form-intent />
+              <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
+              <label class="sr-only" for="reason-{{ entry.queue_entry_id }}">Why call now</label>
+              <select id="reason-{{ entry.queue_entry_id }}" name="reason">
+                <option value="urgent">Urgent</option>
+                <option value="scheduled_commitment">Has an appointment</option>
+                <option value="operator_override">Other reason</option>
+              </select>
+              <button type="submit" class="secondary">Call now</button>
+            </form>
+            <details class="entry-more">
+              <summary>Set aside</summary>
+              <form method="post" data-plain-action class="stack" action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/recall-hold">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <input type="hidden" name="_intent_id" value="{{ intent_id }}-h-{{ entry.queue_entry_id }}" data-form-intent />
+                <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
+                <input type="hidden" name="local_date" value="{{ today_iso }}" />
+                <input type="hidden" name="zone_name" value="{{ zone_name }}" />
+                <label>Until
+                  <select name="condition_kind">
+                    <option value="until_customer_initiates">The customer says they are ready</option>
+                    <option value="until_time">A set time today</option>
+                  </select>
+                </label>
+                <label>Time (only for a set time)<input type="time" name="local_time" /></label>
+                <label>Note<input type="text" name="reason" maxlength="250" placeholder="Lab results, stepped out…" /></label>
+                <button type="submit" class="secondary">Set aside</button>
+              </form>
+            </details>
+            {% endif %}
             <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/no-show" data-confirm="Mark {{ entry.subject_display_name }} as a no-show?">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
               <input type="hidden" name="_intent_id" value="{{ intent_id }}-n-{{ entry.queue_entry_id }}" data-form-intent />
@@ -98,8 +140,65 @@
         <div class="day-slots">
           {% for booking in row.bookings %}
           <div class="booking {{ booking.css }}">
-            <div><strong>{{ booking.name }}</strong><small>{{ booking.start }}–{{ booking.end }} · {{ booking.status }}</small></div>
+            <div><strong>{{ booking.name }}</strong><small>{{ booking.start }}–{{ booking.end }} · {{ booking.status }}{% if booking.attendance == 'accepted' %} · confirmed coming{% elif booking.attendance == 'declined' %} · not coming{% endif %}{% if booking.eta %} · arriving {{ booking.eta }}{% endif %}</small></div>
             {% if booking.checked_in %}<span class="badge active">Checked in</span>{% endif %}
+            {% if booking.open %}
+            <div class="booking-actions">
+              {% if booking.can_check_in and queues %}
+              <form method="post" data-plain-action class="inline-form" action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/check-in">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <input type="hidden" name="_intent_id" value="{{ intent_id }}-i-{{ booking.reservation_id }}" data-form-intent />
+                <input type="hidden" name="subject_party_id" value="{{ booking.subject_party_id }}" />
+                {% if queues | length == 1 %}
+                <input type="hidden" name="queue_id" value="{{ queues[0].queue_id }}" />
+                {% else %}
+                <label class="sr-only" for="queue-{{ booking.reservation_id }}">Queue</label>
+                <select id="queue-{{ booking.reservation_id }}" name="queue_id">
+                  {% for queue in queues %}<option value="{{ queue.queue_id }}" {% if queue.location_id and queue.location_id == booking.location_id %}selected{% endif %}>{{ queue.name }}</option>{% endfor %}
+                </select>
+                {% endif %}
+                <button type="submit">Check in</button>
+              </form>
+              {% endif %}
+              {% if booking.needs_answer %}
+              <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/attendance">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <input type="hidden" name="_intent_id" value="{{ intent_id }}-a-{{ booking.reservation_id }}" data-form-intent />
+                <input type="hidden" name="expected_revision" value="{{ booking.revision }}" />
+                <input type="hidden" name="response" value="accepted" />
+                <button type="submit" class="secondary">Confirmed coming</button>
+              </form>
+              <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/attendance" data-confirm="Record that {{ booking.name }} will not come?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <input type="hidden" name="_intent_id" value="{{ intent_id }}-d-{{ booking.reservation_id }}" data-form-intent />
+                <input type="hidden" name="expected_revision" value="{{ booking.revision }}" />
+                <input type="hidden" name="response" value="declined" />
+                <button type="submit" class="secondary">Not coming</button>
+              </form>
+              {% endif %}
+              <details class="entry-more">
+                <summary>More</summary>
+                {% if not booking.checked_in %}
+                <form method="post" data-plain-action class="stack" action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/arrival-estimate">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                  <input type="hidden" name="_intent_id" value="{{ intent_id }}-e-{{ booking.reservation_id }}" data-form-intent />
+                  <input type="hidden" name="expected_revision" value="{{ booking.revision }}" />
+                  <input type="hidden" name="local_date" value="{{ today_iso }}" />
+                  <input type="hidden" name="zone_name" value="{{ zone_name }}" />
+                  <label>Running late, arrives at<input type="time" name="local_time" required /></label>
+                  <button type="submit" class="secondary">Save arrival time</button>
+                </form>
+                {% endif %}
+                <a class="button secondary" href="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/reschedule?offering_version_id={{ booking.offering_version_id }}&amp;revision={{ booking.revision }}&amp;day={{ today_iso }}">Move appointment</a>
+                <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/cancel" data-confirm="Cancel {{ booking.name }}'s appointment at {{ booking.start }}?">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                  <input type="hidden" name="_intent_id" value="{{ intent_id }}-x-{{ booking.reservation_id }}" data-form-intent />
+                  <input type="hidden" name="expected_revision" value="{{ booking.revision }}" />
+                  <button type="submit" class="danger">Cancel appointment</button>
+                </form>
+              </details>
+            </div>
+            {% endif %}
           </div>
           {% endfor %}
         </div>

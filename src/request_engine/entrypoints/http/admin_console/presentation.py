@@ -328,11 +328,19 @@ for _destination, _reason, _ids in (
     ),
     (
         "tenant-today",
-        "The Today front desk workspace reads the live queue and day board and runs these actions",
+        (
+            "The Today front desk reads the live queue and day board and runs check-in, "
+            "call next/now, set aside, no-show, skip and finish service; it also projects "
+            "public booking, customer lookup and attendance operations (TODAY_OPERATION_IDS)"
+        ),
         (
             "appointments_day_board",
             "queue_call_next",
+            "queue_check_in",
             "queue_mark_no_show",
+            "queue_operator_select",
+            "queue_recall_hold",
+            "queue_release_recall_hold",
             "queue_skip",
             "queue_staff_read",
             "service_session_complete",
@@ -353,11 +361,7 @@ for _destination, _reason, _ids in (
             "operational_recovery_read",
             "operational_recovery_replace_resource",
             "operational_recovery_reschedule",
-            "queue_check_in",
             "queue_classify_expected_workload",
-            "queue_operator_select",
-            "queue_recall_hold",
-            "queue_release_recall_hold",
             "queue_staff_history_read",
             "resource_activity_end",
             "resource_activity_read",

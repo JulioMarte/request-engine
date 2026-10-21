@@ -41,6 +41,9 @@ from request_engine.entrypoints.http.admin_console.routes_controller_adoption im
 from request_engine.entrypoints.http.admin_console.routes_diagnostics import (
     install_diagnostics_routes,
 )
+from request_engine.entrypoints.http.admin_console.routes_front_desk_booking import (
+    install_front_desk_booking_routes,
+)
 from request_engine.entrypoints.http.admin_console.routes_my_organizations import (
     install_my_organization_routes,
 )
@@ -287,6 +290,7 @@ def create_admin_console_app(
     install_resource_routes(app, state)
     install_tenant_staff_routes(app, state)
     install_tenant_workspace_routes(app, state)
+    install_front_desk_booking_routes(app, state)
     install_tenant_agent_routes(app, state)
     install_tenant_approval_routes(app, state)
     install_tenant_configuration_routes(app, state)

@@ -471,6 +471,18 @@ dl.detail dd { margin: 0; overflow-wrap: anywhere; }
 .booking.checked-in { background: var(--leaf-tint); border-left-color: var(--leaf); }
 .booking.no-show, .booking.cancelled { background: var(--surface-2); border-left-color: var(--line-strong); color: var(--muted); }
 .booking.no-show strong, .booking.cancelled strong { text-decoration: line-through; }
+/* Front-desk actions stay on one wrapped row; secondary forms open on demand. */
+.booking-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-start; gap: .4rem; }
+.booking-actions button, .booking-actions .button, .entry-more button { min-height: 34px; padding: .3rem .65rem; font-size: .84rem; }
+.inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.inline-form select { min-height: 34px; padding: .2rem .4rem; font-size: .84rem; width: auto; }
+.entry-more { flex-basis: 100%; }
+.entry-more[open] { padding: .4rem 0; }
+.entry-more > form, .entry-more > .button { margin-top: .5rem; }
+.slot-list { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0; padding: 0; list-style: none; }
+.slot-list form { margin: 0; }
+.slot-list button { display: grid; text-align: left; }
+.slot-list small { font-weight: 400; font-size: .8rem; }
 
 .day-summary { display: flex; flex-wrap: wrap; gap: 1.6rem; padding: .9rem 1.2rem; border-bottom: 1px solid var(--line); }
 .day-summary div { display: grid; }
