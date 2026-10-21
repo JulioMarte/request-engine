@@ -176,6 +176,21 @@ uv run pyright
 uv run pytest
 ```
 
+### Run the whole system locally (development only)
+
+One command builds the CI image (`deploy/reference/Dockerfile`), starts a fresh PostgreSQL 18, runs `alembic upgrade head`, creates least-privilege runtime logins, and starts the runtime API, control plane, admin console, a dev-only gateway and the worker (`compose.dev.yaml`):
+
+```bash
+./scripts/dev/local_stack.sh up          # Windows: .\scripts\dev\local_stack.ps1 up
+./scripts/dev/local_stack.sh status      # health of every service
+./scripts/dev/local_stack.sh down        # add --volumes to delete data and generated secrets
+```
+
+- Console: `http://localhost:58102` (use `localhost`, not `127.0.0.1`, for passkeys). API `:58100`, control plane `:58101`, dev gateway inspection `:58190/status`. Ports bind to `127.0.0.1`; override with `--api-port`, `--control-port`, `--console-port`, `--gateway-port`, and use `--project` for a second stack.
+- `up` claims the instance over the public setup API with a throwaway software passkey, then creates a dev Organization, its owner and an activated integration principal for the worker. Generated logins/passwords and recovery codes are in `.local-stack/<project>/credentials.json` (gitignored).
+- `up --manual-claim` leaves the instance unclaimed so you run the console setup wizard yourself; the worker then waits until you run `local_stack.sh worker --principal-id <activated integration principal>`.
+- Every secret is generated per stack into `.local-stack/<project>/dev.env` and is dev-only. The tool refuses non-local Docker endpoints. The dev gateway accepts outbox publishes (HTTP) and webhook handoffs (HTTPS with a generated dev CA) and delivers nothing; production still fails closed without a configured publisher and webhook.
+
 For repository-managed local publication and exact-head CI expectations, read `AGENTS.md`, `CONTRIBUTING.md` and `docs/engineering-quality/local-publish-certification.md`.
 
 ## LLM / coding agents

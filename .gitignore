@@ -33,3 +33,4 @@ dist/
 # Local database / tooling state
 *.sqlite3
 *.db
+.local-stack/

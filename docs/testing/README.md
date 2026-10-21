@@ -27,6 +27,7 @@ Key references:
 - `docs/testing/current-proof-map.toml` — representative proof mapping.
 - `docs/testing/test-architecture-migration.md` — test-taxonomy/disposition ledger.
 - `tests/AGENTS.md` — executable working rules for test placement and authorship.
+- `README.md` § *Run the whole system locally* — development-only full stack (`scripts/dev/local_stack.py`, `compose.dev.yaml`) for manual exploration; it is not CI evidence.
 
 ## Contributor / agent evidence flow
 
