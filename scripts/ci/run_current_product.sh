@@ -156,6 +156,7 @@ uv run pytest \
   tests/db/test_staff_invitation_proposals.py \
   tests/db/test_identity_governance_audit.py \
   tests/db/test_controller_policy_upgrade.py \
+  tests/db/test_controller_policy_adoption_provenance.py \
   tests/db/test_identity_onboarding_readiness.py \
   tests/db/test_staff_invitation_anchor_authority.py \
   tests/db/test_platform_control_definer_topology.py \
