@@ -87,6 +87,15 @@ def _read_error(status: int) -> str:
     }.get(status, "Owner information is temporarily unavailable. Try again.")
 
 
+# The owner API returns one generic refusal for several causes, so these are
+# things to check, not a diagnosis.
+_ACTIVATION_CHECKS = (
+    "Check that the invited person has signed in, added a passkey and saved recovery "
+    "codes, and that this invitation is enrolled and not expired. Reload this page to see "
+    "its current state."
+)
+
+
 def _invitation_code(outcome: ExecutionOutcome) -> dict[str, str] | None:
     """The one-time code the inviter must hand over, shown on its own."""
 
@@ -336,6 +345,11 @@ def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 result=outcome.to_view(),
                 form_id=f"owner-{key}",
                 invitation_code=_invitation_code(outcome) if key == "invite" else None,
+                result_hint=(
+                    _ACTIVATION_CHECKS
+                    if key == "activate" and outcome.error_code == "platform_owner_invalid"
+                    else ""
+                ),
             ),
         )
 

@@ -1,5 +1,6 @@
 <div class="result {{ 'ok' if result.ok else 'fail' }}" {% if result.ok %}role="status" aria-live="polite"{% else %}role="alert"{% endif %}>
   <div class="result-summary"><span aria-hidden="true">{% if result.ok %}✓{% else %}!{% endif %}</span><div><strong>{% if result.authority_plan %}Preview ready — no permissions changed{% elif result.ok %}Action completed{% elif result.error_code == 'outcome_unknown' %}Outcome not confirmed{% else %}Action not completed{% endif %}</strong><p>{{ result.message }}</p></div></div>
+  {% if result_hint %}<p class="alert warning">{{ result_hint }}</p>{% endif %}
   {% if result.retry_after %}<p class="muted">You can try again in {{ result.retry_after }} seconds.</p>{% endif %}
   {% if invitation_code %}
   <section class="handoff-code" aria-labelledby="handoff-code-title">
