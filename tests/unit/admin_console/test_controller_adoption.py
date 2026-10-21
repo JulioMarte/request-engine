@@ -317,3 +317,18 @@ async def test_catalog_unreachable_returns_safe_unavailable_view(tmp_path: Path)
         assert "catalog_unavailable" in page.text
         assert "Apply reviewed policy" not in page.text
         assert "internal-service-details" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_review_without_adoption_authority_explains_the_two_owner_rule(
+    tmp_path: Path,
+) -> None:
+    control = Control()
+    async with _client(tmp_path, control) as client:
+        await _login(client)
+        control.failure = ControlResponse(403, {"error": {"code": "capability_required"}}, {})
+        page = await client.get(f"{_ROOT}/{_ID}")
+    assert "can't approve permission changes" in page.text
+    assert 'href="/resources/owners/invitations"' in page.text
+    assert "Apply reviewed policy" not in page.text
+    assert "Idempotency-Key" not in page.text

@@ -305,3 +305,44 @@ async def test_owner_empty_success_and_network_failure_are_distinct() -> None:
         assert page.status_code == 503
         assert "temporarily unavailable" in page.text
         assert "authorized owner service returned an empty page" not in page.text
+
+
+class _InvitingControl(OwnerControl):
+    async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if method == "POST" and path == "/v1/platform/owner-invitations":
+            self.calls.append((method, path, kwargs))
+            return ControlResponse(
+                201,
+                {
+                    "invitation_id": _NEXT,
+                    "invitation_token": "one-time-handoff-code",
+                    "token_available": True,
+                    "expires_at": "2026-10-12T10:00:00Z",
+                },
+                {},
+            )
+        return await super().request(method, path, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_created_invitation_code_is_shown_once_as_the_handoff_value() -> None:
+    control = _InvitingControl()
+    async with _client(control) as client:
+        await _login(client)
+        page = await client.get("/resources/owners/invitations")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        assert "one-time-handoff-code" not in page.text
+        result = await client.post(
+            "/resources/owners/actions/invite",
+            data={
+                "csrf_token": csrf.group(1),
+                "provenance_reference": "second owner",
+                "_intent_id": "invite-intent",
+            },
+        )
+        reread = await client.get("/resources/owners/invitations")
+    assert "Give this invitation code to the new owner" in result.text
+    # Exactly once: in the handoff box, not repeated in raw technical JSON.
+    assert result.text.count("one-time-handoff-code") == 1
+    assert "one-time-handoff-code" not in reread.text

@@ -1,11 +1,14 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% import "partials/capabilities.html" as caps %}
 {% block title %}Review controller policy · Request Engine admin{% endblock %}
 {% block content %}
 <header class="page-heading"><div><a href="/resources/controller-policy-adoptions">← Policy adoption requests</a><h1>Review controller consent</h1></div></header>
 <section class="card">
-{% if result %}{% include "partials/result.html" %}{% else %}
+{% if result and result.status == 403 and not result.needs_step_up %}
+<div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Your account can't approve permission changes</strong>
+<p>For safety, the platform owner who first set up this installation can't approve a business's new permissions. A second platform owner does it, so no single person can raise authority alone. Invite one from <a href="/resources/owners/invitations">Platform owners</a>, activate them, and ask them to approve this request.</p></div></div>
+{% elif result %}{% include "partials/result.html" %}{% else %}
 <dl class="detail"><dt>Organization</dt><dd>{{ item.organization_id }}</dd><dt>Controller</dt><dd>{{ item.controller_principal_id }}</dd><dt>Policy change</dt><dd>{{ item.source_policy_key }} → {{ item.target_policy_key }}</dd><dt>Controller's reason</dt><dd>{{ item.reason }}</dd><dt>Consent expires</dt><dd>{{ item.expires_at }}</dd><dt>Consented authority revision</dt><dd>{{ item.expected_authority_revision }}</dd><dt>Current authority revision</dt><dd>{{ item.current_authority_revision }}</dd><dt>Request revision</dt><dd>{{ item.request_revision }}</dd></dl>
-<h2>Proposed permissions</h2><ul>{% for capability in item.proposed_capabilities %}<li><code>{{ capability }}</code></li>{% else %}<li>No new permissions.</li>{% endfor %}</ul>
+<h2>Permissions this adds</h2>{{ caps.groups(item.proposed_capabilities, "No new permissions.") }}
 {% if item.revoked_capabilities %}<div class="alert warning"><strong>Revoked permissions are present</strong><ul>{% for capability in item.revoked_capabilities %}<li>{{ capability }}</li>{% endfor %}</ul></div>{% endif %}
 <p class="muted">This review does not guarantee approval. Applying independently checks current consent, account status, recovery history and authority. A stale or closed request requires fresh consent.</p>
 <form id="adoption-apply" class="stack" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#result" hx-swap="innerHTML" data-confirm="Apply this reviewed controller policy?">

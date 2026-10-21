@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID
 
@@ -11,7 +12,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
 from request_engine.entrypoints.http.admin_console.client import ControlResponse
-from request_engine.entrypoints.http.admin_console.execution import execute_operation, local_error
+from request_engine.entrypoints.http.admin_console.execution import (
+    ExecutionOutcome,
+    execute_operation,
+    local_error,
+)
 from request_engine.entrypoints.http.admin_console.forms import render_path
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs, summarize_payload
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
@@ -80,6 +85,21 @@ def _read_error(status: int) -> str:
         404: "This owner resource was not found.",
         502: "The owner service returned an incomplete response. Try again.",
     }.get(status, "Owner information is temporarily unavailable. Try again.")
+
+
+def _invitation_code(outcome: ExecutionOutcome) -> dict[str, str] | None:
+    """The one-time code the inviter must hand over, shown on its own."""
+
+    if not outcome.ok:
+        return None
+    try:
+        payload = as_mapping(json.loads(outcome.payload_json))
+    except ValueError:
+        return None
+    token = payload.get("invitation_token")
+    if payload.get("token_available") is not True or not isinstance(token, str) or not token:
+        return None
+    return {"token": token, "expires_at": str(payload.get("expires_at") or "")}
 
 
 def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
@@ -315,6 +335,7 @@ def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 request,
                 result=outcome.to_view(),
                 form_id=f"owner-{key}",
+                invitation_code=_invitation_code(outcome) if key == "invite" else None,
             ),
         )
 

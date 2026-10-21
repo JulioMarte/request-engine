@@ -1,9 +1,13 @@
 <div class="result {{ 'ok' if result.ok else 'fail' }}" {% if result.ok %}role="status" aria-live="polite"{% else %}role="alert"{% endif %}>
   <div class="result-summary"><span aria-hidden="true">{% if result.ok %}✓{% else %}!{% endif %}</span><div><strong>{% if result.authority_plan %}Preview ready — no permissions changed{% elif result.ok %}Action completed{% elif result.error_code == 'outcome_unknown' %}Outcome not confirmed{% else %}Action not completed{% endif %}</strong><p>{{ result.message }}</p></div></div>
-  <p class="result-meta">Status <span class="badge">{{ result.status }}</span>
-     {% if result.error_code %}&middot; <code>{{ result.error_code }}</code>{% endif %}
-     {% if result.retry_after %}&middot; retry after {{ result.retry_after }}s{% endif %}</p>
-  {% if result.idempotency_key %}<p class="muted small">Idempotency-Key <code>{{ result.idempotency_key }}</code></p>{% endif %}
+  {% if result.retry_after %}<p class="muted">You can try again in {{ result.retry_after }} seconds.</p>{% endif %}
+  {% if invitation_code %}
+  <section class="handoff-code" aria-labelledby="handoff-code-title">
+    <h3 id="handoff-code-title">Give this invitation code to the new owner</h3>
+    <p>It works once and expires {{ invitation_code.expires_at }}. Send it privately. They open <a href="/owner-invitations/enroll">owner enrollment</a>, paste it and create their account; then come back here to activate them.</p>
+    <p><code class="handoff-value" data-copy-value>{{ invitation_code.token }}</code></p>
+  </section>
+  {% endif %}
   {% if result.authority_plan %}
     <dl><dt>Will add</dt><dd>{{ result.authority_plan.added | join(', ') or 'None' }}</dd><dt>Will remove</dt><dd>{{ result.authority_plan.removed | join(', ') or 'None' }}</dd></dl>
     {% if result.authority_plan.blockers %}<p class="alert warning">Cannot apply: {{ result.authority_plan.blockers | join(', ') }}. Review the draft and current authority.</p>{% endif %}
@@ -28,5 +32,8 @@
     {{ authentication.render(form_id, result.error_code == 'phishing_resistant_auth_required') }}
   {% endif %}
   {% if result.error_code == 'recovery_completion_required' %}<p class="alert warning">Complete recovery in Account security, then sign out and sign in with your password before returning to this action.</p><a href="/account/security">Complete recovery</a>{% endif %}
-  <details class="technical-details"><summary>Technical details</summary><pre class="payload">{{ result.payload_json }}</pre></details>
+  <details class="technical-details"><summary>Technical details</summary>
+    <p class="result-meta">Status <span class="badge">{{ result.status }}</span>{% if result.error_code %} <code>{{ result.error_code }}</code>{% endif %}</p>
+    {% if result.idempotency_key %}<p class="muted small">Idempotency-Key <code>{{ result.idempotency_key }}</code></p>{% endif %}
+    {% if not invitation_code %}<pre class="payload">{{ result.payload_json }}</pre>{% endif %}</details>
 </div>
