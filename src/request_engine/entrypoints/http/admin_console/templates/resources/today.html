@@ -15,7 +15,7 @@
   <section class="queue-board" aria-labelledby="queues-title">
     <h2 id="queues-title" class="sr-only">Queues</h2>
     {% if queues_status == 403 %}
-    <div class="panel"><div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Queues are not available to you</strong><p>Your current permissions do not include "See queues" and "See the live queue". Someone who manages team permissions can add them.</p></div></div></div>
+    <div class="panel"><div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Queues are not available to you</strong><p>Your current permissions do not include "See queues" and "See the live queue". Someone who manages team permissions can add them. Business owners: <a href="/tenants/{{ organization_id }}/permissions-update">check owner permissions</a>.</p></div></div></div>
     {% elif queues_status not in range(200, 300) %}
     <div class="panel"><div class="error-state"><span aria-hidden="true">!</span><div><strong>Queues could not be loaded</strong><p>Refresh to try again. Nothing is shown as empty until the business API confirms it.</p></div></div></div>
     {% elif not queues %}

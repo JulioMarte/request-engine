@@ -29,7 +29,7 @@
         {% for row in readiness %}
         <li>
           <span class="readiness-mark {{ row.status }}" aria-hidden="true">{% if row.status == 'ready' %}✓{% elif row.status == 'blocked' %}!{% else %}?{% endif %}</span>
-          <div><strong>{{ row.label }}</strong>{% if row.hint and row.status != 'ready' %}<p class="muted small">{{ row.hint }}</p>{% endif %}</div>
+          <div><strong>{{ row.label }}</strong>{% if row.hint and row.status != 'ready' %}<p class="muted small">{{ row.hint }}{% if row.key == 'tenant_control' %} <a href="/tenants/{{ organization_id }}/permissions-update">Review owner permissions</a>{% endif %}</p>{% endif %}</div>
           <span class="badge {% if row.status == 'ready' %}active{% elif row.status == 'blocked' %}pending{% endif %}">{{ row.state_label }}</span>
         </li>
         {% endfor %}

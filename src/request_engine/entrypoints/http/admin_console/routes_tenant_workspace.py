@@ -63,7 +63,7 @@ _READINESS_GUIDANCE = {
     "walk_in_queue": "Create a waiting line for customers who arrive without an appointment.",
     "communications": "Choose how confirmations and reminders reach your customers.",
     "identity": "Sign-in for this business is not ready. Ask your platform administrator.",
-    "tenant_control": "Owner control is not ready. Ask your platform administrator.",
+    "tenant_control": "New owner permissions are available. Request the upgrade.",
     "staff_administration": "Team management is not ready. Ask your platform administrator.",
     "recovery": (
         "Save recovery codes in Account security so you can get back in if you lose your password."

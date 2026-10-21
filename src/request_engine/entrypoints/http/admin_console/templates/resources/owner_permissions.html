@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Owner permissions · Request Engine{% endblock %}
+{% block content %}
+<p><a href="/tenants/{{ organization_id }}">← Business home</a></p>
+<header class="page-heading"><div><h1>Owner permissions</h1>
+<p class="muted">What you, as the owner, can do in this business and give to your team.</p></div></header>
+
+{% if pending %}
+<section class="panel"><div class="panel-body">
+  {% if pending.status == 'pending' %}
+  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Upgrade requested</strong>
+  <p>Your platform administrator has to approve it. Once approved, the new abilities appear here and on Today. You don't need to do anything else.</p></div></div>
+  {% else %}
+  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Request {{ pending.status }}</strong>
+  <p>{% if pending.status == 'applied' %}The new permissions are active.{% else %}This request is closed. You can ask again below if you still need the upgrade.{% endif %}</p></div></div>
+  {% endif %}
+</div></section>
+{% endif %}
+
+{% if not readiness_ok %}
+<div class="error-state"><span aria-hidden="true">!</span><div><strong>Your permissions could not be checked</strong><p>Reload the page. Nothing is changed until the business API confirms it.</p></div></div>
+{% elif up_to_date %}
+<section class="panel"><div class="panel-body">
+  <div class="empty-state"><span aria-hidden="true">✓</span><div><strong>You have the latest owner permissions</strong>
+  <p>To let someone on your team do part of your work, open <a href="/tenants/{{ organization_id }}/staff">Team</a> and choose what they can do.</p></div></div>
+</div></section>
+{% elif not (pending and pending.status == 'pending') %}
+<section class="panel" aria-labelledby="upgrade-title"><div class="panel-body">
+  <h2 id="upgrade-title">New owner permissions are available</h2>
+  <p>Request Engine added abilities for business owners, such as running the walk-in line and the live queue from Today. Upgrading lets you use them and give them to your team. Nothing you have today is taken away.</p>
+  <p class="muted">For your protection, a platform administrator approves the upgrade before it takes effect.</p>
+  {% if authority_denied or not authority_revision or not can_request %}
+  <p class="alert warn" role="alert">Only the business owner can request this upgrade.</p>
+  {% else %}
+  <form method="post" action="/tenants/{{ organization_id }}/permissions-update" class="stack" data-plain-action>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="_intent_id" value="{{ intent_id }}-adopt" data-form-intent />
+    <input type="hidden" name="expected_authority_revision" value="{{ authority_revision }}" />
+    <label>Note for the administrator
+      <textarea name="reason" rows="2" maxlength="500" required>{{ reason }}</textarea>
+    </label>
+    <button type="submit">Request the upgrade</button>
+  </form>
+  {% endif %}
+</div></section>
+{% endif %}
+{% endblock %}
