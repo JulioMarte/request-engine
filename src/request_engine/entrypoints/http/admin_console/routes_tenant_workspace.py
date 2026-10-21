@@ -66,8 +66,7 @@ _READINESS_GUIDANCE = {
     "tenant_control": "Owner control is not ready. Ask your platform administrator.",
     "staff_administration": "Team management is not ready. Ask your platform administrator.",
     "recovery": (
-        "Save recovery codes in Account security so you can get back in "
-        "if you lose your password."
+        "Save recovery codes in Account security so you can get back in if you lose your password."
     ),
 }
 _READINESS_STATES = {"ready": "Ready", "blocked": "To do", "unknown": "Not checked"}
