@@ -2,10 +2,13 @@
 
 > **Current scope (2026-10-11):** this document governs **tenant** initial-controller
 > policy only. It does not define the new platform-owner policy from ADR 0014.
-> Current application code selects `tenant-controller-v8` for new organizations
-> (migration `0043_staff_invitation_proposals`: v7 plus delegable operational
-> `staff.propose_invitation`, ADR 0019; v1-v7 roots reach v8 only through
-> dual-consent adoption, and apply accepts v1-v5→v6, v1-v6→v7 and v1-v7→v8).
+> Current application code selects `tenant-controller-v9` for new organizations
+> (migration `0044_tenant_controller_v9`: v8 plus fifteen delegable operational
+> front-desk capabilities; see "v9 front-desk authority" below). v8 (migration
+> `0043_staff_invitation_proposals`) is v7 plus delegable operational
+> `staff.propose_invitation`, ADR 0019. Existing roots reach v9 only through
+> dual-consent adoption; apply accepts v1-v5→v6, v1-v6→v7, v1-v7→v8 (already
+> recorded consent only) and v1-v8→v9.
 > Immutable v1–v6 remain historical authority manifests, not rewritten defaults.
 
 Current migration: `0040_tenant_controller_v7` appends v7 after
@@ -52,7 +55,7 @@ HTTP/adversarial proofs pass; deployment/publication evidence remains separate.
 
 ## Decision
 
-The application selects `tenant-controller-v7` only while creating a new native
+The application selects `tenant-controller-v9` only while creating a new native
 organization. A private transaction-local policy selection primitive validates
 that exact approved policy exists before the existing atomic root command runs.
 The root provisioning fact records the selected immutable policy key on INSERT;
@@ -231,3 +234,39 @@ native-auth adoption and physical populated 0039-to-head transition preserving
 old authority and applying an original v6 consent. The populated transition
 executes restricted database primitives; it does not prove WebAuthn admission.
 Exact-head CI and deployed schema/application compatibility remain separate.
+
+
+## v9 front-desk authority (migration 0044)
+
+Browser review showed a v8 clinic owner could not create a walk-in queue, run the
+Today console's live queue or edit the business profile/contacts, and because
+staff authority replacement forbids self-replacement and is capped at the actor's
+delegable ceiling, nobody in the clinic could ever obtain that authority.
+`tenant-controller-v9` is immutable v8 plus exactly these delegable operational
+grants, each the capability of a current owner HTTP operation used by the Today
+console, queue setup or the business profile:
+
+| Capability | Owner operation(s) |
+| --- | --- |
+| `queue.configure` | `queue_service_queue_create` |
+| `queue.list`, `queue.staff_read` | `queue_list`, `queue_staff_read` |
+| `queue.check_in` | `queue_check_in` (reservation check-in and walk-in admission) |
+| `queue.call_next`, `queue.skip`, `queue.mark_no_show` | live queue commands |
+| `queue.operator_select`, `queue.recall_hold`, `queue.release_recall_hold` | triage commands |
+| `service_session.start`, `service_session.complete` | start creates the ServiceSession the Today console completes |
+| `appointments.confirm_attendance`, `appointments.record_arrival_estimate` | Today appointment actions |
+| `organization.manage_profile` | `tenancy_organization_profile_update`, `tenancy_organization_contacts_replace` |
+
+Deliberately excluded: `queue.join`/`queue.leave`/`queue.status` (subject-scoped
+public operations; staff walk-ins use `queue.check_in`), `queue.manage_intake`
+(no HTTP operation currently exposes it), `queue.subject_override` (not runtime
+available), queue history/workload classification, service pause/resume/read,
+resource activity and every platform-plane capability. v9 has 59 policy grants; a
+fresh native root holds 67 active grants. Migration `0044` inserts one catalog row,
+widens both adoption target constraints to v6-v9 and re-creates the consent/apply
+definer functions through unique anchors; pending consent keeps its recorded
+target. No existing principal, grant, root fact or consent is changed by the
+migration. Proof: `tests/db/test_initial_controller_policy.py`,
+`tests/db/test_tenant_controller_v9_populated_upgrade.py`,
+`tests/e2e/test_tenant_controller_v9_front_desk_http.py` and the adoption HTTP
+journeys in `tests/e2e/test_controller_policy_adoption_http.py`.
