@@ -330,12 +330,13 @@ for _destination, _reason, _ids in (
         "tenant-today",
         (
             "The Today front desk reads the live queue and day board and runs check-in, "
-            "call next/now, set aside, no-show, skip, start and finish service; it also "
-            "projects public booking, customer lookup and attendance operations "
-            "(TODAY_OPERATION_IDS)"
+            "call next/now, set aside, no-show, skip, start and finish service (offering "
+            "who can serve at the queue's location); it also projects public booking, "
+            "customer lookup and attendance operations (TODAY_OPERATION_IDS)"
         ),
         (
             "appointments_day_board",
+            "front_desk_serving_resources",
             "queue_call_next",
             "queue_check_in",
             "queue_mark_no_show",
@@ -355,6 +356,7 @@ for _destination, _reason, _ids in (
             "no setup command or dashboard completion is inferred"
         ),
         (
+            "appointments_calendar",
             "operational_recovery_communicate_impact",
             "operational_recovery_execute",
             "operational_recovery_extend_day",

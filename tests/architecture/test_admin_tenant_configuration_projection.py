@@ -355,17 +355,17 @@ def test_today_front_desk_projects_only_mounted_owner_operations(
         if destination == "tenant-today"
     }
     # Operator business-configuration operations keep their configuration
-    # destination. Today may only READ them (who works where, for "Start
-    # service"); it never runs an operator configuration command.
+    # destination and are not projected by Today: "who can serve here now" for
+    # Start service comes from the delivery owner's front_desk_serving_resources
+    # (gated by service_session.start), not from supply configuration reads that
+    # need an operations.manage_supply Party representation.
     configuration_today = {
         operation_id
         for operation_id in TODAY_OPERATION_IDS & TENANT_CONFIGURATION_OPERATION_IDS
         if by_id[operation_id].exposure == "operator"
     }
-    assert configuration_today, "Today reads who works where from business configuration"
-    for operation_id in configuration_today:
-        assert by_id[operation_id].method.upper() == "GET", operation_id
-        assert not by_id[operation_id].is_mutating, operation_id
+    assert not configuration_today, sorted(configuration_today)
+    assert by_id["front_desk_serving_resources"].capability == "service_session.start"
     assert not declared_today & TENANT_CONFIGURATION_OPERATION_IDS
     operator_today = {
         operation_id

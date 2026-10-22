@@ -554,13 +554,19 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
     def _unavailable(request: Request, title: str) -> Response:
         return workspace_unavailable(state, request, title)
 
-    async def _service_staff(org: str, bearer: str, now: datetime) -> ServiceStaff:
+    async def _service_staff(org: str, bearer: str, location_ids: list[str]) -> ServiceStaff:
         ops = await _operations(SERVICE_STAFF_OPERATION_IDS)
+        (operation_id,) = SERVICE_STAFF_OPERATION_IDS
 
-        async def read_page(operation_id: str, params: dict[str, str]) -> RuntimeRead:
-            return await _read(ops[operation_id], organization_id=org, bearer=bearer, params=params)
+        async def read_location(location_id: str) -> RuntimeRead:
+            return await _read(
+                ops[operation_id],
+                organization_id=org,
+                bearer=bearer,
+                path_values={"location_id": location_id},
+            )
 
-        return await load_service_staff(read_page, now)
+        return await load_service_staff(read_location, location_ids)
 
     async def home(request: Request, organization_id: UUID) -> Response:
         session = state.session(request)
@@ -705,7 +711,11 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
         ]
         # Who can see a called customer is read only when someone is waiting to start.
         service_staff = (
-            await _service_staff(org, bearer, now)
+            await _service_staff(
+                org,
+                bearer,
+                [view.location_id for view in queue_views if view.called and view.location_id],
+            )
             if any(view.called for view in queue_views)
             else ServiceStaff()
         )
@@ -897,11 +907,9 @@ TODAY_OPERATION_IDS = frozenset(
         "appointments_find_slots",
         "appointments_record_arrival_estimate",
         "appointments_reschedule",
-        "authority_read_self",
-        "booking_resource_assignment_list",
-        "booking_resource_list",
         "business_get_info",
         "catalog_search_offerings",
+        "front_desk_serving_resources",
         "parties_lookup",
         "parties_register",
         "queue_call_next",

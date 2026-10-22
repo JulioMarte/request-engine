@@ -28,7 +28,7 @@ from request_engine.entrypoints.http.admin_console.client import ControlResponse
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
 from request_engine.platform.db.session import SessionFactory
 
-from .front_desk_recall_support import front_desk_actor
+from .front_desk_recall_support import book_and_check_in, front_desk_actor
 from .operational_support import PgConnection
 from .tenant_sandbox import (
     OVERRIDE_CAPABILITIES,
@@ -40,7 +40,12 @@ from .tenant_sandbox import (
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
 _RECEPTION_CAPABILITIES = frozenset(
-    {"parties.register", "parties.lookup", "appointments.record_arrival_estimate"}
+    {
+        "parties.register",
+        "parties.lookup",
+        "appointments.record_arrival_estimate",
+        "service_session.start",
+    }
 )
 _LIMITED_TOKEN = "token-console-no-subject-override"
 _SANDBOX_DAY = "2030-01-07"
@@ -270,3 +275,67 @@ async def test_receptionist_registers_books_and_checks_in_through_the_console(
         (reservation_id,),
     ).fetchall()
     assert entries == [(sandbox.queue_id, party_id)]
+
+
+@pytest.mark.asyncio
+async def test_receptionist_without_supply_authority_starts_service_from_today(
+    tmp_path: Path,
+    e2e_admin_conn: PgConnection,
+    e2e_session_factory: SessionFactory,
+) -> None:
+    # The receptionist holds front-desk capabilities plus service_session.start,
+    # but no booking supply capability and no operations.manage_supply Party
+    # representation: "who can serve here" must come from the delivery owner's
+    # front_desk_serving_resources read, not from supply configuration.
+    sandbox = seed_tenant_sandbox(e2e_admin_conn, "console-start-service")
+    org = sandbox.organization_id
+    representations = e2e_admin_conn.execute(
+        "SELECT count(*) FROM request_engine.representations "
+        "WHERE organization_id = %s AND principal_id = %s "
+        "AND scope_key = 'operations.manage_supply'",
+        (org, sandbox.principal_id),
+    ).fetchone()
+    assert representations == (0,)
+    async with _console(tmp_path, e2e_session_factory, sandbox) as (front, _limited, runtime):
+        _, entry = await book_and_check_in(runtime, sandbox)
+        called = await runtime.post(
+            f"/v1/queues/{sandbox.queue_id}/call-next",
+            headers=auth(sandbox, idempotency_key="console-start-call-0001"),
+        )
+        assert called.status_code == 200, called.text
+        entry_id = entry["id"]
+        assert called.json()["id"] == entry_id
+        supply = await runtime.get(
+            "/v1/booking/resources",
+            params={"authority_party_id": str(sandbox.party_id)},
+            headers=auth(sandbox),
+        )
+        assert supply.status_code == 403, supply.text
+
+        page = await front.get(f"/tenants/{org}/today")
+        assert page.status_code == 200, page.text
+        choice = f"{sandbox.resource_id}@{sandbox.location_id}"
+        assert f'value="{choice}"' in page.text, page.text
+        revision = re.search(
+            rf'/entries/{entry_id}/start-service">.*?name="expected_queue_revision" value="(\d+)"',
+            page.text,
+            re.S,
+        )
+        assert revision is not None
+        started = await front.post(
+            f"/tenants/{org}/today/entries/{entry_id}/start-service",
+            data={
+                "csrf_token": _csrf(page.text),
+                "_intent_id": "console-start-service-01",
+                "staff": choice,
+                "expected_queue_revision": revision.group(1),
+            },
+        )
+        assert started.status_code == 303, started.text
+        assert started.headers["location"] == f"/tenants/{org}/today?done=started"
+    session = e2e_admin_conn.execute(
+        "SELECT resource_id, location_id, status FROM request_engine.service_sessions "
+        "WHERE queue_entry_id = %s",
+        (UUID(entry_id),),
+    ).fetchall()
+    assert session == [(sandbox.resource_id, sandbox.location_id, "active")]

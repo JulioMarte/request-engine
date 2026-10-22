@@ -15,6 +15,12 @@ from request_engine.modules.delivery.api.resource_activity_routes import (
 from request_engine.modules.delivery.api.service_session_routes import (
     create_service_session_router,
 )
+from request_engine.modules.delivery.api.serving_resource_routes import (
+    create_serving_resource_router,
+)
+from request_engine.modules.delivery.application.serving_resource_query import (
+    ServingResourceReader,
+)
 from request_engine.platform.security.http import ActorResolver
 
 
@@ -23,6 +29,7 @@ def create_live_service_router(
     operations: PostgresLiveServiceOperations,
     session_reader: PostgresServiceSessionReader,
     activity_reader: PostgresResourceActivityReader,
+    serving_reader: ServingResourceReader,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1", tags=["live-service"])
@@ -30,4 +37,5 @@ def create_live_service_router(
     router.include_router(
         create_resource_activity_router(operations, activity_reader, actor_resolver)
     )
+    router.include_router(create_serving_resource_router(serving_reader, actor_resolver))
     return router

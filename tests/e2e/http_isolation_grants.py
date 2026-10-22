@@ -24,6 +24,7 @@ ISOLATION_ACTOR_GRANTS = frozenset(
         "queue.recall_hold",
         "queue.skip",
         "queue.release_recall_hold",
+        "service_session.start",
         "staff.manage_own_admin_contact",
         "staff.confirm_own_admin_contact",
         "staff.invite",
