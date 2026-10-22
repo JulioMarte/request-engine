@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}{% if values.template == "chief-of-staff" %}Configurar jefe de gabinete{% else %}Crear asistente{% endif %} · Request Engine{% endblock %}
+{% block title %}{% if values.template == "chief-of-staff" %}Configurar asistente del negocio{% else %}Crear asistente{% endif %} · Request Engine{% endblock %}
 {% block content %}
 {% set chief = values.template == "chief-of-staff" %}
 <header class="page-heading">
   <div>
     <p class="breadcrumb"><a href="/tenants/{{ organization_id }}/agents">Asistentes y API</a></p>
-    <h1>{% if chief %}Configure su jefe de gabinete{% else %}Crear un asistente{% endif %}</h1>
-    <p>{% if chief %}Su jefe de gabinete hace lo que usted le pide desde Claude, por texto o por voz. Solo puede usar permisos que usted ya tiene y puede compartir. Cuando se trata de agregar personas al equipo, siempre le llega a usted como una sugerencia para aprobar.{% else %}Elija lo que el asistente puede hacer y sus límites de seguridad. Usted recibe su clave una sola vez, al final.{% endif %}</p>
+    <h1>{% if chief %}Configure su asistente del negocio{% else %}Crear un asistente{% endif %}</h1>
+    <p>{% if chief %}Su asistente del negocio hace lo que usted le pide desde Claude, por texto o por voz. Solo puede usar permisos que usted ya tiene y puede compartir. Cuando se trata de agregar personas al equipo, siempre le llega a usted como una sugerencia para aprobar.{% else %}Elija lo que el asistente puede hacer y sus límites de seguridad. Usted recibe su clave una sola vez, al final.{% endif %}</p>
   </div>
 </header>
 
@@ -22,7 +22,7 @@
     <label>Nombre<input name="display_name" value="{{ values.display_name }}" maxlength="200" required /></label>
     <label>Qué hace<textarea name="purpose" maxlength="2000" required>{{ values.purpose }}</textarea></label>
     <fieldset><legend>Cómo trabaja</legend>
-      <label class="check"><input type="radio" name="operating_mode" value="assisted" {% if values.operating_mode == "assisted" %}checked{% endif %} /> Actúa en nombre de alguien cuando se lo piden (recomendado para un jefe de gabinete)</label>
+      <label class="check"><input type="radio" name="operating_mode" value="assisted" {% if values.operating_mode == "assisted" %}checked{% endif %} /> Actúa en nombre de alguien cuando se lo piden (recomendado para un asistente del negocio)</label>
       <label class="check"><input type="radio" name="operating_mode" value="autonomous" {% if values.operating_mode == "autonomous" %}checked{% endif %} /> Trabaja por su cuenta, por ejemplo respondiendo a pacientes</label>
     </fieldset>
     {% if needs_authority_field %}
@@ -67,7 +67,7 @@
   </section>
 
   <div class="page-actions">
-    <button type="submit">{% if chief %}Crear jefe de gabinete{% else %}Crear asistente{% endif %}</button>
+    <button type="submit">{% if chief %}Crear asistente del negocio{% else %}Crear asistente{% endif %}</button>
     <a class="button secondary" href="/tenants/{{ organization_id }}/agents">Cancelar</a>
   </div>
 </form>

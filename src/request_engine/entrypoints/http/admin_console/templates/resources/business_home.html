@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">Inicio del negocio</p>
     <h1>{{ business.display_name or "Su negocio" }}</h1>
-    <p>Lo que necesita atención, quién está en el equipo y qué está haciendo su jefe de gabinete.</p>
+    <p>Lo que necesita atención, quién está en el equipo y qué está haciendo su asistente del negocio.</p>
   </div>
   <div class="page-actions">
     <a class="button" href="/tenants/{{ organization_id }}/today">Abrir Hoy</a>
@@ -61,9 +61,9 @@
   <div>
     <section class="panel cos-card" aria-labelledby="cos-title">
       <div class="cos-head">
-        <span class="cos-avatar" aria-hidden="true">JG</span>
+        <span class="cos-avatar" aria-hidden="true">AN</span>
         <div>
-          <h2 id="cos-title">{% if chief %}{{ chief.display_name }}{% else %}Su jefe de gabinete{% endif %}</h2>
+          <h2 id="cos-title">{% if chief %}{{ chief.display_name }}{% else %}Su asistente del negocio{% endif %}</h2>
           <p>{% if chief %}{{ {'active': 'Activo', 'suspended': 'En pausa', 'revoked': 'Revocado'}.get(chief.status, chief.status | capitalize) }} · actúa en su nombre desde Claude{% else %}Un asistente que hace lo que usted le pide, por texto o por voz{% endif %}</p>
         </div>
       </div>
@@ -78,7 +78,7 @@
           <a class="button secondary" href="/tenants/{{ organization_id }}/agents/{{ chief.principal_id }}">Manejar y conectar</a>
         </div>
         {% elif agents is none %}
-        <p class="muted">{% if agents_status == 403 %}Usted no tiene acceso a los asistentes. Pida al dueño del negocio que configure el jefe de gabinete.{% else %}No se pudieron cargar los asistentes en este momento.{% endif %}</p>
+        <p class="muted">{% if agents_status == 403 %}Usted no tiene acceso a los asistentes. Pida al dueño del negocio que configure el asistente del negocio.{% else %}No se pudieron cargar los asistentes en este momento.{% endif %}</p>
         {% else %}
         <p>Configúrelo una vez y luego conéctelo a Claude en su computadora o celular. Podrá:</p>
         <ul>
@@ -87,7 +87,7 @@
           <li>registrar la llegada de pacientes y responder preguntas sobre el día de hoy</li>
           <li>sugerirle nuevos miembros del equipo para que usted los apruebe</li>
         </ul>
-        <a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Configurar jefe de gabinete</a>
+        <a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Configurar asistente del negocio</a>
         {% endif %}
       </div>
     </section>

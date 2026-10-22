@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">{{ nav_organization_name or "Su negocio" }}</p>
     <h1>Aprobaciones</h1>
-    <p>Sugerencias de su jefe de gabinete y de otros asistentes que necesitan su decisión. Los asistentes pueden sugerir personas para el equipo; solo una persona puede invitarlas.</p>
+    <p>Sugerencias de su asistente del negocio y de otros asistentes que necesitan su decisión. Los asistentes pueden sugerir personas para el equipo; solo una persona puede invitarlas.</p>
   </div>
 </header>
 
@@ -18,7 +18,7 @@
   {% elif status not in range(200, 300) %}
   <div class="error-state"><span aria-hidden="true">!</span><div><strong>No se pudieron cargar las aprobaciones</strong><p>Vuelva a cargar la página para intentarlo de nuevo.</p></div></div>
   {% elif not proposals %}
-  <div class="empty-state"><span aria-hidden="true">✓</span><div><strong>No hay nada que decidir</strong><p>Cuando su jefe de gabinete sugiera agregar a alguien, aparecerá aquí.</p></div></div>
+  <div class="empty-state"><span aria-hidden="true">✓</span><div><strong>No hay nada que decidir</strong><p>Cuando su asistente del negocio sugiera agregar a alguien, aparecerá aquí.</p></div></div>
   {% else %}
   <ul class="approval-list">
     {% for item in proposals %}

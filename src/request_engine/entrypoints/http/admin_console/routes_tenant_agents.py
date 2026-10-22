@@ -273,7 +273,7 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
         )
         values = {
             "template": "chief-of-staff" if chief else "custom",
-            "display_name": "Jefe de gabinete" if chief else "",
+            "display_name": "Asistente del negocio" if chief else "",
             "purpose": CHIEF_OF_STAFF_PURPOSE if chief else "",
             "operating_mode": "assisted" if chief else "autonomous",
             "capabilities": selected,

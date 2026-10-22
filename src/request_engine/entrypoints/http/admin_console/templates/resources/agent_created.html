@@ -49,7 +49,7 @@
 
 {% if principal_id %}
 <section class="panel" aria-labelledby="connect-title">
-  <div class="panel-heading"><h2 id="connect-title">Conecte {% if is_chief %}a su jefe de gabinete{% else %}el asistente{% endif %} con Claude</h2></div>
+  <div class="panel-heading"><h2 id="connect-title">Conecte {% if is_chief %}a su asistente del negocio{% else %}el asistente{% endif %} con Claude</h2></div>
   <div class="panel-body">{{ connect.render(connection, "Háblele con naturalidad, por ejemplo: “Resérvale a María una consulta mañana a las 10” o “Agrega a Pedro Gómez, pedro@example.com, al equipo”. Las personas que sugiera para el equipo le llegan a Aprobaciones para que usted confirme.") }}</div>
 </section>
 <p><a class="button secondary" href="/tenants/{{ organization_id }}/agents/{{ principal_id }}">Abrir asistente</a></p>

@@ -8,7 +8,7 @@
     <p>Dé a un asistente u otro programa su propia clave para trabajar con este negocio. Cada asistente solo hace lo que usted permite, dentro de los límites de seguridad que usted fija, y puede pausarlo en cualquier momento.</p>
   </div>
   <div class="page-actions">
-    {% if not has_chief %}<a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Configurar jefe de gabinete</a>{% endif %}
+    {% if not has_chief %}<a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Configurar asistente del negocio</a>{% endif %}
     <a class="button {% if not has_chief %}secondary{% endif %}" href="/tenants/{{ organization_id }}/agents/new">Crear asistente</a>
   </div>
 </header>
@@ -22,14 +22,14 @@
     <div class="error-state"><span aria-hidden="true">!</span><div><strong>No se pudieron cargar los asistentes</strong><p>Vuelva a cargar la página para intentarlo de nuevo.</p></div></div>
     {% endif %}
   {% elif not agents %}
-  <div class="empty-state neutral"><span aria-hidden="true">✦</span><div><strong>Todavía no hay asistentes</strong><p>Empiece con un jefe de gabinete: un asistente con el que usted habla desde Claude y que hace lo que usted le pide.</p></div><a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Configurar jefe de gabinete</a></div>
+  <div class="empty-state neutral"><span aria-hidden="true">✦</span><div><strong>Todavía no hay asistentes</strong><p>Empiece con un asistente del negocio: un asistente con el que usted habla desde Claude y que hace lo que usted le pide.</p></div><a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Configurar asistente del negocio</a></div>
   {% else %}
   <ul class="agent-list">
     {% for agent in agents %}
     <li>
       <span class="agent-mark {% if agent.chief %}cos{% endif %}" aria-hidden="true">{{ agent.display_name[:2] | upper }}</span>
       <div>
-        <strong>{{ agent.display_name }}</strong>{% if agent.chief %} <span class="badge pending">Jefe de gabinete</span>{% endif %}
+        <strong>{{ agent.display_name }}</strong>{% if agent.chief %} <span class="badge pending">Asistente del negocio</span>{% endif %}
         <p class="muted small">{{ agent.standing_capabilities | length }} permiso{% if agent.standing_capabilities | length != 1 %}s{% endif %} · {{ "actúa en su nombre" if agent.operating_mode == "assisted" else "trabaja por su cuenta" }}</p>
       </div>
       <div class="entry-actions"><span class="badge {{ agent.status }}">{{ status_names.get(agent.status, agent.status) }}</span><a class="button secondary" href="/tenants/{{ organization_id }}/agents/{{ agent.principal_id }}">Abrir</a></div>
