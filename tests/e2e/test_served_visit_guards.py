@@ -283,7 +283,9 @@ async def test_concurrent_check_ins_of_one_reservation_admit_exactly_one_entry(
 ) -> None:
     clinic = seed_tenant_sandbox(e2e_admin_conn, "served-guard-race-check-in")
     async with client_with_actors(e2e_session_factory, {clinic.token: _actor(clinic)}) as client:
-        reservation = await _book(client, clinic, (await first_slot(client, clinic))["option_id"])
+        reservation = await _book(
+            client, clinic, str((await first_slot(client, clinic))["option_id"])
+        )
         # Barrier: hold the queue serialization root so both admissions are in
         # flight (each in its own transaction/connection) before either decides.
         e2e_barrier_conn.execute(
@@ -335,7 +337,9 @@ async def test_cancel_racing_an_in_flight_completion_waits_and_refuses_the_serve
 ) -> None:
     clinic = seed_tenant_sandbox(e2e_admin_conn, "served-guard-race-cancel")
     async with client_with_actors(e2e_session_factory, {clinic.token: _actor(clinic)}) as client:
-        reservation = await _book(client, clinic, (await first_slot(client, clinic))["option_id"])
+        reservation = await _book(
+            client, clinic, str((await first_slot(client, clinic))["option_id"])
+        )
         entry = await _check_in(client, clinic, clinic.queue_id, reservation["id"])
         assert entry.status_code == 201, entry.text
         session = await _start_service(client, clinic, entry.json()["id"])
@@ -382,7 +386,9 @@ async def test_cancel_waits_for_an_in_flight_admission_of_the_same_reservation(
     """
     clinic = seed_tenant_sandbox(e2e_admin_conn, "served-guard-race-admission")
     async with client_with_actors(e2e_session_factory, {clinic.token: _actor(clinic)}) as client:
-        reservation = await _book(client, clinic, (await first_slot(client, clinic))["option_id"])
+        reservation = await _book(
+            client, clinic, str((await first_slot(client, clinic))["option_id"])
+        )
         # Barrier on the Offering: the admission's QueueEntry insert checks the
         # offering foreign key (FOR KEY SHARE) after the Reservation was read and
         # before the reservation foreign-key check, so the only Reservation lock
