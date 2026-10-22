@@ -4,6 +4,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.platform.outbox.postgres import append_outbox
+
 
 async def append_triage_audit(
     session: AsyncSession,
@@ -35,4 +37,27 @@ async def append_triage_audit(
             "idempotency_id": idempotency_id,
             "details": json.dumps(details, separators=(",", ":")),
         },
+    )
+
+
+async def append_triage_event(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    entry_id: UUID,
+    event_type: str,
+    payload: dict[str, object],
+) -> None:
+    """Append the triage fact's outbox event in the same transaction as the fact.
+
+    Payloads carry identifiers, closed enum values and revisions only, never
+    operator free text such as a recall-hold reason.
+    """
+    await append_outbox(
+        session,
+        organization_id=organization_id,
+        event_type=event_type,
+        aggregate_kind="QueueEntry",
+        aggregate_id=entry_id,
+        payload={"queue_entry_id": str(entry_id), **payload},
     )

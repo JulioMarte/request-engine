@@ -11,6 +11,9 @@ from request_engine.modules.booking.adapters.db.effective_booking_policy import 
     EFFECTIVE_BOOKING_POLICY_SELECT,
 )
 from request_engine.modules.booking.adapters.db.reservation_reader import reservation_from_row
+from request_engine.modules.booking.adapters.db.served_visit_guard import (
+    ensure_reservation_not_served,
+)
 from request_engine.modules.booking.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.booking.application.authority import MANAGE_APPOINTMENT_SCOPE
 from request_engine.modules.booking.application.commands.cancel_reservation import (
@@ -121,6 +124,9 @@ class PostgresReservationCommands:
             status = cast(str, locked["status"])
             if status != "confirmed":
                 raise ReservationNotCancellable(command.reservation_id, status)
+            await ensure_reservation_not_served(
+                session, command.organization_id, command.reservation_id
+            )
 
             resource_rows = (
                 await session.execute(

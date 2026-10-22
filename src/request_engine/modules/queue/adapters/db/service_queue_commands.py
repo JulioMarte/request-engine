@@ -8,6 +8,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.queue.adapters.db.live_queue_validation import (
+    ensure_reservation_not_served,
+)
 from request_engine.modules.queue.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.queue.adapters.db.tenant_references import (
     require_active_subject_party,
@@ -26,6 +29,7 @@ from request_engine.modules.queue.application.errors import (
 )
 from request_engine.modules.queue.contracts.service_queue import QueueEntry, QueueEntryStatus
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
+from request_engine.platform.outbox.postgres import append_outbox
 
 
 class PostgresServiceQueueCommands:
@@ -86,6 +90,10 @@ class PostgresServiceQueueCommands:
             )
 
             await _lock_active_queue(session, command.organization_id, command.queue_id)
+            if command.reservation_id is not None:
+                await ensure_reservation_not_served(
+                    session, command.organization_id, command.reservation_id
+                )
 
             existing = (
                 await session.execute(
@@ -152,6 +160,22 @@ class PostgresServiceQueueCommands:
                     "subject_authority": authority.audit_details(),
                 },
                 idempotency_id=idempotency_id,
+            )
+            await append_outbox(
+                session,
+                organization_id=command.organization_id,
+                event_type="queue.entry_joined.v1",
+                aggregate_kind="QueueEntry",
+                aggregate_id=entry.id,
+                payload={
+                    "queue_entry_id": str(entry.id),
+                    "queue_id": str(entry.queue_id),
+                    "subject_party_id": str(entry.subject_party_id),
+                    "reservation_id": (
+                        str(command.reservation_id) if command.reservation_id else None
+                    ),
+                    "admitted_at": entry.admitted_at.isoformat(),
+                },
             )
             await _complete_idempotency(
                 session,

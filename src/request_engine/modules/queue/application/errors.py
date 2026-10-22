@@ -45,6 +45,14 @@ class AlreadyInQueue(QueueError):
         self.subject_party_id = subject_party_id
 
 
+class ReservationAlreadyServed(QueueError):
+    """The reservation's visit already completed; it cannot be admitted again."""
+
+    def __init__(self, reservation_id: UUID) -> None:
+        super().__init__(f"Reservation {reservation_id} visit was already served")
+        self.reservation_id = reservation_id
+
+
 class ActiveQueueEntryNotFound(QueueError):
     def __init__(self, queue_id: UUID, subject_party_id: UUID) -> None:
         message = f"Party {subject_party_id} has no cancellable entry in queue {queue_id}"

@@ -108,6 +108,14 @@ def _booking_error(exc: booking_errors.BookingError) -> tuple[int, ErrorBody]:
         return status.HTTP_409_CONFLICT, ErrorBody(
             code="reservation_not_reschedulable", **_status_conflict_fields(exc)
         )
+    if isinstance(exc, booking_errors.ReservationAlreadyServed):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="reservation_already_served",
+            message="the visit for this reservation was already completed; "
+            "it can no longer be cancelled or rescheduled",
+            resolution=ErrorResolution.NONE,
+            details={"reservation_id": str(exc.reservation_id)},
+        )
     if isinstance(exc, booking_errors.ArrivalEstimateInvalid):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
             code="arrival_estimate_invalid",
