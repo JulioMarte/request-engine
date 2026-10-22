@@ -123,7 +123,7 @@ __all__ = [
 # authority, schemas, concurrency, methods and paths; these IDs grant nothing.
 TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
-        "Organization",
+        "Negocio",
         (
             "parties_register",
             "business_get_info",
@@ -133,7 +133,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Locations and hours",
+        "Sedes y horarios",
         (
             "catalog_location_configuration_list",
             "catalog_location_configuration_read",
@@ -146,7 +146,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Services and booking policies",
+        "Servicios y reglas de reserva",
         (
             "catalog_offering_configuration_list",
             "catalog_offering_configuration_read",
@@ -159,7 +159,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Resources and supply",
+        "Médicos, consultorios y disponibilidad",
         (
             "booking_resource_list",
             "booking_resource_create",
@@ -178,7 +178,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Service queues",
+        "Filas de espera",
         (
             "queue_service_queue_configuration_list",
             "queue_service_queue_configuration_read",
@@ -186,7 +186,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Requests and definitions",
+        "Solicitudes y tipos de solicitud",
         (
             "request_definitions_list",
             "request_definition_read",
@@ -198,7 +198,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Public discovery",
+        "Directorio público",
         (
             "discovery_offering_classification_set",
             "discovery_offering_classification_revoke",
@@ -209,7 +209,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Agents",
+        "Asistentes",
         (
             "agent_list",
             "agent_get",
@@ -222,7 +222,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Integrations",
+        "Integraciones",
         (
             "integration_list",
             "integration_read",
@@ -236,7 +236,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Authority and controller policy",
+        "Permisos y control del dueño",
         (
             "authority_read_self",
             "authority_inspect_resource",
@@ -249,7 +249,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Identity connections",
+        "Inicios de sesión conectados",
         (
             "identity_binding_list",
             "identity_binding_get",
@@ -264,7 +264,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Live capacity and recovery policies",
+        "Capacidad en vivo y recuperación",
         (
             "live_capacity_configure_estimate",
             "live_capacity_configure_estimate_update",
@@ -280,7 +280,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Communication channels",
+        "Canales de mensajes",
         ("communications_channel_policy_get", "communications_configure_channel_policy"),
     ),
 )

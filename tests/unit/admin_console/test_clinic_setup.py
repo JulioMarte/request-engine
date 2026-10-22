@@ -202,7 +202,7 @@ async def test_business_party_is_resolved_from_the_owner_across_pages(tmp_path: 
     async with _signed_in(runtime, tmp_path) as client:
         page = await client.get(f"/tenants/{ORG}/setup")
     assert page.status_code == 200
-    assert "Set up Centro Médico Duarte" in page.text
+    assert "Configure Centro Médico Duarte" in page.text
     assert PARTY not in page.text and "authority_party_id" not in page.text
     authority = runtime.sent("GET", "/v1/me/authority")
     assert [call["params"] for call in authority] == [
@@ -220,7 +220,7 @@ async def test_missing_business_party_blocks_setup_without_writing(tmp_path: Pat
     )
     async with _signed_in(runtime, tmp_path) as client:
         page = await client.get(f"/tenants/{ORG}/setup?step=location")
-        assert "Setup cannot start yet" in page.text
+        assert "Todavía no se puede empezar la configuración" in page.text
         assert 'action="/tenants/' + ORG + '/setup/location"' not in page.text
         refused = await _submit(client, "location", {"display_name": "Sede", **WEEKDAYS})
     assert refused.status_code == 409
@@ -365,7 +365,7 @@ async def test_invalid_hours_are_explained_and_nothing_is_sent(tmp_path: Path) -
             {"display_name": "Sede", "day1_open": "on", "day1_start": "17:00", "day1_end": "08:00"},
         )
     assert response.status_code == 422
-    assert "On Tuesday, the closing time must be later than the opening time." in response.text
+    assert "El martes, la hora de cierre debe ser después de la hora de apertura." in response.text
     assert 'value="Sede"' in response.text  # what the person typed is kept
     assert not runtime.writes()
 
@@ -395,7 +395,7 @@ async def test_service_step_runs_capability_offering_and_price(tmp_path: Path) -
     assert capability[0]["json_body"] == {
         "authority_party_id": PARTY,
         "capability_key": "provides-consulta-general",
-        "display_name": "Provides Consulta general",
+        "display_name": "Ofrece Consulta general",
     }
     offering = runtime.sent("POST", "/v1/catalog/offerings")
     assert offering[0]["json_body"] == {
@@ -428,7 +428,7 @@ async def test_price_is_required_because_slots_need_terms(tmp_path: Path) -> Non
     async with _signed_in(runtime, tmp_path) as client:
         response = await _submit(client, "services", {"display_name": "Consulta", "price": ""})
     assert response.status_code == 422
-    assert "Use 0 if the service is free." in response.text
+    assert "Use 0 si el servicio es gratis." in response.text
     assert not runtime.writes()
 
 
@@ -508,9 +508,9 @@ async def test_permission_refusal_is_explained_and_the_step_can_be_skipped(tmp_p
             client, "clinic", {"legal_name": "Duarte SRL", "email": "citas@duarte.do"}
         )
     assert response.status_code == 403
-    assert "Your business is not allowed to change its profile yet." in response.text
-    assert "platform administrator has to upgrade them" in response.text
-    assert f'href="/tenants/{ORG}/setup?step=location">Skip this step' in response.text
+    assert "Su negocio todavía no tiene permiso para cambiar su perfil." in response.text
+    assert "el administrador de la plataforma debe actualizarlos" in response.text
+    assert f'href="/tenants/{ORG}/setup?step=location">Saltar este paso' in response.text
     (profile,) = runtime.sent("PATCH", "/v1/operations/organization/profile")
     assert profile["json_body"] == {
         "authority_party_id": PARTY,
@@ -575,11 +575,11 @@ async def test_finish_shows_plain_readiness_and_real_free_times(tmp_path: Path) 
     )
     async with _signed_in(runtime, tmp_path) as client:
         page = await client.get(f"/tenants/{ORG}/setup?step=finish")
-    assert "First free times for Consulta" in page.text
-    assert "Monday 7 January, 09:00" in page.text  # 13:00 UTC in Santo Domingo
-    assert "Optional: add a walk-in line" in page.text
+    assert "Primeros horarios libres para Consulta" in page.text
+    assert "lunes 7 de enero, 09:00" in page.text  # 13:00 UTC in Santo Domingo
+    assert "Opcional: agregue una fila de espera" in page.text
     assert "Create an active service queue" not in page.text  # owner jargon is translated
-    assert f'href="/tenants/{ORG}/today">Open today' in page.text
+    assert f'href="/tenants/{ORG}/today">Ir a Hoy' in page.text
     (slots,) = runtime.sent("GET", "/v1/appointments/slots")
     assert slots["params"]["offering_version_id"] == VERSION
 

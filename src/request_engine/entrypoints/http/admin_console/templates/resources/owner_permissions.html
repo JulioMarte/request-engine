@@ -1,42 +1,42 @@
 {% extends "base.html" %}
-{% block title %}Owner permissions · Request Engine{% endblock %}
+{% block title %}Permisos del dueño · Request Engine{% endblock %}
 {% block content %}
-<p><a href="/tenants/{{ organization_id }}">← Business home</a></p>
-<header class="page-heading"><div><h1>Owner permissions</h1>
-<p class="muted">What you, as the owner, can do in this business and give to your team.</p></div></header>
+<p><a href="/tenants/{{ organization_id }}">← Inicio del negocio</a></p>
+<header class="page-heading"><div><h1>Permisos del dueño</h1>
+<p class="muted">Lo que usted, como dueño, puede hacer en este negocio y dar a su equipo.</p></div></header>
 
 {% if pending %}
 <section class="panel"><div class="panel-body">
   {% if pending.status == 'pending' %}
-  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Upgrade requested</strong>
-  <p>Your platform administrator has to approve it. Once approved, the new abilities appear on Today and in Team. You don't need to do anything else.</p></div></div>
+  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Actualización solicitada</strong>
+  <p>El administrador de la plataforma tiene que aprobarla. Cuando la apruebe, las nuevas funciones aparecerán en Hoy y en Equipo. No tiene que hacer nada más.</p></div></div>
   {% elif pending.status == 'applied' %}
-  <div class="empty-state"><span aria-hidden="true">✓</span><div><strong>Upgrade approved</strong>
-  <p>The new owner permissions are active. To let someone on your team use them, open <a href="/tenants/{{ organization_id }}/staff">Team</a>.</p></div></div>
+  <div class="empty-state"><span aria-hidden="true">✓</span><div><strong>Actualización aprobada</strong>
+  <p>Los nuevos permisos del dueño ya están activos. Para que alguien de su equipo los use, abra <a href="/tenants/{{ organization_id }}/staff">Equipo</a>.</p></div></div>
   {% else %}
-  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>That request is closed ({{ pending.status }})</strong>
-  <p>You can ask again below if you still need the upgrade.</p></div></div>
+  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Esa solicitud está cerrada ({{ {'rejected': 'rechazada', 'denied': 'rechazada', 'cancelled': 'cancelada', 'canceled': 'cancelada', 'expired': 'vencida', 'failed': 'no se aplicó'}.get(pending.status, pending.status) }})</strong>
+  <p>Si todavía necesita la actualización, puede pedirla de nuevo abajo.</p></div></div>
   {% endif %}
 </div></section>
 {% endif %}
 
 {% if not (pending and pending.status in ('pending', 'applied')) %}
 <section class="panel" aria-labelledby="upgrade-title"><div class="panel-body">
-  <h2 id="upgrade-title">Get the newest owner permissions</h2>
-  <p>Request Engine adds abilities for business owners over time, such as running the walk-in line and the live queue from Today. Asking for the newest set lets you use them and give them to your team. Nothing you have today is taken away.</p>
-  <p class="muted">For your protection, a platform administrator approves the change before it takes effect.</p>
+  <h2 id="upgrade-title">Obtener los permisos del dueño más recientes</h2>
+  <p>Request Engine agrega con el tiempo nuevas funciones para los dueños de negocio, como manejar la fila de espera de pacientes sin cita desde Hoy. Pedir la versión más reciente le permite usarlas y darlas a su equipo. No se le quita nada de lo que tiene hoy.</p>
+  <p class="muted">Para su protección, el administrador de la plataforma aprueba el cambio antes de que se aplique.</p>
   {% if refusal %}<p class="alert warn" role="alert">{{ refusal }}</p>{% endif %}
   {% if not authority_revision or not can_request %}
-  <p class="alert warn" role="alert">Only the business owner can request this.</p>
+  <p class="alert warn" role="alert">Solo el dueño del negocio puede pedir esto.</p>
   {% else %}
   <form method="post" action="/tenants/{{ organization_id }}/permissions-update" class="stack" data-plain-action>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <input type="hidden" name="_intent_id" value="{{ intent_id }}-adopt" data-form-intent />
     <input type="hidden" name="expected_authority_revision" value="{{ authority_revision }}" />
-    <label>Note for the administrator
+    <label>Nota para el administrador
       <textarea name="reason" rows="2" maxlength="500" required>{{ reason }}</textarea>
     </label>
-    <button type="submit">Request the newest permissions</button>
+    <button type="submit">Pedir los permisos más recientes</button>
   </form>
   {% endif %}
 </div></section>

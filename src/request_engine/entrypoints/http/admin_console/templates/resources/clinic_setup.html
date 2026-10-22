@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Set up your clinic · {{ current.title }}{% endblock %}
+{% block title %}Configure su consultorio · {{ current.title }}{% endblock %}
 {% macro duration(minutes) -%}
-{%- if minutes is none -%}Length not set{%- elif minutes < 60 -%}{{ minutes }} minutes{%- elif minutes == 60 -%}1 hour{%- elif minutes % 60 == 0 -%}{{ minutes // 60 }} hours{%- else -%}{{ minutes // 60 }} h {{ minutes % 60 }} min{%- endif -%}
+{%- if minutes is none -%}Duración sin definir{%- elif minutes < 60 -%}{{ minutes }} minutos{%- elif minutes == 60 -%}1 hora{%- elif minutes % 60 == 0 -%}{{ minutes // 60 }} horas{%- else -%}{{ minutes // 60 }} h {{ minutes % 60 }} min{%- endif -%}
 {%- endmacro %}
 {% macro week_editor(legend, hint) -%}
 <fieldset class="week-editor" data-week-editor>
@@ -11,13 +11,13 @@
   {% for row in week %}
   <div class="week-row">
     <label class="check week-day"><input type="checkbox" name="day{{ row.day }}_open" {% if row.open %}checked{% endif %} />{{ row.name }}</label>
-    <label class="week-time"><span class="sr-only">{{ row.name }} opens at</span><input type="time" name="day{{ row.day }}_start" value="{{ row.start }}" step="900" /></label>
-    <span class="week-to" aria-hidden="true">to</span>
-    <label class="week-time"><span class="sr-only">{{ row.name }} closes at</span><input type="time" name="day{{ row.day }}_end" value="{{ row.end }}" step="900" /></label>
+    <label class="week-time"><span class="sr-only">{{ row.name }}, abre a las</span><input type="time" name="day{{ row.day }}_start" value="{{ row.start }}" step="900" /></label>
+    <span class="week-to" aria-hidden="true">a</span>
+    <label class="week-time"><span class="sr-only">{{ row.name }}, cierra a las</span><input type="time" name="day{{ row.day }}_end" value="{{ row.end }}" step="900" /></label>
   </div>
   {% endfor %}
   </div>
-  <button type="button" class="secondary week-copy" data-week-copy hidden>Use Monday's hours for Tuesday to Friday</button>
+  <button type="button" class="secondary week-copy" data-week-copy hidden>Usar el horario del lunes de martes a viernes</button>
 </fieldset>
 {%- endmacro %}
 {% macro form_start(action_step) -%}
@@ -28,22 +28,22 @@
 {% block content %}
 <header class="page-heading setup-heading">
   <div>
-    <p class="breadcrumb"><a href="/tenants/{{ organization_id }}">← Business home</a></p>
-    <h1>Set up {{ business_name }}</h1>
-    <p>A few short steps so patients can book with you. You can stop at any time; everything you save stays saved.</p>
+    <p class="breadcrumb"><a href="/tenants/{{ organization_id }}">← Inicio del negocio</a></p>
+    <h1>Configure {{ business_name }}</h1>
+    <p>Unos pasos cortos para que sus pacientes puedan reservar. Puede parar cuando quiera; todo lo que guarde queda guardado.</p>
   </div>
 </header>
 
 <div class="setup-layout">
-  <nav class="setup-steps" aria-label="Setup steps">
-    <p class="setup-progress">Step {{ step_number }} of {{ step_count }}</p>
+  <nav class="setup-steps" aria-label="Pasos de configuración">
+    <p class="setup-progress">Paso {{ step_number }} de {{ step_count }}</p>
     <ol>
       {% for item in steps %}
       <li class="{% if item.current %}current{% elif item.count %}done{% endif %}">
         <a href="{{ item.href }}" {% if item.current %}aria-current="step"{% endif %}>
           <span class="step-mark" aria-hidden="true">{% if item.count and not item.current %}✓{% else %}{{ loop.index }}{% endif %}</span>
           <span class="step-text"><strong>{{ item.title }}</strong>
-            <small>{% if item.key == 'finish' %}Final check{% elif item.key == 'clinic' %}{% if item.count %}Saved{% else %}Optional{% endif %}{% elif item.count %}{{ item.count }} added{% elif item.optional %}Optional{% else %}Not started{% endif %}</small>
+            <small>{% if item.key == 'finish' %}Revisión final{% elif item.key == 'clinic' %}{% if item.count %}Guardado{% else %}Opcional{% endif %}{% elif item.count %}{{ item.count }} agregado{% if item.count != 1 %}s{% endif %}{% elif item.optional %}Opcional{% else %}Sin empezar{% endif %}</small>
           </span>
         </a>
       </li>
@@ -53,52 +53,52 @@
 
   <section class="setup-main" aria-labelledby="step-title">
     <div class="setup-step-head">
-      <h2 id="step-title">{{ current.title }}{% if current.optional %} <span class="badge">Optional</span>{% endif %}</h2>
+      <h2 id="step-title">{{ current.title }}{% if current.optional %} <span class="badge">Opcional</span>{% endif %}</h2>
       <p>{{ current.summary }}</p>
     </div>
 
     {% if notice %}<p class="alert notice" role="status">{{ notice }}</p>{% endif %}
     {% if problem %}
     <div class="alert {% if problem.blocked %}warn{% else %}error{% endif %} setup-problem" role="alert">
-      {% if problem.saved %}<p><strong>Saved:</strong> {{ problem.saved | join(', ') }}. Submit the form again to finish; nothing will be added twice.</p>{% endif %}
+      {% if problem.saved %}<p><strong>Guardado:</strong> {{ problem.saved | join(', ') }}. Envíe el formulario otra vez para terminar; nada se agregará dos veces.</p>{% endif %}
       <p>{{ problem.message }}</p>
-      {% if problem.blocked and next_step %}<p><a class="button secondary" href="/tenants/{{ organization_id }}/setup?step={{ next_step }}">Skip this step</a></p>{% endif %}
+      {% if problem.blocked and next_step %}<p><a class="button secondary" href="/tenants/{{ organization_id }}/setup?step={{ next_step }}">Saltar este paso</a></p>{% endif %}
     </div>
     {% endif %}
 
     {% if world.party is none %}
     <div class="error-state setup-blocked"><span aria-hidden="true">!</span><div>
       {% if world.party_status in (0, 200) %}
-      <strong>Setup cannot start yet</strong>
-      <p>Your sign-in does not manage this business's profile. Ask the platform administrator to check that your account is the business owner, then reload this page.</p>
+      <strong>Todavía no se puede empezar la configuración</strong>
+      <p>Su usuario no administra el perfil de este negocio. Pídale al administrador de la plataforma que confirme que su cuenta es la del dueño del negocio y luego recargue esta página.</p>
       {% elif world.party_status == 403 %}
-      <strong>Setup cannot start yet</strong>
-      <p>Your account is not allowed to look up which business it manages. Ask the platform administrator to upgrade your business's permissions, then reload this page.</p>
+      <strong>Todavía no se puede empezar la configuración</strong>
+      <p>Su cuenta no tiene permiso para consultar qué negocio administra. Pídale al administrador de la plataforma que actualice los permisos de su negocio y luego recargue esta página.</p>
       {% else %}
-      <strong>The business service did not answer</strong>
-      <p>Reload the page in a moment.</p>
+      <strong>El sistema del negocio no respondió</strong>
+      <p>Recargue la página en un momento.</p>
       {% endif %}
     </div></div>
 
     {% elif step == 'clinic' %}
     <div class="card">
-      <p class="setup-fact"><span>Clinic name</span><strong>{{ business_name }}</strong></p>
-      <p class="field-hint setup-fact-hint">To change the name patients see, ask the platform administrator.</p>
+      <p class="setup-fact"><span>Nombre del consultorio</span><strong>{{ business_name }}</strong></p>
+      <p class="field-hint setup-fact-hint">Para cambiar el nombre que ven sus pacientes, pídaselo al administrador de la plataforma.</p>
       {{ form_start('clinic') }}
-        <label><span>Legal name <span class="optional">(optional)</span></span><input type="text" name="legal_name" maxlength="200" value="{{ values.legal_name if values else (world.business.legal_name or '') }}" placeholder="As registered, for example Centro Médico Duarte SRL" /></label>
+        <label><span>Nombre legal <span class="optional">(opcional)</span></span><input type="text" name="legal_name" maxlength="200" value="{{ values.legal_name if values else (world.business.legal_name or '') }}" placeholder="Como está registrado, por ejemplo Centro Médico Duarte SRL" /></label>
         <div class="field-row">
-          <label>Phone<input type="tel" name="phone" maxlength="40" value="{{ values.phone if values else business_contacts.phone or '' }}" placeholder="809 555 0123" /></label>
+          <label>Teléfono<input type="tel" name="phone" maxlength="40" value="{{ values.phone if values else business_contacts.phone or '' }}" placeholder="809 555 0123" /></label>
           <label>WhatsApp<input type="tel" name="whatsapp" maxlength="40" value="{{ values.whatsapp if values else business_contacts.whatsapp or '' }}" placeholder="829 555 0123" /></label>
         </div>
-        <label>Email<input type="email" name="email" maxlength="200" value="{{ values.email if values else business_contacts.email or '' }}" placeholder="citas@tuclinica.do" /></label>
+        <label>Correo electrónico<input type="email" name="email" maxlength="200" value="{{ values.email if values else business_contacts.email or '' }}" placeholder="citas@suconsultorio.do" /></label>
         <div class="field-row three">
-          <label>Time zone<select name="timezone">{% for key, label in timezones %}<option value="{{ key }}" {% if (values.timezone or defaults.timezone) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-          <label>Currency<select name="currency">{% for key, label in currencies %}<option value="{{ key }}" {% if (values.currency or defaults.currency) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-          <label>Language<select name="locale">{% for key, label in locales %}<option value="{{ key }}" {% if (values.locale or defaults.locale) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+          <label>Zona horaria<select name="timezone">{% for key, label in timezones %}<option value="{{ key }}" {% if (values.timezone or defaults.timezone) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+          <label>Moneda<select name="currency">{% for key, label in currencies %}<option value="{{ key }}" {% if (values.currency or defaults.currency) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+          <label>Idioma<select name="locale">{% for key, label in locales %}<option value="{{ key }}" {% if (values.locale or defaults.locale) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
         </div>
         <div class="setup-actions">
-          <button type="submit">Save clinic details</button>
-          <a href="/tenants/{{ organization_id }}/setup?step=location">Skip for now</a>
+          <button type="submit">Guardar datos del consultorio</button>
+          <a href="/tenants/{{ organization_id }}/setup?step=location">Saltar por ahora</a>
         </div>
       </form>
     </div>
@@ -106,31 +106,31 @@
     {% elif step == 'location' %}
     {% if location_rows %}
     <div class="setup-existing">
-      <h3>Already added</h3>
-      <ul>{% for row in location_rows %}<li><strong>{{ row.name }}</strong>{% if not row.active %} <span class="badge">Inactive</span>{% endif %}<small>{{ row.address or 'No address yet' }}</small><small>{{ row.hours }}</small></li>{% endfor %}</ul>
-      <p class="field-hint">To change opening hours, enter the same location name below with the new hours.</p>
+      <h3>Ya agregadas</h3>
+      <ul>{% for row in location_rows %}<li><strong>{{ row.name }}</strong>{% if not row.active %} <span class="badge">Inactiva</span>{% endif %}<small>{{ row.address or 'Todavía sin dirección' }}</small><small>{{ row.hours }}</small></li>{% endfor %}</ul>
+      <p class="field-hint">Para cambiar el horario, escriba abajo el mismo nombre de la sede con el horario nuevo.</p>
     </div>
     {% endif %}
     <div class="card">
-      <h3 class="card-title">{% if location_rows %}Add another location{% else %}Add your location{% endif %}</h3>
+      <h3 class="card-title">{% if location_rows %}Agregar otra sede{% else %}Agregue su sede{% endif %}</h3>
       {{ form_start('location') }}
-        <label>Location name<input type="text" name="display_name" maxlength="200" required value="{{ values.display_name or '' }}" placeholder="Sede Naco" /></label>
-        <label>Street address<input type="text" name="address_line1" maxlength="200" value="{{ values.address_line1 or '' }}" placeholder="Av. Independencia 123" /></label>
-        <label><span>Building, floor or suite <span class="optional">(optional)</span></span><input type="text" name="address_line2" maxlength="200" value="{{ values.address_line2 or '' }}" placeholder="Torre Médica, piso 3, consultorio 305" /></label>
+        <label>Nombre de la sede<input type="text" name="display_name" maxlength="200" required value="{{ values.display_name or '' }}" placeholder="Sede Naco" /></label>
+        <label>Dirección<input type="text" name="address_line1" maxlength="200" value="{{ values.address_line1 or '' }}" placeholder="Av. Independencia 123" /></label>
+        <label><span>Edificio, piso o local <span class="optional">(opcional)</span></span><input type="text" name="address_line2" maxlength="200" value="{{ values.address_line2 or '' }}" placeholder="Torre Médica, piso 3, consultorio 305" /></label>
         <div class="field-row three">
-          <label>City or sector<input type="text" name="locality" maxlength="120" value="{{ values.locality or '' }}" placeholder="Santo Domingo" /></label>
-          <label>Province<input type="text" name="administrative_area" maxlength="120" list="do-provinces" value="{{ values.administrative_area or '' }}" placeholder="Distrito Nacional" /></label>
-          <label>Country<select name="country_code">{% for key, label in countries %}<option value="{{ key }}" {% if (values.country_code or defaults.country) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+          <label>Ciudad o sector<input type="text" name="locality" maxlength="120" value="{{ values.locality or '' }}" placeholder="Santo Domingo" /></label>
+          <label>Provincia<input type="text" name="administrative_area" maxlength="120" list="do-provinces" value="{{ values.administrative_area or '' }}" placeholder="Distrito Nacional" /></label>
+          <label>País<select name="country_code">{% for key, label in countries %}<option value="{{ key }}" {% if (values.country_code or defaults.country) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
         </div>
         <datalist id="do-provinces">{% for province in provinces %}<option value="{{ province }}"></option>{% endfor %}</datalist>
         <div class="field-row">
-          <label><span>Phone <span class="optional">(optional)</span></span><input type="tel" name="phone" maxlength="40" value="{{ values.phone or '' }}" placeholder="809 555 0123" /></label>
-          <label><span>WhatsApp <span class="optional">(optional)</span></span><input type="tel" name="whatsapp" maxlength="40" value="{{ values.whatsapp or '' }}" placeholder="829 555 0123" /></label>
+          <label><span>Teléfono <span class="optional">(opcional)</span></span><input type="tel" name="phone" maxlength="40" value="{{ values.phone or '' }}" placeholder="809 555 0123" /></label>
+          <label><span>WhatsApp <span class="optional">(opcional)</span></span><input type="tel" name="whatsapp" maxlength="40" value="{{ values.whatsapp or '' }}" placeholder="829 555 0123" /></label>
         </div>
-        {{ week_editor('Opening hours', 'Tick the days you are open. Patients can only book inside these hours.') }}
+        {{ week_editor('Horario', 'Marque los días que abre. Sus pacientes solo pueden reservar dentro de este horario.') }}
         <div class="setup-actions">
-          <button type="submit">Save location and hours</button>
-          {% if location_rows %}<a href="/tenants/{{ organization_id }}/setup?step=services">Continue to services</a>{% endif %}
+          <button type="submit">Guardar sede y horario</button>
+          {% if location_rows %}<a href="/tenants/{{ organization_id }}/setup?step=services">Continuar a servicios</a>{% endif %}
         </div>
       </form>
     </div>
@@ -138,24 +138,24 @@
     {% elif step == 'services' %}
     {% if world.offerings %}
     <div class="setup-existing">
-      <h3>Already added</h3>
-      <ul>{% for item in world.offerings %}<li><strong>{{ item.display_name }}</strong>{% if item.active is false %} <span class="badge">Inactive</span>{% endif %}<small>{{ duration(item.duration_minutes) }}</small></li>{% endfor %}</ul>
-      <p class="field-hint">To change a price, enter the same service name below with the new price.</p>
+      <h3>Ya agregados</h3>
+      <ul>{% for item in world.offerings %}<li><strong>{{ item.display_name }}</strong>{% if item.active is false %} <span class="badge">Inactivo</span>{% endif %}<small>{{ duration(item.duration_minutes) }}</small></li>{% endfor %}</ul>
+      <p class="field-hint">Para cambiar un precio, escriba abajo el mismo nombre del servicio con el precio nuevo.</p>
     </div>
     {% endif %}
     <div class="card">
-      <h3 class="card-title">{% if world.offerings %}Add another service{% else %}Add your first service{% endif %}</h3>
+      <h3 class="card-title">{% if world.offerings %}Agregar otro servicio{% else %}Agregue su primer servicio{% endif %}</h3>
       {{ form_start('services') }}
-        <label>Service name<input type="text" name="display_name" maxlength="200" required value="{{ values.display_name or '' }}" placeholder="Consulta general" /></label>
+        <label>Nombre del servicio<input type="text" name="display_name" maxlength="200" required value="{{ values.display_name or '' }}" placeholder="Consulta general" /></label>
         <div class="field-row three">
-          <label>How long it takes<select name="duration_minutes">{% for minutes in durations %}<option value="{{ minutes }}" {% if (values.duration_minutes or '30') == minutes | string %}selected{% endif %}>{{ duration(minutes) }}</option>{% endfor %}</select></label>
-          <label>Price<input type="text" name="price" inputmode="decimal" maxlength="20" required value="{{ values.price or '' }}" placeholder="1500" aria-describedby="price-hint" /></label>
-          <label>Currency<select name="currency">{% for key, label in currencies %}<option value="{{ key }}" {% if (values.currency or defaults.currency) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+          <label>Cuánto dura<select name="duration_minutes">{% for minutes in durations %}<option value="{{ minutes }}" {% if (values.duration_minutes or '30') == minutes | string %}selected{% endif %}>{{ duration(minutes) }}</option>{% endfor %}</select></label>
+          <label>Precio<input type="text" name="price" inputmode="decimal" maxlength="20" required value="{{ values.price or '' }}" placeholder="1500" aria-describedby="price-hint" /></label>
+          <label>Moneda<select name="currency">{% for key, label in currencies %}<option value="{{ key }}" {% if (values.currency or defaults.currency) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
         </div>
-        <p class="field-hint" id="price-hint">Patients see this price when they book. Enter 0 if the service is free.</p>
+        <p class="field-hint" id="price-hint">Sus pacientes ven este precio al reservar. Escriba 0 si el servicio es gratis.</p>
         <div class="setup-actions">
-          <button type="submit">Add service</button>
-          {% if world.offerings %}<a href="/tenants/{{ organization_id }}/setup?step=providers">Continue to doctors and rooms</a>{% endif %}
+          <button type="submit">Agregar servicio</button>
+          {% if world.offerings %}<a href="/tenants/{{ organization_id }}/setup?step=providers">Continuar a médicos y consultorios</a>{% endif %}
         </div>
       </form>
     </div>
@@ -163,59 +163,59 @@
     {% elif step == 'providers' %}
     {% if provider_rows %}
     <div class="setup-existing">
-      <h3>Already added</h3>
-      <ul>{% for row in provider_rows %}<li><strong>{{ row.name }}</strong>{% if not row.active %} <span class="badge">Inactive</span>{% endif %}<small>{% if row.services %}Provides {{ row.services | join(', ') }}{% else %}No services yet{% endif %}</small></li>{% endfor %}</ul>
+      <h3>Ya agregados</h3>
+      <ul>{% for row in provider_rows %}<li><strong>{{ row.name }}</strong>{% if not row.active %} <span class="badge">Inactivo</span>{% endif %}<small>{% if row.services %}Ofrece {{ row.services | join(', ') }}{% else %}Todavía sin servicios{% endif %}</small></li>{% endfor %}</ul>
     </div>
     {% endif %}
     {% if not world.locations or not services %}
     <div class="empty-state neutral"><span aria-hidden="true">i</span><div>
-      <strong>Add {% if not world.locations %}a location{% else %}a service{% endif %} first</strong>
-      <p>Doctors and rooms work at a location and provide services, so those come first.</p>
-      <p><a class="button" href="/tenants/{{ organization_id }}/setup?step={% if not world.locations %}location{% else %}services{% endif %}">Go to {% if not world.locations %}location and hours{% else %}services and prices{% endif %}</a></p>
+      <strong>Primero agregue {% if not world.locations %}una sede{% else %}un servicio{% endif %}</strong>
+      <p>Los médicos y consultorios trabajan en una sede y ofrecen servicios; por eso, esos datos van primero.</p>
+      <p><a class="button" href="/tenants/{{ organization_id }}/setup?step={% if not world.locations %}location{% else %}services{% endif %}">Ir a {% if not world.locations %}sede y horario{% else %}servicios y precios{% endif %}</a></p>
     </div></div>
     {% else %}
     <div class="card">
-      <h3 class="card-title">{% if provider_rows %}Add another doctor or room{% else %}Add your first doctor or room{% endif %}</h3>
+      <h3 class="card-title">{% if provider_rows %}Agregar otro médico o consultorio{% else %}Agregue su primer médico o consultorio{% endif %}</h3>
       {{ form_start('providers') }}
-        <label>Name<input type="text" name="display_name" maxlength="200" required value="{{ values.display_name or '' }}" placeholder="Dra. Ana Pérez" /></label>
-        <fieldset class="choice-group"><legend>What is it?</legend>
+        <label>Nombre<input type="text" name="display_name" maxlength="200" required value="{{ values.display_name or '' }}" placeholder="Dra. Ana Pérez" /></label>
+        <fieldset class="choice-group"><legend>¿Qué es?</legend>
           {% for key, label in provider_kinds %}<label class="check"><input type="radio" name="kind" value="{{ key }}" {% if (values.kind or 'doctor') == key %}checked{% endif %} />{{ label }}</label>{% endfor %}
         </fieldset>
-        <label>Where they work<select name="location_id">{% for item in world.locations %}<option value="{{ item.location_id }}" {% if values.location_id == item.location_id | string %}selected{% endif %}>{{ item.display_name }}</option>{% endfor %}</select></label>
-        <fieldset class="choice-group"><legend>Services they provide</legend>
+        <label>Dónde trabaja<select name="location_id">{% for item in world.locations %}<option value="{{ item.location_id }}" {% if values.location_id == item.location_id | string %}selected{% endif %}>{{ item.display_name }}</option>{% endfor %}</select></label>
+        <fieldset class="choice-group"><legend>Servicios que ofrece</legend>
           {% for choice in services %}<label class="check"><input type="checkbox" name="capability_id" value="{{ choice.capability_id }}" {% if choice.capability_id in selected or (not values and services | length == 1) %}checked{% endif %} />{{ choice.name }}</label>{% endfor %}
         </fieldset>
-        {{ week_editor('When they are available', 'Patients can book them only when these hours and the location\'s opening hours overlap.') }}
+        {{ week_editor('Cuándo está disponible', 'Sus pacientes solo pueden reservar cuando este horario coincide con el horario de la sede.') }}
         <div class="setup-actions">
-          <button type="submit">Add doctor or room</button>
-          {% if provider_rows %}<a href="/tenants/{{ organization_id }}/setup?step=queue">Continue to walk-in line</a>{% endif %}
+          <button type="submit">Agregar médico o consultorio</button>
+          {% if provider_rows %}<a href="/tenants/{{ organization_id }}/setup?step=queue">Continuar a la fila de espera</a>{% endif %}
         </div>
       </form>
     </div>
     {% endif %}
 
     {% elif step == 'queue' %}
-    <p class="setup-note">Skip this if every patient books ahead. A walk-in line lets the front desk add people who just arrive and call them in order.</p>
+    <p class="setup-note">Salte este paso si todos sus pacientes reservan antes. Una fila de espera sin cita le permite a la recepción agregar a quienes llegan sin cita y llamarlos en orden.</p>
     {% if world.queues %}
     <div class="setup-existing">
-      <h3>Already added</h3>
-      <ul>{% for item in world.queues %}<li><strong>{{ item.display_name }}</strong>{% if item.active is false %} <span class="badge">Inactive</span>{% endif %}</li>{% endfor %}</ul>
+      <h3>Ya agregadas</h3>
+      <ul>{% for item in world.queues %}<li><strong>{{ item.display_name }}</strong>{% if item.active is false %} <span class="badge">Inactiva</span>{% endif %}</li>{% endfor %}</ul>
     </div>
     {% endif %}
     {% if not world.locations %}
-    <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Add a location first</strong><p>A walk-in line belongs to a location.</p><p><a class="button" href="/tenants/{{ organization_id }}/setup?step=location">Go to location and hours</a></p></div></div>
+    <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Primero agregue una sede</strong><p>Cada fila de espera pertenece a una sede.</p><p><a class="button" href="/tenants/{{ organization_id }}/setup?step=location">Ir a sede y horario</a></p></div></div>
     {% else %}
     <div class="card">
-      <h3 class="card-title">{% if world.queues %}Add another walk-in line{% else %}Create a walk-in line{% endif %}</h3>
+      <h3 class="card-title">{% if world.queues %}Agregar otra fila de espera{% else %}Crear una fila de espera{% endif %}</h3>
       {{ form_start('queue') }}
-        <label>Line name<input type="text" name="display_name" maxlength="200" required value="{{ values.display_name or 'Walk-ins' }}" /></label>
+        <label>Nombre de la fila<input type="text" name="display_name" maxlength="200" required value="{{ values.display_name or 'Sin cita' }}" /></label>
         <div class="field-row">
-          <label>Location<select name="location_id">{% for item in world.locations %}<option value="{{ item.location_id }}" {% if values.location_id == item.location_id | string %}selected{% endif %}>{{ item.display_name }}</option>{% endfor %}</select></label>
-          <label>Service<select name="offering_id"><option value="">Any service</option>{% for item in world.offerings %}<option value="{{ item.offering_id }}" {% if values.offering_id == item.offering_id | string %}selected{% endif %}>{{ item.display_name }}</option>{% endfor %}</select></label>
+          <label>Sede<select name="location_id">{% for item in world.locations %}<option value="{{ item.location_id }}" {% if values.location_id == item.location_id | string %}selected{% endif %}>{{ item.display_name }}</option>{% endfor %}</select></label>
+          <label>Servicio<select name="offering_id"><option value="">Cualquier servicio</option>{% for item in world.offerings %}<option value="{{ item.offering_id }}" {% if values.offering_id == item.offering_id | string %}selected{% endif %}>{{ item.display_name }}</option>{% endfor %}</select></label>
         </div>
         <div class="setup-actions">
-          <button type="submit">Create walk-in line</button>
-          <a href="/tenants/{{ organization_id }}/setup?step=finish">Skip for now</a>
+          <button type="submit">Crear fila de espera</button>
+          <a href="/tenants/{{ organization_id }}/setup?step=finish">Saltar por ahora</a>
         </div>
       </form>
     </div>
@@ -224,41 +224,41 @@
     {% elif step == 'finish' %}
     <div class="setup-finish">
       <section class="card" aria-labelledby="preview-title">
-        <h3 id="preview-title" class="card-title">{% if preview.service %}First free times for {{ preview.service }}{% else %}First free times{% endif %}</h3>
+        <h3 id="preview-title" class="card-title">{% if preview.service %}Primeros horarios libres para {{ preview.service }}{% else %}Primeros horarios libres{% endif %}</h3>
         {% if preview.slots %}
-        <p class="field-hint">This is what patients and your front desk will see in the next 7 days.</p>
+        <p class="field-hint">Esto es lo que verán sus pacientes y su recepción en los próximos 7 días.</p>
         <ul class="slot-preview">{% for slot in preview.slots %}<li>{{ slot }}</li>{% endfor %}</ul>
         {% elif not preview.service %}
-        <p>Add a service to see free times here.</p>
-        <p><a href="/tenants/{{ organization_id }}/setup?step=services">Go to services and prices</a></p>
+        <p>Agregue un servicio para ver aquí los horarios libres.</p>
+        <p><a href="/tenants/{{ organization_id }}/setup?step=services">Ir a servicios y precios</a></p>
         {% elif preview.status in range(200, 300) %}
-        <p>No free times in the next 7 days yet. Check that a doctor or room provides this service, that their hours overlap the location's opening hours, and that the service has a price.</p>
-        <p><a href="/tenants/{{ organization_id }}/setup?step=providers">Review doctors and rooms</a></p>
+        <p>Todavía no hay horarios libres en los próximos 7 días. Revise que un médico o consultorio ofrezca este servicio, que su horario coincida con el horario de la sede y que el servicio tenga precio.</p>
+        <p><a href="/tenants/{{ organization_id }}/setup?step=providers">Revisar médicos y consultorios</a></p>
         {% else %}
-        <p>Free times could not be checked right now. Reload the page in a moment.</p>
+        <p>No se pudieron consultar los horarios libres. Recargue la página en un momento.</p>
         {% endif %}
       </section>
       <section class="card" aria-labelledby="ready-title">
-        <h3 id="ready-title" class="card-title">What is ready</h3>
+        <h3 id="ready-title" class="card-title">Qué está listo</h3>
         {% if readiness %}
         <ul class="setup-readiness">
           {% for row in readiness %}
           <li class="{{ row.status }}"><span class="readiness-mark {{ row.status }}" aria-hidden="true">{% if row.status == 'ready' %}✓{% elif row.status == 'blocked' %}!{% else %}?{% endif %}</span>
-            <div><strong>{{ row.label }}</strong> <span class="status-word">{% if row.status == 'ready' %}Ready{% elif row.status == 'blocked' %}Needs attention{% else %}Not checked{% endif %}</span>
+            <div><strong>{{ row.label }}</strong> <span class="status-word">{% if row.status == 'ready' %}Listo{% elif row.status == 'blocked' %}Pendiente{% else %}Sin verificar{% endif %}</span>
             {% for action in row.actions %}<p class="field-hint">{% if action.step == 'advanced' %}<a href="/tenants/{{ organization_id }}/configuration">{{ action.text }}</a>{% elif action.step %}<a href="/tenants/{{ organization_id }}/setup?step={{ action.step }}">{{ action.text }}</a>{% else %}{{ action.text }}{% endif %}</p>{% endfor %}</div>
           </li>
           {% endfor %}
         </ul>
         {% elif readiness_status == 403 %}
-        <p>Your account cannot see the setup checklist. Ask the platform administrator to upgrade your business's permissions.</p>
+        <p>Su cuenta no puede ver la lista de revisión. Pídale al administrador de la plataforma que actualice los permisos de su negocio.</p>
         {% else %}
-        <p>The checklist could not be loaded right now. Reload the page in a moment.</p>
+        <p>No se pudo cargar la lista de revisión. Recargue la página en un momento.</p>
         {% endif %}
       </section>
     </div>
     <div class="setup-actions final">
-      <a class="button" href="/tenants/{{ organization_id }}/today">Open today</a>
-      <a href="/tenants/{{ organization_id }}">Go to business home</a>
+      <a class="button" href="/tenants/{{ organization_id }}/today">Ir a Hoy</a>
+      <a href="/tenants/{{ organization_id }}">Ir al inicio del negocio</a>
     </div>
     {% endif %}
   </section>

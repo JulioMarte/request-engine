@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Action not completed · Request Engine{% endblock %}
+{% block title %}Acción no completada · Request Engine{% endblock %}
 {% block content %}
-<header class="page-heading"><div><p class="eyebrow">Today</p><h1>Action not completed</h1></div></header>
+<header class="page-heading"><div><p class="eyebrow">Hoy</p><h1>Acción no completada</h1></div></header>
 {% if revision_conflict %}
-<p class="alert warn" role="alert">Someone else changed this booking or queue entry after your page loaded. Nothing was changed by this attempt. Go back to see the current state, then try again if it is still needed.</p>
+<p class="alert warn" role="alert">Otra persona cambió esta cita o este turno después de que se cargó su página. Este intento no cambió nada. Vuelva atrás para ver cómo está ahora y, si todavía hace falta, intente de nuevo.</p>
 {% endif %}
 {% include "partials/result.html" %}
-<p><a class="button secondary" href="{{ back }}">Back</a> <a class="button secondary" href="/tenants/{{ organization_id }}/today">Back to today</a></p>
+<p><a class="button secondary" href="{{ back }}">Volver</a> <a class="button secondary" href="/tenants/{{ organization_id }}/today">Volver a hoy</a></p>
 {% endblock %}

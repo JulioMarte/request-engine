@@ -56,20 +56,24 @@ def zone_label(zone_name: str) -> str:
 
 
 TIMEZONES = (
-    ("America/Santo_Domingo", "Dominican Republic"),
+    ("America/Santo_Domingo", "República Dominicana"),
     ("America/Puerto_Rico", "Puerto Rico"),
-    ("America/New_York", "United States, Eastern time"),
+    ("America/New_York", "Estados Unidos, hora del Este"),
     ("America/Bogota", "Colombia"),
-    ("America/Mexico_City", "Mexico, Central time"),
-    ("Europe/Madrid", "Spain, mainland"),
+    ("America/Mexico_City", "México, hora del Centro"),
+    ("Europe/Madrid", "España, península"),
 )
 CURRENCIES = (
-    ("DOP", "Dominican pesos (RD$)"),
-    ("USD", "US dollars (US$)"),
+    ("DOP", "Pesos dominicanos (RD$)"),
+    ("USD", "Dólares estadounidenses (US$)"),
     ("EUR", "Euros (€)"),
 )
-LOCALES = (("es-DO", "Spanish"), ("en-US", "English"))
-COUNTRIES = (("DO", "Dominican Republic"), ("PR", "Puerto Rico"), ("US", "United States"))
+LOCALES = (("es-DO", "Español"), ("en-US", "Inglés"))
+COUNTRIES = (
+    ("DO", "República Dominicana"),
+    ("PR", "Puerto Rico"),
+    ("US", "Estados Unidos"),
+)
 PROVINCES = (
     "Azua", "Bahoruco", "Barahona", "Dajabón", "Distrito Nacional", "Duarte", "El Seibo",
     "Elías Piña", "Espaillat", "Hato Mayor", "Hermanas Mirabal", "Independencia", "La Altagracia",
@@ -80,10 +84,10 @@ PROVINCES = (
 )  # fmt: skip
 DURATIONS = (15, 20, 30, 45, 60, 90, 120)
 PROVIDER_KINDS = (
-    ("doctor", "Doctor or specialist"),
-    ("staff", "Nurse, therapist or other staff"),
-    ("room", "Room or office"),
-    ("equipment", "Equipment"),
+    ("doctor", "Médico o especialista"),
+    ("staff", "Enfermera, terapeuta u otro personal"),
+    ("room", "Consultorio o sala"),
+    ("equipment", "Equipo"),
 )
 _DEFAULT_WEEK = {day: ("08:00", "17:00") for day in range(5)}
 _MAX_KEY_CANDIDATES = 50
@@ -132,7 +136,7 @@ def choose_key(
             return candidate, None
         if _same_name(item.get("display_name"), display_name):
             return candidate, item
-    raise SetupInputError("Too many items already use a similar name. Choose a different name.")
+    raise SetupInputError("Ya hay demasiados elementos con un nombre parecido. Elija otro nombre.")
 
 
 def named(existing: Iterable[Mapping[str, Any]], display_name: str) -> Mapping[str, Any] | None:
@@ -146,7 +150,7 @@ def required_text(values: Mapping[str, str], field: str, message: str, limit: in
     if not value:
         raise SetupInputError(message)
     if len(value) > limit:
-        raise SetupInputError(f"Keep it under {limit} characters.")
+        raise SetupInputError(f"Use menos de {limit} caracteres.")
     return value
 
 
@@ -160,7 +164,7 @@ def choice(
 ) -> str:
     value = values.get(field, "").strip() or default
     if value not in {key for key, _ in options}:
-        raise SetupInputError("Choose one of the listed options.")
+        raise SetupInputError("Elija una de las opciones de la lista.")
     return value
 
 
@@ -176,11 +180,11 @@ def parse_week(values: Mapping[str, str], *, what: str) -> list[dict[str, Any]]:
             end = time.fromisoformat(values.get(f"day{day}_end", ""))
         except ValueError:
             raise SetupInputError(
-                f"Enter both times for {name}, for example 08:00 and 17:00."
+                f"Escriba las dos horas del {name}, por ejemplo 08:00 y 17:00."
             ) from None
         if start >= end:
             raise SetupInputError(
-                f"On {name}, the closing time must be later than the opening time."
+                f"El {name}, la hora de cierre debe ser después de la hora de apertura."
             )
         windows.append(
             {
@@ -190,7 +194,7 @@ def parse_week(values: Mapping[str, str], *, what: str) -> list[dict[str, Any]]:
             }
         )
     if not windows:
-        raise SetupInputError(f"Tick at least one day {what}.")
+        raise SetupInputError(f"Marque al menos un día {what}.")
     return windows
 
 
@@ -211,7 +215,7 @@ def week_rows(values: Mapping[str, str] | None, windows: object = None) -> list[
             rows.append(
                 {
                     "day": day,
-                    "name": name,
+                    "name": name.capitalize(),
                     "open": values.get(f"day{day}_open") == "on",
                     "start": values.get(f"day{day}_start", "08:00"),
                     "end": values.get(f"day{day}_end", "17:00"),
@@ -220,7 +224,13 @@ def week_rows(values: Mapping[str, str] | None, windows: object = None) -> list[
         else:
             start, end = current.get(day, ("08:00", "17:00" if day < 5 else "12:00"))
             rows.append(
-                {"day": day, "name": name, "open": day in current, "start": start, "end": end}
+                {
+                    "day": day,
+                    "name": name.capitalize(),
+                    "open": day in current,
+                    "start": start,
+                    "end": end,
+                }
             )
     return rows
 
@@ -245,7 +255,7 @@ def same_windows(current: object, wanted: list[dict[str, Any]]) -> bool:
 
 
 def describe_week(windows: object) -> str:
-    """'Monday to Friday 08:00-17:00, Saturday 08:00-12:00' from owner windows."""
+    """'Lunes a viernes 08:00-17:00; sábado 08:00-12:00' from owner windows."""
 
     by_day: dict[int, str] = {}
     for raw in as_list(windows):
@@ -263,22 +273,23 @@ def describe_week(windows: object) -> str:
         last = day
         while last + 1 < 7 and by_day.get(last + 1) == by_day[day]:
             last += 1
-        days = WEEKDAYS[day] if last == day else f"{WEEKDAYS[day]} to {WEEKDAYS[last]}"
+        days = WEEKDAYS[day] if last == day else f"{WEEKDAYS[day]} a {WEEKDAYS[last]}"
         parts.append(f"{days} {by_day[day]}")
         day = last + 1
-    return "; ".join(parts) or "No opening hours yet"
+    summary = "; ".join(parts)
+    return summary[:1].upper() + summary[1:] if summary else "Todavía no tiene horario"
 
 
 def parse_amount(values: Mapping[str, str]) -> str:
     text = values.get("price", "").strip().replace(",", "").removeprefix("RD$").removeprefix("$")
     if not text:
-        raise SetupInputError("Enter a price. Use 0 if the service is free.")
+        raise SetupInputError("Escriba un precio. Use 0 si el servicio es gratis.")
     if not _AMOUNT.fullmatch(text):
-        raise SetupInputError("Enter the price as a number, for example 1500 or 1500.50.")
+        raise SetupInputError("Escriba el precio en números, por ejemplo 1500 o 1500.50.")
     try:
         return str(Decimal(text))
     except InvalidOperation:
-        raise SetupInputError("Enter the price as a number, for example 1500.") from None
+        raise SetupInputError("Escriba el precio en números, por ejemplo 1500.") from None
 
 
 def phone_number(value: str) -> str:
@@ -297,8 +308,8 @@ def phone_number(value: str) -> str:
     if len(digits) == 11 and digits.startswith("1"):
         return f"+{digits}"
     raise SetupInputError(
-        "Enter the full phone number, for example 809 555 0123, or include the country "
-        "code, for example +34 600 123 456."
+        "Escriba el número de teléfono completo, por ejemplo 809 555 0123, o incluya el "
+        "código del país, por ejemplo +34 600 123 456."
     )
 
 
@@ -311,7 +322,7 @@ def contacts(values: Mapping[str, str], fields: Iterable[str]) -> list[dict[str,
         if not value:
             continue
         if channel == "email" and not _EMAIL.fullmatch(value):
-            raise SetupInputError("Enter the email address in the form name@example.com.")
+            raise SetupInputError("Escriba el correo electrónico así: nombre@ejemplo.com.")
         if channel != "email":
             value = phone_number(value)
         found.append({"channel": channel, "value": value[:256]})
@@ -352,61 +363,70 @@ def explain_failure(status: int, payload: object, *, action: str) -> tuple[str, 
 
     if status == 403:
         return (
-            f"Your business is not allowed to {action} yet. Its permissions come from the "
-            "platform, so the platform administrator has to upgrade them. You can skip this "
-            "step and come back once that is done.",
+            f"Su negocio todavía no tiene permiso para {action}. Esos permisos los da la "
+            "plataforma, así que el administrador de la plataforma debe actualizarlos. Puede "
+            "saltar este paso y volver cuando eso esté hecho.",
             True,
         )
     if status == 409:
         return (
-            "Someone changed this at the same moment. Reload the page to see the latest "
-            "details, then try again.",
+            "Alguien cambió esto al mismo tiempo. Recargue la página para ver los datos "
+            "más recientes y vuelva a intentarlo.",
             False,
         )
     if status in {400, 404, 422}:
         detail = owner_message(payload)
-        suffix = f" The business service said: {detail}." if detail else ""
-        return f"Some details were not accepted. Check the form and try again.{suffix}", False
+        suffix = f" El sistema del negocio respondió: {detail}." if detail else ""
+        return (
+            "Algunos datos no fueron aceptados. Revise el formulario y vuelva a intentarlo."
+            f"{suffix}",
+            False,
+        )
     if status == 429:
-        return "Too many changes in a short time. Wait a minute, then try again.", False
+        return "Demasiados cambios en poco tiempo. Espere un minuto y vuelva a intentarlo.", False
     return (
-        "The business service did not answer. Try again in a moment; anything already saved "
-        "will not be duplicated.",
+        "El sistema del negocio no respondió. Vuelva a intentarlo en un momento; lo que ya "
+        "se guardó no se duplicará.",
         False,
     )
 
 
 _READINESS_ACTIONS: dict[str, tuple[str, str]] = {
     "business_party_missing": (
-        "The business identity is missing. Ask the platform administrator to finish creating it.",
+        "Faltan los datos del negocio. "
+        "Pídale al administrador de la plataforma que termine de crearlos.",
         "",
     ),
-    "location_missing": ("Add the place where you see patients.", "location"),
-    "no_bookable_offering": ("Add at least one service with its price.", "services"),
-    "no_resource_supply": ("Add a doctor or room that provides your services.", "providers"),
+    "location_missing": ("Agregue la sede donde atiende a sus pacientes.", "location"),
+    "no_bookable_offering": ("Agregue al menos un servicio con su precio.", "services"),
+    "no_resource_supply": (
+        "Agregue un médico o consultorio que ofrezca sus servicios.",
+        "providers",
+    ),
     "service_queue_missing": (
-        "Optional: add a walk-in line if patients arrive without an appointment.",
+        "Opcional: agregue una fila de espera si llegan pacientes sin cita.",
         "queue",
     ),
     "channel_purpose_disabled": (
-        "Patient messages are switched off. Turn them on in advanced settings.",
+        "Los mensajes a pacientes están desactivados. Actívelos en Configuración avanzada.",
         "advanced",
     ),
     "controller_policy_upgrade_required": (
-        "Your business permissions need an upgrade from the platform administrator.",
+        "Los permisos de su negocio necesitan una actualización "
+        "del administrador de la plataforma.",
         "",
     ),
 }
 _READINESS_LABELS = {
-    "business_party": "Business identity",
-    "locations": "Location",
-    "appointments": "Appointments",
-    "walk_in_queue": "Walk-in line",
-    "communications": "Patient messages",
-    "identity": "Owner sign-in",
-    "tenant_control": "Owner permissions",
-    "staff_administration": "Team management",
-    "recovery": "Account recovery",
+    "business_party": "Datos del negocio",
+    "locations": "Sede",
+    "appointments": "Citas",
+    "walk_in_queue": "Fila de espera sin cita",
+    "communications": "Mensajes a pacientes",
+    "identity": "Inicio de sesión del dueño",
+    "tenant_control": "Permisos del dueño",
+    "staff_administration": "Administración del equipo",
+    "recovery": "Recuperación de la cuenta",
 }
 
 
@@ -423,7 +443,7 @@ def readiness_rows(payload: object) -> list[dict[str, Any]]:
         for raw in as_list(section.get("blockers")):
             code = str(as_mapping(raw).get("code") or "")
             text, step = _READINESS_ACTIONS.get(
-                code, ("Ask the platform administrator to review this.", "")
+                code, ("Pídale al administrador de la plataforma que revise esto.", "")
             )
             actions.append({"text": text, "step": step})
         rows.append(

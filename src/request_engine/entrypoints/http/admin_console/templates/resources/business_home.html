@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}{{ business.display_name or "Business" }} · Request Engine{% endblock %}
+{% block title %}{{ business.display_name or "Negocio" }} · Request Engine{% endblock %}
 {% block content %}
 <header class="page-heading">
   <div>
-    <p class="eyebrow">Business home</p>
-    <h1>{{ business.display_name or "Your business" }}</h1>
-    <p>What needs attention, who is on the team, and what your chief of staff is doing.</p>
+    <p class="eyebrow">Inicio del negocio</p>
+    <h1>{{ business.display_name or "Su negocio" }}</h1>
+    <p>Lo que necesita atención, quién está en el equipo y qué está haciendo su jefe de gabinete.</p>
   </div>
   <div class="page-actions">
-    <a class="button" href="/tenants/{{ organization_id }}/today">Open today</a>
-    <a class="button secondary" href="/tenants/{{ organization_id }}/staff">Team</a>
+    <a class="button" href="/tenants/{{ organization_id }}/today">Abrir Hoy</a>
+    <a class="button secondary" href="/tenants/{{ organization_id }}/staff">Equipo</a>
   </div>
 </header>
 
@@ -17,9 +17,9 @@
   <div>
     <section class="panel" aria-labelledby="setup-title">
       <div class="panel-heading">
-        <div><h2 id="setup-title">Business setup</h2>
-        {% if readiness %}<p class="muted small">{{ ready_count }} of {{ readiness | length }} areas ready</p>{% endif %}</div>
-        <a href="/tenants/{{ organization_id }}/setup">Continue setup</a>
+        <div><h2 id="setup-title">Configuración del negocio</h2>
+        {% if readiness %}<p class="muted small">{{ ready_count }} de {{ readiness | length }} áreas listas</p>{% endif %}</div>
+        <a href="/tenants/{{ organization_id }}/setup">Seguir configurando</a>
       </div>
       {% if readiness %}
       <div class="panel-body">
@@ -29,31 +29,31 @@
         {% for row in readiness %}
         <li>
           <span class="readiness-mark {{ row.status }}" aria-hidden="true">{% if row.status == 'ready' %}✓{% elif row.status == 'blocked' %}!{% else %}?{% endif %}</span>
-          <div><strong>{{ row.label }}</strong>{% if row.hint and row.status != 'ready' %}<p class="muted small">{{ row.hint }}{% if row.key == 'tenant_control' %} <a href="/tenants/{{ organization_id }}/permissions-update">Review owner permissions</a>{% endif %}</p>{% endif %}</div>
+          <div><strong>{{ row.label }}</strong>{% if row.hint and row.status != 'ready' %}<p class="muted small">{{ row.hint }}{% if row.key == 'tenant_control' %} <a href="/tenants/{{ organization_id }}/permissions-update">Revisar permisos del dueño</a>{% endif %}</p>{% endif %}</div>
           <span class="badge {% if row.status == 'ready' %}active{% elif row.status == 'blocked' %}pending{% endif %}">{{ row.state_label }}</span>
         </li>
         {% endfor %}
       </ul>
       {% elif readiness_status == 403 %}
-      <div class="empty-state neutral compact"><span aria-hidden="true">i</span><div><strong>Setup progress is not available to you</strong><p>Ask the business owner for access to setup progress.</p></div></div>
+      <div class="empty-state neutral compact"><span aria-hidden="true">i</span><div><strong>Usted no tiene acceso al avance de la configuración</strong><p>Pida acceso al dueño del negocio.</p></div></div>
       {% else %}
-      <div class="error-state"><span aria-hidden="true">!</span><div><strong>Setup progress could not be checked</strong><p>Reload the page. Nothing is shown as ready until the business API confirms it.</p></div></div>
+      <div class="error-state"><span aria-hidden="true">!</span><div><strong>No se pudo revisar el avance de la configuración</strong><p>Vuelva a cargar la página. Nada aparece como listo hasta que el sistema del negocio lo confirme.</p></div></div>
       {% endif %}
     </section>
 
     <section class="panel" aria-labelledby="team-title">
-      <div class="panel-heading"><h2 id="team-title">Team</h2><a href="/tenants/{{ organization_id }}/staff">Manage team</a></div>
+      <div class="panel-heading"><h2 id="team-title">Equipo</h2><a href="/tenants/{{ organization_id }}/staff">Manejar el equipo</a></div>
       {% if team %}
       <div class="day-summary">
-        <div><strong>{{ team.active }}</strong><span>Active</span></div>
-        <div><strong>{{ team.invited }}</strong><span>Invited</span></div>
-        <div><strong>{{ team.suspended }}</strong><span>Suspended</span></div>
+        <div><strong>{{ team.active }}</strong><span>Activos</span></div>
+        <div><strong>{{ team.invited }}</strong><span>Invitados</span></div>
+        <div><strong>{{ team.suspended }}</strong><span>Suspendidos</span></div>
       </div>
-      <div class="panel-body"><a href="/tenants/{{ organization_id }}/staff-invitations">Invite someone by email</a> <span aria-hidden="true">·</span> <a href="/tenants/{{ organization_id }}/permissions-update">Owner permissions</a></div>
+      <div class="panel-body"><a href="/tenants/{{ organization_id }}/staff-invitations">Invitar a alguien por correo</a> <span aria-hidden="true">·</span> <a href="/tenants/{{ organization_id }}/permissions-update">Permisos del dueño</a></div>
       {% elif team_status == 403 %}
-      <p class="unavailable-note">Team information is not available to you.</p>
+      <p class="unavailable-note">Usted no tiene acceso a la información del equipo.</p>
       {% else %}
-      <p class="unavailable-note">Team information could not be loaded right now.</p>
+      <p class="unavailable-note">No se pudo cargar la información del equipo en este momento.</p>
       {% endif %}
     </section>
   </div>
@@ -61,44 +61,44 @@
   <div>
     <section class="panel cos-card" aria-labelledby="cos-title">
       <div class="cos-head">
-        <span class="cos-avatar" aria-hidden="true">CS</span>
+        <span class="cos-avatar" aria-hidden="true">JG</span>
         <div>
-          <h2 id="cos-title">{% if chief %}{{ chief.display_name }}{% else %}Your chief of staff{% endif %}</h2>
-          <p>{% if chief %}{{ chief.status | capitalize }} · acts on your behalf from Claude{% else %}An assistant that carries out what you ask, by text or voice{% endif %}</p>
+          <h2 id="cos-title">{% if chief %}{{ chief.display_name }}{% else %}Su jefe de gabinete{% endif %}</h2>
+          <p>{% if chief %}{{ {'active': 'Activo', 'suspended': 'En pausa', 'revoked': 'Revocado'}.get(chief.status, chief.status | capitalize) }} · actúa en su nombre desde Claude{% else %}Un asistente que hace lo que usted le pide, por texto o por voz{% endif %}</p>
         </div>
       </div>
       <div class="cos-body">
         {% if chief %}
-        <p>Ask it to book, reschedule or cancel appointments, register customers, check people in or look up today's work. When you ask it to add someone to the team, it sends you a suggestion to approve.</p>
+        <p>Pídale que reserve, cambie de fecha o cancele citas, registre pacientes, registre llegadas o le diga qué hay para hoy. Cuando le pida agregar a alguien al equipo, le envía una sugerencia para que usted la apruebe.</p>
         {% if pending_proposals %}
-        <div class="alert warn" role="status">{{ pending_proposals }} suggestion{% if pending_proposals != 1 %}s{% endif %} waiting for your approval.</div>
+        <div class="alert warn" role="status">{% if pending_proposals == 1 %}1 sugerencia espera{% else %}{{ pending_proposals }} sugerencias esperan{% endif %} su aprobación.</div>
         {% endif %}
         <div class="page-actions">
-          {% if pending_proposals %}<a class="button" href="/tenants/{{ organization_id }}/approvals">Review suggestions</a>{% endif %}
-          <a class="button secondary" href="/tenants/{{ organization_id }}/agents/{{ chief.principal_id }}">Manage and connect</a>
+          {% if pending_proposals %}<a class="button" href="/tenants/{{ organization_id }}/approvals">Revisar sugerencias</a>{% endif %}
+          <a class="button secondary" href="/tenants/{{ organization_id }}/agents/{{ chief.principal_id }}">Manejar y conectar</a>
         </div>
         {% elif agents is none %}
-        <p class="muted">{% if agents_status == 403 %}Agents are not available to you. Ask the business owner to set up the chief of staff.{% else %}Agents could not be loaded right now.{% endif %}</p>
+        <p class="muted">{% if agents_status == 403 %}Usted no tiene acceso a los asistentes. Pida al dueño del negocio que configure el jefe de gabinete.{% else %}No se pudieron cargar los asistentes en este momento.{% endif %}</p>
         {% else %}
-        <p>Set it up once, then connect it to Claude on your computer or phone. It will be able to:</p>
+        <p>Configúrelo una vez y luego conéctelo a Claude en su computadora o celular. Podrá:</p>
         <ul>
-          <li>book, reschedule and cancel appointments</li>
-          <li>find and register customers</li>
-          <li>check customers in and answer questions about today</li>
-          <li>suggest new team members for you to approve</li>
+          <li>reservar, cambiar de fecha y cancelar citas</li>
+          <li>buscar y registrar pacientes</li>
+          <li>registrar la llegada de pacientes y responder preguntas sobre el día de hoy</li>
+          <li>sugerirle nuevos miembros del equipo para que usted los apruebe</li>
         </ul>
-        <a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Set up chief of staff</a>
+        <a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Configurar jefe de gabinete</a>
         {% endif %}
       </div>
     </section>
 
     <section class="panel" aria-labelledby="shortcut-title">
-      <div class="panel-heading"><h2 id="shortcut-title">Go to</h2></div>
+      <div class="panel-heading"><h2 id="shortcut-title">Ir a</h2></div>
       <div class="quick-grid" style="grid-template-columns: 1fr">
-        <a href="/tenants/{{ organization_id }}/today"><span aria-hidden="true">◷</span><span><strong>Today</strong><small>Queues and the day's appointments</small></span></a>
-        <a href="/tenants/{{ organization_id }}/approvals"><span aria-hidden="true">✓</span><span><strong>Approvals</strong><small>Suggestions from agents waiting for you</small></span></a>
-        <a href="/tenants/{{ organization_id }}/agents"><span aria-hidden="true">✦</span><span><strong>Agents and API access</strong><small>Keys for assistants and integrations</small></span></a>
-        <a href="/tenants/{{ organization_id }}/configuration"><span aria-hidden="true">▤</span><span><strong>Business configuration</strong><small>Locations, services, hours and policies</small></span></a>
+        <a href="/tenants/{{ organization_id }}/today"><span aria-hidden="true">◷</span><span><strong>Hoy</strong><small>Filas de espera y citas del día</small></span></a>
+        <a href="/tenants/{{ organization_id }}/approvals"><span aria-hidden="true">✓</span><span><strong>Aprobaciones</strong><small>Sugerencias de los asistentes que esperan por usted</small></span></a>
+        <a href="/tenants/{{ organization_id }}/agents"><span aria-hidden="true">✦</span><span><strong>Asistentes y API</strong><small>Claves para asistentes e integraciones</small></span></a>
+        <a href="/tenants/{{ organization_id }}/configuration"><span aria-hidden="true">▤</span><span><strong>Configuración del negocio</strong><small>Sedes, servicios, horarios y reglas</small></span></a>
       </div>
     </section>
   </div>

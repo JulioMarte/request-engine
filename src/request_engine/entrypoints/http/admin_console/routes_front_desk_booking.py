@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
+from request_engine.entrypoints.http.admin_console.clinic_setup import long_date, zone_label
 from request_engine.entrypoints.http.admin_console.execution import (
     ExecutionOutcome,
     form_error,
@@ -94,7 +95,7 @@ def _registration(values: Mapping[str, str]) -> dict[str, str] | ExecutionOutcom
 
     name = values.get("display_name", "").strip()
     if not name:
-        return form_error("Enter the customer's full name.")
+        return form_error("Escriba el nombre completo del paciente.")
     submitted = {"display_name": name, "party_kind": "person"}
     for field, kind_key, kind, value in (
         ("contact_points", "channel", "phone", values.get("phone", "").strip()),
@@ -139,7 +140,7 @@ def install_front_desk_booking_routes(app: FastAPI, state: AdminConsoleState) ->
         if state.session(request) is None:
             return login_redirect(request)
         if state.runtime is None:
-            return workspace_unavailable(state, request, "Today unavailable")
+            return workspace_unavailable(state, request, "Hoy no disponible")
         return None
 
     def _visit_page(
@@ -283,7 +284,9 @@ def install_front_desk_booking_routes(app: FastAPI, state: AdminConsoleState) ->
                 request,
                 organization_id=org,
                 zone_name=zone_name,
+                zone_label=zone_label(zone_name),
                 day=local_day.isoformat(),
+                day_label=long_date(local_day),
                 offering_version_id=offering_version_id,
                 offerings=offering_rows,
                 offerings_status=offerings.status,

@@ -8,35 +8,44 @@ This copy never decides readiness: the onboarding owner does.
 from __future__ import annotations
 
 _LABELS = {
-    "business_party": "Business identity",
-    "locations": "Locations",
-    "appointments": "Appointments",
-    "walk_in_queue": "Walk-in queue",
-    "communications": "Messages",
-    "identity": "Sign-in",
-    "tenant_control": "Owner control",
-    "staff_administration": "Team administration",
-    "recovery": "Recovery",
+    "business_party": "Datos del negocio",
+    "locations": "Sedes",
+    "appointments": "Citas",
+    "walk_in_queue": "Fila de espera sin cita",
+    "communications": "Mensajes",
+    "identity": "Inicio de sesión",
+    "tenant_control": "Control del dueño",
+    "staff_administration": "Administración del equipo",
+    "recovery": "Recuperación de acceso",
 }
 # Owner-facing next steps. The onboarding API's resolution hints are written for
 # integrations; the console says what the person should do in their own terms.
 _GUIDANCE = {
-    "business_party": "Your business record is incomplete. Ask your platform administrator.",
-    "locations": "Add the place where you see customers, with its opening hours.",
-    "appointments": (
-        "Add a service with its price, and a person or room with weekly hours, "
-        "so customers can book."
+    "business_party": (
+        "Los datos de su negocio están incompletos. Pídale ayuda al administrador de la plataforma."
     ),
-    "walk_in_queue": "Create a waiting line for customers who arrive without an appointment.",
-    "communications": "Choose how confirmations and reminders reach your customers.",
-    "identity": "Sign-in for this business is not ready. Ask your platform administrator.",
-    "tenant_control": "New owner permissions are available. Request the upgrade.",
-    "staff_administration": "Team management is not ready. Ask your platform administrator.",
+    "locations": "Agregue la sede donde atiende a sus pacientes, con su horario.",
+    "appointments": (
+        "Agregue un servicio con su precio y un médico o consultorio con su horario semanal, "
+        "para que sus pacientes puedan reservar."
+    ),
+    "walk_in_queue": "Cree una fila de espera para los pacientes que llegan sin cita.",
+    "communications": "Elija cómo les llegan las confirmaciones y recordatorios a sus pacientes.",
+    "identity": (
+        "El inicio de sesión de este negocio no está listo. "
+        "Pídale ayuda al administrador de la plataforma."
+    ),
+    "tenant_control": "Hay nuevos permisos del dueño disponibles. Solicite la actualización.",
+    "staff_administration": (
+        "La administración del equipo no está lista. "
+        "Pídale ayuda al administrador de la plataforma."
+    ),
     "recovery": (
-        "Save recovery codes in Account security so you can get back in if you lose your password."
+        "Guarde sus códigos de recuperación en Seguridad de la cuenta, "
+        "para poder entrar si olvida su contraseña."
     ),
 }
-_STATES = {"ready": "Ready", "blocked": "To do", "unknown": "Not checked"}
+_STATES = {"ready": "Listo", "blocked": "Pendiente", "unknown": "Sin verificar"}
 
 
 def readiness_label(key: str) -> str:

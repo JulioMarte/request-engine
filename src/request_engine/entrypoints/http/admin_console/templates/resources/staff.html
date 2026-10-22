@@ -1,41 +1,41 @@
 {% extends "base.html" %}{% import "partials/inputs.html" as inputs %}{% import "partials/capabilities.html" as capabilities %}
-{% block title %}People & permissions · Request Engine admin{% endblock %}
-{% block content %}<header class="page-heading"><div><p class="eyebrow">{{ nav_organization_name or "Your business" }} · Team</p><h1>People &amp; permissions</h1><p>Invite people, review who can do what, and change access. Every change is checked by the business API.</p></div><div class="page-actions">{% if can_mutate %}<a class="button" href="/tenants/{{ organization_id }}/staff-invitations">Invite by email</a>{% endif %}<a class="button secondary" href="/tenants/{{ organization_id }}/approvals">Review suggestions</a></div></header>
+{% block title %}Personas y permisos · Request Engine{% endblock %}
+{% block content %}{% set status_names = {'active': 'Activo', 'invited': 'Invitado', 'suspended': 'Suspendido', 'revoked': 'Retirado'} %}<header class="page-heading"><div><p class="eyebrow">{{ nav_organization_name or "Su negocio" }} · Equipo</p><h1>Personas y permisos</h1><p>Invite personas, revise quién puede hacer qué y cambie accesos. El sistema del negocio verifica cada cambio.</p></div><div class="page-actions">{% if can_mutate %}<a class="button" href="/tenants/{{ organization_id }}/staff-invitations">Invitar por correo</a>{% endif %}<a class="button secondary" href="/tenants/{{ organization_id }}/approvals">Revisar sugerencias</a></div></header>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
-{% if can_mutate %}<p class="muted">Invite by email to send, track acceptance, then review permissions.</p>{% endif %}
-<section class="metric-grid"><article class="metric"><span>Total</span><strong>{{ overview.total | default('—') }}</strong></article><article class="metric"><span>Active</span><strong>{{ overview.active | default('—') }}</strong></article><article class="metric"><span>Invited</span><strong>{{ overview.invited | default('—') }}</strong></article><article class="metric"><span>Suspended</span><strong>{{ overview.suspended | default('—') }}</strong></article></section>
-{% if can_mutate %}<section class="card"><h2>Your authority in this organization</h2><p><strong>Can do:</strong> the capabilities currently effective for your principal. <strong>Can grant:</strong> the smaller delegable ceiling that bounds permission changes; having a capability does not automatically make it grantable.</p><details open><summary>Can do</summary>{{ capabilities.groups(overview.effective_capabilities, "No effective capabilities reported.") }}</details><details><summary>Can grant</summary>{{ capabilities.groups(overview.delegable_ceiling, "No delegable capabilities reported.") }}</details></section>{% endif %}
-<div class="staff-directory"><section class="card"><h2>Members</h2>
+{% if can_mutate %}<p class="muted">Use Invitar por correo para enviar la invitación, ver si la aceptan y luego revisar sus permisos.</p>{% endif %}
+<section class="metric-grid"><article class="metric"><span>Total</span><strong>{{ overview.total | default('—') }}</strong></article><article class="metric"><span>Activos</span><strong>{{ overview.active | default('—') }}</strong></article><article class="metric"><span>Invitados</span><strong>{{ overview.invited | default('—') }}</strong></article><article class="metric"><span>Suspendidos</span><strong>{{ overview.suspended | default('—') }}</strong></article></section>
+{% if can_mutate %}<section class="card"><h2>Lo que usted puede hacer en esta organización</h2><p><strong>Puede hacer:</strong> los permisos que tiene vigentes ahora. <strong>Puede dar:</strong> el límite, más reducido, de lo que puede asignar a otros; tener un permiso no significa que pueda darlo.</p><details open><summary>Puede hacer</summary>{{ capabilities.groups(overview.effective_capabilities, "No tiene permisos vigentes.") }}</details><details><summary>Puede dar</summary>{{ capabilities.groups(overview.delegable_ceiling, "No tiene permisos que pueda dar.") }}</details></section>{% endif %}
+<div class="staff-directory"><section class="card" style="min-width: 0"><h2>Miembros</h2>
 <form method="get" action="/tenants/{{ organization_id }}/staff">
   <input type="hidden" name="limit" value="{{ page_limit }}" />
-  <label for="staff-name-search">Name in this organization</label>
-  <input id="staff-name-search" name="search" value="{{ selected_search }}" maxlength="100" type="search" placeholder="Search display names" />
-  <label for="staff-status-filter">Membership status</label>
+  <label for="staff-name-search">Nombre en esta organización</label>
+  <input id="staff-name-search" name="search" value="{{ selected_search }}" maxlength="100" type="search" placeholder="Buscar por nombre" />
+  <label for="staff-status-filter">Estado del miembro</label>
   <select id="staff-status-filter" name="status">
-    <option value="" {% if not selected_status %}selected{% endif %}>All statuses</option>
-    {% for value, label in [('active', 'Active'), ('invited', 'Invited'), ('suspended', 'Suspended'), ('revoked', 'Revoked')] %}
+    <option value="" {% if not selected_status %}selected{% endif %}>Todos los estados</option>
+    {% for value, label in status_names.items() %}
     <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
     {% endfor %}
   </select>
-  <button class="secondary" type="submit">Filter members</button>
-  {% if selected_status or selected_search %}<a href="/tenants/{{ organization_id }}/staff?limit={{ page_limit }}">Clear filters</a>{% endif %}
+  <button class="secondary" type="submit">Filtrar miembros</button>
+  {% if selected_status or selected_search %}<a href="/tenants/{{ organization_id }}/staff?limit={{ page_limit }}">Quitar filtros</a>{% endif %}
 </form>
-<p class="muted">Counts above cover the whole organization. The list below follows your selected status and name. Names are organization-specific labels, not verified identity or email.</p>
+<p class="muted">Los totales de arriba cubren toda la organización. La lista de abajo sigue el estado y el nombre que eligió. Los nombres son etiquetas de esta organización; no confirman la identidad ni el correo.</p>
 <div class="table-wrap"><table class="ops">
-  <thead><tr><th>Member</th><th>Status</th><th>Visible permissions</th><th>Actions</th></tr></thead>
+  <thead><tr><th>Miembro</th><th>Estado</th><th>Permisos visibles</th><th>Acciones</th></tr></thead>
   <tbody>{% for member in members %}
-    <tr><td><strong>{{ member.display_name or 'Name not set' }}</strong><br><code>{{ member.principal_id }}</code></td>
-      <td><span class="badge {{ member.status }}">{{ member.status }}</span></td>
+    <tr><td><strong>{{ member.display_name or 'Sin nombre' }}</strong><br><code>{{ member.principal_id }}</code></td>
+      <td><span class="badge {{ member.status }}">{{ status_names.get(member.status, member.status) }}</span></td>
       <td>{{ member.standing_grants | length }}</td>
-      <td><a href="/tenants/{{ organization_id }}/staff/{{ member.membership_id }}">Review<span class="sr-only"> {{ member.display_name or member.principal_id }}</span></a></td>
+      <td><a href="/tenants/{{ organization_id }}/staff/{{ member.membership_id }}">Revisar<span class="sr-only"> {{ member.display_name or member.principal_id }}</span></a></td>
     </tr>
-  {% else %}<tr><td colspan="4">{% if selected_status or selected_search %}No visible members match these filters. Clear the filters to see all memberships.{% else %}No visible staff memberships.{% endif %}</td></tr>{% endfor %}</tbody>
+  {% else %}<tr><td colspan="4">{% if selected_status or selected_search %}Ningún miembro visible coincide con estos filtros. Quite los filtros para ver a todos.{% else %}No hay miembros visibles en el equipo.{% endif %}</td></tr>{% endfor %}</tbody>
 </table></div>
 {% if previous_url or next_cursor %}
-<nav aria-label="Member pages"><p>
-  {% if previous_url %}<a href="{{ previous_url }}">← Previous page</a>{% endif %}
+<nav aria-label="Páginas de miembros"><p>
+  {% if previous_url %}<a href="{{ previous_url }}">← Página anterior</a>{% endif %}
   {% if previous_url and next_cursor %} · {% endif %}
-  {% if next_cursor %}<a href="/tenants/{{ organization_id }}/staff?after={{ next_cursor }}&amp;limit={{ page_limit }}&amp;trail={{ next_trail }}{% if selected_status %}&amp;status={{ selected_status }}{% endif %}{% if selected_search %}&amp;search={{ selected_search | urlencode }}{% endif %}">Next page →</a>{% endif %}
+  {% if next_cursor %}<a href="/tenants/{{ organization_id }}/staff?after={{ next_cursor }}&amp;limit={{ page_limit }}&amp;trail={{ next_trail }}{% if selected_status %}&amp;status={{ selected_status }}{% endif %}{% if selected_search %}&amp;search={{ selected_search | urlencode }}{% endif %}">Página siguiente →</a>{% endif %}
 </p></nav>
 {% endif %}</section>
-{% if can_mutate %}<details class="card"><summary>Add an existing native identity (advanced)</summary><p class="muted">Use Invite by email for the normal onboarding journey. This advanced action binds an identity that has already been provisioned; it does not send an email.</p><form id="staff-invite" method="post" action="/tenants/{{ organization_id }}/staff" hx-post="/tenants/{{ organization_id }}/staff" hx-target="#staff-invite-result"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="_intent_id" value="{{ invite_intent_id }}" data-form-intent />{{ inputs.render(invite_inputs) }}<button class="secondary" type="submit">Add member</button></form><div id="staff-invite-result"></div></details>{% endif %}</div>{% endblock %}
+{% if can_mutate %}<details class="card" style="min-width: 0"><summary>Agregar una identidad que ya existe (avanzado)</summary><p class="muted">Para sumar a alguien de la forma normal, use Invitar por correo. Esta acción avanzada vincula una identidad que ya fue creada; no envía ningún correo.</p><form id="staff-invite" method="post" action="/tenants/{{ organization_id }}/staff" hx-post="/tenants/{{ organization_id }}/staff" hx-target="#staff-invite-result"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="_intent_id" value="{{ invite_intent_id }}" data-form-intent />{{ inputs.render(invite_inputs) }}<button class="secondary" type="submit">Agregar miembro</button></form><div id="staff-invite-result"></div></details>{% endif %}</div>{% endblock %}

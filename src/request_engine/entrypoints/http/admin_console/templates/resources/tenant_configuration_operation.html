@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% import "partials/inputs.html" as ui %}
-{% block title %}{{ operation.summary }} · Request Engine admin{% endblock %}
+{% block title %}{{ task_label(operation) }} · Request Engine{% endblock %}
 {% block content %}
-<header class="page-heading"><div><a href="{{ root }}">← Business configuration</a><h1>{{ task_label(operation) }}</h1><p>Organization <code>{{ organization_id }}</code></p></div></header>
+<header class="page-heading"><div><a href="{{ root }}">← Configuración del negocio</a><h1>{{ task_label(operation) }}</h1><p>Organización <code>{{ organization_id }}</code></p></div></header>
 <section class="card">
 {% if operation.description %}<p>{{ operation.description }}</p>{% endif %}
-<p class="muted">The current owner's API checks your permissions and revisions. Party selection identifies whom you represent; it does not grant permission. Review pre-filled values before submitting.</p>
+<p class="muted">El sistema revisa sus permisos y que los datos sigan vigentes. Elegir a quién representa no le da permisos. Revise los valores precargados antes de guardar.</p>
 {% for message in guidance %}<p class="alert notice">{{ message }}</p>{% endfor %}
-{% if change_selection_url %}<p><a href="{{ change_selection_url }}">Choose a different item and load its current settings</a></p>{% endif %}
+{% if change_selection_url %}<p><a href="{{ change_selection_url }}">Elegir otro elemento y cargar sus valores actuales</a></p>{% endif %}
 {% for link in inventory_links %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>{% endfor %}
-{% if blocked %}<form method="get" action="{{ root }}/{{ operation.operation_id }}" class="stack">{{ ui.render(selection_inputs) }}<button type="submit">Load current settings</button></form>{% else %}
-<form id="{{ form_id }}" class="stack" method="post" action="{{ root }}/{{ operation.operation_id }}" hx-post="{{ root }}/{{ operation.operation_id }}" hx-target="#execution-outcome" hx-swap="innerHTML" {% if operation.is_mutating %}data-confirm="Apply this configuration to this organization?"{% endif %}>
+{% if blocked %}<form method="get" action="{{ root }}/{{ operation.operation_id }}" class="stack">{{ ui.render(selection_inputs) }}<button type="submit">Cargar valores actuales</button></form>{% else %}
+<form id="{{ form_id }}" class="stack" method="post" action="{{ root }}/{{ operation.operation_id }}" hx-post="{{ root }}/{{ operation.operation_id }}" hx-target="#execution-outcome" hx-swap="innerHTML" {% if operation.is_mutating %}data-confirm="¿Aplicar este cambio a la configuración del negocio?"{% endif %}>
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="_intent_id" value="" data-form-intent />
-{{ ui.render(inputs) }}{% if operation.operation_id == 'catalog_location_hours_replace' %}<label class="check"><input type="checkbox" name="_confirm_replacement" value="true" required />I confirm this complete schedule replaces all existing opening hours. Leaving the schedule empty removes every opening window.</label>{% endif %}<button type="submit">{{ 'Save changes' if operation.is_mutating else 'Show current values' }}</button>
+{{ ui.render(inputs) }}{% if operation.operation_id == 'catalog_location_hours_replace' %}<label class="check"><input type="checkbox" name="_confirm_replacement" value="true" required />Confirmo que este horario completo reemplaza todo el horario actual. Si deja el horario vacío, se borran todos los horarios de apertura.</label>{% endif %}<button type="submit">{{ 'Guardar cambios' if operation.is_mutating else 'Ver valores actuales' }}</button>
 </form>{% endif %}<div id="execution-outcome"></div>
-<details><summary>API details</summary><p><code>{{ operation.method }} {{ operation.path_template }}</code></p><p>Owner: {{ operation.owner }}; required permission: {{ operation.capability }}</p></details>
+<details><summary>Detalles técnicos</summary><p><code>{{ operation.method }} {{ operation.path_template }}</code></p><p>Responsable: {{ operation.owner }}; permiso requerido: {{ operation.capability }}</p></details>
 </section>
 {% endblock %}

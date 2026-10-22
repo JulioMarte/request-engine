@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, Response
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminCatalog, AdminOperation
+from request_engine.entrypoints.http.admin_console.configuration_labels import task_label
 from request_engine.entrypoints.http.admin_console.execution import execute_operation, local_error
 from request_engine.entrypoints.http.admin_console.inputs import (
     build_inputs,
@@ -45,6 +46,13 @@ _SELECTOR_READS = {
     "queue_id": "queue_service_queue_configuration_list",
     "definition_id": "request_definitions_list",
 }
+# Person-facing names for the item each picker chooses (display only).
+_SELECTOR_LABELS = {
+    "location_id": ("Sede", "sedes"),
+    "offering_id": ("Servicio", "servicios"),
+    "queue_id": ("Fila de espera", "filas de espera"),
+    "definition_id": ("Tipo de solicitud", "tipos de solicitud"),
+}
 
 
 def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) -> None:
@@ -53,12 +61,13 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
             return login_redirect(request)
         if state.runtime is None:
             return Response(
-                "Configure the runtime API to manage tenant configuration.", status_code=503
+                "Configure el sistema del negocio para administrar su configuración.",
+                status_code=503,
             )
         try:
             return await state.runtime_catalog()
         except Exception:
-            return Response("Tenant operation catalog unavailable.", status_code=503)
+            return Response("La lista de ajustes del negocio no está disponible.", status_code=503)
 
     async def workspace(request: Request, organization_id: UUID) -> Response:
         catalog = await catalog_or_error(request)
@@ -82,7 +91,10 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                     operation
                     for operation in section["operations"]
                     if needle
-                    in f"{section['title']} {operation.operation_id} {operation.summary}".casefold()
+                    in (
+                        f"{section['title']} {operation.operation_id} "
+                        f"{operation.summary} {task_label(operation)}"
+                    ).casefold()
                 ]
             sections = [section for section in sections if section["operations"]]
         session = state.session(request)
@@ -123,7 +135,7 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                     readiness_result = local_error(
                         502,
                         "invalid_owner_response",
-                        "Setup readiness is incomplete. No ready status is being assumed.",
+                        "El avance de la configuración está incompleto. No se da nada por listo.",
                     ).to_view()
             else:
                 readiness_result = outcome.to_view()
@@ -158,7 +170,7 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
             return catalog
         operation = catalog.by_id().get(operation_id)
         if operation_id not in TENANT_CONFIGURATION_OPERATION_IDS or operation is None:
-            return Response("Tenant configuration operation unavailable.", status_code=404)
+            return Response("Este ajuste del negocio no está disponible.", status_code=404)
         values = dict(request.query_params)
         _bind_tenant(operation, values, organization_id)
         inputs, guidance, blocked = await guided_inputs(
@@ -182,7 +194,7 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                 ],
                 inventory_links=[
                     {
-                        "label": f"Browse {field.removesuffix('_id').replace('_', ' ')} inventory",
+                        "label": f"Ver la lista de {_SELECTOR_LABELS[field][1]}",
                         "href": (
                             f"/tenants/{organization_id}/configuration/{read_id}?" + party_query
                         ),
@@ -240,20 +252,22 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
             payload = as_mapping(json.loads(outcome.payload_json))
             if not outcome.ok or not inventory_read_valid(list_id, payload):
                 guidance.append(
-                    "Current choices could not be verified. Reload after restoring access."
+                    "No se pudieron verificar las opciones actuales. "
+                    "Recargue cuando tenga acceso de nuevo."
                 )
                 blocked = True
                 continue
             choices[field] = [
                 {
                     "value": row[field],
-                    "label": f"{row['display_name']} ({'active' if row['active'] else 'inactive'})",
+                    "label": f"{row['display_name']} ({'activo' if row['active'] else 'inactivo'})",
                 }
                 for row in list_items(payload)
             ]
             if payload.get("next_cursor"):
                 guidance.append(
-                    "This picker shows the first 100 items. Use the inventory to find later items."
+                    "Esta lista muestra los primeros 100 elementos. "
+                    "Use la lista completa para ver los demás."
                 )
             if values.get(field) and values[field] not in {row["value"] for row in choices[field]}:
                 selected_read = catalog.by_id().get(
@@ -284,14 +298,14 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                             "value": selected[field],
                             "label": (
                                 f"{selected['display_name']} "
-                                f"({'active' if selected['active'] else 'inactive'})"
+                                f"({'activo' if selected['active'] else 'inactivo'})"
                             ),
                         }
                     )
                 else:
                     values.pop(field)
                     guidance.append(
-                        "The previous selection could not be verified; choose a listed item."
+                        "No se pudo verificar la selección anterior; elija un elemento de la lista."
                     )
         read_id = {
             "catalog_location_update": "catalog_location_configuration_read",
@@ -345,8 +359,8 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                 )
                 if target_link is None:
                     guidance.append(
-                        "The selected item's current configuration could not be verified. "
-                        "No change can be submitted."
+                        "No se pudo verificar la configuración actual del elemento elegido. "
+                        "No se puede guardar ningún cambio."
                     )
                     blocked = True
                 else:
@@ -360,25 +374,27 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                     read_bound.update(name for name in prefill if "revision" in name)
                     read_bound.update(identity_fields)
                     if payload.get("display_name"):
-                        guidance.append(f"Editing: {payload['display_name']}")
+                        guidance.append(f"Editando: {payload['display_name']}")
                     if operation.operation_id == "catalog_location_hours_replace":
                         guidance.append(
-                            "Current opening hours and their revision were loaded. Review the "
-                            "complete schedule before replacing it. An empty schedule removes "
-                            "every opening window."
+                            "Se cargó el horario actual. Revise el horario completo antes de "
+                            "reemplazarlo. Si lo deja vacío, se borran todos los horarios de "
+                            "apertura."
                         )
                     elif operation.operation_id == "catalog_location_hours_exception_upsert":
                         guidance.append(
-                            "The current location revision was loaded. "
-                            "Enter the new hours exception."
+                            "Se cargaron los datos actuales de la sede. "
+                            "Escriba el horario especial."
                         )
                     else:
                         guidance.append(
-                            "Current settings were loaded automatically. "
-                            "Review your changes before applying them."
+                            "Los valores actuales se cargaron automáticamente. "
+                            "Revise sus cambios antes de guardarlos."
                         )
             else:
-                guidance.append("Choose an item, then load its current settings before editing.")
+                guidance.append(
+                    "Elija un elemento y cargue sus valores actuales antes de editarlo."
+                )
                 blocked = True
         inputs = build_inputs(operation, values=values, loaded_revisions=tuple(read_bound))
         for item in inputs:
@@ -386,7 +402,7 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                 item["hidden"] = True
             if item["name"] in choices:
                 item["enum_options"] = choices[item["name"]]
-                item["label"] = item["name"].removesuffix("_id").replace("_", " ").title()
+                item["label"] = _SELECTOR_LABELS[item["name"]][0]
             if item["name"] in read_bound:
                 item["hidden"] = True
         return inputs, guidance, blocked
@@ -397,7 +413,7 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
             return catalog
         operation = catalog.by_id().get(operation_id)
         if operation_id not in TENANT_CONFIGURATION_OPERATION_IDS or operation is None:
-            return Response("Tenant configuration operation unavailable.", status_code=404)
+            return Response("Este ajuste del negocio no está disponible.", status_code=404)
         session = state.session(request)
         assert session is not None
         form = await request.form()
@@ -409,7 +425,11 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
         columns: tuple[str, ...] = ()
         rows: list[list[str]] = []
         if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
-            outcome = local_error(403, "csrf_failed", "CSRF token missing or invalid")
+            outcome = local_error(
+                403,
+                "csrf_failed",
+                "El formulario venció. Recargue la página y vuelva a intentarlo.",
+            )
         elif (
             operation_id == "catalog_location_hours_replace"
             and values.get("_confirm_replacement") != "true"
@@ -417,7 +437,7 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
             outcome = local_error(
                 422,
                 "replacement_confirmation_required",
-                "Confirm that this complete schedule replaces all existing opening hours.",
+                "Confirme que este horario completo reemplaza todo el horario actual.",
             )
         else:
             outcome = await execute_operation(
@@ -434,7 +454,7 @@ def install_tenant_configuration_routes(app: FastAPI, state: AdminConsoleState) 
                     outcome = local_error(
                         502,
                         "invalid_owner_response",
-                        "Owner inventory response is incomplete or invalid",
+                        "La respuesta del sistema está incompleta o no es válida.",
                     )
                 else:
                     detail = summarize_payload(payload)

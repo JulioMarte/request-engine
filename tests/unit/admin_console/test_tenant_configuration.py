@@ -167,7 +167,7 @@ async def test_readiness_and_canonical_read_fill_real_channel_revision(tmp_path:
         page = await client.get(_ROOT)
         assert "Read the disabled purpose first" in page.text
         assert f"{_ROOT}/{_READ}" in page.text
-        assert "include inactive items" in page.text
+        assert "también incluyen elementos inactivos" in page.text
         form = await client.get(f"{_ROOT}/{_READ}?purpose=appointment_reminder")
         result = await client.post(
             f"{_ROOT}/{_READ}", data={"csrf_token": _csrf(form), "purpose": "appointment_reminder"}
@@ -232,8 +232,8 @@ async def test_empty_supply_page_does_not_invent_revision_and_cursor_preserves_f
             "after": "previous",
         }
         result = await client.post(url, data=values)
-        assert "Continue from this owner read" not in result.text
-        match = re.search(r'href="([^"]+)"[^>]*>Next page', result.text)
+        assert "Continuar desde estos datos" not in result.text
+        match = re.search(r'href="([^"]+)"[^>]*>Página siguiente', result.text)
         assert match
         params = parse_qs(urlsplit(match[1].replace("&amp;", "&")).query)
         assert params == {
@@ -307,7 +307,7 @@ async def test_malformed_owner_revision_never_offers_actions(tmp_path: Path, rev
         result = await client.post(
             url, data={"csrf_token": _csrf(form), "authority_party_id": "represented-party"}
         )
-        assert "Continue from this owner read" not in result.text
+        assert "Continuar desde estos datos" not in result.text
         assert "expected_resource_availability_revision=" not in result.text
 
 
@@ -437,8 +437,8 @@ async def test_incomplete_successful_inventory_response_fails_closed(
         assert "invalid_owner_response" in response.text
         assert "502" in response.text
         assert "Action completed" not in response.text
-        assert "Continue from this owner read" not in response.text
-        assert "Next page" not in response.text
+        assert "Continuar desde estos datos" not in response.text
+        assert "Página siguiente" not in response.text
         assert len(runtime.calls) == 1
 
 
@@ -471,7 +471,7 @@ async def test_incomplete_readiness_is_visible_without_a_ready_status(
         await _login(client)
         page = await client.get(_ROOT)
         assert page.status_code == 200
-        assert "Setup readiness is incomplete" in page.text
+        assert "El avance de la configuración está incompleto" in page.text
         assert "invalid_owner_response" in page.text
         assert '<span class="badge">ready</span>' not in page.text
 
@@ -486,8 +486,8 @@ async def test_unknown_owner_readiness_is_displayed_as_unknown(tmp_path: Path) -
         await _login(client)
         page = await client.get(_ROOT)
         # Unknown stays visibly unknown and is never shown as ready.
-        assert '<span class="badge ">Not checked</span>' in page.text
-        assert ">Ready</span>" not in page.text
+        assert '<span class="badge ">Sin verificar</span>' in page.text
+        assert ">Listo</span>" not in page.text
 
 
 @pytest.mark.asyncio
@@ -514,7 +514,7 @@ async def test_task_search_only_filters_presentation_and_keeps_selected_tenant(
             )
         ]
         empty = await client.get(f"{_ROOT}?q=unmatched-configuration-task")
-        assert "No configuration tasks match this search" in empty.text
+        assert "Ningún ajuste coincide con esta búsqueda" in empty.text
 
 
 class LocationPort(Port):
@@ -638,8 +638,8 @@ async def test_location_selector_loads_current_revision_without_a_command(tmp_pa
         await _login(client)
         start = await client.get(f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}")
         assert '<select name="location_id"' in start.text
-        assert "Main office (inactive)" in start.text
-        assert "Load current settings" in start.text
+        assert "Main office (inactivo)" in start.text
+        assert "Cargar valores actuales" in start.text
         assert 'name="expected_operational_revision"' not in start.text
         loaded = await client.get(
             f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}"
@@ -664,7 +664,7 @@ async def test_failed_inventory_does_not_offer_an_unverified_location(tmp_path: 
         page = await client.get(
             f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}&location_id={_OTHER}"
         )
-        assert "Current choices could not be verified" in page.text
+        assert "No se pudieron verificar las opciones actuales" in page.text
         assert 'data-confirm="Apply' not in page.text
         assert all(method == "GET" for method, _, _ in runtime.calls)
 
@@ -678,10 +678,10 @@ async def test_guided_steps_preserve_explicit_party_without_assuming_readiness(
         page = await client.get(f"{_ROOT}?authority_party_id={_OTHER}")
         # The party-identifier card is gone: setup is the guided flow, and advanced
         # tasks keep the explicitly supplied Party without asking anyone to type it.
-        assert "Set up your clinic" in page.text
+        assert "Configure su consultorio" in page.text
         assert f'href="/tenants/{_TENANT}/setup"' in page.text
         assert "Represented business party" not in page.text
-        assert "Advanced settings" in page.text
+        assert "Configuración avanzada" in page.text
         assert f"booking_resource_list?authority_party_id={_OTHER}" in page.text
         assert "blocked" in page.text
 
@@ -696,7 +696,8 @@ async def test_selected_location_outside_first_page_is_verified_by_detail(tmp_pa
             f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}&location_id={_OTHER}"
         )
         assert 'type="hidden" name="expected_operational_revision" value="7"' in page.text
-        assert "could not be verified" not in page.text
+        assert "No se pudo verificar" not in page.text
+        assert "No se pudieron verificar" not in page.text
         assert any(path == f"/locations/{_OTHER}" for _, path, _ in runtime.calls)
         assert all(method == "GET" for method, _, _ in runtime.calls)
 
@@ -710,7 +711,7 @@ async def test_detail_of_different_location_never_unlocks_an_edit(tmp_path: Path
         page = await client.get(
             f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}&location_id={_TENANT}"
         )
-        assert "previous selection could not be verified" in page.text
+        assert "No se pudo verificar la selección anterior" in page.text
         assert 'data-confirm="Apply' not in page.text
         assert 'name="expected_operational_revision"' not in page.text
         assert all(method == "GET" for method, _, _ in runtime.calls)
@@ -787,7 +788,7 @@ async def test_definition_picker_and_revision_need_no_manual_reference(tmp_path:
         await _login(client)
         chooser = await client.get(f"{_ROOT}/request_definition_set_active")
         assert '<select name="definition_id"' in chooser.text
-        assert "Book appointment (inactive)" in chooser.text
+        assert "Book appointment (inactivo)" in chooser.text
         assert 'name="expected_revision"' not in chooser.text
         current = await client.get(
             f"{_ROOT}/request_definition_set_active?definition_id={_OTHER}&expected_revision=900"
@@ -808,13 +809,13 @@ async def test_loaded_edit_keeps_identity_bound_to_its_current_settings(tmp_path
         assert '<select name="location_id"' not in loaded.text
         assert f'type="hidden" name="location_id" value="{_OTHER}"' in loaded.text
         assert 'type="hidden" name="expected_operational_revision" value="1"' in loaded.text
-        assert "Choose a different item and load its current settings" in loaded.text
+        assert "Elegir otro elemento y cargar sus valores actuales" in loaded.text
         chooser = await client.get(f"{_ROOT}/catalog_location_update?authority_party_id={_TENANT}")
         assert '<select name="location_id"' in chooser.text
         assert 'name="expected_operational_revision"' not in chooser.text
         setup = await client.get(f"{_ROOT}/setup?authority_party_id={_TENANT}")
         assert setup.status_code == 200
-        assert "Set up your clinic" in setup.text
+        assert "Configure su consultorio" in setup.text
         assert all(method == "GET" for method, _, _ in runtime.calls)
 
 
@@ -855,8 +856,8 @@ async def test_schedule_replacement_never_clears_hours_without_explicit_confirma
     async with _client(tmp_path, Port(), runtime) as client:
         await _login(client)
         page = await client.get(f"{path}?authority_party_id={_TENANT}&location_id={_OTHER}")
-        assert "Current opening hours and their revision were loaded" in page.text
-        assert "Current settings were loaded automatically" not in page.text
+        assert "Se cargó el horario actual" in page.text
+        assert "Los valores actuales se cargaron automáticamente" not in page.text
         assert 'name="_confirm_replacement" value="true" required' in page.text
         outcome = await client.post(
             path,
@@ -868,7 +869,7 @@ async def test_schedule_replacement_never_clears_hours_without_explicit_confirma
                 "windows": "[]",
             },
         )
-        assert "Confirm that this complete schedule replaces" in outcome.text
+        assert "Confirme que este horario completo reemplaza" in outcome.text
         assert all(method == "GET" for method, _, _ in runtime.calls)
 
 
@@ -919,7 +920,7 @@ async def test_partial_child_snapshots_never_become_empty_replacement(
         page = await client.get(
             f"{_ROOT}/catalog_location_hours_replace?authority_party_id={_TENANT}&location_id={_OTHER}"
         )
-        assert "current configuration could not be verified" in page.text
+        assert "No se pudo verificar la configuración actual" in page.text
         assert 'data-confirm="Apply' not in page.text
         assert all(method == "GET" for method, _, _ in runtime.calls)
 

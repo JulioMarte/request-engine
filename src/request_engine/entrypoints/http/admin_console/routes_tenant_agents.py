@@ -40,19 +40,21 @@ from request_engine.platform.security.operation_risk import OperationRiskClass
 
 _STEP_UP_CODES = frozenset({"recent_authentication_required", "phishing_resistant_auth_required"})
 _RISK_CHOICES: tuple[tuple[str, str], ...] = (
-    ("read", "Only look things up"),
-    ("low_impact_write", "Small changes, such as registering customers and check-ins"),
-    ("reversible_write", "Changes that can be undone, such as rescheduling"),
-    ("external_commitment", "Commitments to customers, such as booking appointments"),
+    ("read", "Solo consultar"),
+    ("low_impact_write", "Cambios pequeños, como registrar pacientes y llegadas"),
+    ("reversible_write", "Cambios que se pueden deshacer, como cambiar la fecha de una cita"),
+    ("external_commitment", "Compromisos con pacientes, como reservar citas"),
 )
 _RISK_VALUES = frozenset(value for value, _ in _RISK_CHOICES)
 _EXPIRY_CHOICES = (30, 90, 180, 365)
 # Responses that may contain a one-time agent key.
 _SECRET_PAGE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 CHIEF_OF_STAFF_PURPOSE = (
-    f"{CHIEF_OF_STAFF_PURPOSE_PREFIX}: carries out what the business owner asks by text or voice "
-    "from Claude. Books and manages appointments, finds and registers customers, checks people "
-    "in, answers questions about today, and suggests new team members for owner approval."
+    # The prefix stays as-is: it is the stored marker that identifies a chief of staff.
+    f"{CHIEF_OF_STAFF_PURPOSE_PREFIX}: hace lo que el dueño del negocio le pide por texto o por "
+    "voz desde Claude. Reserva y maneja citas, busca y registra pacientes, registra llegadas, "
+    "responde preguntas sobre el día de hoy y sugiere nuevos miembros del equipo para que el "
+    "dueño los apruebe."
 )
 # Setup powers a chief of staff does not get unless the owner ticks them.
 _CHIEF_OPT_IN = frozenset(
@@ -126,7 +128,7 @@ def _connection(state: AdminConsoleState, organization_id: str) -> dict[str, str
                             "--header",
                             "Authorization:${AUTH_HEADER}",
                         ],
-                        "env": {"AUTH_HEADER": "Bearer paste-the-agent-key-here"},
+                        "env": {"AUTH_HEADER": "Bearer pegue-aqui-la-clave-del-asistente"},
                     }
                 }
             },
@@ -184,8 +186,11 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
             "unavailable.html",
             state.context(
                 request,
-                title="Agents unavailable",
-                message="Configure the runtime API URL to manage agents for this business.",
+                title="Asistentes no disponibles",
+                message=(
+                    "El administrador de la plataforma tiene que configurar la dirección "
+                    "del sistema del negocio para manejar los asistentes."
+                ),
             ),
             status_code=503,
         )
@@ -268,7 +273,7 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
         )
         values = {
             "template": "chief-of-staff" if chief else "custom",
-            "display_name": "Chief of Staff" if chief else "",
+            "display_name": "Jefe de gabinete" if chief else "",
             "purpose": CHIEF_OF_STAFF_PURPOSE if chief else "",
             "operating_mode": "assisted" if chief else "autonomous",
             "capabilities": selected,
@@ -293,7 +298,10 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
         values: dict[str, Any] = {key: str(value) for key, value in form.items()}
         values["capabilities"] = [str(value) for value in form.getlist("capabilities")]
         if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
-            return Response("CSRF token missing or invalid", status_code=403)
+            return Response(
+                "El formulario venció. Vuelva a cargar la página e intente de nuevo.",
+                status_code=403,
+            )
         context = await _form_context(request, org, session.access_token, values)
         errors: list[str] = []
         display_name = str(values.get("display_name", "")).strip()
@@ -314,25 +322,27 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
             else str(values.get("identity_authority_id", "")).strip()
         )
         if not 1 <= len(display_name) <= 200:
-            errors.append("Give the agent a name of up to 200 characters.")
+            errors.append("Escriba un nombre para el asistente, de hasta 200 caracteres.")
         if not 1 <= len(purpose) <= 2000:
-            errors.append("Describe what the agent does in up to 2000 characters.")
+            errors.append("Describa lo que hace el asistente, en hasta 2000 caracteres.")
         if not capabilities:
-            errors.append("Choose at least one thing the agent may do.")
+            errors.append("Elija al menos una cosa que el asistente pueda hacer.")
         if risk_ceiling not in _RISK_VALUES:
-            errors.append("Choose how far the agent may go.")
+            errors.append("Elija hasta dónde puede llegar el asistente.")
         if not 1 <= max_per_minute <= 600:
-            errors.append("Changes per minute must be between 1 and 600.")
+            errors.append("Los cambios por minuto deben estar entre 1 y 600.")
         if expires_days not in _EXPIRY_CHOICES:
-            errors.append("Choose when the agent key expires.")
+            errors.append("Elija cuándo vence la clave del asistente.")
         if values.get("operating_mode") not in {"assisted", "autonomous"}:
-            errors.append("Choose how the agent works.")
+            errors.append("Elija cómo trabaja el asistente.")
         if len(intent) < 16 or len(intent) > 64:
-            errors.append("This form expired. Reload the page and try again.")
+            errors.append("Este formulario venció. Vuelva a cargar la página e intente de nuevo.")
         try:
             UUID(authority_id)
         except ValueError:
-            errors.append("Enter the workload identity authority from the installation receipt.")
+            errors.append(
+                "Escriba la autoridad de identidad de servicio del comprobante de instalación."
+            )
         if errors:
             return state.templates.TemplateResponse(
                 request,
@@ -343,10 +353,10 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
         ops = await _ops()
         bearer = session.access_token
         steps = [
-            _Step("provision", "Create the agent and its key"),
-            _Step("activate", "Turn the agent on"),
-            _Step("authority", "Give it the chosen permissions"),
-            _Step("policy", "Set its safety limits"),
+            _Step("provision", "Crear el asistente y su clave"),
+            _Step("activate", "Activar el asistente"),
+            _Step("authority", "Darle los permisos elegidos"),
+            _Step("policy", "Fijar sus límites de seguridad"),
         ]
         token: str | None = None
         principal_id: str | None = None
@@ -357,7 +367,9 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
             nonlocal step_up
             step.status = "failed"
             message = as_mapping(as_mapping(payload).get("error")).get("message")
-            step.message = message if isinstance(message, str) else code or "The step failed."
+            step.message = (
+                message if isinstance(message, str) else code or "El paso no se completó."
+            )
             step_up = step_up or code in _STEP_UP_CODES
 
         provenance = f"admin-console:agent:{intent}"
@@ -532,10 +544,13 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
         form = await request.form()
         values = {key: str(value) for key, value in form.items()}
         if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
-            return Response("CSRF token missing or invalid", status_code=403)
+            return Response(
+                "El formulario venció. Vuelva a cargar la página e intente de nuevo.",
+                status_code=403,
+            )
         intent = values.get("intent", "")
         if not 16 <= len(intent) <= 64:
-            return Response("This form expired. Reload the page.", status_code=422)
+            return Response("Este formulario venció. Vuelva a cargar la página.", status_code=422)
         ops = await _ops()
         path = {"agent_principal_id": str(principal_id)}
         provenance = f"admin-console:agent-{action}:{intent}"
@@ -561,7 +576,8 @@ def install_tenant_agent_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 operation = ops["agent_suspend"]
         except (KeyError, ValueError):
             return Response(
-                "The form is incomplete. Reload the agent and try again.", status_code=422
+                "El formulario está incompleto. Vuelva a abrir el asistente e intente de nuevo.",
+                status_code=422,
             )
         status, payload, code = await _call(
             operation,

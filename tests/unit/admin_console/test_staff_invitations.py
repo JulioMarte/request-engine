@@ -246,7 +246,7 @@ async def test_resend_forwards_exact_revision_and_stable_intent() -> None:
         )
     assert result.status_code == 303
     assert 'value="7"' in page.text
-    assert "unknown" in page.text and "email arrived" in page.text
+    assert "unknown" in page.text and "correo haya llegado" in page.text
     call = api.calls[-1]
     assert call[2]["json_body"] == {"expected_revision": 7, "provenance_reference": "owner:resend"}
     assert call[2]["extra_headers"] == {
@@ -266,7 +266,7 @@ async def test_failed_list_explains_failure_and_hides_create_and_mutations(statu
     assert page.status_code == status
     assert 'role="alert"' in page.text
     assert "Invitations unavailable. Check your session and permissions, then reload." in page.text
-    assert "Create invitation" not in page.text
+    assert "Crear invitación" not in page.text
     assert "recipient@example.org" not in page.text
     assert all(method != "POST" or path == "/auth/native/sessions" for method, path, _ in api.calls)
 
@@ -385,7 +385,7 @@ async def test_smtp_acceptance_never_claims_inbox_receipt_or_no_inflight_mail() 
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff-invitations")
     assert "Accepted by mail server (inbox not confirmed)" in page.text
-    assert "email already being submitted may still arrive" in page.text
+    assert "correo que ya se estaba enviando podría llegar" in page.text
 
 
 @pytest.mark.asyncio
@@ -442,7 +442,7 @@ async def test_invitation_invalid_revision_never_offers_mutation(revision: objec
         await client.post("/login", data={"login_handle": "manager", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff-invitations")
     assert page.status_code == 502
-    assert "Create invitation" not in page.text
+    assert "Crear invitación" not in page.text
     assert f"/{INVITATION}/resend" not in page.text
 
 
@@ -467,11 +467,11 @@ async def test_invitation_denied_read_has_recovery_links_and_no_empty_success_st
         await client.post("/login", data={"login_handle": "manager", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff-invitations")
     assert page.status_code == 403
-    assert "Invitations could not be checked" in page.text
-    assert "Reload invitations" in page.text
-    assert "Sign in again" in page.text
-    assert "No invitations on this page" not in page.text
-    assert "Create invitation" not in page.text
+    assert "No se pudieron revisar las invitaciones" in page.text
+    assert "Volver a cargar invitaciones" in page.text
+    assert "Inicie sesión de nuevo" in page.text
+    assert "No hay invitaciones en esta página" not in page.text
+    assert "Crear invitación" not in page.text
 
 
 @pytest.mark.asyncio
@@ -523,8 +523,8 @@ async def test_invitation_malformed_collection_never_looks_empty_or_offers_creat
         api.calls.clear()
         page = await client.get(f"/tenants/{ORG}/staff-invitations?limit=1")
     assert page.status_code == 502
-    assert "No invitations on this page" not in page.text
-    assert "Create invitation" not in page.text
+    assert "No hay invitaciones en esta página" not in page.text
+    assert "Crear invitación" not in page.text
     assert 'name="email"' not in page.text
     assert all(method == "GET" for method, _, _ in api.calls)
 
@@ -544,8 +544,8 @@ async def test_invitation_valid_empty_collection_is_distinct_from_invalid_read()
         await client.post("/login", data={"login_handle": "manager", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff-invitations")
     assert page.status_code == 200
-    assert "No invitations on this page" in page.text
-    assert "Create invitation" in page.text
+    assert "No hay invitaciones en esta página" in page.text
+    assert "Crear invitación" in page.text
 
 
 @pytest.mark.asyncio
@@ -606,8 +606,8 @@ async def test_invitation_rows_require_complete_same_tenant_owner_projection(cas
         page = await client.get(f"/tenants/{ORG}/staff-invitations?limit=1")
     valid = case == "valid_private_extras"
     assert page.status_code == (200 if valid else 502)
-    assert ("Create invitation" in page.text) is valid
+    assert ("Crear invitación" in page.text) is valid
     assert (f"/{INVITATION}/resend" in page.text) is valid
     assert "private-unrecognized-field" not in page.text
-    assert "No invitations on this page" not in page.text
+    assert "No hay invitaciones en esta página" not in page.text
     assert all(method == "GET" for method, _, _ in api.calls)

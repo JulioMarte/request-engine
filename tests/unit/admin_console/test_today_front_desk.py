@@ -10,6 +10,7 @@ import html
 import re
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import date
 from functools import cache
 from pathlib import Path
 from typing import Any, cast
@@ -22,6 +23,7 @@ from pydantic import SecretStr
 
 from request_engine.entrypoints.http.admin_console.app import create_admin_console_app
 from request_engine.entrypoints.http.admin_console.client import ControlResponse
+from request_engine.entrypoints.http.admin_console.clinic_setup import long_date, zone_label
 from request_engine.entrypoints.http.admin_console.routes_tenant_workspace import (
     arrival_label,
     attendance_label,
@@ -350,7 +352,7 @@ async def test_revision_conflict_is_explained_and_never_retried(tmp_path: Path) 
             data={"csrf_token": csrf, "_intent_id": "cancel-intent-0001", "expected_revision": "2"},
         )
     assert response.status_code == 409
-    assert "Someone else changed this booking" in response.text
+    assert "Otra persona cambió esta cita" in response.text
     assert len(runtime.posted(f"/v1/appointments/{RESERVATION}/cancel")) == 1
 
 
@@ -631,17 +633,18 @@ async def test_supply_reads_are_skipped_when_nobody_is_waiting_to_start(tmp_path
         (
             ("GET", "/v1/booking/resources"),
             _error(403, "capability_required"),
-            'you need the "See availability and resources" and "Start a service" permissions',
+            "necesita los permisos «Ver disponibilidad, médicos y consultorios» "
+            "e «Iniciar atención»",
         ),
         (
             ("GET", "/v1/me/authority"),
             _ok({"representations": [], "next_after": None}),
-            "you don't manage this business's doctors and rooms",
+            "no administra los médicos y consultorios de este negocio",
         ),
         (
             ("GET", "/v1/operations/resource-assignments"),
             _error(503, "unavailable"),
-            "The list of doctors and rooms could not be loaded",
+            "No se pudo cargar la lista de médicos y consultorios",
         ),
     ],
 )
@@ -668,7 +671,7 @@ async def test_no_staff_at_the_location_invites_adding_one(tmp_path: Path) -> No
     runtime = _Upstream(routes)
     async with _signed_in(_console(tmp_path, runtime)) as client:
         page = await client.get(f"/tenants/{ORG}/today")
-    assert "No doctor or room works at this location right now" in page.text
+    assert "Ningún médico o consultorio trabaja en esta sede ahora mismo" in page.text
     assert f'href="/tenants/{ORG}/setup?step=providers"' in page.text
     assert "/start-service" not in page.text
 
@@ -694,7 +697,7 @@ async def test_customer_in_service_offers_finish_not_start(tmp_path: Path) -> No
     text = page.text
     assert f"/today/sessions/{SESSION}/complete" in text
     assert 'name="expected_revision" value="1"' in text
-    assert "Being served" in text
+    assert "En atención" in text
     assert "/start-service" not in text
     assert not [call for call in runtime.calls if call[1] == "/v1/booking/resources"]
 
@@ -743,7 +746,7 @@ async def test_start_service_without_a_choice_never_reaches_the_owner(tmp_path: 
             },
         )
     assert response.status_code == 422
-    assert "Choose the doctor or room" in response.text
+    assert "Elija el médico o consultorio" in response.text
     assert not runtime.posted(f"/v1/queue-entries/{ENTRY}/service/start")
 
 
@@ -775,12 +778,13 @@ async def test_counts_and_labels_follow_the_owner_day_board(tmp_path: Path) -> N
     async with _signed_in(_console(tmp_path, runtime)) as client:
         page = await client.get(f"/tenants/{ORG}/today")
     text = _html_text(page.text)
-    assert "2 Booked" in text
-    assert "1 Checked in" in text
-    assert "Called to the counter" in text
-    assert "Booked · Said they're coming" in text
-    assert "Booked · No answer yet" in text
+    assert "2 Reservadas" in text
+    assert "1 Llegaron" in text
+    assert "Llamado al mostrador" in text
+    assert "Reservada · Confirmó que viene" in text
+    assert "Reservada · Sin respuesta" in text
     assert "confirmed" not in text.casefold()
+    assert "confirmada" not in text.casefold()
     # The arrived customer is not offered a second check-in; the other one is.
     assert f"/today/appointments/{RESERVATION}/check-in" not in page.text
     assert f"/today/appointments/{VERSION}/check-in" in page.text
@@ -789,21 +793,21 @@ async def test_counts_and_labels_follow_the_owner_day_board(tmp_path: Path) -> N
 @pytest.mark.parametrize(
     ("entry", "label"),
     [
-        ({"checked_in_at": "2026-10-21T14:01:00Z"}, "Checked in"),
-        ({"active_queue_entry_count": 1}, "Checked in"),
-        ({"active_queue_entry_count": 1, "queue_entry_status": "waiting"}, "Waiting in line"),
-        ({"active_queue_entry_count": 1, "queue_entry_status": "serving"}, "Being served"),
+        ({"checked_in_at": "2026-10-21T14:01:00Z"}, "Llegó"),
+        ({"active_queue_entry_count": 1}, "Llegó"),
+        ({"active_queue_entry_count": 1, "queue_entry_status": "waiting"}, "En la fila"),
+        ({"active_queue_entry_count": 1, "queue_entry_status": "serving"}, "En atención"),
         ({"active_queue_entry_count": 0, "checked_in_at": None}, ""),
         # After the visit completes no queue entry is active any more; the
         # owner's served-visit facts keep the arrival truthful.
-        ({"active_queue_entry_count": 0, "visit_arrived_at": "2026-10-21T13:50:00Z"}, "Checked in"),
+        ({"active_queue_entry_count": 0, "visit_arrived_at": "2026-10-21T13:50:00Z"}, "Llegó"),
         (
             {
                 "active_queue_entry_count": 0,
                 "visit_arrived_at": "2026-10-21T13:50:00Z",
                 "served_at": "2026-10-21T14:25:00Z",
             },
-            "Seen",
+            "Atendido",
         ),
         # Sent back to a queue after being seen: the live queue position wins.
         (
@@ -812,7 +816,7 @@ async def test_counts_and_labels_follow_the_owner_day_board(tmp_path: Path) -> N
                 "queue_entry_status": "waiting",
                 "served_at": "2026-10-21T14:25:00Z",
             },
-            "Waiting in line",
+            "En la fila",
         ),
     ],
 )
@@ -842,10 +846,10 @@ async def test_seen_booking_reads_as_seen_and_offers_no_arrival_actions(tmp_path
         page = await client.get(f"/tenants/{ORG}/today")
     text = _html_text(page.text)
     # 14:25 UTC is 10:25 in Santo Domingo (UTC-4): business time, not UTC.
-    assert "Seen at 10:25" in text
-    assert "1 Checked in" in text
-    assert "1 Seen" in text
-    assert "No answer yet" not in text
+    assert "Atendido a las 10:25" in text
+    assert "1 Llegaron" in text
+    assert "1 Atendidos" in text
+    assert "Sin respuesta" not in text
     assert f"/today/appointments/{RESERVATION}/check-in" not in page.text
     assert f"/today/appointments/{RESERVATION}/attendance" not in page.text
     assert f"/today/appointments/{RESERVATION}/arrival-estimate" not in page.text
@@ -857,10 +861,10 @@ async def test_seen_booking_reads_as_seen_and_offers_no_arrival_actions(tmp_path
 @pytest.mark.parametrize(
     ("status", "attendance", "status_label", "attendance_text"),
     [
-        ("confirmed", "accepted", "Booked", "Said they're coming"),
-        ("confirmed", "declined", "Booked", "Said they're not coming"),
-        ("confirmed", "pending", "Booked", "No answer yet"),
-        ("cancelled", "", "Cancelled", "No answer yet"),
+        ("confirmed", "accepted", "Reservada", "Confirmó que viene"),
+        ("confirmed", "declined", "Reservada", "Dijo que no viene"),
+        ("confirmed", "pending", "Reservada", "Sin respuesta"),
+        ("cancelled", "", "Cancelada", "Sin respuesta"),
         ("pending_payment", "maybe_later", "Pending payment", "Maybe later"),
     ],
 )
@@ -893,3 +897,17 @@ async def test_signed_out_page_keeps_its_place_but_a_form_post_does_not(tmp_path
         f"%3Foffering_version_id%3D{VERSION}"
     )
     assert posted.status_code == 303 and posted.headers["location"] == "/login"
+
+
+@pytest.mark.parametrize(
+    ("day", "expected"),
+    [
+        (date(2026, 10, 21), "miércoles 21 de octubre"),
+        (date(2026, 1, 4), "domingo 4 de enero"),
+        (date(2027, 9, 6), "lunes 6 de septiembre"),
+    ],
+)
+def test_business_dates_read_in_spanish_without_the_os_locale(day: date, expected: str) -> None:
+    # Calendar facts (21 Oct 2026 is a Wednesday) are the oracle, not strftime.
+    assert long_date(day) == expected
+    assert zone_label("America/Santo_Domingo") == "hora de Santo Domingo"
