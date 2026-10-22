@@ -4,28 +4,28 @@
 <form method="get" action="{{ finder_action }}" class="stack">
   {% for name, value in finder_hidden.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}" />{% endfor %}
   {% if offerings_status == 403 %}
-  <p class="alert warn">Your permissions do not include "Search services".</p>
+  <p class="alert warn">Sus permisos no incluyen «Buscar servicios». Pídaselo a quien administra los permisos del equipo.</p>
   {% elif offerings_status not in range(200, 300) %}
-  <p class="alert error">Services could not be loaded. Refresh to try again.</p>
+  <p class="alert error">No se pudieron cargar los servicios. Actualice la página para intentarlo de nuevo.</p>
   {% elif not offerings %}
-  <p class="alert notice">No bookable services yet. Add one in business configuration.</p>
+  <p class="alert notice">Todavía no hay servicios que se puedan reservar. Agregue uno en la configuración del negocio.</p>
   {% endif %}
-  <label>Service
+  <label>Servicio
     <select name="offering_version_id" required>
       {% for offering in offerings %}<option value="{{ offering.version_id }}" {% if offering.version_id == offering_version_id %}selected{% endif %}>{{ offering.name }}{% if offering.minutes %} · {{ offering.minutes }} min{% endif %}</option>{% endfor %}
     </select>
   </label>
-  <label>Day<input type="date" name="day" value="{{ day }}" required /></label>
-  <button type="submit" class="secondary">Show free times</button>
+  <label>Día<input type="date" name="day" value="{{ day }}" required /></label>
+  <button type="submit" class="secondary">Buscar horarios libres</button>
 </form>
 {% if offering_version_id %}
-<h3>Free times on {{ day }} <small class="muted">({{ zone_name }})</small></h3>
+<h3>Horarios libres del {{ day_label or day }} <small class="muted">({{ zone_label or zone_name }})</small></h3>
 {% if slots_status == 403 %}
-<p class="alert warn">Your permissions do not include "Find free times".</p>
+<p class="alert warn">Sus permisos no incluyen «Buscar horarios libres». Pídaselo a quien administra los permisos del equipo.</p>
 {% elif slots_status not in range(200, 300) %}
-<p class="alert error">Free times could not be loaded. Choose the service and day again.</p>
+<p class="alert error">No se pudieron cargar los horarios libres. Elija de nuevo el servicio y el día.</p>
 {% elif not slots %}
-<p class="alert notice">No free times that day. Try another day.</p>
+<p class="alert notice">No hay horarios libres ese día. Pruebe otro día.</p>
 {% else %}
 <ul class="slot-list">
   {% for slot in slots %}
@@ -40,6 +40,6 @@
   </li>
   {% endfor %}
 </ul>
-<p class="muted">Free times are offers, not reservations. The booking is only made when you choose one, and another person may take it first.</p>
+<p class="muted">Estos horarios todavía no están reservados. La cita se hace solo cuando usted elige uno, y otra persona podría tomarlo antes.</p>
 {% endif %}
 {% endif %}

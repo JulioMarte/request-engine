@@ -85,29 +85,31 @@ class _Step:
 
 
 STEPS = (
-    _Step("clinic", "Your clinic", "Legal name, contact details, time zone and currency.", True),
-    _Step("location", "Location and hours", "Where patients come and when you are open."),
+    _Step("clinic", "Su consultorio", "Nombre legal, contactos, zona horaria y moneda.", True),
+    _Step("location", "Sede y horario", "Dónde lo visitan sus pacientes y cuándo abre."),
     _Step(
-        "services", "Services and prices", "What patients can book, how long it takes, its price."
+        "services",
+        "Servicios y precios",
+        "Qué pueden reservar sus pacientes, cuánto dura y su precio.",
     ),
-    _Step("providers", "Doctors and rooms", "Who or what provides each service, and when."),
-    _Step("queue", "Walk-in line", "For patients who arrive without an appointment.", True),
-    _Step("finish", "Check and finish", "See what is ready and the first free times."),
+    _Step("providers", "Médicos y consultorios", "Quién atiende cada servicio, y cuándo."),
+    _Step("queue", "Fila de espera sin cita", "Para pacientes que llegan sin cita.", True),
+    _Step("finish", "Revisar y terminar", "Vea qué está listo y los primeros horarios libres."),
 )
 _STEP_KEYS = tuple(step.key for step in STEPS)
 _NOTICES = {
-    "clinic": "Clinic details saved.",
-    "location": "Location and opening hours saved.",
-    "service": "Service saved. Add another one, or continue when you are done.",
-    "provider": "Saved. Add another doctor or room, or continue when you are done.",
-    "provider_exists": "That doctor or room was already added, so nothing was changed.",
-    "service_exists": "That service is already added with that price, so nothing was changed.",
+    "clinic": "Datos del consultorio guardados.",
+    "location": "Sede y horario guardados.",
+    "service": "Servicio guardado. Agregue otro o continúe cuando termine.",
+    "provider": "Guardado. Agregue otro médico o consultorio, o continúe cuando termine.",
+    "provider_exists": "Ese médico o consultorio ya estaba agregado; no se cambió nada.",
+    "service_exists": "Ese servicio ya estaba agregado con ese precio; no se cambió nada.",
     "service_price_kept": (
-        "That service already has a different price. Changing a price isn't available yet, "
-        "so nothing was changed."
+        "Ese servicio ya tiene otro precio. Todavía no se puede cambiar un precio aquí, "
+        "así que no se cambió nada."
     ),
-    "queue": "Walk-in line created.",
-    "queue_exists": "That walk-in line already exists, so nothing was changed.",
+    "queue": "Fila de espera creada.",
+    "queue_exists": "Esa fila de espera ya existe; no se cambió nada.",
 }
 _PAGE_LIMIT = "100"
 _MAX_PAGES = 10
@@ -144,7 +146,7 @@ class _Owner:
     ) -> _Answer:
         operation = self.ops.get(operation_id)
         if operation is None:
-            return _Answer(503, {"error": {"message": "not available on this installation"}})
+            return _Answer(503, {"error": {"message": "no está disponible en esta instalación"}})
         route = operation.path_template
         for name, value in (path or {}).items():
             route = route.replace("{" + name + "}", quote(value, safe=""))
@@ -355,7 +357,7 @@ async def _slot_preview(owner: _Owner, world: _World) -> dict[str, Any]:
             start = datetime.fromisoformat(str(as_mapping(raw).get("start_at"))).astimezone(zone)
         except ValueError:
             continue
-        slots.append(f"{forms.WEEKDAYS[start.weekday()]} {start.day} {start:%B}, {start:%H:%M}")
+        slots.append(f"{forms.long_date(start.date())}, {start:%H:%M}")
     return {"status": answer.status, "service": str(offering.get("display_name")), "slots": slots}
 
 
@@ -433,7 +435,7 @@ def install_clinic_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     for item in STEPS
                 ],
                 world=world,
-                business_name=world.business.get("display_name") or "your clinic",
+                business_name=world.business.get("display_name") or "su consultorio",
                 business_contacts=forms.contact_values(world.business.get("contacts")),
                 location_rows=[
                     {
@@ -490,7 +492,9 @@ def install_clinic_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 f"/login?next={_setup_path(str(organization_id), step)}", status_code=303
             )
         if state.runtime is None:
-            return workspace_unavailable(state, request, "Clinic setup unavailable")
+            return workspace_unavailable(
+                state, request, "La configuración del consultorio no está disponible"
+            )
         return session
 
     def _relogin(request: Request) -> Response:
@@ -513,7 +517,7 @@ def install_clinic_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
     async def submit(request: Request, organization_id: UUID, step: str) -> Response:
         if step not in _STEP_KEYS or step == "finish":
-            return Response("Unknown setup step", status_code=404)
+            return Response("Paso de configuración desconocido", status_code=404)
         session = _gate(request, organization_id, step)
         if isinstance(session, Response):
             return session
@@ -535,7 +539,9 @@ def install_clinic_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
         intent = values.get("_intent_id", "")
         if not forms.valid_intent(intent):
-            return await again(_Problem("This form expired. Reload the page and try again."), 422)
+            return await again(
+                _Problem("Este formulario venció. Recargue la página y vuelva a intentarlo."), 422
+            )
         if world.party is None:
             return await again(_Problem(_NO_PARTY, blocked=True), 409)
         handler = _HANDLERS[step]
@@ -555,8 +561,9 @@ def install_clinic_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
 
 _NO_PARTY = (
-    "Your sign-in does not manage this business's profile, so setup cannot continue. "
-    "Ask the platform administrator to check that your account is the business owner."
+    "Su usuario no administra el perfil de este negocio, así que la configuración no puede "
+    "continuar. Pídale al administrador de la plataforma que confirme que su cuenta es la "
+    "del dueño del negocio."
 )
 _Outcome = str | tuple[_Problem, int]
 
@@ -578,7 +585,7 @@ async def _save_clinic(
         "tenancy_organization_profile_update", body=profile, key=f"{key}:profile"
     )
     if not answer.ok:
-        return _failure(answer, "change its profile"), answer.status
+        return _failure(answer, "cambiar su perfil"), answer.status
     current = forms.contact_values(world.business.get("contacts"))
     if {item["channel"]: item["value"] for item in wanted} != current:
         answer = await owner.call(
@@ -588,7 +595,7 @@ async def _save_clinic(
         )
         if not answer.ok:
             problem = _failure(
-                answer, "change its contact details", ["Legal name, time zone and currency"]
+                answer, "cambiar sus contactos", ["Nombre legal, zona horaria y moneda"]
             )
             return problem, answer.status
     return _setup_path(owner.organization_id, "location", "clinic")
@@ -598,9 +605,9 @@ async def _save_location(
     owner: _Owner, world: _World, values: Mapping[str, str], _: tuple[str, ...], key: str
 ) -> _Outcome:
     name = forms.required_text(
-        values, "display_name", "Enter the location's name, for example Sede Gazcue."
+        values, "display_name", "Escriba el nombre de la sede, por ejemplo Sede Gazcue."
     )
-    windows = forms.parse_week(values, what="the location is open")
+    windows = forms.parse_week(values, what="en que abre la sede")
     wanted_contacts = forms.contacts(values, ("phone", "whatsapp"))
     location_key, existing = forms.choose_key(
         forms.slugify(name, fallback="location"),
@@ -625,7 +632,7 @@ async def _save_location(
                 body[field_name] = text
         created = await owner.call("catalog_location_create", body=body, key=f"{key}:location")
         if not created.ok:
-            return _failure(created, "add locations"), created.status
+            return _failure(created, "agregar sedes"), created.status
         location = as_mapping(created.payload)
         hours: object = []
         current_contacts: object = []
@@ -636,11 +643,11 @@ async def _save_location(
             params={"authority_party_id": party},
         )
         if not detail.ok:
-            return _failure(detail, "read its locations"), detail.status
+            return _failure(detail, "consultar sus sedes"), detail.status
         location = as_mapping(detail.payload)
         hours, current_contacts = location.get("hours_windows"), location.get("public_contacts")
     location_id, revision = str(location.get("location_id")), location.get("operational_revision")
-    saved = [f"The location “{name}”"]
+    saved = [f"La sede “{name}”"]
     if not forms.same_windows(hours, windows):
         answer = await owner.call(
             "catalog_location_hours_replace",
@@ -653,8 +660,8 @@ async def _save_location(
             key=f"{key}:hours:{revision}",
         )
         if not answer.ok:
-            return _failure(answer, "change opening hours", saved), answer.status
-        saved.append("its opening hours")
+            return _failure(answer, "cambiar el horario", saved), answer.status
+        saved.append("su horario")
     if wanted_contacts and {
         c["channel"]: c["value"] for c in wanted_contacts
     } != forms.contact_values(current_contacts):
@@ -665,7 +672,7 @@ async def _save_location(
             key=f"{key}:location-contacts",
         )
         if not answer.ok:
-            return _failure(answer, "change location phone numbers", saved), answer.status
+            return _failure(answer, "cambiar los teléfonos de la sede", saved), answer.status
     return _setup_path(owner.organization_id, "services", "location")
 
 
@@ -673,7 +680,7 @@ async def _save_service(
     owner: _Owner, world: _World, values: Mapping[str, str], _: tuple[str, ...], key: str
 ) -> _Outcome:
     name = forms.required_text(
-        values, "display_name", "Enter the service's name, for example General consultation."
+        values, "display_name", "Escriba el nombre del servicio, por ejemplo Consulta general."
     )
     duration = int(
         forms.choice(values, "duration_minutes", ((str(d), "") for d in forms.DURATIONS), "30")
@@ -699,7 +706,7 @@ async def _save_service(
             "catalog_resource_capabilities_list", {"limit": "200"}, cursor="cursor"
         )
         if status != 200:
-            return _failure(_Answer(status), "read its services"), status
+            return _failure(_Answer(status), "consultar sus servicios"), status
         capability = next(
             (c for c in capabilities if c.get("capability_key") == capability_key), None
         )
@@ -709,12 +716,12 @@ async def _save_service(
                 body={
                     "authority_party_id": party,
                     "capability_key": capability_key,
-                    "display_name": f"Provides {name}"[:200],
+                    "display_name": f"Ofrece {name}"[:200],
                 },
                 key=f"{key}:capability",
             )
             if not created.ok:
-                return _failure(created, "add services"), created.status
+                return _failure(created, "agregar servicios"), created.status
             capability = as_mapping(created.payload)
         offering = await owner.call(
             "catalog_manage_offerings",
@@ -731,9 +738,9 @@ async def _save_service(
             key=f"{key}:offering",
         )
         if not offering.ok:
-            return _failure(offering, "add services"), offering.status
+            return _failure(offering, "agregar servicios"), offering.status
         version_id = str(as_mapping(offering.payload).get("offering_version_id"))
-        saved.append(f"The service “{name}”")
+        saved.append(f"El servicio “{name}”")
     terms = await owner.call(
         "catalog_offering_booking_terms_configure",
         path={"offering_version_id": version_id},
@@ -741,7 +748,7 @@ async def _save_service(
         key=f"{key}:terms:{version_id}",
     )
     if not terms.ok:
-        return _failure(terms, "set prices", saved), terms.status
+        return _failure(terms, "poner precios", saved), terms.status
     return _setup_path(owner.organization_id, "services", "service")
 
 
@@ -769,7 +776,7 @@ def _known_location(world: _World, values: Mapping[str, str]) -> str:
     location_id = values.get("location_id", "")
     if location_id not in {str(item.get("location_id")) for item in world.locations}:
         raise forms.SetupInputError(
-            "Choose the location. Add one in the location step first if the list is empty."
+            "Elija la sede. Si la lista está vacía, agregue una primero en el paso de sede."
         )
     return location_id
 
@@ -778,16 +785,16 @@ async def _save_provider(
     owner: _Owner, world: _World, values: Mapping[str, str], selected: tuple[str, ...], key: str
 ) -> _Outcome:
     name = forms.required_text(
-        values, "display_name", "Enter a name, for example Dra. Ana Pérez or Consultorio 2."
+        values, "display_name", "Escriba un nombre, por ejemplo Dra. Ana Pérez o Consultorio 2."
     )
     kind = forms.choice(values, "kind", forms.PROVIDER_KINDS, "doctor")
     location_id = _known_location(world, values)
     offered = {choice["capability_id"] for choice in await _service_choices(owner, world)}
     if offered and not selected:
-        raise forms.SetupInputError("Tick at least one service they provide.")
+        raise forms.SetupInputError("Marque al menos un servicio que ofrece.")
     if not set(selected) <= offered:
-        raise forms.SetupInputError("Choose services from the list. Reload the page if it changed.")
-    windows = forms.parse_week(values, what="they work")
+        raise forms.SetupInputError("Elija servicios de la lista. Recargue la página si cambió.")
+    windows = forms.parse_week(values, what="en que trabaja")
     resource_key, existing = forms.choose_key(
         f"{kind}-{forms.slugify(name, fallback='provider')}",
         world.resources,
@@ -810,7 +817,7 @@ async def _save_provider(
         key=f"{key}:resource",
     )
     if not created.ok:
-        return _failure(created, "add doctors or rooms"), created.status
+        return _failure(created, "agregar médicos o consultorios"), created.status
     return _setup_path(owner.organization_id, "providers", "provider")
 
 
@@ -818,14 +825,16 @@ async def _save_queue(
     owner: _Owner, world: _World, values: Mapping[str, str], _: tuple[str, ...], key: str
 ) -> _Outcome:
     name = forms.required_text(
-        values, "display_name", "Enter a name for the line, for example Walk-ins."
+        values, "display_name", "Escriba un nombre para la fila, por ejemplo Sin cita."
     )
     location_id = _known_location(world, values)
     offering_id = values.get("offering_id", "")
     if offering_id and offering_id not in {
         str(item.get("offering_id")) for item in world.offerings
     }:
-        raise forms.SetupInputError("Choose a service from the list, or leave it as any service.")
+        raise forms.SetupInputError(
+            "Elija un servicio de la lista, o déjelo en cualquier servicio."
+        )
     queue_key, existing = forms.choose_key(
         forms.slugify(name, fallback="walk-ins"),
         world.queues,
@@ -844,7 +853,7 @@ async def _save_queue(
         body["offering_id"] = offering_id
     created = await owner.call("queue_service_queue_create", body=body, key=f"{key}:queue")
     if not created.ok:
-        return _failure(created, "create walk-in lines"), created.status
+        return _failure(created, "crear filas de espera"), created.status
     return _setup_path(owner.organization_id, "finish", "queue")
 
 

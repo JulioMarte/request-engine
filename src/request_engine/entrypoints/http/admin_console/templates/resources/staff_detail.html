@@ -1,43 +1,43 @@
 {% extends "base.html" %}{% import "partials/inputs.html" as inputs %}{% import "partials/capabilities.html" as caps %}
-{% block title %}Staff member · Request Engine admin{% endblock %}
-{% block content %}
-<p><a href="/tenants/{{ organization_id }}/staff">← Team</a></p>
-<header class="page-heading"><div><h1>{{ member.display_name or 'Unnamed team member' }}</h1>{% if not error %}<p><span class="badge {{ member.status }}">{{ member.status | capitalize }}</span></p>{% endif %}</div></header>
+{% block title %}Miembro del equipo · Request Engine{% endblock %}
+{% block content %}{% set status_names = {'active': 'Activo', 'invited': 'Invitado', 'suspended': 'Suspendido', 'revoked': 'Retirado'} %}
+<p><a href="/tenants/{{ organization_id }}/staff">← Equipo</a></p>
+<header class="page-heading"><div><h1>{{ member.display_name or 'Miembro del equipo sin nombre' }}</h1>{% if not error %}<p><span class="badge {{ member.status }}">{{ status_names.get(member.status, member.status | capitalize) }}</span></p>{% endif %}</div></header>
 {% if error %}<div class="alert error" role="alert">{{ error }}</div>
 {% else %}
-<p><a href="/tenants/{{ organization_id }}/staff/{{ membership_id }}/history">See change history</a></p>
-<section class="card"><h2>What they can do</h2>{{ caps.groups(member.standing_grants | map(attribute='capability') | list, 'No visible permissions. Others may exist that you cannot see.') }}</section>
+<p><a href="/tenants/{{ organization_id }}/staff/{{ membership_id }}/history">Ver historial de cambios</a></p>
+<section class="card"><h2>Lo que puede hacer</h2>{{ caps.groups(member.standing_grants | map(attribute='capability') | list, 'No tiene permisos visibles. Puede tener otros que usted no puede ver.') }}</section>
 {% if operations.profile %}
-<section class="card"><h2>Name in this organization</h2>
-<p>This label helps administrators recognize a member. It does not verify identity, change their login, or grant permissions. Leave it empty to remove the label.</p>
+<section class="card"><h2>Nombre en esta organización</h2>
+<p>Esta etiqueta ayuda a los administradores a reconocer al miembro. No confirma su identidad, no cambia su inicio de sesión ni le da permisos. Déjela vacía para quitarla.</p>
 <form id="staff-profile" method="post" action="{{ operations.profile.url }}" hx-post="{{ operations.profile.url }}" hx-target="#staff-profile-result">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 <input type="hidden" name="_intent_id" value="{{ operations.profile.intent_id }}" data-form-intent />
 {{ inputs.render(operations.profile.inputs) }}
-<button type="submit" class="secondary">Save display name</button>
+<button type="submit" class="secondary">Guardar nombre</button>
 </form><div id="staff-profile-result"></div></section>
 {% endif %}
 <div class="workspace-grid">
 {% for key in ['plan', 'status'] %}{% set entry = operations[key] %}
-<section class="card"><h2>{% if key == 'plan' %}Change what they can do{% else %}Change access{% endif %}</h2>
-{% if key == 'plan' %}<p>Tick what this person should be able to do, write why, then preview the exact difference before anything changes.</p>{% endif %}
+<section class="card"><h2>{% if key == 'plan' %}Cambiar lo que puede hacer{% else %}Cambiar acceso{% endif %}</h2>
+{% if key == 'plan' %}<p>Marque lo que esta persona debe poder hacer, escriba el motivo y revise la diferencia exacta antes de que cambie algo.</p>{% endif %}
 <form id="staff-{{ key }}" method="post" action="{{ entry.url }}" hx-post="{{ entry.url }}" hx-target="#staff-{{ key }}-result">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 <input type="hidden" name="_intent_id" value="{{ entry.intent_id }}" data-form-intent />
 {% if key == 'plan' %}
 <input type="hidden" name="_permission_picker" value="1" />
-<fieldset><legend>Permissions you can assign</legend>
-<p class="muted">Ticked items are kept; untick one to remove it. Permissions you cannot give stay as they are.</p>
+<fieldset><legend>Permisos que usted puede asignar</legend>
+<p class="muted">Lo marcado se mantiene; desmarque un permiso para quitarlo. Los permisos que usted no puede dar se quedan como están.</p>
 {% for group, items in grouped_capabilities(permission_choices) %}
 <fieldset class="permission-group"><legend>{{ group }}</legend>
 {% for item in items %}<label class="permission-choice"><input type="checkbox" name="selected_capabilities" value="{{ item.key }}" {% if item.key in selected_permissions %}checked{% endif %} /> <span>{{ item.label }}</span></label>{% endfor %}
 </fieldset>
-{% else %}<p>You cannot give any permissions yet. The business owner has to give you that ability first.</p>{% endfor %}
+{% else %}<p>Todavía no puede dar ningún permiso. El dueño del negocio tiene que darle esa capacidad primero.</p>{% endfor %}
 </fieldset>
 {{ inputs.render(entry.inputs | rejectattr('name', 'equalto', 'desired_capabilities') | list) }}
 {% else %}{{ inputs.render(entry.inputs) }}{% endif %}
-{% if key == 'status' %}<p class="alert warning"><strong>This signs them out everywhere.</strong> Suspending or removing someone ends all of their sessions, including in other businesses they belong to.</p>{% endif %}
-<button class="{{ 'secondary' if key == 'plan' else 'danger' }}" type="submit">{{ 'Preview changes' if key == 'plan' else 'Change status' }}</button>
+{% if key == 'status' %}<p class="alert warning"><strong>Esto cierra su sesión en todas partes.</strong> Suspender o retirar a alguien cierra todas sus sesiones, incluso en otros negocios a los que pertenece.</p>{% endif %}
+<button class="{{ 'secondary' if key == 'plan' else 'danger' }}" type="submit">{{ 'Revisar cambios' if key == 'plan' else 'Cambiar estado' }}</button>
 </form><div id="staff-{{ key }}-result"></div></section>
 {% endfor %}</div>
 {% endif %}{% endblock %}

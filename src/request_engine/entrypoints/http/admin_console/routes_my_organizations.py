@@ -38,7 +38,10 @@ def install_my_organization_routes(app: FastAPI, state: AdminConsoleState) -> No
             return login_redirect(request)
         page: _OrganizationPage | None = None
         status = 503
-        error = "Your organizations are temporarily unavailable. Try again shortly."
+        error = (
+            "Sus organizaciones no están disponibles por el momento. "
+            "Intente de nuevo en unos minutos."
+        )
         if state.runtime is not None:
             try:
                 operation = (await state.runtime_catalog()).by_id().get("self_organization_list")
@@ -63,9 +66,9 @@ def install_my_organization_routes(app: FastAPI, state: AdminConsoleState) -> No
                                 ),
                             )
                     elif result.status_code == 401:
-                        status, error = 401, "Your session is no longer valid. Sign in again."
+                        status, error = 401, "Su sesión ya no es válida. Inicie sesión de nuevo."
                     elif result.status_code == 403:
-                        status, error = 403, "This session cannot list organizations."
+                        status, error = 403, "Esta sesión no puede ver la lista de organizaciones."
             except (httpx.HTTPError, ValidationError, ValueError, RuntimeError):
                 pass
         if home and page is not None and len(page.items) == 1 and page.next_after is None:

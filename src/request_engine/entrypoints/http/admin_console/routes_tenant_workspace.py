@@ -29,6 +29,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, Response
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
+from request_engine.entrypoints.http.admin_console.clinic_setup import long_date, zone_label
 from request_engine.entrypoints.http.admin_console.execution import (
     ExecutionOutcome,
     execute_operation,
@@ -52,22 +53,22 @@ from request_engine.entrypoints.http.admin_console.state import AdminConsoleStat
 CHIEF_OF_STAFF_PURPOSE_PREFIX = "Chief of staff"
 _MAX_QUEUES = 6
 _DONE_NOTICES = {
-    "called": "Next customer called.",
-    "no_show": "Marked as no-show.",
-    "skipped": "Customer skipped.",
-    "started": "Service started.",
-    "completed": "Service finished.",
-    "checked_in": "Customer checked in.",
-    "walk_in": "Customer added to the queue.",
-    "booked": "Appointment booked.",
-    "rescheduled": "Appointment moved.",
-    "cancelled": "Appointment cancelled.",
-    "attendance": "Attendance answer recorded.",
-    "eta": "Arrival time noted.",
-    "selected": "Customer called to the counter.",
-    "held": "Customer set aside.",
-    "released": "Customer back in line.",
-    "registered": "Customer registered.",
+    "called": "Se llamó al siguiente paciente.",
+    "no_show": "Se marcó que no se presentó.",
+    "skipped": "Se saltó al paciente.",
+    "started": "Atención iniciada.",
+    "completed": "Atención terminada.",
+    "checked_in": "Se registró la llegada del paciente.",
+    "walk_in": "Paciente agregado a la fila de espera.",
+    "booked": "Cita reservada.",
+    "rescheduled": "Se cambió la fecha de la cita.",
+    "cancelled": "Cita cancelada.",
+    "attendance": "Se guardó la respuesta del paciente.",
+    "eta": "Hora de llegada guardada.",
+    "selected": "Paciente llamado al mostrador.",
+    "held": "Paciente apartado.",
+    "released": "Paciente devuelto a la fila.",
+    "registered": "Paciente registrado.",
 }
 _OPEN_RESERVATION_STATUSES = frozenset({"confirmed"})
 _ANSWERED_ATTENDANCE = frozenset({"accepted", "declined"})
@@ -75,23 +76,23 @@ _ANSWERED_ATTENDANCE = frozenset({"accepted", "declined"})
 # answer (did they say they will come?) are distinct owner facts; the labels keep
 # them distinct for a receptionist instead of printing both as "confirmed".
 _BOOKING_STATUS_LABELS = {
-    "confirmed": "Booked",
-    "cancelled": "Cancelled",
-    "canceled": "Cancelled",
-    "released": "Released",
-    "expired": "Expired",
+    "confirmed": "Reservada",
+    "cancelled": "Cancelada",
+    "canceled": "Cancelada",
+    "released": "Liberada",
+    "expired": "Vencida",
 }
 _ATTENDANCE_LABELS = {
-    "accepted": "Said they're coming",
-    "declined": "Said they're not coming",
-    "pending": "No answer yet",
+    "accepted": "Confirmó que viene",
+    "declined": "Dijo que no viene",
+    "pending": "Sin respuesta",
 }
 # Arrival as the day board reports it: the reservation's own attendance check-in,
 # or the active queue entry the front desk created by checking the customer in.
 _ARRIVAL_LABELS = {
-    "waiting": "Waiting in line",
-    "called": "Called to the counter",
-    "serving": "Being served",
+    "waiting": "En la fila",
+    "called": "Llamado al mostrador",
+    "serving": "En atención",
 }
 
 
@@ -100,7 +101,7 @@ def _readable(value: str) -> str:
 
 
 def booking_status_label(status: str) -> str:
-    return _BOOKING_STATUS_LABELS.get(status) or _readable(status) or "Unknown"
+    return _BOOKING_STATUS_LABELS.get(status) or _readable(status) or "Desconocido"
 
 
 def attendance_label(answer: str) -> str:
@@ -115,7 +116,7 @@ def arrival_label(entry: Mapping[str, Any], zone: ZoneInfo | None = None) -> str
     """How far the customer got today, from the owner's day-board row ("" = not arrived).
 
     An active queue entry wins (a customer sent back to a queue is in line now);
-    otherwise a completed visit reads "Seen at HH:MM" in business time.
+    otherwise a completed visit reads "Atendido a las HH:MM" in business time.
     """
 
     queue_status = entry.get("queue_entry_status")
@@ -123,13 +124,13 @@ def arrival_label(entry: Mapping[str, Any], zone: ZoneInfo | None = None) -> str
         return _ARRIVAL_LABELS[queue_status]
     served = _parse_instant(entry.get("served_at"))
     if served is not None:
-        return f"Seen at {served.astimezone(zone).strftime('%H:%M')}" if zone else "Seen"
+        return f"Atendido a las {served.astimezone(zone).strftime('%H:%M')}" if zone else "Atendido"
     if (
         entry.get("checked_in_at")
         or entry.get("visit_arrived_at")
         or _count(entry.get("active_queue_entry_count")) > 0
     ):
-        return "Checked in"
+        return "Llegó"
     return ""
 
 
@@ -356,7 +357,7 @@ def workspace_unavailable(state: AdminConsoleState, request: Request, title: str
         state.context(
             request,
             title=title,
-            message="Configure the runtime API URL to open this business workspace.",
+            message="Configure la URL de la API del negocio para abrir este espacio de trabajo.",
         ),
         status_code=503,
     )
@@ -399,7 +400,7 @@ async def front_desk_post(
     if session is None:
         return login_redirect(request)
     if state.runtime is None:
-        return workspace_unavailable(state, request, "Today unavailable")
+        return workspace_unavailable(state, request, "Hoy no disponible")
     form = await request.form()
     values = {key: str(value) for key, value in form.items()}
     if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
@@ -457,7 +458,7 @@ async def front_desk_action(
         return post
     operation = (await runtime_operations(state, (operation_id,)))[operation_id]
     if operation is None:
-        return Response("This action is not available on this installation", status_code=503)
+        return Response("Esta acción no está disponible en esta instalación.", status_code=503)
     submitted = build(post.values)
     if isinstance(submitted, ExecutionOutcome):
         return front_desk_failure(state, request, organization_id, submitted, back=back)
@@ -501,7 +502,7 @@ def _with_local_instant(target: str, names: tuple[str, ...], **fixed: str) -> Su
             return submitted
         instant = local_instant(values.get("local_date", ""), clock, values.get("zone_name", ""))
         if instant is None:
-            return form_error("Enter a valid time, for example 10:30.")
+            return form_error("Escriba una hora válida, por ejemplo 10:30.")
         submitted[target] = instant
         return submitted
 
@@ -519,7 +520,7 @@ def start_service_submission(queue_entry_id: str) -> SubmissionBuilder:
     def build(values: Mapping[str, str]) -> dict[str, str] | ExecutionOutcome:
         resource_id, _, location_id = values.get("staff", "").partition("@")
         if not resource_id or not location_id:
-            return form_error("Choose the doctor or room who will see this customer.")
+            return form_error("Elija el médico o consultorio que atenderá a este paciente.")
         submitted = _picked(values, ("expected_queue_revision",), {})
         submitted.update(
             queue_entry_id=queue_entry_id, resource_id=resource_id, location_id=location_id
@@ -566,7 +567,7 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
         if session is None:
             return login_redirect(request)
         if state.runtime is None:
-            return _unavailable(request, "Business home unavailable")
+            return _unavailable(request, "Inicio del negocio no disponible")
         org = str(organization_id)
         try:
             ops = await _operations(
@@ -579,7 +580,9 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
                 )
             )
         except Exception:
-            return Response("Business operation catalog unavailable", status_code=503)
+            return Response(
+                "Las acciones del negocio no están disponibles. Intente de nuevo.", status_code=503
+            )
         bearer = session.access_token
         business, readiness, team, agents, proposals = await asyncio.gather(
             _read(ops["business_get_info"], organization_id=org, bearer=bearer),
@@ -640,14 +643,16 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
         if session is None:
             return login_redirect(request)
         if state.runtime is None:
-            return _unavailable(request, "Today unavailable")
+            return _unavailable(request, "Hoy no disponible")
         org = str(organization_id)
         try:
             ops = await _operations(
                 ("business_get_info", "queue_list", "queue_staff_read", "appointments_day_board")
             )
         except Exception:
-            return Response("Business operation catalog unavailable", status_code=503)
+            return Response(
+                "Las acciones del negocio no están disponibles. Intente de nuevo.", status_code=503
+            )
         bearer = session.access_token
         business, queues = await asyncio.gather(
             _read(ops["business_get_info"], organization_id=org, bearer=bearer),
@@ -715,6 +720,8 @@ def install_tenant_workspace_routes(app: FastAPI, state: AdminConsoleState) -> N
                 else None,
                 zone_name=zone_name,
                 local_date=local_day,
+                local_date_label=long_date(local_day),
+                zone_label=zone_label(zone_name),
                 local_now=now.astimezone(zone).strftime("%H:%M"),
                 queues=queue_views,
                 queues_status=queues.status,

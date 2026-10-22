@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Decision not saved · Request Engine{% endblock %}
+{% block title %}Decisión no guardada · Request Engine{% endblock %}
 {% block content %}
-<header class="page-heading"><div><p class="breadcrumb"><a href="/tenants/{{ organization_id }}/approvals">Approvals</a></p><h1>{% if step_up %}Confirm it's you{% else %}Decision not saved{% endif %}</h1></div></header>
+<header class="page-heading"><div><p class="breadcrumb"><a href="/tenants/{{ organization_id }}/approvals">Aprobaciones</a></p><h1>{% if step_up %}Confirme que es usted{% else %}Decisión no guardada{% endif %}</h1></div></header>
 {% if not step_up %}
-<div class="result fail" role="alert"><div class="result-summary"><span aria-hidden="true">!</span><div><strong>{{ message or "The business API did not accept this decision." }}</strong><p>Status {{ status }}{% if error_code %} · <code>{{ error_code }}</code>{% endif %}{% if error_code == "staff_invitation_delivery_unavailable" %} · Invitation email is not set up on this installation, so nothing was sent and the suggestion is still waiting. A platform administrator needs to configure email delivery.{% endif %}{% if error_code in ("revision_conflict", "conflict", "stale_revision", "staff_membership_revision_conflict", "staff_invitation_proposal_not_pending") %} · Someone else may have decided already. Reload approvals.{% endif %}</p></div></div></div>
+<div class="result fail" role="alert"><div class="result-summary"><span aria-hidden="true">!</span><div><strong>{{ message or "El sistema del negocio no aceptó esta decisión." }}</strong><p>Estado {{ status }}{% if error_code %} · <code>{{ error_code }}</code>{% endif %}{% if error_code == "staff_invitation_delivery_unavailable" %} · El correo de invitaciones no está configurado en esta instalación, así que no se envió nada y la sugerencia sigue esperando. El administrador de la plataforma tiene que configurar el envío de correos.{% endif %}{% if error_code in ("revision_conflict", "conflict", "stale_revision", "staff_membership_revision_conflict", "staff_invitation_proposal_not_pending") %} · Puede que otra persona ya haya decidido. Vuelva a cargar las aprobaciones.{% endif %}</p></div></div></div>
 {% endif %}
 <form id="approval-retry" method="post" action="/tenants/{{ organization_id }}/approvals/{{ proposal_id }}/{{ decision }}" data-plain-action>
   {% for key, value in retry_values.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}" />{% endfor %}
-  {% if not step_up %}<button type="submit" class="secondary">Retry</button>{% endif %}
+  {% if not step_up %}<button type="submit" class="secondary">Reintentar</button>{% endif %}
 </form>
 {% if step_up %}
-<p>Inviting someone changes who can work in your business, so confirm your session first. Your decision is kept.</p>
+<p>Invitar a alguien cambia quién puede trabajar en su negocio, así que primero confirme su sesión. Su decisión se conserva.</p>
 {% import "partials/reauthentication.html" as authentication %}{{ authentication.render("approval-retry", false) }}
 {% endif %}
-<p><a class="button secondary" href="/tenants/{{ organization_id }}/approvals">Back to approvals</a></p>
+<p><a class="button secondary" href="/tenants/{{ organization_id }}/approvals">Volver a aprobaciones</a></p>
 {% endblock %}

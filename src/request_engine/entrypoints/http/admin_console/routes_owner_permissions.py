@@ -38,16 +38,16 @@ OWNER_PERMISSION_OPERATION_IDS = (
     "controller_policy_adoption_request_get",
 )
 _CREATE = "controller_policy_adoption_request_create"
-_DEFAULT_REASON = "Use the latest owner permissions for this business."
+_DEFAULT_REASON = "Usar los permisos del dueño más recientes en este negocio."
 # The owner's refusal, said as what it means for the person and what to do next.
 _REFUSALS = {
     "controller_policy_adoption_conflict": (
-        "Nothing new to request right now. Your business already has the newest owner "
-        "permissions, or a request is already waiting for approval."
+        "No hay nada nuevo que pedir ahora. Su negocio ya tiene los permisos del dueño "
+        "más recientes, o ya hay una solicitud esperando aprobación."
     ),
-    "controller_policy_adoption_forbidden": "Only the business owner can request this.",
+    "controller_policy_adoption_forbidden": "Solo el dueño del negocio puede pedir esto.",
     "controller_policy_adoption_consent_invalidated": (
-        "Your account was recovered after this request started. Request it again."
+        "Su cuenta se recuperó después de que empezó esta solicitud. Pídala de nuevo."
     ),
 }
 
@@ -69,9 +69,9 @@ def _requested_id(outcome: ExecutionOutcome) -> str | None:
 
 def _refusal(outcome: ExecutionOutcome) -> str:
     if outcome.needs_step_up:
-        return "Sign in again to confirm it's you, then request the upgrade."
+        return "Inicie sesión de nuevo para confirmar que es usted y luego pida la actualización."
     return _REFUSALS.get(outcome.error_code) or (
-        outcome.message or "The request was not sent. Reload the page and try again."
+        outcome.message or "La solicitud no se envió. Vuelva a cargar la página e intente de nuevo."
     )
 
 
@@ -85,7 +85,7 @@ def install_owner_permission_routes(app: FastAPI, state: AdminConsoleState) -> N
                 f"/login?next={permissions_path(organization_id)}", status_code=303
             )
         if state.runtime is None:
-            return workspace_unavailable(state, request, "Permissions unavailable")
+            return workspace_unavailable(state, request, "Permisos no disponibles")
         org = str(organization_id)
         ops = await runtime_operations(state, OWNER_PERMISSION_OPERATION_IDS)
         try:
@@ -138,7 +138,7 @@ def install_owner_permission_routes(app: FastAPI, state: AdminConsoleState) -> N
             return post
         operation = (await runtime_operations(state, (_CREATE,)))[_CREATE]
         if operation is None:
-            return Response("This action is not available on this installation", status_code=503)
+            return Response("Esta acción no está disponible en esta instalación.", status_code=503)
         outcome = await execute_operation(
             state,
             operation,

@@ -254,7 +254,7 @@ async def test_owner_calls_starts_and_finishes_a_booked_customer_from_today(
         assert finished.headers["location"] == f"/tenants/{org}/today?done=completed"
 
         # After the visit the owner day board still reports it as a served visit
-        # (Today renders only the real current business day, so the "Seen at"
+        # (Today renders only the real current business day, so the "Atendido a las"
         # rendering itself is proven by the console unit tests).
         served_board = await owner.runtime.get(
             "/v1/appointments/day-board",

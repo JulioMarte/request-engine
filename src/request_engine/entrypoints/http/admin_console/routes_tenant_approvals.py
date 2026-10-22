@@ -43,7 +43,7 @@ def _proposer_label(item: dict[str, Any]) -> str:
     kind = (
         item.get("proposed_by_principal_kind") or item.get("proposer_kind") or proposer.get("kind")
     )
-    return "An agent" if kind == "agent" else "A team member"
+    return "Un asistente" if kind == "agent" else "Un miembro del equipo"
 
 
 def install_tenant_approval_routes(app: FastAPI, state: AdminConsoleState) -> None:
@@ -98,8 +98,8 @@ def install_tenant_approval_routes(app: FastAPI, state: AdminConsoleState) -> No
                 proposals=items,
                 intent=token_urlsafe(16),
                 notice={
-                    "approve": "Approved. The invitation was sent.",
-                    "reject": "Suggestion declined.",
+                    "approve": "Aprobado. Se envió la invitación.",
+                    "reject": "Sugerencia rechazada.",
                 }.get(done),
             ),
         )
@@ -113,22 +113,29 @@ def install_tenant_approval_routes(app: FastAPI, state: AdminConsoleState) -> No
         if session is None:
             return login_redirect(request)
         if state.runtime is None:
-            return Response("Runtime API is not configured", status_code=503)
+            return Response("El sistema del negocio no está configurado.", status_code=503)
         org = str(organization_id)
         form = await request.form()
         values = {key: str(value) for key, value in form.items()}
         if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
-            return Response("CSRF token missing or invalid", status_code=403)
+            return Response(
+                "El formulario venció. Vuelva a cargar la página e intente de nuevo.",
+                status_code=403,
+            )
         intent = values.get("intent", "")
         try:
             revision = int(values.get("expected_revision", ""))
         except ValueError:
             revision = 0
         if not 16 <= len(intent) <= 64 or revision < 1:
-            return Response("This form expired. Reload approvals.", status_code=422)
+            return Response(
+                "Este formulario venció. Vuelva a cargar las aprobaciones.", status_code=422
+            )
         operation = await _operation(decision)
         if operation is None:
-            return Response("Approvals are not available on this installation", status_code=503)
+            return Response(
+                "Las aprobaciones no están disponibles en esta instalación.", status_code=503
+            )
         body: dict[str, object] = {
             "expected_revision": revision,
             "provenance_reference": f"admin-console:proposal-{decision}:{intent}",

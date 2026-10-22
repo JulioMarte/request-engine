@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminCatalog
+from request_engine.entrypoints.http.admin_console.configuration_labels import task_label
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
 from request_engine.entrypoints.http.admin_console.resources import list_items, prefill_values
 
@@ -193,7 +194,7 @@ def read_action_links(
             reference = next((value for key, value in prefill.items() if key.endswith("_id")), "")
             links.append(
                 {
-                    "label": operation.summary or target.replace("_", " "),
+                    "label": task_label(operation),
                     "reference": reference,
                     "href": f"{root}/{target}?{urlencode(prefill)}",
                 }

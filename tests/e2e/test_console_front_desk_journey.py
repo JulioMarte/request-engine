@@ -250,7 +250,7 @@ async def test_receptionist_registers_books_and_checks_in_through_the_console(
             },
         )
         assert stale.status_code == 409, stale.text
-        assert "Someone else changed this booking" in stale.text
+        assert "Otra persona cambió esta cita" in stale.text
         assert _reservations(e2e_admin_conn, party_id) == [(reservation_id, "confirmed")]
 
         checked_in = await front.post(

@@ -261,9 +261,9 @@ async def test_business_home_shows_setup_team_and_chief_of_staff_invitation(
     async with _signed_in(_console(tmp_path, _Upstream(), runtime)) as client:
         page = await client.get(f"/tenants/{ORG}")
     assert page.status_code == 200
-    assert "1 of 2 areas ready" in page.text
+    assert "1 de 2 áreas listas" in page.text
     # Owner-facing guidance replaces the integration-facing API hint.
-    assert "Create a waiting line for customers who arrive without an appointment." in page.text
+    assert "Cree una fila de espera para los pacientes que llegan sin cita." in page.text
     assert "Create an active service queue." not in page.text
     assert f'href="/tenants/{ORG}/agents/new?template=chief-of-staff"' in page.text
     reads = {call[1]: call[2] for call in runtime.calls if call[0] == "GET"}
@@ -297,11 +297,11 @@ async def test_business_home_reports_chief_of_staff_suggestions(tmp_path: Path) 
     )
     async with _signed_in(_console(tmp_path, _Upstream(), runtime)) as client:
         page = await client.get(f"/tenants/{ORG}")
-    assert "2 suggestions waiting for your approval." in page.text
+    assert "2 sugerencias esperan su aprobación." in page.text
     assert f'href="/tenants/{ORG}/agents/{AGENT}"' in page.text
     # A failed read is never shown as ready or as an empty team.
-    assert "Setup progress could not be checked" in page.text
-    assert "Team information is not available to you." in page.text
+    assert "No se pudo revisar el avance de la configuración" in page.text
+    assert "Usted no tiene acceso a la información del equipo." in page.text
 
 
 @pytest.mark.asyncio
@@ -334,8 +334,8 @@ async def test_today_uses_business_time_and_reports_denied_queues_honestly(
     async with _signed_in(_console(tmp_path, _Upstream(), runtime)) as client:
         page = await client.get(f"/tenants/{ORG}/today")
     assert page.status_code == 200
-    assert "America/Santo_Domingo" in page.text
-    assert "Queues are not available to you" in page.text
+    assert "hora de Santo Domingo" in page.text
+    assert "Usted no tiene acceso a las filas de espera" in page.text
     # 14:00 UTC is 10:00 in Santo Domingo (UTC-4).
     assert "10:00–10:30" in page.text
     assert "María Pérez" in page.text
@@ -552,7 +552,7 @@ async def test_agent_setup_without_configured_authority_asks_for_it(tmp_path: Pa
         )
     assert 'name="identity_authority_id"' in form.text
     assert rejected.status_code == 422
-    assert "workload identity authority" in rejected.text
+    assert "autoridad de identidad de servicio" in rejected.text
     assert not [call for call in runtime.calls if call[0] in {"POST", "PUT"}]
 
 
@@ -590,8 +590,8 @@ async def test_approvals_list_and_approve_exact_revision(tmp_path: Path) -> None
                 "expected_revision": "3",
             },
         )
-    assert "Invite Pedro Gómez (pedro@example.test)" in page.text
-    assert "Suggested by Chief of Staff" in page.text
+    assert "Invitar a Pedro Gómez (pedro@example.test)" in page.text
+    assert "Sugerido por Chief of Staff" in page.text
     assert approved.status_code == 303
     call = next(call for call in runtime.calls if call[0] == "POST" and "approve" in call[1])
     assert call[2]["json_body"]["expected_revision"] == 3
@@ -607,7 +607,7 @@ async def test_approvals_degrade_when_the_installation_lacks_proposals(tmp_path:
     async with _signed_in(_console(tmp_path, _Upstream(), runtime)) as client:
         page = await client.get(f"/tenants/{ORG}/approvals")
     assert page.status_code == 200
-    assert "Approvals are not available on this installation yet" in page.text
+    assert "Las aprobaciones todavía no están disponibles en esta instalación" in page.text
 
 
 @pytest.mark.asyncio
@@ -619,9 +619,9 @@ async def test_security_headers_allow_self_fonts_and_same_origin_referrer(tmp_pa
 
 
 def test_capability_labels_are_plain_language_and_never_hide_unknown_keys() -> None:
-    assert capability_label("staff.manage_authority").label == "Change team permissions"
+    assert capability_label("staff.manage_authority").label == "Cambiar permisos del equipo"
     unknown = capability_label("future.capability_key")
-    assert unknown.group == "Other" and unknown.key == "future.capability_key"
+    assert unknown.group == "Otros" and unknown.key == "future.capability_key"
     groups = dict(grouped_capabilities(["parties.lookup", "appointments.book", "future.x"]))
-    assert [item.key for item in groups["Appointments"]] == ["appointments.book"]
-    assert [item.key for item in groups["Other"]] == ["future.x"]
+    assert [item.key for item in groups["Citas"]] == ["appointments.book"]
+    assert [item.key for item in groups["Otros"]] == ["future.x"]

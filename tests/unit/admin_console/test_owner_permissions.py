@@ -110,7 +110,7 @@ async def test_outdated_owner_requests_upgrade_without_typing_internal_numbers(
     async with _signed_in(runtime, tmp_path) as client:
         page = await client.get(PAGE)
         assert page.status_code == 200, page.text
-        assert "Get the newest owner permissions" in page.text
+        assert "Obtener los permisos del dueño más recientes" in page.text
         # The owner's own revision is read for them, never typed.
         assert 'type="hidden" name="expected_authority_revision" value="72"' in page.text
         assert "Expected Authority Revision" not in page.text
@@ -146,8 +146,8 @@ async def test_pending_request_tells_owner_to_wait_for_approval(tmp_path: Path) 
     async with _signed_in(runtime, tmp_path) as client:
         page = await client.get(f"{PAGE}?requested={REQUEST}")
     assert page.status_code == 200, page.text
-    assert "Upgrade requested" in page.text
-    assert "Request the newest permissions" not in page.text
+    assert "Actualización solicitada" in page.text
+    assert "Pedir los permisos más recientes" not in page.text
 
 
 @pytest.mark.asyncio
@@ -175,5 +175,5 @@ async def test_owner_refusal_is_explained_on_the_same_page(tmp_path: Path) -> No
             },
         )
     assert response.status_code == 409
-    assert "Your business already has the newest owner permissions" in response.text
+    assert "Su negocio ya tiene los permisos del dueño" in response.text
     assert len(runtime.posted("/v1/controller-policy-adoptions")) == 1

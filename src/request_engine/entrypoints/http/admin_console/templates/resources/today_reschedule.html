@@ -1,19 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Move appointment · Request Engine{% endblock %}
+{% block title %}Cambiar fecha de la cita · Request Engine{% endblock %}
 {% block content %}
 <header class="page-heading">
-  <div><p class="eyebrow">Today</p><h1>Move appointment</h1><p>Choose a new free time. The current time is kept until the move succeeds.</p></div>
-  <div class="page-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/today">Back to today</a></div>
+  <div><p class="eyebrow">Hoy</p><h1>Cambiar fecha de la cita</h1><p>Elija un nuevo horario libre. La cita conserva su hora actual hasta que el cambio se complete.</p></div>
+  <div class="page-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/today">Volver a hoy</a></div>
 </header>
 {% if not revision %}
-<p class="alert error">This link is missing the appointment's current version. Open it again from Today.</p>
+<p class="alert error">A este enlace le falta la versión actual de la cita. Ábralo de nuevo desde Hoy.</p>
 {% else %}
 <section class="card">
   {% set finder_action = "/tenants/" ~ organization_id ~ "/today/appointments/" ~ reservation_id ~ "/reschedule" %}
   {% set finder_hidden = {"revision": revision} %}
   {% set choose_action = finder_action %}
   {% set choose_hidden = {"expected_revision": revision} %}
-  {% set choose_label = "Move the appointment to" %}
+  {% set choose_label = "¿Cambiar la cita a" %}
   {% include "partials/slot_finder.html" %}
 </section>
 {% endif %}

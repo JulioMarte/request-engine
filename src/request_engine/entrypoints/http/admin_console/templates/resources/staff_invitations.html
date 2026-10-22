@@ -1,50 +1,50 @@
 {% extends "base.html" %}{% import "partials/inputs.html" as inputs %}
-{% block title %}Email invitations · Request Engine{% endblock %}
-{% block content %}
+{% block title %}Invitaciones por correo · Request Engine{% endblock %}
+{% block content %}{% set invitation_names = {'pending': 'Pendiente', 'accepted': 'Aceptada', 'revoked': 'Anulada', 'expired': 'Vencida'} %}
 <header class="page-heading">
-  <div><p class="eyebrow">People &amp; permissions</p><h1>Email invitations</h1><p>Invite someone to this organization. Acceptance creates membership, not permissions.</p></div>
-  <div class="top-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/configuration">Business configuration</a><a class="button secondary" href="/tenants/{{ organization_id }}/staff">Back to members</a></div>
+  <div><p class="eyebrow">Personas y permisos</p><h1>Invitaciones por correo</h1><p>Invite a alguien a esta organización. Al aceptar se vuelve miembro, pero todavía sin permisos.</p></div>
+  <div class="top-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/configuration">Configuración del negocio</a><a class="button secondary" href="/tenants/{{ organization_id }}/staff">Volver a miembros</a></div>
 </header>
 {% if loaded %}
 <div class="split-layout">
   <section class="card">
-    <h2>Invite by email</h2><p>1. Send an invitation. 2. The recipient signs in and accepts. 3. Review and grant permissions separately.</p>
+    <h2>Invitar por correo</h2><p>1. Envíe una invitación. 2. La persona inicia sesión y la acepta. 3. Revise y asigne sus permisos aparte.</p>
     <form method="post" action="/tenants/{{ organization_id }}/staff-invitations">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="_intent_id" value="{{ create_intent }}">
-      {{ inputs.render(create_inputs) }}<button type="submit" class="primary">Create invitation</button>
+      {{ inputs.render(create_inputs) }}<button type="submit" class="primary">Crear invitación</button>
     </form>
-    <p class="muted">Creation queues delivery. It does not prove that an email arrived.</p>
+    <p class="muted">Crear la invitación pone el correo en cola de envío. No prueba que el correo haya llegado.</p>
   </section>
   <section class="card">
-    <h2>Invitation history</h2><p>Membership status and email delivery are separate facts.</p>
-    <p class="muted">Revoke invalidates the link. An email already being submitted may still arrive. Resend replaces the old link.</p>
+    <h2>Historial de invitaciones</h2><p>El estado de la invitación y el envío del correo son cosas distintas.</p>
+    <p class="muted">Anular invalida el enlace, aunque un correo que ya se estaba enviando podría llegar. Reenviar reemplaza el enlace anterior.</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>Email</th><th>Invitation</th><th>Delivery</th><th>Expires</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Correo</th><th>Invitación</th><th>Envío</th><th>Vence</th><th>Acciones</th></tr></thead>
       <tbody>{% for item in invitations %}
-        <tr><td>{{ item.email }}</td><td><span class="badge">{{ item.status }}</span></td><td>{{ item.delivery_label }}</td><td>{{ item.expires_at }}</td>
+        <tr><td>{{ item.email }}</td><td><span class="badge">{{ invitation_names.get(item.status, item.status) }}</span></td><td>{{ item.delivery_label }}</td><td>{{ item.expires_at }}</td>
           <td>{% if item.status == 'pending' %}{% for action in ['resend', 'revoke'] %}
             <form class="inline" method="post" action="/tenants/{{ organization_id }}/staff-invitations/{{ item.invitation_id }}/{{ action }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="_intent_id" value="{{ item.intent_id }}-{{ action }}">
               <input type="hidden" name="expected_revision" value="{{ item.revision }}">
-              <label class="sr-only" for="reason-{{ item.invitation_id }}-{{ action }}">Reason for {{ action }}</label>
-              <input id="reason-{{ item.invitation_id }}-{{ action }}" name="provenance_reference" placeholder="Reason" required>
-              <button type="submit" class="{{ 'danger' if action == 'revoke' else 'secondary' }}">{{ 'Revoke' if action == 'revoke' else 'Resend · replaces old link' }}</button>
+              <label class="sr-only" for="reason-{{ item.invitation_id }}-{{ action }}">Motivo para {{ 'anular' if action == 'revoke' else 'reenviar' }}</label>
+              <input id="reason-{{ item.invitation_id }}-{{ action }}" name="provenance_reference" placeholder="Motivo" required>
+              <button type="submit" class="{{ 'danger' if action == 'revoke' else 'secondary' }}">{{ 'Anular' if action == 'revoke' else 'Reenviar con enlace nuevo' }}</button>
             </form>
           {% endfor %}{% elif item.status == 'accepted' and item.membership_id %}
-            <a href="/tenants/{{ organization_id }}/staff/{{ item.membership_id }}">Review permissions</a>
-          {% else %}No actions{% endif %}</td>
+            <a href="/tenants/{{ organization_id }}/staff/{{ item.membership_id }}">Revisar permisos</a>
+          {% else %}Sin acciones{% endif %}</td>
         </tr>
-      {% else %}<tr><td colspan="5">No invitations on this page.</td></tr>{% endfor %}</tbody>
+      {% else %}<tr><td colspan="5">No hay invitaciones en esta página.</td></tr>{% endfor %}</tbody>
     </table></div>
-    {% if after or next_after %}<nav aria-label="Invitation pages">
-    {% if after %}<a href="/tenants/{{ organization_id }}/staff-invitations?limit={{ page_limit }}">← First page</a>{% endif %}
-    {% if next_after %}<a href="/tenants/{{ organization_id }}/staff-invitations?after={{ next_after }}&amp;limit={{ page_limit }}">Next page →</a>{% endif %}
+    {% if after or next_after %}<nav aria-label="Páginas de invitaciones">
+    {% if after %}<a href="/tenants/{{ organization_id }}/staff-invitations?limit={{ page_limit }}">← Primera página</a>{% endif %}
+    {% if next_after %}<a href="/tenants/{{ organization_id }}/staff-invitations?after={{ next_after }}&amp;limit={{ page_limit }}">Página siguiente →</a>{% endif %}
     </nav>{% endif %}
   </section>
 </div>{% else %}
-<section class="card"><h2>Invitations could not be checked</h2><p>Existing invitations are not being shown. No change has been made.</p>
-<a class="button secondary" href="/tenants/{{ organization_id }}/staff-invitations">Reload invitations</a>
-<a class="button secondary" href="/login">Sign in again</a></section>{% endif %}
+<section class="card"><h2>No se pudieron revisar las invitaciones</h2><p>Las invitaciones existentes no se están mostrando. No se hizo ningún cambio.</p>
+<a class="button secondary" href="/tenants/{{ organization_id }}/staff-invitations">Volver a cargar invitaciones</a>
+<a class="button secondary" href="/login">Inicie sesión de nuevo</a></section>{% endif %}
 {% endblock %}

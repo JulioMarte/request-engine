@@ -131,11 +131,11 @@ async def test_history_is_read_only_redacted_and_forwards_trusted_session(status
     assert page.status_code == status
     assert "private-secret" not in page.text
     assert "private-error" not in page.text
-    content = page.text.split("<h1>Administrative history</h1>", 1)[1].split("</main>", 1)[0]
+    content = page.text.split("<h1>Historial de cambios</h1>", 1)[1].split("</main>", 1)[0]
     assert "<form" not in content
-    assert "Newest events" in page.text
-    assert ("Display name changed" in page.text) is (status == 200)
-    assert ("Older events" in page.text) is (status == 200)
+    assert "Cambios más recientes" in page.text
+    assert ("Nombre cambiado" in page.text) is (status == 200)
+    assert ("Cambios anteriores" in page.text) is (status == 200)
     assert len(runtime.requests) == 1
     method, upstream_path, kwargs = runtime.requests[0]
     assert (method, upstream_path) == ("GET", f"/v1/staff/members/{MEMBER}/history")
@@ -314,16 +314,19 @@ async def test_staff_workspace_forwards_tenant_selector_only_to_runtime() -> Non
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff")
     assert page.status_code == 200
-    assert "People &amp; permissions" in page.text
+    assert "Personas y permisos" in page.text
     assert MEMBER in page.text
     assert runtime.headers[-1]["X-RE-Organization-ID"] == ORG
     assert all("X-RE-Organization-ID" not in headers for headers in control.headers)
-    assert re.search(r"Add an existing native identity", page.text)
-    assert '<details class="card"><summary>Add an existing native identity (advanced)' in page.text
+    assert re.search(r"Agregar una identidad que ya existe", page.text)
+    assert (
+        '<details class="card" style="min-width: 0">'
+        "<summary>Agregar una identidad que ya existe (avanzado)" in page.text
+    )
     assert '<div class="staff-directory">' in page.text
-    assert "Use Invite by email for the normal onboarding journey." in page.text
-    assert "Can do" in page.text
-    assert "Can grant" in page.text
+    assert "Para sumar a alguien de la forma normal, use Invitar por correo." in page.text
+    assert "Puede hacer" in page.text
+    assert "Puede dar" in page.text
     assert "staff.manage_authority" in page.text
 
 
@@ -503,8 +506,8 @@ async def test_staff_detail_warns_that_native_session_revocation_is_global() -> 
         response = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
 
     assert response.status_code == 200
-    assert "ends all of their sessions" in response.text
-    assert "other businesses they belong to" in response.text
+    assert "cierra todas sus sesiones" in response.text
+    assert "otros negocios a los que pertenece" in response.text
 
 
 @pytest.mark.asyncio
@@ -534,10 +537,10 @@ async def test_staff_detail_without_runtime_fails_closed() -> None:
 @pytest.mark.parametrize(
     ("upstream_status", "message"),
     [
-        (401, "session is no longer authorized"),
-        (403, "do not have permission"),
-        (404, "was not found"),
-        (503, "temporarily unavailable"),
+        (401, "sesión ya no está autorizada"),
+        (403, "no tiene permiso"),
+        (404, "No se encontró"),
+        (503, "no está disponible ahora"),
     ],
 )
 async def test_staff_workspace_failed_read_hides_mutations(
@@ -572,7 +575,7 @@ async def test_staff_workspace_failed_read_hides_mutations(
 
     assert response.status_code == upstream_status
     assert message in response.text
-    assert "Add an existing native identity" not in response.text
+    assert "Agregar una identidad que ya existe" not in response.text
     assert 'id="staff-invite"' not in response.text
 
 
@@ -606,7 +609,7 @@ async def test_staff_detail_not_found_renders_no_mutation_forms() -> None:
         response = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
 
     assert response.status_code == 404
-    assert "was not found" in response.text
+    assert "No se encontró" in response.text
     assert 'id="staff-plan"' not in response.text
     assert 'id="staff-status"' not in response.text
 
@@ -781,7 +784,7 @@ async def test_staff_workspace_renders_previous_page_from_validated_trail() -> N
         page = await client.get(f"/tenants/{ORG}/staff?after={MEMBER}&limit=1&trail=root")
 
     assert page.status_code == 200
-    assert "← Previous page" in page.text
+    assert "← Página anterior" in page.text
     assert f'href="/tenants/{ORG}/staff?limit=1"' in page.text
 
 
@@ -835,7 +838,7 @@ async def test_staff_workspace_catalog_failure_is_503_not_500() -> None:
         response = await client.get(f"/tenants/{ORG}/staff")
 
     assert response.status_code == 503
-    assert "catalog unavailable" in response.text.lower()
+    assert "acciones del equipo no están disponibles" in response.text
 
 
 @pytest.mark.asyncio
@@ -873,10 +876,10 @@ async def test_staff_status_filter_is_api_backed_and_survives_both_page_links() 
         invalid = await client.get(f"/tenants/{ORG}/staff?status=disabled")
 
     assert response.status_code == 200
-    assert '<option value="active" selected>Active</option>' in response.text
+    assert '<option value="active" selected>Activo</option>' in response.text
     assert f'href="/tenants/{ORG}/staff?limit=1&amp;status=active"' in response.text
     assert f"trail=root,{MEMBER}&amp;status=active" in response.text
-    assert "Counts above cover the whole organization" in response.text
+    assert "Los totales de arriba cubren toda la organización" in response.text
     # Changing the filter starts at page one: the GET form contains no cursor/trail.
     filter_form = re.search(r'<form method="get".*?</form>', response.text, re.DOTALL)
     assert filter_form is not None
@@ -1060,8 +1063,8 @@ async def test_staff_success_status_with_invalid_page_is_not_empty_success(
         page = await client.get(f"/tenants/{ORG}/staff")
     assert page.status_code == 502
     assert 'id="staff-invite"' not in page.text
-    assert "No visible staff memberships" not in page.text
-    assert "Invite by email" not in page.text
+    assert "No hay miembros visibles en el equipo" not in page.text
+    assert "Invitar por correo" not in page.text
     assert all(method == "GET" for method, _, _ in runtime.requests)
 
 
@@ -1118,7 +1121,7 @@ async def test_staff_valid_empty_owner_page_still_renders_truthful_empty_state()
         await client.post("/login", data={"login_handle": "manager", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff")
     assert page.status_code == 200
-    assert "No visible staff memberships" in page.text
+    assert "No hay miembros visibles en el equipo" in page.text
     assert 'id="staff-invite"' in page.text
 
 
@@ -1152,9 +1155,9 @@ async def test_staff_history_invalid_collection_never_claims_empty_provenance(
         await client.post("/login", data={"login_handle": "manager", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff/{MEMBER}/history")
     assert page.status_code == 502
-    assert "Invalid staff history API response" in page.text
-    assert "No visible administrative events" not in page.text
-    assert "Older events" not in page.text
+    assert "Respuesta inesperada del historial" in page.text
+    assert "No hay cambios visibles" not in page.text
+    assert "Cambios anteriores" not in page.text
     assert all(method == "GET" for method, _, _ in runtime.requests)
 
 
@@ -1205,5 +1208,5 @@ async def test_staff_history_valid_empty_and_factual_entry_validation(case: str)
         await client.post("/login", data={"login_handle": "manager", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff/{MEMBER}/history?limit=1")
     assert page.status_code == (200 if case == "valid_empty" else 502)
-    assert ("No visible administrative events" in page.text) is (case == "valid_empty")
+    assert ("No hay cambios visibles" in page.text) is (case == "valid_empty")
     assert all(method == "GET" for method, _, _ in runtime.requests)

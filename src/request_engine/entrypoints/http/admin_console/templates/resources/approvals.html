@@ -1,45 +1,45 @@
 {% extends "base.html" %}
-{% block title %}Approvals · Request Engine{% endblock %}
+{% block title %}Aprobaciones · Request Engine{% endblock %}
 {% block content %}
 <header class="page-heading">
   <div>
-    <p class="eyebrow">{{ nav_organization_name or "Your business" }}</p>
-    <h1>Approvals</h1>
-    <p>Suggestions from your chief of staff and other agents that need your decision. Agents can suggest people for the team; only a person can invite them.</p>
+    <p class="eyebrow">{{ nav_organization_name or "Su negocio" }}</p>
+    <h1>Aprobaciones</h1>
+    <p>Sugerencias de su jefe de gabinete y de otros asistentes que necesitan su decisión. Los asistentes pueden sugerir personas para el equipo; solo una persona puede invitarlas.</p>
   </div>
 </header>
 
 <section class="panel" aria-labelledby="pending-title">
-  <div class="panel-heading"><h2 id="pending-title">Waiting for you</h2>{% if proposals %}<span class="count-badge">{{ proposals | length }}</span>{% endif %}</div>
+  <div class="panel-heading"><h2 id="pending-title">Esperando su decisión</h2>{% if proposals %}<span class="count-badge">{{ proposals | length }}</span>{% endif %}</div>
   {% if not supported %}
-  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Approvals are not available on this installation yet</strong><p>Update Request Engine to let agents suggest new team members.</p></div></div>
+  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Las aprobaciones todavía no están disponibles en esta instalación</strong><p>Actualice Request Engine para que los asistentes puedan sugerir nuevos miembros del equipo.</p></div></div>
   {% elif status == 403 %}
-  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Approvals are not available to you</strong><p>Your current permissions do not include "See the team".</p></div></div>
+  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Usted no tiene acceso a las aprobaciones</strong><p>Sus permisos actuales no incluyen "Ver el equipo".</p></div></div>
   {% elif status not in range(200, 300) %}
-  <div class="error-state"><span aria-hidden="true">!</span><div><strong>Approvals could not be loaded</strong><p>Reload the page to try again.</p></div></div>
+  <div class="error-state"><span aria-hidden="true">!</span><div><strong>No se pudieron cargar las aprobaciones</strong><p>Vuelva a cargar la página para intentarlo de nuevo.</p></div></div>
   {% elif not proposals %}
-  <div class="empty-state"><span aria-hidden="true">✓</span><div><strong>Nothing to decide</strong><p>When your chief of staff suggests adding someone, it appears here.</p></div></div>
+  <div class="empty-state"><span aria-hidden="true">✓</span><div><strong>No hay nada que decidir</strong><p>Cuando su jefe de gabinete sugiera agregar a alguien, aparecerá aquí.</p></div></div>
   {% else %}
   <ul class="approval-list">
     {% for item in proposals %}
     <li>
       <div>
-        <strong>Invite {{ item.display_name or item.email }}{% if item.display_name %} ({{ item.email }}){% endif %}</strong>
-        <p>Suggested by {{ item.proposer_label }}{% if item.created_at %} · <time datetime="{{ item.created_at }}">{{ item.created_at[:16] | replace("T", " ") }}</time>{% endif %}</p>
+        <strong>Invitar a {{ item.display_name or item.email }}{% if item.display_name %} ({{ item.email }}){% endif %}</strong>
+        <p>Sugerido por {{ item.proposer_label }}{% if item.created_at %} · <time datetime="{{ item.created_at }}">{{ item.created_at[:16] | replace("T", " ") }}</time>{% endif %}</p>
         {% if item.note %}<p>“{{ item.note }}”</p>{% endif %}
       </div>
       <div class="approval-actions">
-        <form id="approve-{{ item.proposal_id }}" method="post" action="/tenants/{{ organization_id }}/approvals/{{ item.proposal_id }}/approve" data-plain-action data-confirm="Send a team invitation to {{ item.email }}? They join with no permissions until you grant them.">
+        <form id="approve-{{ item.proposal_id }}" method="post" action="/tenants/{{ organization_id }}/approvals/{{ item.proposal_id }}/approve" data-plain-action data-confirm="¿Enviar una invitación al equipo a {{ item.email }}? Entrará sin permisos hasta que usted se los dé.">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <input type="hidden" name="intent" value="{{ intent }}-{{ loop.index }}" />
           <input type="hidden" name="expected_revision" value="{{ item.revision }}" />
-          <button type="submit">Approve and invite</button>
+          <button type="submit">Aprobar e invitar</button>
         </form>
         <form id="reject-{{ item.proposal_id }}" method="post" action="/tenants/{{ organization_id }}/approvals/{{ item.proposal_id }}/reject" data-plain-action>
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <input type="hidden" name="intent" value="{{ intent }}-r{{ loop.index }}" />
           <input type="hidden" name="expected_revision" value="{{ item.revision }}" />
-          <button type="submit" class="secondary">Decline</button>
+          <button type="submit" class="secondary">Rechazar</button>
         </form>
       </div>
     </li>

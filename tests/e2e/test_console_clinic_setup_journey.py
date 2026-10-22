@@ -90,8 +90,8 @@ async def test_fresh_owner_sets_up_a_bookable_clinic_through_the_guided_flow(
             # The v8 owner lacks organization.manage_profile: the owner refuses and
             # the console explains it plainly and offers to skip the optional step.
             assert clinic.status_code == 403, clinic.text
-            assert "platform administrator has to upgrade them" in clinic.text
-            assert "Skip this step" in clinic.text
+            assert "el administrador de la plataforma debe actualizarlos" in clinic.text
+            assert "Saltar este paso" in clinic.text
 
         location_form = {
             "csrf_token": csrf,
@@ -176,13 +176,13 @@ async def test_fresh_owner_sets_up_a_bookable_clinic_through_the_guided_flow(
         )
         if queue.status_code != 303:
             assert queue.status_code == 403, queue.text
-            assert "not allowed to create walk-in lines" in queue.text
+            assert "no tiene permiso para crear filas de espera" in queue.text
 
         finish = await browser.get(f"{root}?step=finish")
         assert finish.status_code == 200, finish.text
-        assert "First free times for Consulta general" in finish.text
+        assert "Primeros horarios libres para Consulta general" in finish.text
         assert '<ul class="slot-preview"><li>' in finish.text
-        assert 'href="/tenants/' + str(org) + '/today">Open today' in finish.text
+        assert 'href="/tenants/' + str(org) + '/today">Ir a Hoy' in finish.text
 
         headers = {"Authorization": f"Bearer {token}", "X-RE-Organization-ID": str(org)}
         readiness = await runtime.get("/v1/onboarding/readiness", headers=headers)
