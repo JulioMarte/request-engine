@@ -533,12 +533,9 @@ def test_todays_slot_search_starts_now_not_at_midnight() -> None:
 
 
 RESOURCE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-OTHER_RESOURCE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
-OTHER_LOCATION = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
-RETIRED_RESOURCE = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
-SUPPLY_PARTY = "f0f0f0f0-f0f0-4f0f-8f0f-f0f0f0f0f0f0"
-PROFILE_PARTY = "f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1"
+SECOND_RESOURCE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 SESSION = "abababab-abab-4bab-8bab-abababababab"
+_SERVING_PATH = f"/v1/locations/{LOCATION}/serving-resources"
 
 
 def _html_text(markup: str) -> str:
@@ -562,50 +559,17 @@ def _called_entry(**changes: Any) -> dict[str, Any]:
     }
 
 
-def _assignment(resource: str, location: str, **changes: Any) -> dict[str, Any]:
-    return {
-        "assignment_id": resource,
-        "resource_id": resource,
-        "location_id": location,
-        "status": "active",
-        "effective_from": "2026-01-01T00:00:00Z",
-        "effective_until": None,
-        "assignment_revision": 1,
-        "resource_availability_revision": 1,
-        **changes,
-    }
-
-
 def _service_routes() -> dict[tuple[str, str], ControlResponse]:
     routes = _today_routes()
     routes[("GET", f"/v1/queues/{QUEUE}/staff")] = _ok([_called_entry()])
-    routes[("GET", "/v1/me/authority")] = _ok(
+    routes[("GET", _SERVING_PATH)] = _ok(
         {
-            "representations": [
-                {"scope_key": "operations.manage_profile", "represented_party_id": PROFILE_PARTY},
-                {"scope_key": "operations.manage_supply", "represented_party_id": SUPPLY_PARTY},
-            ],
-            "next_after": None,
-        }
-    )
-    routes[("GET", "/v1/booking/resources")] = _ok(
-        {
+            "location_id": LOCATION,
+            "observed_at": "2026-10-22T14:00:00Z",
             "items": [
-                {"resource_id": RESOURCE, "display_name": "Dra. Ana Pérez", "active": True},
-                {"resource_id": OTHER_RESOURCE, "display_name": "Dr. Otro Sitio", "active": True},
-                {"resource_id": RETIRED_RESOURCE, "display_name": "Sala vieja", "active": True},
+                {"resource_id": RESOURCE, "display_name": "Dra. Ana Pérez"},
+                {"resource_id": SECOND_RESOURCE, "display_name": "Consultorio 2"},
             ],
-            "next_cursor": None,
-        }
-    )
-    routes[("GET", "/v1/operations/resource-assignments")] = _ok(
-        {
-            "items": [
-                _assignment(RESOURCE, LOCATION),
-                _assignment(OTHER_RESOURCE, OTHER_LOCATION),
-                _assignment(RETIRED_RESOURCE, LOCATION, effective_until="2026-02-01T00:00:00Z"),
-            ],
-            "next_cursor": None,
         }
     )
     return routes
@@ -622,43 +586,35 @@ async def test_called_customer_can_start_service_with_staff_at_the_queue_locatio
     assert page.status_code == 200, text
     assert f"/today/entries/{ENTRY}/start-service" in text
     assert 'name="expected_queue_revision" value="5"' in text
-    # Only the resource assigned NOW to this queue's location is offered.
+    # The owner's serving set for this queue's location is offered as-is.
     assert f'value="{RESOURCE}@{LOCATION}"' in text and "Dra. Ana Pérez" in text
-    assert OTHER_RESOURCE not in text and RETIRED_RESOURCE not in text
-    # Supply reads are scoped to the Party represented for supply, not another scope.
-    supply_reads = [
-        call
-        for call in runtime.calls
-        if call[1] in {"/v1/booking/resources", "/v1/operations/resource-assignments"}
-    ]
-    assert len(supply_reads) == 2
-    assert all(call[2]["params"]["authority_party_id"] == SUPPLY_PARTY for call in supply_reads)
+    assert f'value="{SECOND_RESOURCE}@{LOCATION}"' in text and "Consultorio 2" in text
+    # Only the location-scoped owner read is used: no supply/authority reads.
+    paths = {call[1] for call in runtime.calls}
+    assert _SERVING_PATH in paths
+    assert not paths & {
+        "/v1/me/authority",
+        "/v1/booking/resources",
+        "/v1/operations/resource-assignments",
+    }
 
 
 @pytest.mark.asyncio
-async def test_supply_reads_are_skipped_when_nobody_is_waiting_to_start(tmp_path: Path) -> None:
+async def test_staff_read_is_skipped_when_nobody_is_waiting_to_start(tmp_path: Path) -> None:
     runtime = _Upstream(_today_routes())
     async with _signed_in(_console(tmp_path, runtime)) as client:
         await client.get(f"/tenants/{ORG}/today")
-    assert not [call for call in runtime.calls if call[1] == "/v1/booking/resources"]
+    assert not [call for call in runtime.calls if call[1] == _SERVING_PATH]
 
 
 @pytest.mark.parametrize(
-    ("route", "answer", "explanation"),
+    ("answer", "explanation"),
     [
         (
-            ("GET", "/v1/booking/resources"),
             _error(403, "capability_required"),
-            "necesita los permisos «Ver disponibilidad, médicos y consultorios» "
-            "e «Iniciar atención»",
+            "necesita el permiso «Iniciar atención»",
         ),
         (
-            ("GET", "/v1/me/authority"),
-            _ok({"representations": [], "next_after": None}),
-            "no administra los médicos y consultorios de este negocio",
-        ),
-        (
-            ("GET", "/v1/operations/resource-assignments"),
             _error(503, "unavailable"),
             "No se pudo cargar la lista de médicos y consultorios",
         ),
@@ -666,10 +622,10 @@ async def test_supply_reads_are_skipped_when_nobody_is_waiting_to_start(tmp_path
 )
 @pytest.mark.asyncio
 async def test_missing_staff_read_is_explained_instead_of_a_broken_form(
-    tmp_path: Path, route: tuple[str, str], answer: ControlResponse, explanation: str
+    tmp_path: Path, answer: ControlResponse, explanation: str
 ) -> None:
     routes = _service_routes()
-    routes[route] = answer
+    routes[("GET", _SERVING_PATH)] = answer
     runtime = _Upstream(routes)
     async with _signed_in(_console(tmp_path, runtime)) as client:
         page = await client.get(f"/tenants/{ORG}/today")
@@ -681,8 +637,8 @@ async def test_missing_staff_read_is_explained_instead_of_a_broken_form(
 @pytest.mark.asyncio
 async def test_no_staff_at_the_location_invites_adding_one(tmp_path: Path) -> None:
     routes = _service_routes()
-    routes[("GET", "/v1/operations/resource-assignments")] = _ok(
-        {"items": [_assignment(OTHER_RESOURCE, OTHER_LOCATION)], "next_cursor": None}
+    routes[("GET", _SERVING_PATH)] = _ok(
+        {"location_id": LOCATION, "observed_at": "2026-10-22T14:00:00Z", "items": []}
     )
     runtime = _Upstream(routes)
     async with _signed_in(_console(tmp_path, runtime)) as client:

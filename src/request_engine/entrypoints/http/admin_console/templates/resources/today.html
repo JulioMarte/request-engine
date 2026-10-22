@@ -62,9 +62,7 @@
             {% if entry.status == 'called' and not entry.service_session_id %}
             {% set staff = service_staff.at(queue.location_id) %}
             {% if service_staff.problem == 'capability' %}
-            <p class="unavailable-note">Para iniciar la atención aquí necesita los permisos «Ver disponibilidad, médicos y consultorios» e «Iniciar atención». Pídaselos a quien administra los permisos del equipo.</p>
-            {% elif service_staff.problem == 'authority' %}
-            <p class="unavailable-note">Usted no puede ver qué médicos y consultorios trabajan aquí, porque no administra los médicos y consultorios de este negocio. Pídale al dueño del negocio que le asigne esa responsabilidad.</p>
+            <p class="unavailable-note">Para iniciar la atención aquí necesita el permiso «Iniciar atención». Pídaselo a quien administra los permisos del equipo.</p>
             {% elif service_staff.problem %}
             <p class="unavailable-note">No se pudo cargar la lista de médicos y consultorios. Actualice la página para intentarlo de nuevo.</p>
             {% elif not staff %}

@@ -137,3 +137,19 @@ Cancellation and reschedule may expose future capacity for recovery. That recove
 Provider/network I/O never occurs while booking locks are held. Confirmation/reminder communications and waitlist recovery begin after booking commit through outbox/contracts — but only where the reservation lifecycle outbox handler is actually composed (the reference worker factory passes `reservation_lifecycle_factory`; a `build_worker_process` composition that omits it persists lifecycle events without processing them).
 
 The authoritative transaction/race contract is `docs/v3/02-pre-sql-contract.md`. The cross-tenant extension design and privacy rationale are documented in `docs/v3/12-cross-tenant-shared-capacity-design.md` and ADR 0011.
+
+## Operator reservation reads (day board and calendar)
+
+Both reads are Queries gated by `appointments.day_board` (operator exposure, no per-subject
+authority) and are not tool-projected:
+
+- `appointments_day_board` — `GET /v1/appointments/day-board`, at most 36 hours, the same-day
+  front-desk projection (`request_read.reservation_day_v1`: attendance, queue, recall and
+  served-visit columns).
+- `appointments_calendar` — `GET /v1/appointments/calendar`, at most 42 days with
+  timezone-qualified bounds, optional `location_id`/`resource_id`, keyset pages ordered by
+  `(start_at, reservation_id)` with an opaque cursor bound to the filters
+  (`request_read.reservation_calendar_v1`, migration `0047`). Each row carries the offering
+  name and `resources`: the Reservation's current CapacityClaim set (claims not `replaced`),
+  with `claim_active=false` once released by cancellation, decline or no-show. That claim set
+  is the authoritative Reservation↔Resource link; a Resource assigned to the location is not.

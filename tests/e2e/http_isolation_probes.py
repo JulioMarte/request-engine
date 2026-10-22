@@ -84,6 +84,21 @@ def foreign_request(
             None,
             200,
         )
+    if name == "appointments.calendar":
+        # Two weeks covering the foreign reservation's slot: only the caller's
+        # own organization may appear, never tenant B's subject/offering/resource.
+        return (
+            "/v1/appointments/calendar",
+            {
+                "window_start": "2030-01-06T00:00:00+00:00",
+                "window_end": "2030-01-20T00:00:00+00:00",
+                "resource_id": str(foreign.resource_id),
+            },
+            None,
+            200,
+        )
+    if name == "front_desk.serving_resources":
+        return f"/v1/locations/{foreign.location_id}/serving-resources", {}, None, 404
     if name == "appointments.book":
         return (
             "/v1/appointments",

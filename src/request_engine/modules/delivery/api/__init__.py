@@ -9,6 +9,9 @@ from request_engine.modules.delivery.adapters.db.resource_activity_reader import
 from request_engine.modules.delivery.adapters.db.service_session_reader import (
     PostgresServiceSessionReader,
 )
+from request_engine.modules.delivery.adapters.db.serving_resource_reader import (
+    PostgresServingResourceReader,
+)
 from request_engine.modules.delivery.api.live_errors import live_service_error_handler
 from request_engine.modules.delivery.api.live_router import create_live_service_router
 from request_engine.modules.delivery.application.errors import LiveServiceError
@@ -30,6 +33,7 @@ def install_http(
             operations=PostgresLiveServiceOperations(session_factory),
             session_reader=PostgresServiceSessionReader(session_factory),
             activity_reader=PostgresResourceActivityReader(session_factory),
+            serving_reader=PostgresServingResourceReader(session_factory),
             actor_resolver=actor_resolver,
         )
     )

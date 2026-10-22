@@ -239,3 +239,14 @@ F3 uses separate read models:
 The latter two are operator reconstruction surfaces intended to survive refresh, reconnect and
 process restart. No read DTO should collapse planning, waiting and execution into one universal
 record, and no factual read may silently become an F4 forecast.
+
+## Front-desk staffing read
+
+`front_desk_serving_resources` — `GET /v1/locations/{location_id}/serving-resources` — lists the
+Resources `service_session.start` would accept at the Location at the database instant
+(`observed_at`): active Resources with an active ResourceLocationAssignment in force there. It is
+gated by `service_session.start` itself and needs no Party representation: it names only who works
+at the Location (names the day board/calendar already show), never supply configuration, terms or
+availability, which stay behind `booking_resource_list` and `operations.manage_supply`. It grants
+nothing; the start command re-locks and re-validates the Resource and assignment. An unknown or
+foreign Location is `404`. Not tool-projected.

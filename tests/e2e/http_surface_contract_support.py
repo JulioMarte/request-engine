@@ -5,6 +5,8 @@ from request_engine.platform.security.capabilities import CapabilityDefinition
 from .http_surface_administrative_configuration import ADMINISTRATIVE_CONFIGURATION_OPERATION_IDS
 
 _OPERATION_ID_OVERRIDES = {
+    "appointments.calendar": "appointments_calendar",
+    "front_desk.serving_resources": "front_desk_serving_resources",
     "staff.profile.update": "staff_profile_update",
     "staff.history.list": "staff_history_list",
     "staff.invitation.create": "staff_invitation_create",
