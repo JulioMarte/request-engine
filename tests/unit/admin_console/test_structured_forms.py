@@ -135,7 +135,7 @@ def test_empty_array_and_unselected_optional_group_are_distinct() -> None:
 
 
 def test_missing_required_nested_control_fails_before_upstream() -> None:
-    with pytest.raises(FormSubmissionError, match="Enabled is required"):
+    with pytest.raises(FormSubmissionError, match="Habilitado: este campo es obligatorio"):
         parse_submission(
             build_fields(_operation()),
             {
@@ -149,7 +149,7 @@ def test_missing_required_nested_control_fails_before_upstream() -> None:
 def test_too_many_array_entries_fail_before_upstream() -> None:
     form = {"__structured__hours": "true"}
     form.update({f"hours[{index}].day": "1" for index in range(101)})
-    with pytest.raises(FormSubmissionError, match="too many entries"):
+    with pytest.raises(FormSubmissionError, match="hay demasiadas entradas"):
         parse_submission(build_fields(_operation()), form)
 
 
@@ -158,7 +158,7 @@ def test_revision_is_hidden_only_when_explicitly_loaded_and_never_invented() -> 
     assert 'type="number" step="1" name="expected_revision" value=""' in absent
     unverified = _render(build_inputs(_operation(), values={"expected_revision": "900"}))
     assert 'type="number" step="1" name="expected_revision" value="900"' in unverified
-    assert "Current version loaded" not in unverified
+    assert "Versión actual cargada" not in unverified
     loaded = _render(
         build_inputs(
             _operation(),
@@ -167,7 +167,7 @@ def test_revision_is_hidden_only_when_explicitly_loaded_and_never_invented() -> 
         )
     )
     assert 'type="hidden" name="expected_revision" value="12"' in loaded
-    assert "Current version loaded" in loaded
+    assert "Versión actual cargada" in loaded
 
 
 def test_foreign_label_markup_is_escaped_and_empty_choices_do_not_become_id_input() -> None:
@@ -215,7 +215,7 @@ def test_recursive_schema_is_bounded_and_keeps_open_shape_advanced() -> None:
 
 @pytest.mark.parametrize("field,value", [("hours", "{}"), ("open_config", "[]")])
 def test_advanced_json_still_requires_declared_container_shape(field: str, value: str) -> None:
-    with pytest.raises(FormSubmissionError, match="must be an"):
+    with pytest.raises(FormSubmissionError, match="el valor debe ser"):
         parse_submission(build_fields(_operation()), {"hours": "[]", field: value})
 
 
@@ -272,7 +272,7 @@ def test_required_choice_never_selects_first_account_without_user_choice() -> No
     field["required"] = True
     field["choices"] = [{"value": "12", "label": "Administrator"}]
     html = _render([field])
-    assert '<option value="" selected>Choose Expected Revision</option>' in html
+    assert '<option value="" selected>Elija una opción</option>' in html
     assert '<option value="12">Administrator</option>' in html
 
 
@@ -402,8 +402,8 @@ def test_hours_use_named_weekdays_and_date_time_controls_without_losing_offsets(
             },
         )
     )
-    assert '<option value="0" selected>Monday</option>' in html
-    assert '<option value="6">Sunday</option>' in html
+    assert '<option value="0" selected>Lunes</option>' in html
+    assert '<option value="6">Domingo</option>' in html
     assert 'type="time" step="any" name="hours[0].start_time" value="09:00:00"' in html
     assert 'type="date" name="hours[0].date" value="2026-10-12"' in html
     assert 'type="text" name="hours[0].at" value="2026-10-12T09:00:00-04:00"' in html

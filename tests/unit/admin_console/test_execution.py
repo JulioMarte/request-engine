@@ -50,8 +50,9 @@ async def test_timeout_is_ambiguous_and_preserves_stable_intent_key() -> None:
     assert outcome.ok is False
     assert outcome.error_code == "outcome_unknown"
     assert outcome.idempotency_key == intent
-    assert "may have completed" in outcome.message.lower()
+    assert "se haya completado" in outcome.message.lower()
     assert "nothing was changed" not in outcome.message.lower()
+    assert "no se hizo ningún cambio" not in outcome.message.lower()
     assert "private-password-canary" not in outcome.payload_json + outcome.message
 
 
@@ -141,5 +142,5 @@ async def test_recent_session_error_preserves_intent_and_offers_password_confirm
     )
     assert outcome.needs_step_up
     assert outcome.idempotency_key == "pending-intent"
-    assert "password or a passkey" in outcome.message
+    assert "contraseña o una llave de acceso" in outcome.message
     assert not outcome.ok

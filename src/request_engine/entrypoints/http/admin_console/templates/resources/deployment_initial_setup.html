@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% import "partials/action_form.html" as action_form %}
-{% block title %}Initial recovery binding · Request Engine admin{% endblock %}
+{% block title %}Vínculo de recuperación inicial · Administración de Request Engine{% endblock %}
 {% block content %}
 <section class="card narrow">
-  <p><a href="/resources/deployment-recovery">← Deployment recovery</a></p>
-  <h1>Initial recovery binding</h1>
-  <p>Choose the recovery target and an existing secret binding for its provider credentials.</p>
-  <p>For initial setup, leave the expected active revision blank. The service will reject that attempt if a binding is already active. Inspect the current binding before retrying a conflict.</p>
+  <p><a href="/resources/deployment-recovery">← Recuperación del despliegue</a></p>
+  <h1>Vínculo de recuperación inicial</h1>
+  <p>Elija el destino de recuperación y un vínculo de secreto existente para las credenciales de su proveedor.</p>
+  <p>Para la configuración inicial, deje en blanco la revisión activa esperada. El servicio rechazará el intento si ya hay un vínculo activo. Revise el vínculo actual antes de reintentar después de un conflicto.</p>
   <div id="result"></div>
   {{ action_form.render(configure) }}
 </section>

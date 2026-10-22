@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ title }} &middot; Request Engine admin{% endblock %}
+{% block title %}{{ title }} &middot; Request Engine{% endblock %}
 {% block content %}
-<header class="page-heading"><div><p class="eyebrow">Compatibility check</p><h1>{{ title }}</h1><p>{{ message }}</p></div></header>
-<section class="card error-state" role="alert"><span aria-hidden="true">!</span><div><strong>Required operation is missing</strong><p><code>{{ operation_id }}</code></p><p>Check deployment versions or open Diagnostics. Retrying a mutation will not fix this mismatch.</p><a class="button secondary" href="/diagnostics">Open diagnostics</a> <a class="button quiet" href="/resources">Back to workspaces</a></div></section>
+<header class="page-heading"><div><p class="eyebrow">Revisión de compatibilidad</p><h1>{{ title }}</h1><p>{{ message }}</p></div></header>
+<section class="card error-state" role="alert"><span aria-hidden="true">!</span><div><strong>Falta una operación necesaria</strong><p><code>{{ operation_id }}</code></p><p>Revise que las versiones instaladas coincidan o abra Diagnóstico. Repetir un cambio no corrige esta diferencia.</p><a class="button secondary" href="/diagnostics">Abrir diagnóstico</a> <a class="button quiet" href="/resources">Volver a los espacios de trabajo</a></div></section>
 {% endblock %}

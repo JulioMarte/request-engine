@@ -201,7 +201,7 @@ async def test_form_and_header_cannot_override_selected_tenant_or_authenticated_
             result = await client.post(
                 f"{_ROOT}/{_WRITE}", data=values, headers={"X-RE-Organization-ID": _OTHER}
             )
-            assert "Action completed" in result.text
+            assert "Acción completada" in result.text
         for method, path, kwargs in runtime.calls:
             assert method == "PUT" and path == "/canonical/channels/appointment_reminder"
             assert kwargs["bearer"] == "authenticated-owner"
@@ -232,8 +232,8 @@ async def test_empty_supply_page_does_not_invent_revision_and_cursor_preserves_f
             "after": "previous",
         }
         result = await client.post(url, data=values)
-        assert "Continue from this owner read" not in result.text
-        match = re.search(r'href="([^"]+)"[^>]*>Next page', result.text)
+        assert "Continuar desde esta consulta" not in result.text
+        match = re.search(r'href="([^"]+)"[^>]*>Página siguiente', result.text)
         assert match
         params = parse_qs(urlsplit(match[1].replace("&amp;", "&")).query)
         assert params == {
@@ -307,7 +307,7 @@ async def test_malformed_owner_revision_never_offers_actions(tmp_path: Path, rev
         result = await client.post(
             url, data={"csrf_token": _csrf(form), "authority_party_id": "represented-party"}
         )
-        assert "Continue from this owner read" not in result.text
+        assert "Continuar desde esta consulta" not in result.text
         assert "expected_resource_availability_revision=" not in result.text
 
 
@@ -436,9 +436,9 @@ async def test_incomplete_successful_inventory_response_fails_closed(
         )
         assert "invalid_owner_response" in response.text
         assert "502" in response.text
-        assert "Action completed" not in response.text
-        assert "Continue from this owner read" not in response.text
-        assert "Next page" not in response.text
+        assert "Acción completada" not in response.text
+        assert "Continuar desde esta consulta" not in response.text
+        assert "Página siguiente" not in response.text
         assert len(runtime.calls) == 1
 
 

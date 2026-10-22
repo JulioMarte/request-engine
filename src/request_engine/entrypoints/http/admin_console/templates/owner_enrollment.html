@@ -1,19 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Owner invitation enrollment · Request Engine admin{% endblock %}
+{% block title %}Cree su cuenta de dueño · Request Engine{% endblock %}
 {% block content %}
-<noscript><p class="alert warning">Enable JavaScript to submit private forms safely. Without it, account enrollment and code issuance are blocked.</p></noscript>
-<section class="card narrow auth"><h1>Create your platform owner account</h1>
-{% if enrolled %}<div class="alert notice" role="status">Your account was enrolled. Platform owner authority has not been activated.</div>
-<ol><li><a href="/login?next=/account/security">Sign in with the password you just chose</a>.</li><li>Register a passkey, confirm it, and securely save offline recovery codes on Account security.</li><li>Tell the inviting owner you are ready. They must activate the enrolled invitation through their own authorized session.</li></ol>
-<p>Do not share your password, passkey or recovery codes. Share only your readiness with the inviting owner.</p>
-{% else %}<p>Use the invitation code an existing platform owner gave you. Creating your account does not give you any access yet: the owner who invited you activates it afterwards.</p>
+<noscript><p class="alert warning">Active JavaScript para enviar formularios privados de forma segura. Sin JavaScript no se puede crear la cuenta ni generar códigos.</p></noscript>
+<section class="card narrow auth"><h1>Cree su cuenta de dueño de la plataforma</h1>
+{% if enrolled %}<div class="alert notice" role="status">Su cuenta fue creada. Todavía no tiene permisos de dueño de la plataforma.</div>
+<ol><li><a href="/login?next=/account/security">Inicie sesión con la contraseña que acaba de elegir</a>.</li><li>En Seguridad de la cuenta, registre una llave de acceso (passkey), confírmela y guarde sus códigos de recuperación en un lugar seguro.</li><li>Avise al dueño que le invitó que ya está listo. Esa persona debe activar la invitación desde su propia sesión.</li></ol>
+<p>No comparta su contraseña, su llave de acceso ni sus códigos de recuperación. Al dueño que le invitó solo dígale que ya está listo.</p>
+{% else %}<p>Use el código de invitación que le dio un dueño de la plataforma. Crear su cuenta todavía no le da acceso: el dueño que le invitó la activa después.</p>
 <form method="post" action="/owner-invitations/enroll" class="stack" autocomplete="off" data-private-post>
 <input type="hidden" name="csrf_token" value="{{ enrollment_csrf }}" />
-<label>Invitation code<input type="password" name="invitation_token" required minlength="20" maxlength="1024" autocomplete="off" /></label>
-<label>Email or username<input name="login_handle" required maxlength="320" autocomplete="username" /></label>
-<label>New password<input type="password" name="password" required maxlength="1024" autocomplete="new-password" /></label>
-<button type="submit" disabled>Create account</button><p data-private-post-status role="status" aria-live="polite"></p></form>
-<p class="muted">The code and password are cleared from this page after you submit.</p>{% endif %}
-<p><a href="/login">Back to sign in</a></p></section>
+<label>Código de invitación<input type="password" name="invitation_token" required minlength="20" maxlength="1024" autocomplete="off" /></label>
+<label>Correo o usuario<input name="login_handle" required maxlength="320" autocomplete="username" /></label>
+<label>Contraseña nueva<input type="password" name="password" required maxlength="1024" autocomplete="new-password" /></label>
+<button type="submit" disabled>Crear cuenta</button><p data-private-post-status role="status" aria-live="polite"></p></form>
+<p class="muted">El código y la contraseña se borran de esta página cuando usted los envía.</p>{% endif %}
+<p><a href="/login">Volver a iniciar sesión</a></p></section>
 <script defer src="/static/account-security.js"></script>
 {% endblock %}

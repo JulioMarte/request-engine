@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
+from request_engine.entrypoints.http.admin_console.execution import human_error
 from request_engine.entrypoints.http.admin_console.json_types import as_mapping
 from request_engine.entrypoints.http.admin_console.session import (
     AdminSession,
@@ -35,12 +36,14 @@ def _proxy_json(response: Any) -> JSONResponse:
 
 
 def _login_error(response: Any) -> str:
-    body = response.error_body
-    if body is not None and isinstance(body.get("message"), str):
-        return str(body["message"])
+    # The upstream message is English and may reveal detail; show Spanish copy.
     if response.status_code == 401:
-        return "Invalid login or password"
-    return f"Control plane rejected the login ({response.status_code})"
+        return (
+            "El correo, el usuario o la contraseña no son correctos. Revíselos e intente de nuevo."
+        )
+    body = response.error_body
+    code = body.get("code") if body is not None else None
+    return human_error(code if isinstance(code, str) else "", response.status_code)
 
 
 def _new_session(
@@ -106,7 +109,10 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 request,
                 "login.html",
                 state.context(
-                    request, error="Login and password are required", notice=None, next_url=next_url
+                    request,
+                    error="Escriba su correo o usuario y su contraseña.",
+                    notice=None,
+                    next_url=next_url,
                 ),
                 status_code=400,
             )
@@ -131,7 +137,7 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 "login.html",
                 state.context(
                     request,
-                    error="Control plane returned no session token",
+                    error="El servidor no abrió la sesión. Intente iniciar sesión de nuevo.",
                     notice=None,
                     next_url=next_url,
                 ),
@@ -177,7 +183,9 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
         login_handle = str(body.get("login_handle", "")).strip()
         credential = body.get("credential")
         if not isinstance(credential, dict):
-            return JSONResponse({"error": "credential is required"}, status_code=400)
+            return JSONResponse(
+                {"error": "Falta la llave de acceso. Intente de nuevo."}, status_code=400
+            )
         session_body: dict[str, object] = {"credential": as_mapping(credential)}
         if login_handle:
             session_body["login_handle"] = login_handle
@@ -191,7 +199,7 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
         access_token = as_mapping(response.payload).get("access_token")
         if not isinstance(access_token, str) or not access_token:
             return JSONResponse(
-                {"error": "control plane returned no session token"}, status_code=502
+                {"error": "El servidor no abrió la sesión. Intente de nuevo."}, status_code=502
             )
         result = JSONResponse({"ok": True})
         state.attach_session(
@@ -203,7 +211,9 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def step_up_options(request: Request) -> Response:
         session = state.session(request)
         if session is None:
-            return JSONResponse({"error": "authentication required"}, status_code=401)
+            return JSONResponse(
+                {"error": "Su sesión terminó. Inicie sesión de nuevo."}, status_code=401
+            )
         response = await state.control_request(
             "POST",
             "/auth/native/sessions/current/webauthn/step-up-options",
@@ -214,11 +224,15 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def step_up_complete(request: Request) -> Response:
         session = state.session(request)
         if session is None:
-            return JSONResponse({"error": "authentication required"}, status_code=401)
+            return JSONResponse(
+                {"error": "Su sesión terminó. Inicie sesión de nuevo."}, status_code=401
+            )
         body = as_mapping(await _safe_json(request))
         credential = body.get("credential")
         if not isinstance(credential, dict):
-            return JSONResponse({"error": "credential is required"}, status_code=400)
+            return JSONResponse(
+                {"error": "Falta la llave de acceso. Intente de nuevo."}, status_code=400
+            )
         response = await state.control_request(
             "POST",
             "/auth/native/sessions/current/webauthn/step-up",
@@ -230,13 +244,22 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def step_up_password(request: Request) -> Response:
         session = state.session(request)
         if session is None:
-            return JSONResponse({"error": "Sign in again."}, status_code=401)
+            return JSONResponse(
+                {"error": "Su sesión terminó. Inicie sesión de nuevo."}, status_code=401
+            )
         if not state.csrf_matches(request.headers.get("X-CSRF-Token"), session.csrf_token):
-            return JSONResponse({"error": "Security form expired."}, status_code=403)
+            return JSONResponse(
+                {
+                    "error": (
+                        "El formulario de seguridad venció. Recargue la página e intente de nuevo."
+                    )
+                },
+                status_code=403,
+            )
         body = as_mapping(await _safe_json(request))
         password = body.get("password")
         if set(body) != {"password"} or not isinstance(password, str) or not password:
-            return JSONResponse({"error": "Current password is required."}, status_code=422)
+            return JSONResponse({"error": "Escriba su contraseña actual."}, status_code=422)
         response = await state.control_request(
             "POST",
             "/auth/native/sessions:reauth",
@@ -250,7 +273,9 @@ def install_auth_routes(app: FastAPI, state: AdminConsoleState) -> None:
             isinstance(result.get(field), str) and result[field]
             for field in ("authenticated_at", "reauth_expires_at")
         ):
-            return JSONResponse({"error": "Session confirmation was incomplete."}, status_code=502)
+            return JSONResponse(
+                {"error": "No se pudo confirmar la sesión. Intente de nuevo."}, status_code=502
+            )
         return JSONResponse({"ok": True})
 
     app.add_api_route("/login", login_page, methods=["GET"], response_class=HTMLResponse)

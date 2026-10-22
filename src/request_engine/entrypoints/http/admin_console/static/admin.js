@@ -37,7 +37,7 @@
     var button = form.querySelector("button[type=submit]");
     var status = form.querySelector("[data-setup-session-status], [data-setup-form-status]");
     if (button) button.disabled = true;
-    if (status) status.textContent = "Processing…";
+    if (status) status.textContent = "Procesando…";
     fetch(form.action, {
       method: "POST",
       body: new FormData(form),
@@ -46,7 +46,7 @@
     }).then(function (response) {
       if (!response.ok) {
         return response.json().catch(function () { return {}; }).then(function (body) {
-          throw new Error(body.error || "Could not start setup session");
+          throw new Error(body.error || "No se pudo iniciar la configuración. Recargue la página e intente de nuevo.");
         });
       }
       // Identity validation and invalid submissions redirect. Recovery-code
@@ -63,7 +63,7 @@
       });
     }).catch(function (error) {
       if (button) button.disabled = false;
-      if (status) status.textContent = String(error.message || error);
+      if (status) status.textContent = failureText(error);
     });
   });
 
@@ -78,7 +78,7 @@
     var status = form.querySelector("[data-password-login-status]");
     form.setAttribute("aria-busy", "true");
     if (button) button.disabled = true;
-    if (status) status.textContent = "Signing in…";
+    if (status) status.textContent = "Iniciando sesión…";
     fetch(form.action, {
       method: "POST",
       body: new FormData(form),
@@ -100,7 +100,7 @@
       if (button) button.disabled = false;
       var password = form.querySelector('input[name="password"]');
       if (password) password.value = "";
-      if (status) status.textContent = String(error.message || error);
+      if (status) status.textContent = failureText(error);
     });
   });
 
@@ -282,13 +282,44 @@
     };
   }
 
+  // Upstream error envelopes are English; show Spanish copy chosen by code.
+  // Console-generated errors arrive as a plain string and are already Spanish.
+  var ERROR_COPY = {
+    authentication_required: "Su sesión terminó. Inicie sesión de nuevo.",
+    credential_invalid: "No se pudo verificar la llave de acceso o la contraseña. Intente de nuevo.",
+    invalid_credentials: "El correo, el usuario o la contraseña no son correctos. Revíselos.",
+    recent_authentication_required: "Confirme su sesión con su contraseña o una llave de acceso.",
+    phishing_resistant_auth_required: "Confirme su identidad con una llave de acceso.",
+    reauthentication_required: "Confirme su sesión con su contraseña o una llave de acceso.",
+    recovery_completion_required: "Termine la recuperación en Seguridad de la cuenta.",
+    setup_authentication_required: "La sesión de configuración terminó. Inicie una nueva.",
+    password_work_capacity_exceeded: "El servidor está ocupado. Espere un momento e intente de nuevo.",
+    rate_limited: "Se hicieron demasiados intentos. Espere un momento e intente de nuevo.",
+  };
+
   function errorText(data, status) {
     if (data && data.error) {
       if (typeof data.error === "string") return data.error;
-      if (typeof data.error.message === "string") return data.error.message;
-      if (typeof data.error.code === "string") return data.error.code;
+      if (typeof data.error.code === "string" && ERROR_COPY[data.error.code]) return ERROR_COPY[data.error.code];
     }
-    return "HTTP " + status;
+    if (status === 401) return ERROR_COPY.authentication_required;
+    if (status === 403) return "Usted no tiene permiso para hacer esta acción.";
+    if (status === 429) return ERROR_COPY.rate_limited;
+    return "No se pudo completar la acción (HTTP " + status + "). Intente de nuevo.";
+  }
+
+  // Browser WebAuthn errors are English DOMExceptions; name them in Spanish.
+  function failureText(error) {
+    if (error && error.name === "NotAllowedError") {
+      return "Se canceló la llave de acceso o se agotó el tiempo. Intente de nuevo cuando esté listo.";
+    }
+    if (error && error.name === "InvalidStateError") {
+      return "Esta llave de acceso ya está registrada en este dispositivo.";
+    }
+    if (error && error.name === "TypeError") {
+      return "No se pudo conectar con el servidor. Revise su conexión e intente de nuevo.";
+    }
+    return String((error && error.message) || error);
   }
 
   function postJson(url, body) {
@@ -323,7 +354,7 @@
   function retryConfirmedForm(element, status) {
     var formId = element.getAttribute("data-retry-form");
     var form = formId ? document.getElementById(formId) : null;
-    if (status) status.textContent = formId ? "Confirmed. Retrying…" : "Current session confirmed.";
+    if (status) status.textContent = formId ? "Sesión confirmada. Repitiendo la acción…" : "Sesión confirmada.";
     if (form && form.requestSubmit) form.requestSubmit();
   }
 
@@ -346,15 +377,15 @@
     var button = form.querySelector("button[type=submit]");
     form.setAttribute("aria-busy", "true");
     if (button) button.disabled = true;
-    if (status) status.textContent = "Confirming current session…";
+    if (status) status.textContent = "Confirmando su sesión…";
     var recovery = form.matches("form[data-password-recovery-complete]");
     postJson(recovery ? "/account/security/recovery-complete" : "/step-up/password", { password: value })
       .then(function () {
         if (recovery) {
-          if (status) status.textContent = "Recovery completed. Sign out, then sign in with your password to start a normal session.";
+          if (status) status.textContent = "Recuperación terminada. Cierre sesión e inicie sesión con su contraseña para tener una sesión normal.";
         } else retryConfirmedForm(form, status);
       })
-      .catch(function (error) { if (status) status.textContent = String(error.message || error); })
+      .catch(function (error) { if (status) status.textContent = failureText(error); })
       .finally(function () {
         value = "";
         form.removeAttribute("aria-busy");
@@ -461,7 +492,7 @@
       if (match) visible += 1;
     });
     var status = document.getElementById("filter-status");
-    if (status) status.textContent = visible + " of " + rows.length + " loaded results shown";
+    if (status) status.textContent = "Se muestran " + visible + " de " + rows.length + " resultados cargados";
   });
 
   document.addEventListener("submit", function (event) {
@@ -478,25 +509,25 @@
     if (!(target instanceof Element)) return;
     if (target.classList.contains("step-up-btn")) {
       var status = reauthenticationStatus(target);
-      if (status) status.textContent = "Waiting for passkey…";
+      if (status) status.textContent = "Esperando la llave de acceso…";
       stepUp()
         .then(function () {
           retryConfirmedForm(target, status);
         })
-        .catch(function (error) { if (status) status.textContent = String(error.message || error); });
+        .catch(function (error) { if (status) status.textContent = failureText(error); });
     }
     if (target.id === "setup-passkey-btn") {
       var setupStatus = document.getElementById("setup-passkey-status");
-      if (setupStatus) setupStatus.textContent = "Waiting for passkey…";
+      if (setupStatus) setupStatus.textContent = "Esperando la llave de acceso…";
       setupPasskey().catch(function (error) {
-        if (setupStatus) setupStatus.textContent = String(error.message || error);
+        if (setupStatus) setupStatus.textContent = failureText(error);
       });
     }
     if (target.id === "passkey-login-btn") {
       var loginStatus = document.getElementById("passkey-login-status");
-      if (loginStatus) loginStatus.textContent = "Waiting for passkey…";
+      if (loginStatus) loginStatus.textContent = "Esperando la llave de acceso…";
       passkeyLogin().catch(function (error) {
-        if (loginStatus) loginStatus.textContent = String(error.message || error);
+        if (loginStatus) loginStatus.textContent = failureText(error);
       });
     }
   });
@@ -593,7 +624,7 @@
     var text = "value" in source ? source.value : source.textContent;
     navigator.clipboard.writeText(text || "").then(function () {
       var original = button.textContent;
-      button.textContent = "Copied";
+      button.textContent = "Copiado";
       window.setTimeout(function () { button.textContent = original; }, 1600);
     });
   });

@@ -77,7 +77,8 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
     async def enrollment_post(request: Request) -> Response:
         if request.headers.get("X-Requested-With") != "fetch":
             return JSONResponse(
-                {"error": "Enable JavaScript to submit this private form safely."}, status_code=400
+                {"error": "Active JavaScript para enviar este formulario privado de forma segura."},
+                status_code=400,
             )
         stored = anonymous.read(request.cookies.get(cookie_name, ""), "setup")
         form = await request.form()
@@ -86,7 +87,7 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
         ):
             return enrollment_page(
                 request,
-                error="This invitation form expired. Please submit the new form.",
+                error="Este formulario de invitación venció. Envíe el formulario nuevo.",
                 status=403,
             )
         payload = {
@@ -95,7 +96,7 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
         if not all(payload.values()):
             return enrollment_page(
                 request,
-                error="Invitation proof, login handle and password are required.",
+                error="Debe completar el código de invitación, el usuario y la contraseña.",
                 status=422,
             )
         try:
@@ -108,21 +109,23 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
             return enrollment_page(
                 request,
                 error=(
-                    "The result could not be confirmed. Try signing in with your new account "
-                    "before submitting the invitation again."
+                    "No se pudo confirmar el resultado. Intente iniciar sesión con su cuenta "
+                    "nueva antes de enviar la invitación otra vez."
                 ),
                 status=503,
             )
         except httpx.HTTPError:
             return enrollment_page(
-                request, error="The enrollment service is unavailable. Try again later.", status=503
+                request,
+                error="El servicio de inscripción no está disponible. Inténtelo más tarde.",
+                status=503,
             )
         if not response.ok:
             return enrollment_page(
                 request,
                 error=(
-                    "The invitation could not be enrolled. Check with the inviting owner. "
-                    "No platform authority was granted."
+                    "No se pudo completar la inscripción con esta invitación. Consulte con el "
+                    "dueño que le invitó. No se otorgó ningún permiso en la plataforma."
                 ),
                 status=response.status_code if response.status_code in (401, 409, 422) else 503,
             )
@@ -131,8 +134,8 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
             return enrollment_page(
                 request,
                 error=(
-                    "The enrollment result was incomplete. Try signing in before submitting "
-                    "the invitation again."
+                    "El resultado de la inscripción llegó incompleto. Intente iniciar sesión "
+                    "antes de enviar la invitación otra vez."
                 ),
                 status=502,
             )
@@ -177,7 +180,10 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
                 codes=None,
                 error=""
                 if valid
-                else "Your account security could not be checked. Sign in again or retry.",
+                else (
+                    "No se pudo verificar la seguridad de su cuenta. Inicie sesión de nuevo "
+                    "o inténtelo otra vez."
+                ),
             ),
             status_code=200 if valid else 503,
         )
@@ -185,16 +191,18 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
     async def passkey_proxy(request: Request, *, complete: bool) -> Response:
         session = state.session(request)
         if session is None:
-            return JSONResponse({"error": "Sign in again."}, status_code=401)
+            return JSONResponse({"error": "Inicie sesión de nuevo."}, status_code=401)
         try:
             body = as_mapping(await request.json())
         except ValueError:
-            return JSONResponse({"error": "Invalid request."}, status_code=400)
+            return JSONResponse({"error": "Solicitud no válida."}, status_code=400)
         if not state.csrf_matches(str(body.get("csrf_token", "")), session.csrf_token):
-            return JSONResponse({"error": "Security form expired."}, status_code=403)
+            return JSONResponse(
+                {"error": "El formulario de seguridad venció. Recargue la página."}, status_code=403
+            )
         credential = body.get("credential")
         if complete and not isinstance(credential, dict):
-            return JSONResponse({"error": "Passkey credential is required."}, status_code=422)
+            return JSONResponse({"error": "Falta la llave de acceso."}, status_code=422)
         try:
             response = await state.control_request(
                 "POST",
@@ -204,10 +212,17 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
                 json_body={"credential": as_mapping(credential)} if complete else None,
             )
         except httpx.HTTPError:
-            return JSONResponse({"error": "The passkey service is unavailable."}, status_code=503)
+            return JSONResponse(
+                {"error": "El servicio de llaves de acceso no está disponible."}, status_code=503
+            )
         if not response.ok:
             return JSONResponse(
-                {"error": "Passkey registration could not be completed. Retry or sign in again."},
+                {
+                    "error": (
+                        "No se pudo registrar la llave de acceso. Inténtelo otra vez o inicie "
+                        "sesión de nuevo."
+                    )
+                },
                 status_code=response.status_code,
             )
         if complete:
@@ -215,8 +230,8 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
                 return JSONResponse(
                     {
                         "error": (
-                            "Passkey registration returned an incomplete result. "
-                            "Reload account security."
+                            "El registro de la llave de acceso llegó incompleto. "
+                            "Recargue Seguridad de la cuenta."
                         )
                     },
                     status_code=502,
@@ -224,22 +239,27 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
             return JSONResponse({"ok": True})
         public_key = as_mapping(response.payload).get("public_key")
         if not isinstance(public_key, dict):
-            return JSONResponse({"error": "Passkey options were incomplete."}, status_code=502)
+            return JSONResponse(
+                {"error": "Las opciones de la llave de acceso llegaron incompletas."},
+                status_code=502,
+            )
         return JSONResponse({"public_key": as_mapping(public_key)})
 
     async def recovery_complete_password(request: Request) -> Response:
         session = state.session(request)
         if session is None:
-            return JSONResponse({"error": "Sign in again."}, status_code=401)
+            return JSONResponse({"error": "Inicie sesión de nuevo."}, status_code=401)
         if not state.csrf_matches(request.headers.get("X-CSRF-Token"), session.csrf_token):
-            return JSONResponse({"error": "Security form expired."}, status_code=403)
+            return JSONResponse(
+                {"error": "El formulario de seguridad venció. Recargue la página."}, status_code=403
+            )
         try:
             body = as_mapping(await request.json())
         except ValueError:
-            return JSONResponse({"error": "Current password is required."}, status_code=422)
+            return JSONResponse({"error": "Escriba su contraseña actual."}, status_code=422)
         password = body.get("password")
         if set(body) != {"password"} or not isinstance(password, str) or not password:
-            return JSONResponse({"error": "Current password is required."}, status_code=422)
+            return JSONResponse({"error": "Escriba su contraseña actual."}, status_code=422)
         response = await state.control_request(
             "POST",
             "/auth/native/sessions/current/recovery:complete",
@@ -255,7 +275,9 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
             or not isinstance(result.get("recovery_state"), str)
             or result["recovery_state"] == "recovery_restricted"
         ):
-            return JSONResponse({"error": "Recovery completion was incomplete."}, status_code=502)
+            return JSONResponse(
+                {"error": "La recuperación no se completó del todo."}, status_code=502
+            )
         return JSONResponse({"ok": True, "requires_sign_in": True})
 
     async def passkey_options(request: Request) -> Response:
@@ -267,14 +289,17 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
     async def recovery_codes(request: Request) -> Response:
         if request.headers.get("X-Requested-With") != "fetch":
             return JSONResponse(
-                {"error": "Enable JavaScript to issue codes safely."}, status_code=400
+                {"error": "Active JavaScript para generar los códigos de forma segura."},
+                status_code=400,
             )
         session = state.session(request)
         if session is None:
             return RedirectResponse("/login?next=/account/security", status_code=303)
         form = await request.form()
         if not state.csrf_matches(str(form.get("csrf_token", "")), session.csrf_token):
-            return JSONResponse({"error": "Security form expired."}, status_code=403)
+            return JSONResponse(
+                {"error": "El formulario de seguridad venció. Recargue la página."}, status_code=403
+            )
         try:
             response = await state.control_request(
                 "POST",
@@ -285,8 +310,8 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
             return JSONResponse(
                 {
                     "error": (
-                        "The code issuance result was not confirmed. "
-                        "Reload account security before trying again."
+                        "No se confirmó si se generaron los códigos. "
+                        "Recargue Seguridad de la cuenta antes de intentarlo otra vez."
                     )
                 },
                 status_code=503,
@@ -301,8 +326,8 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
                     available=False,
                     codes=None,
                     error=(
-                        "Codes could not be issued. Confirm your current session, "
-                        "then reload account security and retry."
+                        "No se pudieron generar los códigos. Confirme su sesión actual, "
+                        "recargue Seguridad de la cuenta e inténtelo otra vez."
                     ),
                 ),
                 status_code=response.status_code,
@@ -318,7 +343,12 @@ def install_owner_enrollment_routes(app: FastAPI, state: AdminConsoleState) -> N
         )
         if not codes:
             return JSONResponse(
-                {"error": "Code issuance returned an incomplete result. Reload account security."},
+                {
+                    "error": (
+                        "La generación de códigos llegó incompleta. "
+                        "Recargue Seguridad de la cuenta."
+                    )
+                },
                 status_code=502,
             )
         return state.templates.TemplateResponse(

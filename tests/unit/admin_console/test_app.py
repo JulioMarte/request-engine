@@ -141,8 +141,8 @@ async def test_dashboard_reports_api_counters_without_fabricated_time_window(
         await client.post("/login", data={"login_handle": "manager", "password": "pw"})
         page = await client.get("/")
     assert page.status_code == 200
-    assert "since its last restart" in page.text
-    assert "Not 24-hour totals" in page.text
+    assert "desde su último reinicio" in page.text
+    assert "No son totales de 24 horas" in page.text
     assert ("1234567" in page.text) is (upstream_status == 200)
     assert "<strong>-1</strong>" not in page.text
     assert "<strong>True</strong>" not in page.text
@@ -175,7 +175,8 @@ async def test_login_page_renders_with_security_headers() -> None:
     async with _client(app) as client:
         response = await client.get("/login")
     assert response.status_code == 200
-    assert "Sign in" in response.text
+    assert "Iniciar sesión" in response.text
+    assert '<html lang="es">' in response.text
     assert response.headers["content-security-policy"].startswith("default-src 'none'")
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["cache-control"] == "no-store"
@@ -200,7 +201,7 @@ async def test_password_login_sets_cookie_and_opens_dashboard() -> None:
         assert "re_admin_console" in client.cookies
         dashboard = await client.get("/")
         assert dashboard.status_code == 200
-        assert "Dashboard" in dashboard.text
+        assert "Panel / Resumen" in dashboard.text
 
 
 @pytest.mark.asyncio
@@ -213,11 +214,11 @@ async def test_dashboard_people_shortcut_selects_own_context_without_tenant_call
         dashboard = await client.get("/")
     assert dashboard.status_code == 200
     assert re.search(
-        r'<a href="/my-organizations">(?:(?!</a>).)*?<strong>People &amp; permissions</strong>',
+        r'<a href="/my-organizations">(?:(?!</a>).)*?<strong>Personas y permisos</strong>',
         dashboard.text,
         re.DOTALL,
     )
-    assert "Choose your organization, invite people, and review access" in dashboard.text
+    assert "Elija su negocio, invite personas y revise los accesos" in dashboard.text
     assert all("/v1/staff" not in call for call in upstream.calls)
     assert all(not call.startswith(("POST ", "PUT ", "DELETE ")) for call in upstream.calls)
 
@@ -234,7 +235,9 @@ async def test_login_rejected_when_control_denies() -> None:
     async with _client(app) as client:
         response = await client.post("/login", data={"login_handle": "owner", "password": "bad"})
     assert response.status_code == 401
-    assert "nope" in response.text
+    # The denial is explained in Spanish; the upstream English message never leaks.
+    assert "El correo, el usuario o la contraseña no son correctos" in response.text
+    assert "nope" not in response.text
 
 
 @pytest.mark.asyncio
@@ -301,7 +304,7 @@ async def test_setup_wizard_renders() -> None:
     async with _client(app) as client:
         response = await client.get("/setup")
         assert response.status_code == 200
-        assert "First-run setup" in response.text
+        assert "Configuración inicial" in response.text
 
 
 @pytest.mark.asyncio
@@ -338,7 +341,7 @@ async def test_setup_can_skip_optional_passkey_and_project_recovery_then_claim()
         )
         passkey = await client.get(submitted.headers["location"])
         assert 'href="/setup?step=recovery"' in passkey.text
-        assert "Continue without a passkey" in passkey.text
+        assert "Continuar sin llave de acceso" in passkey.text
         recovery = await client.get("/setup?step=recovery")
         assert 'action="/setup/recovery-codes"' in recovery.text
         codes = await client.post("/setup/recovery-codes")
@@ -349,7 +352,7 @@ async def test_setup_can_skip_optional_passkey_and_project_recovery_then_claim()
             data={"csrf_token": csrf.group(1), "claim_provenance": "browser-setup"},
         )
         assert finished.status_code == 200
-        assert "Instance claimed successfully" in finished.text
+        assert "Instancia reclamada correctamente" in finished.text
         assert not any("webauthn" in path for path in control.calls)
         assert control.calls.index("POST /v1/setup/recovery-codes") < control.calls.index(
             "POST /v1/setup:finalize"
@@ -399,8 +402,9 @@ async def test_setup_password_policy_error_keeps_identity_step_and_safe_feedback
         assert "tiny-pw" not in rejected.headers["location"]
         feedback = await client.get(rejected.headers["location"])
         assert feedback.status_code == 200
-        assert "at least 12 characters" in feedback.text
-        assert "at most 1024 bytes" in feedback.text
+        assert "al menos 12 caracteres" in feedback.text
+        assert "como máximo 1024 bytes" in feedback.text
+        assert "password must be valid UTF-8" not in feedback.text
         assert 'action="/setup/identity"' in feedback.text
         assert 'minlength="12"' in feedback.text
         assert "tiny-pw" not in feedback.text
@@ -413,8 +417,8 @@ async def test_login_page_separates_passkey_from_password() -> None:
     async with _client(app) as client:
         response = await client.get("/login")
     assert response.status_code == 200
-    assert "Continue with passkey" in response.text
-    assert "No password or username needed" in response.text
+    assert "Continuar con una llave de acceso" in response.text
+    assert "No necesita contraseña ni usuario" in response.text
     assert 'id="passkey_handle"' not in response.text
 
 
@@ -434,7 +438,7 @@ async def test_diagnostics_requires_session_then_renders() -> None:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         page = await client.get("/diagnostics")
         assert page.status_code == 200
-        assert "Diagnostics" in page.text
+        assert "Diagnóstico" in page.text
         payload = await client.get("/diagnostics/errors.json")
         assert payload.status_code == 200
         assert payload.json()["metrics"]["control_calls"] >= 1
@@ -455,7 +459,7 @@ async def test_unhandled_error_renders_error_page_and_is_tracked(
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get("/operations/thing_create")
         assert response.status_code == 500
-        assert "Something went wrong" in response.text
+        assert "Ocurrió un error inesperado" in response.text
         assert response.headers.get("x-request-id")
         tracked = await client.get("/diagnostics/errors.json")
         assert tracked.status_code == 200
@@ -475,8 +479,8 @@ async def test_setup_page_degrades_when_control_unreachable() -> None:
     async with _client(app) as client:
         response = await client.get("/setup")
     assert response.status_code == 200
-    assert "First-run setup" in response.text
-    assert "control plane unreachable" in response.text
+    assert "Configuración inicial" in response.text
+    assert "No se pudo conectar con el servidor de control" in response.text
 
 
 @pytest.mark.asyncio
@@ -505,7 +509,7 @@ async def test_dashboard_degrades_on_non_object_control_error_body() -> None:
         response = await client.get("/")
 
     assert response.status_code == 200
-    assert "control plane returned HTTP 500" in response.text
+    assert "el plano de control respondió HTTP 500" in response.text
     assert "Something went wrong" not in response.text
 
 
@@ -525,7 +529,7 @@ async def test_dashboard_degrades_when_control_unreachable() -> None:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get("/")
     assert response.status_code == 200
-    assert "control plane unreachable" in response.text
+    assert "no se pudo conectar con el plano de control" in response.text
 
 
 @pytest.mark.asyncio
@@ -544,9 +548,9 @@ async def test_dashboard_flags_reported_recovery_readiness_failure(state: str) -
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get("/")
     assert response.status_code == 200
-    assert "Some operational checks need attention" in response.text
-    assert "Restore drill" in response.text
-    assert f"Current reported state: {state}" in response.text
+    assert "Algunas verificaciones operativas requieren atención" in response.text
+    assert "Prueba de restauración" in response.text
+    assert f"Estado reportado actualmente: {state}" in response.text
 
 
 @pytest.mark.asyncio
@@ -557,7 +561,7 @@ async def test_dashboard_does_not_show_internal_coverage_or_empty_activity() -> 
         response = await client.get("/")
     assert "Admin coverage" not in response.text
     assert "Recent operational activity" not in response.text
-    assert "Sign out" in response.text
+    assert "Cerrar sesión" in response.text
 
 
 @pytest.mark.asyncio
@@ -576,8 +580,8 @@ async def test_dashboard_does_not_claim_health_from_incomplete_success_payload()
     async with _client(app) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         response = await client.get("/")
-    assert "Operational status is incomplete" in response.text
-    assert "Core operational checks are healthy" not in response.text
+    assert "El estado operativo está incompleto" in response.text
+    assert "Las verificaciones operativas principales están bien" not in response.text
 
 
 @pytest.mark.asyncio
@@ -607,9 +611,9 @@ async def test_dashboard_missing_or_malformed_alerts_never_claim_health(
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         page = await client.get("/")
     assert page.status_code == 200
-    assert "Operational status is incomplete" in page.text
-    assert "Checks are incomplete" in page.text
-    assert "Core operational checks are healthy" not in page.text
+    assert "El estado operativo está incompleto" in page.text
+    assert "Las verificaciones están incompletas" in page.text
+    assert "Las verificaciones operativas principales están bien" not in page.text
 
 
 @pytest.mark.asyncio
@@ -652,10 +656,11 @@ async def test_dashboard_interprets_canonical_readiness_and_refreshes_only_reads
         api.calls.clear()
         page = await client.get("/")
         assert page.status_code == 200
-        assert ("Core operational checks are healthy" in page.text) is (fence == "fenced")
+        healthy = "Las verificaciones operativas principales están bien"
+        assert (healthy in page.text) is (fence == "fenced")
         assert 'datetime="' in page.text
-        assert "Reported readiness evidence" in page.text
-        assert "production certification" in page.text
+        assert "Evidencia de preparación reportada" in page.text
+        assert "certificación de producción" in page.text
     assert api.calls == ["GET /v1/platform/readiness", "GET /v1/platform/observability"]
 
 

@@ -6,18 +6,18 @@
   {% if field.preserve_null %}<input type="hidden" name="__null__{{ field.name }}" value="true" />{% endif %}
   {% if field.hidden or (field.location == 'path' and field.value) %}
     <input type="hidden" name="{{ field.name }}" value="{{ field.value }}" />
-    {% if field.loaded_revision %}<p class="muted">Current version loaded. Changes are checked before saving.</p>{% endif %}
+    {% if field.loaded_revision %}<p class="muted">Versión actual cargada. Los cambios se revisan antes de guardar.</p>{% endif %}
   {% elif field.structured %}
     <section class="structured-input" data-structured-input>
       <input type="hidden" name="__structured__{{ field.name }}" value="true" />
       {% if not field.required %}
-        <label class="check"><input type="checkbox" name="__include__{{ field.name }}" value="true" data-include-structured{% if field.included %} checked{% endif %} /> Set {{ field.label }}</label>
+        <label class="check"><input type="checkbox" name="__include__{{ field.name }}" value="true" data-include-structured{% if field.included %} checked{% endif %} /> Indicar {{ field.label | lower }}</label>
       {% endif %}
       {% if field.nullable %}
-        <label>{{ field.label }} value
+        <label>Valor de {{ field.label | lower }}
           <select name="__mode__{{ field.name }}" data-structured-mode>
-            <option value="value"{% if not field.null_value %} selected{% endif %}>Set values</option>
-            <option value="null"{% if field.null_value %} selected{% endif %}>Clear value</option>
+            <option value="value"{% if not field.null_value %} selected{% endif %}>Indicar valores</option>
+            <option value="null"{% if field.null_value %} selected{% endif %}>Dejar vacío</option>
           </select>
         </label>
       {% endif %}
@@ -29,21 +29,21 @@
         {% else %}
           <div data-array-editor data-index-token="{{ field.index_token }}" data-next-index="{{ field.rows|length }}">
             <div data-array-rows>
-              {% for row in field.rows %}<div data-array-row>{{ control(row) }}<button type="button" class="secondary" data-array-remove>Remove entry</button></div>{% endfor %}
+              {% for row in field.rows %}<div data-array-row>{{ control(row) }}<button type="button" class="secondary" data-array-remove>Quitar entrada</button></div>{% endfor %}
             </div>
-            <template data-array-template><div data-array-row>{{ control(field.prototype) }}<button type="button" class="secondary" data-array-remove>Remove entry</button></div></template>
-            <button type="button" class="secondary" data-array-add>Add entry</button>
-            <small class="muted">Add each entry separately. An empty list has no entries.</small>
+            <template data-array-template><div data-array-row>{{ control(field.prototype) }}<button type="button" class="secondary" data-array-remove>Quitar entrada</button></div></template>
+            <button type="button" class="secondary" data-array-add>Agregar entrada</button>
+            <small class="muted">Agregue cada entrada por separado. Una lista vacía no tiene entradas.</small>
           </div>
         {% endif %}
       </fieldset>
-      <noscript><p class="muted">Enable JavaScript to add entries or enable optional groups.</p></noscript>
+      <noscript><p class="muted">Active JavaScript para agregar entradas o activar los grupos opcionales.</p></noscript>
     </section>
   {% elif field.enum or field.enum_options is defined or field.choices is defined %}
     {% set choices = field.enum_options if field.enum_options is defined else field.choices if field.choices is defined else none %}
     <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <select name="{{ field.name }}"{% if field.required %} required{% endif %}{% if field.readonly or choices == [] %} disabled{% endif %}>
-        <option value=""{% if not field.value %} selected{% endif %}>{% if field.required %}Choose {{ field.label }}{% else %}Leave unchanged / use default{% endif %}</option>
+        <option value=""{% if not field.value %} selected{% endif %}>{% if field.required %}Elija una opción{% else %}Sin cambios (valor predeterminado){% endif %}</option>
         {% if choices is not none %}
           {% for option in choices %}<option value="{{ option.value }}"{% if option.value == field.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
         {% else %}
@@ -56,23 +56,23 @@
   {% elif field.kind == 'boolean' %}
     <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <select name="{{ field.name }}"{% if field.required %} required{% endif %}>
-        <option value=""{% if not field.value %} selected{% endif %}>{% if field.required %}Choose yes or no{% else %}Leave unchanged / use default{% endif %}</option>
-        <option value="true"{% if field.value in ('true', 'True', '1', 'on', 'yes') %} selected{% endif %}>Yes</option>
+        <option value=""{% if not field.value %} selected{% endif %}>{% if field.required %}Elija sí o no{% else %}Sin cambios (valor predeterminado){% endif %}</option>
+        <option value="true"{% if field.value in ('true', 'True', '1', 'on', 'yes') %} selected{% endif %}>Sí</option>
         <option value="false"{% if field.value in ('false', 'False', '0', 'off', 'no') %} selected{% endif %}>No</option>
       </select>
     </label>
   {% elif field.kind in ('object', 'array') %}
     <details class="advanced-input"{% if field.required %} open{% endif %}>
-      <summary>{{ field.label }} — advanced configuration{% if field.required %} <span class="req">*</span>{% endif %}</summary>
-      <label>Structured configuration (JSON)
+      <summary>{{ field.label }}: configuración avanzada{% if field.required %} <span class="req">*</span>{% endif %}</summary>
+      <label>Configuración estructurada (JSON)
         <textarea name="{{ field.name }}" rows="6" spellcheck="false"{% if field.required %} required{% endif %}>{{ field.value }}</textarea>
       </label>
-      <small class="muted">This operation accepts an open structure. It needs a configuration document.{% if field.description %} {{ field.description }}{% endif %}</small>
+      <small class="muted">Esta operación acepta una estructura libre. Escriba el documento de configuración en JSON.{% if field.description %} {{ field.description }}{% endif %}</small>
     </details>
   {% elif field.secret %}
     <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <input type="password" name="{{ field.name }}" value="" autocomplete="new-password"{% if field.required %} required{% endif %} />
-      <small class="muted">Secret value is never echoed{% if field.description %} &middot; {{ field.description }}{% endif %}</small>
+      <small class="muted">El valor secreto nunca se vuelve a mostrar{% if field.description %} &middot; {{ field.description }}{% endif %}</small>
     </label>
   {% elif field.kind in ('integer', 'number') %}
     <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
@@ -82,7 +82,7 @@
   {% else %}
     <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <input type="{% if field.format in ('date', 'time') %}{{ field.format }}{% else %}text{% endif %}"{% if field.format == 'time' %} step="any"{% endif %} name="{{ field.name }}" value="{{ field.value }}"{% if field.required %} required{% endif %}{% if field.readonly %} readonly{% endif %} />
-      {% if field.exact_time %}<small class="muted">This exact time contains precision or an offset that the browser picker cannot retain. Its value is preserved here.</small>{% endif %}
+      {% if field.exact_time %}<small class="muted">Esta hora tiene una precisión o una zona horaria que el selector del navegador no puede conservar. Aquí se mantiene tal cual.</small>{% endif %}
       {% if field.description %}<small class="muted">{{ field.description }}</small>{% endif %}
     </label>
   {% endif %}

@@ -40,12 +40,12 @@ def install_controller_adoption_routes(app: FastAPI, state: AdminConsoleState) -
                 await state.catalog(), CONTROLLER_ADOPTION_OPERATION_IDS[action]
             )
         except MissingOperation:
-            return local_error(503, "operation_unavailable", "This operation is unavailable.")
+            return local_error(503, "operation_unavailable", "Esta operación no está disponible.")
         except (httpx.HTTPError, ValueError):
             return local_error(
                 503,
                 "catalog_unavailable",
-                "The operation catalog is unavailable. Reload before acting.",
+                "El catálogo de operaciones no está disponible. Recargue antes de continuar.",
             )
         assert operation is not None
         return await execute_operation(state, operation, bearer=session.access_token, form=values)
@@ -64,7 +64,7 @@ def install_controller_adoption_routes(app: FastAPI, state: AdminConsoleState) -
             outcome = local_error(
                 502,
                 "control_response_invalid",
-                "The control plane returned an invalid collection. Reload before acting.",
+                "La plataforma devolvió una lista no válida. Recargue antes de continuar.",
             )
             payload = as_mapping(None)
         cursor = next_cursor(payload)
@@ -93,7 +93,8 @@ def install_controller_adoption_routes(app: FastAPI, state: AdminConsoleState) -
             outcome = local_error(
                 502,
                 "control_response_invalid",
-                "The control plane returned an invalid consent review. No action is available.",
+                "La plataforma devolvió una revisión de consentimiento no válida. "
+                "No hay acciones disponibles.",
             )
             item = as_mapping(None)
         return state.templates.TemplateResponse(
@@ -117,7 +118,9 @@ def install_controller_adoption_routes(app: FastAPI, state: AdminConsoleState) -
         form = await request.form()
         values = {key: str(value) for key, value in form.items()}
         if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
-            outcome = local_error(403, "csrf_failed", "CSRF token missing or invalid")
+            outcome = local_error(
+                403, "csrf_failed", "El formulario venció. Recargue la página e inténtelo de nuevo."
+            )
         else:
             # Preserve the reviewed revision and stable intent on retries; never
             # silently refresh consent. The URL, not an editable form, binds the request.

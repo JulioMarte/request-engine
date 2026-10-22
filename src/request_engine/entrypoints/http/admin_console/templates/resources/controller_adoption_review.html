@@ -1,20 +1,20 @@
 {% extends "base.html" %}{% import "partials/capabilities.html" as caps %}
-{% block title %}Review controller policy · Request Engine admin{% endblock %}
+{% block title %}Revisar política del controlador · Request Engine{% endblock %}
 {% block content %}
-<header class="page-heading"><div><a href="/resources/controller-policy-adoptions">← Policy adoption requests</a><h1>Review controller consent</h1></div></header>
+<header class="page-heading"><div><a href="/resources/controller-policy-adoptions">← Solicitudes de adopción de política</a><h1>Revisar el consentimiento del controlador</h1></div></header>
 <section class="card">
 {% if result and result.status == 403 and not result.needs_step_up %}
-<div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Your account can't approve permission changes</strong>
-<p>For safety, the platform owner who first set up this installation can't approve a business's new permissions. A second platform owner does it, so no single person can raise authority alone. Invite one from <a href="/resources/owners/invitations">Platform owners</a>, activate them, and ask them to approve this request.</p></div></div>
+<div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Su cuenta no puede aprobar cambios de permisos</strong>
+<p>Por seguridad, el dueño de la plataforma que hizo la instalación inicial no puede aprobar los permisos nuevos de un negocio. Lo hace un segundo dueño de la plataforma, para que nadie pueda aumentar la autoridad por sí solo. Invite a uno desde <a href="/resources/owners/invitations">Dueños de la plataforma</a>, actívelo y pídale que apruebe esta solicitud.</p></div></div>
 {% elif result %}{% include "partials/result.html" %}{% else %}
-<dl class="detail"><dt>Organization</dt><dd>{{ item.organization_id }}</dd><dt>Controller</dt><dd>{{ item.controller_principal_id }}</dd><dt>Policy change</dt><dd>{{ item.source_policy_key }} → {{ item.target_policy_key }}</dd><dt>Controller's reason</dt><dd>{{ item.reason }}</dd><dt>Consent expires</dt><dd>{{ item.expires_at }}</dd><dt>Consented authority revision</dt><dd>{{ item.expected_authority_revision }}</dd><dt>Current authority revision</dt><dd>{{ item.current_authority_revision }}</dd><dt>Request revision</dt><dd>{{ item.request_revision }}</dd></dl>
-<h2>Permissions this adds</h2>{{ caps.groups(item.proposed_capabilities, "No new permissions.") }}
-{% if item.revoked_capabilities %}<div class="alert warning"><strong>Revoked permissions are present</strong><ul>{% for capability in item.revoked_capabilities %}<li>{{ capability }}</li>{% endfor %}</ul></div>{% endif %}
-<p class="muted">This review does not guarantee approval. Applying independently checks current consent, account status, recovery history and authority. A stale or closed request requires fresh consent.</p>
-<form id="adoption-apply" class="stack" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#result" hx-swap="innerHTML" data-confirm="Apply this reviewed controller policy?">
+<dl class="detail"><dt>Negocio</dt><dd>{{ item.organization_id }}</dd><dt>Controlador</dt><dd>{{ item.controller_principal_id }}</dd><dt>Cambio de política</dt><dd>{{ item.source_policy_key }} → {{ item.target_policy_key }}</dd><dt>Motivo del controlador</dt><dd>{{ item.reason }}</dd><dt>El consentimiento vence</dt><dd>{{ item.expires_at }}</dd><dt>Revisión de autoridad consentida</dt><dd>{{ item.expected_authority_revision }}</dd><dt>Revisión de autoridad actual</dt><dd>{{ item.current_authority_revision }}</dd><dt>Revisión de la solicitud</dt><dd>{{ item.request_revision }}</dd></dl>
+<h2>Permisos que agrega</h2>{{ caps.groups(item.proposed_capabilities, "No agrega permisos nuevos.") }}
+{% if item.revoked_capabilities %}<div class="alert warning"><strong>Hay permisos revocados</strong><ul>{% for capability in item.revoked_capabilities %}<li>{{ capability }}</li>{% endfor %}</ul></div>{% endif %}
+<p class="muted">Esta revisión no garantiza la aprobación. Al aplicar, el sistema vuelve a verificar por su cuenta el consentimiento actual, el estado de la cuenta, el historial de recuperación y la autoridad. Si la solicitud quedó desactualizada o cerrada, se necesita un consentimiento nuevo.</p>
+<form id="adoption-apply" class="stack" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#result" hx-swap="innerHTML" data-confirm="¿Aplicar esta política del controlador ya revisada?">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="_intent_id" value="" data-form-intent />
 <input type="hidden" name="expected_request_revision" value="{{ item.request_revision }}" />
-<button type="submit" class="danger">Apply reviewed policy</button>
+<button type="submit" class="danger">Aplicar política revisada</button>
 </form><div id="result"></div>
 {% endif %}
 </section>

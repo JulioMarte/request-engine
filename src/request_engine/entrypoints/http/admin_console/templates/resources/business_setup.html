@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 {% import "partials/inputs.html" as ui %}
-{% block title %}Create your first business · Request Engine admin{% endblock %}
+{% block title %}Cree su primer negocio · Request Engine{% endblock %}
 {% block content %}
-<header class="page-heading"><div><a href="/resources">← Workspaces</a><h1>Create your first business</h1><p>Name the business, choose its administrator, then configure its services.</p></div></header>
+<header class="page-heading"><div><a href="/resources">← Espacios de trabajo</a><h1>Cree su primer negocio</h1><p>Póngale nombre al negocio, elija quién lo administrará y luego configure sus servicios.</p></div></header>
 <section class="card">
 {% if setup_error %}<p class="alert error" role="alert">{{ setup_error }}</p>{% endif %}
-{% if not choices and not setup_error %}<p class="alert warning">No active accounts on this page. <a href="/resources/native-identities#create-panel">Create an account</a> or browse the next page before continuing.</p>{% endif %}
-{% if next_cursor %}<p><a href="/resources/business-setup?after={{ next_cursor | urlencode }}">Browse more accounts</a>. Choose the account before filling in the business details; changing pages clears this form.</p>{% endif %}
-<form id="create-business" class="stack" method="post" action="/resources/business-setup" hx-post="/resources/business-setup" hx-target="#result" hx-swap="innerHTML" data-confirm="Create this business with the selected administrator?">
+{% if not choices and not setup_error %}<p class="alert warning">No hay cuentas activas en esta página. <a href="/resources/native-identities#create-panel">Cree una cuenta</a> o vea la página siguiente antes de continuar.</p>{% endif %}
+{% if next_cursor %}<p><a href="/resources/business-setup?after={{ next_cursor | urlencode }}">Ver más cuentas</a>. Elija la cuenta antes de llenar los datos del negocio; al cambiar de página se borra este formulario.</p>{% endif %}
+<form id="create-business" class="stack" method="post" action="/resources/business-setup" hx-post="/resources/business-setup" hx-target="#result" hx-swap="innerHTML" data-confirm="¿Crear este negocio con el administrador elegido?">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="_intent_id" value="" data-form-intent />
-<fieldset><legend>1. Name your business</legend>{{ ui.render(inputs | selectattr('name', 'in', ['display_name', 'organization_key']) | list) }}</fieldset>
-<fieldset><legend>2. Choose its administrator</legend>{{ ui.render(inputs | selectattr('name', 'equalto', 'controller_native_identity_id') | list) }}<p>This account will control the new business. Platform administration does not automatically grant access to every business.</p><a href="/resources/native-identities#create-panel">Create an account first</a></fieldset>
-<fieldset><legend>3. Review and create</legend>{{ ui.render(inputs | rejectattr('name', 'in', ['display_name', 'organization_key', 'controller_native_identity_id']) | list) }}<p>After creation, continue with locations, services, availability and staff. Creation alone does not mean the business is ready to serve customers.</p></fieldset>
-<button type="submit"{% if setup_error or not choices %} disabled{% endif %}>Create business and continue</button>
+<fieldset><legend>1. Póngale nombre a su negocio</legend>{{ ui.render(inputs | selectattr('name', 'in', ['display_name', 'organization_key']) | list) }}</fieldset>
+<fieldset><legend>2. Elija quién lo administrará</legend>{{ ui.render(inputs | selectattr('name', 'equalto', 'controller_native_identity_id') | list) }}<p>Esta cuenta controlará el nuevo negocio. Administrar la plataforma no le da acceso automático a todos los negocios.</p><a href="/resources/native-identities#create-panel">Crear una cuenta primero</a></fieldset>
+<fieldset><legend>3. Revise y cree</legend>{{ ui.render(inputs | rejectattr('name', 'in', ['display_name', 'organization_key', 'controller_native_identity_id']) | list) }}<p>Después de crearlo, siga con las sedes, los servicios, los horarios y el equipo. Crear el negocio no significa que ya esté listo para atender pacientes.</p></fieldset>
+<button type="submit"{% if setup_error or not choices %} disabled{% endif %}>Crear negocio y continuar</button>
 </form><div id="result"></div>
 </section>
 {% endblock %}

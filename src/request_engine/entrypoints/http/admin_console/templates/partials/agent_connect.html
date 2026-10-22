@@ -2,21 +2,21 @@
 <ol class="connect-steps">
   <li>
     <strong>Claude Code (terminal)</strong>
-    <p class="muted small">Set the key as <code>REQUEST_ENGINE_AGENT_KEY</code> in your terminal, then run:</p>
+    <p class="muted small">Guarde la llave como <code>REQUEST_ENGINE_AGENT_KEY</code> en su terminal y luego ejecute:</p>
     <pre class="snippet" id="snippet-claude-code">{{ connection.claude_code }}</pre>
-    <button type="button" class="secondary" data-copy-target="snippet-claude-code">Copy command</button>
+    <button type="button" class="secondary" data-copy-target="snippet-claude-code">Copiar comando</button>
   </li>
   <li>
-    <strong>Claude Desktop (computer, with voice dictation)</strong>
-    <p class="muted small">Open Settings, Developer, Edit config, add this server, replace paste-the-agent-key-here with the key and restart Claude.</p>
+    <strong>Claude Desktop (computadora, con dictado por voz)</strong>
+    <p class="muted small">Abra Settings, Developer, Edit config, agregue este servidor, reemplace paste-the-agent-key-here por la llave y reinicie Claude.</p>
     <pre class="snippet" id="snippet-claude-desktop">{{ connection.claude_desktop }}</pre>
-    <button type="button" class="secondary" data-copy-target="snippet-claude-desktop">Copy configuration</button>
+    <button type="button" class="secondary" data-copy-target="snippet-claude-desktop">Copiar configuración</button>
   </li>
   <li>
-    <strong>Any program, over HTTP</strong>
-    <p class="muted small">Every request sends the key and the business ID. This lists what the agent may do:</p>
+    <strong>Cualquier programa, por HTTP</strong>
+    <p class="muted small">Cada solicitud envía la llave y el identificador del negocio. Esta solicitud muestra lo que el asistente puede hacer:</p>
     <pre class="snippet" id="snippet-curl">{{ connection.curl }}</pre>
-    <button type="button" class="secondary" data-copy-target="snippet-curl">Copy request</button>
+    <button type="button" class="secondary" data-copy-target="snippet-curl">Copiar solicitud</button>
   </li>
 </ol>
 <p class="muted small">{{ token_hint }}</p>

@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Error &middot; Request Engine admin{% endblock %}
+{% block title %}Error &middot; Request Engine{% endblock %}
 {% block content %}
 <section class="card narrow">
-  <h1>Something went wrong</h1>
-  <p class="alert error">The console hit an unexpected error while handling this request.</p>
-  <p>Request id: <code>{{ request_id }}</code></p>
-  <p class="muted">Search the server log for this request id to see the structured failure line.</p>
+  <h1>Ocurrió un error inesperado</h1>
+  <p class="alert error">La consola tuvo un error inesperado al procesar esta solicitud. Intente de nuevo; si se repite, comparta el identificador de abajo con soporte técnico.</p>
+  <p>Identificador de la solicitud: <code>{{ request_id }}</code></p>
+  <p class="muted">Busque este identificador en el registro del servidor para ver el detalle del error.</p>
   {% if detail %}
-    <details><summary>Traceback (debug enabled)</summary><pre class="payload">{{ detail }}</pre></details>
+    <details><summary>Detalles técnicos (modo de depuración)</summary><pre class="payload">{{ detail }}</pre></details>
   {% endif %}
-  <p><a class="button" href="/">Back to dashboard</a>
-     <a class="button secondary" href="/diagnostics">Diagnostics</a></p>
+  <p><a class="button" href="/">Volver al inicio</a>
+     <a class="button secondary" href="/diagnostics">Diagnóstico</a></p>
 </section>
 {% endblock %}

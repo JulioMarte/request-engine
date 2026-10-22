@@ -67,7 +67,7 @@ test("canceling a passkey prompt in the script harness never completes registrat
   assert.equal(env.calls.length, 1);
   assert.equal(env.calls[0].url, "/account/security/passkey/options");
   assert.equal(env.button.disabled, false);
-  assert.match(env.status.textContent, /canceled/);
+  assert.match(env.status.textContent, /Se canceló el registro de la llave de acceso/);
   assert.equal(env.locations.length, 0);
 });
 

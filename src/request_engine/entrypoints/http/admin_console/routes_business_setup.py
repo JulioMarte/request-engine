@@ -29,7 +29,10 @@ def install_business_setup_routes(app: FastAPI, state: AdminConsoleState) -> Non
         error = ""
         cursor = ""
         if create is None or read is None:
-            error = "The platform does not expose the operations needed for guided creation."
+            error = (
+                "La plataforma no ofrece las operaciones necesarias para crear el negocio "
+                "paso a paso."
+            )
         else:
             result = await state.control_request(
                 read.method,
@@ -59,18 +62,21 @@ def install_business_setup_routes(app: FastAPI, state: AdminConsoleState) -> Non
             except (ValueError, TypeError, KeyError, AttributeError):
                 choices = []
                 cursor = ""
-                error = "Could not load named accounts. No administrator choice is being assumed."
+                error = (
+                    "No se pudieron cargar las cuentas. "
+                    "No se eligió ningún administrador por usted."
+                )
         inputs = build_inputs(create) if create is not None else []
         for field in inputs:
             if field["name"] == "controller_native_identity_id":
                 field["choices"] = choices
-                field["label"] = "Who will administer this business?"
+                field["label"] = "¿Quién administrará este negocio?"
             elif field["name"] == "organization_key":
-                field["label"] = "Short business name (for example, central-clinic)"
+                field["label"] = "Nombre corto del negocio (por ejemplo, clinica-central)"
             elif field["name"] == "display_name":
-                field["label"] = "Business name"
+                field["label"] = "Nombre del negocio"
             elif field["name"] == "provenance_reference":
-                field["label"] = "Reason for creating this business"
+                field["label"] = "Motivo para crear este negocio"
         return state.templates.TemplateResponse(
             request,
             "resources/business_setup.html",
@@ -86,9 +92,13 @@ def install_business_setup_routes(app: FastAPI, state: AdminConsoleState) -> Non
         form = {key: str(value) for key, value in (await request.form()).items()}
         operation = (await state.catalog()).by_id().get("platform_native_organization_create")
         if not state.csrf_matches(form.get("csrf_token"), session.csrf_token):
-            outcome = local_error(403, "csrf_failed", "Invalid form token")
+            outcome = local_error(
+                403, "csrf_failed", "El formulario venció. Recargue la página e inténtelo de nuevo."
+            )
         elif operation is None:
-            outcome = local_error(503, "operation_unavailable", "Business creation is unavailable")
+            outcome = local_error(
+                503, "operation_unavailable", "La creación de negocios no está disponible"
+            )
         else:
             outcome = await execute_operation(
                 state, operation, bearer=session.access_token, form=form
@@ -105,8 +115,8 @@ def install_business_setup_routes(app: FastAPI, state: AdminConsoleState) -> Non
                 outcome = local_error(
                     502,
                     "incomplete_creation_result",
-                    "The platform accepted creation but returned incomplete details. "
-                    "Inspect the business list before creating another business.",
+                    "La plataforma aceptó la creación pero devolvió datos incompletos. "
+                    "Revise la lista de negocios antes de crear otro.",
                     idempotency_key=outcome.idempotency_key,
                 )
         return state.templates.TemplateResponse(

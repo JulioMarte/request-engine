@@ -520,7 +520,7 @@ def test_summarize_payload_buckets_scalars_and_nested() -> None:
     )
     rendered = dict(scalars)
     assert rendered["status"] == "active"
-    assert rendered["active"] == "yes"
+    assert rendered["active"] == "sí"
     assert rendered["tags"] == "a, b"
     assert [key for key, _ in nested] == ["meta"]
 
@@ -532,9 +532,9 @@ async def test_resources_index_lists_workspaces() -> None:
         await _login(client)
         response = await client.get("/resources")
     assert response.status_code == 200
-    assert "Native identities" in response.text
-    assert "Platform owners" in response.text
-    assert "Deployment recovery" in response.text
+    assert "Identidades nativas" in response.text
+    assert "Dueños de la plataforma" in response.text
+    assert "Recuperación del despliegue" in response.text
 
 
 @pytest.mark.asyncio
@@ -564,7 +564,7 @@ async def test_detail_hides_actions_when_authoritative_read_fails() -> None:
         await _login(client)
         response = await client.get(f"/resources/native-identities/{_NATIVE_ID}")
     assert response.status_code == 200
-    assert "Item unavailable" in response.text
+    assert "Registro no disponible" in response.text
     assert 'id="action-disable"' not in response.text
 
 
@@ -582,8 +582,8 @@ async def test_list_error_is_not_rendered_as_a_genuine_empty_collection() -> Non
     async with _client(app) as client:
         await _login(client)
         response = await client.get("/resources/native-identities")
-    assert "Could not load native identities" in response.text
-    assert "No native identities yet" not in response.text
+    assert "No se pudo cargar: identidades nativas" in response.text
+    assert "Todavía no hay registros en identidades nativas" not in response.text
 
 
 @pytest.mark.asyncio
@@ -687,9 +687,9 @@ async def test_step_up_result_retries_the_same_form() -> None:
         )
     assert executed.status_code == 200
     assert 'data-retry-form="action-suspend"' in executed.text
-    assert "Confirm with passkey" in executed.text
-    assert "Your entries will be preserved" in executed.text
-    assert "Technical details" in executed.text
+    assert "Confirmar con llave de acceso" in executed.text
+    assert "Lo que escribió se conserva" in executed.text
+    assert "Detalles técnicos" in executed.text
 
 
 @pytest.mark.asyncio
@@ -699,8 +699,8 @@ async def test_secrets_workspace_states_it_cannot_list() -> None:
         await _login(client)
         response = await client.get("/resources/secrets")
     assert response.status_code == 200
-    assert "no secret-enumeration operation" in response.text
-    assert "Create secret" in response.text
+    assert "no tiene una operación para listarlos" in response.text
+    assert "Crear secreto" in response.text
 
 
 @pytest.mark.asyncio
@@ -710,8 +710,8 @@ async def test_owners_workspace_without_canonical_read_fails_closed() -> None:
         await _login(client)
         response = await client.get("/resources/owners")
     assert response.status_code == 503
-    assert "Owner information is temporarily unavailable" in response.text
-    assert "No owner information or action forms are shown" in response.text
+    assert "La información de los dueños no está disponible por el momento" in response.text
+    assert "No se muestran datos de dueños ni formularios de acción" in response.text
 
 
 @pytest.mark.asyncio
@@ -739,7 +739,7 @@ async def test_organizations_workspace_uses_platform_create_operation() -> None:
             },
         )
     assert created.status_code == 200
-    assert "completed successfully" in created.text
+    assert "La acción se completó correctamente" in created.text
     call = next(
         item
         for item in control.calls
@@ -817,7 +817,7 @@ async def test_partial_identity_page_is_not_a_genuine_empty_collection(payload: 
         await _login(client)
         page = await client.get("/resources/native-identities")
     assert "invalid_owner_response" in page.text
-    assert "No native identities yet" not in page.text
+    assert "Todavía no hay registros en identidades nativas" not in page.text
 
 
 @pytest.mark.asyncio
@@ -828,7 +828,7 @@ async def test_valid_empty_identity_page_remains_empty_without_transport_error()
     async with _client(create_admin_console_app(_settings(), client=control)) as client:
         await _login(client)
         page = await client.get("/resources/native-identities")
-    assert "No native identities yet" in page.text
+    assert "Todavía no hay registros en identidades nativas" in page.text
     assert "invalid_owner_response" not in page.text
 
 
@@ -1096,7 +1096,7 @@ async def test_initial_deployment_setup_uses_canonical_default_without_get_effec
         await _login(client)
         missing = await client.get("/resources/deployment-recovery")
         assert 'href="/resources/deployment-recovery/new"' in missing.text
-        assert "No changes reported" not in missing.text
+        assert "No se reportaron cambios" not in missing.text
         page = await client.get("/resources/deployment-recovery/new")
         assert page.status_code == 200
         assert 'id="configure"' in page.text
@@ -1119,10 +1119,10 @@ async def test_initial_deployment_setup_uses_canonical_default_without_get_effec
         denied = await client.post(
             "/resources/deployment-recovery/actions/configure", data={**data, "csrf_token": "bad"}
         )
-        assert "CSRF" in denied.text
+        assert "verificación de seguridad del formulario" in denied.text
         assert not [call for call in control.calls if call[0] == "PUT"]
         conflict = await client.post("/resources/deployment-recovery/actions/configure", data=data)
-        assert "configuration changed" in conflict.text.lower()
+        assert "la configuración cambió" in conflict.text.lower()
         writes = [call for call in control.calls if call[0] == "PUT"]
         assert len(writes) == 1
         forwarded = writes[0][2]

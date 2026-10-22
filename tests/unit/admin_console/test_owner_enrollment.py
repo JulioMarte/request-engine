@@ -124,13 +124,16 @@ async def test_account_security_offers_optional_passkey_and_password_recovery(st
         await client.post("/login", data={"login_handle": "owner", "password": _PASSWORD})
         page = await client.get("/account/security")
         assert page.status_code == 200
-        assert "Optional: add a passkey" in page.text
-        assert "Confirm with password" in page.text
-        assert "Register passkey" in page.text
+        assert "Opcional: agregue una llave de acceso" in page.text
+        assert "Confirmar con contraseña" in page.text
+        assert "Registrar llave de acceso" in page.text
         assert ("data-password-recovery-complete" in page.text) is (state == "recovery_restricted")
         if state == "recovery_restricted":
-            assert "Completion does not upgrade this recovery session" in page.text
-            assert "Sign out to sign in again" in page.text
+            assert (
+                "Terminar la recuperación no convierte esta sesión en una sesión normal"
+                in page.text
+            )
+            assert "Cerrar sesión para entrar de nuevo" in page.text
 
 
 @pytest.mark.asyncio
@@ -155,7 +158,7 @@ async def test_owner_recipient_can_enroll_without_login_and_secrets_never_return
             },
         )
         assert result.status_code == 200
-        assert "Platform owner authority has not been activated" in result.text
+        assert "Todavía no tiene permisos de dueño de la plataforma" in result.text
         assert "/login?next=/account/security" in result.text
         assert _PRIVATE_PROOF not in result.text
         assert _PASSWORD not in result.text
@@ -221,8 +224,12 @@ async def test_owner_enrollment_failure_clears_secret_fields_and_never_claims_ac
         assert result.status_code == (503 if ambiguous else 409)
         assert _PASSWORD not in result.text
         assert _PRIVATE_PROOF not in result.text
-        assert "Your account was enrolled" not in result.text
-        assert "signing in" in result.text if ambiguous else "could not be enrolled" in result.text
+        assert "Su cuenta fue creada" not in result.text
+        assert (
+            "Intente iniciar sesión" in result.text
+            if ambiguous
+            else "No se pudo completar la inscripción" in result.text
+        )
 
 
 @pytest.mark.asyncio
@@ -327,7 +334,7 @@ async def test_malformed_enrollment_success_never_claims_enrollment(
             },
         )
         assert result.status_code == 502
-        assert "Your account was enrolled" not in result.text
+        assert "Su cuenta fue creada" not in result.text
         assert _PASSWORD not in result.text
         assert _PRIVATE_PROOF not in result.text
 
@@ -356,8 +363,8 @@ async def test_malformed_security_readiness_is_unavailable(invalid: dict[str, An
         await client.post("/login", data={"login_handle": "owner", "password": _PASSWORD})
         page = await client.get("/account/security")
         assert page.status_code == 503
-        assert "Current recovery preparation" not in page.text
-        assert "could not be checked" in page.text
+        assert "Cómo está preparada su recuperación" not in page.text
+        assert "No se pudo verificar la seguridad de su cuenta" in page.text
 
 
 @pytest.mark.asyncio
@@ -393,4 +400,4 @@ async def test_malformed_private_success_cannot_claim_preparation(
             )
         assert result.status_code == 502
         assert "ok" not in result.json()
-        assert "Save your recovery codes privately" not in result.text
+        assert "Guarde sus códigos de recuperación en privado" not in result.text

@@ -217,7 +217,7 @@ test('password login posts credential form with same-origin cookies and follows 
   assert.equal(login.prevented, 1);
   assert.equal(login.form.getAttribute('aria-busy'), 'true');
   assert.equal(login.button.disabled, true);
-  assert.equal(login.status.textContent, 'Signing in…');
+  assert.equal(login.status.textContent, 'Iniciando sesión…');
   assert.equal(s.calls.length, 1);
   const {url, options} = s.calls[0];
   assert.equal(url, 'http://localhost:8002/login');
@@ -324,7 +324,7 @@ test('denied password confirmation does not retry or retain a password', async (
   assert.equal(confirmation.password.value, '');
   assert.equal(confirmation.pending.submissions, 0);
   assert.equal(confirmation.pending.intent, 'unchanged-intent');
-  assert.equal(confirmation.status.textContent, 'credential_invalid');
+  assert.equal(confirmation.status.textContent, 'No se pudo verificar la llave de acceso o la contraseña. Intente de nuevo.');
   assert.equal(confirmation.form.getAttribute('aria-busy'), undefined);
   assert.equal(confirmation.button.disabled, false);
 });
@@ -354,7 +354,7 @@ test('password recovery completion requires a new sign-in and never retries the 
   assert.equal(s.calls[0].url, '/account/security/recovery-complete');
   assert.equal(confirmation.password.value, '');
   assert.equal(confirmation.pending.submissions, 0);
-  assert.match(confirmation.status.textContent, /Sign out, then sign in with your password/);
+  assert.match(confirmation.status.textContent, /Cierre sesión e inicie sesión con su contraseña/);
   assert.equal(s.window.location.href, '');
 });
 

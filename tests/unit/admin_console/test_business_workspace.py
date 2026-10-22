@@ -231,7 +231,7 @@ async def test_platform_owner_keeps_platform_navigation(tmp_path: Path) -> None:
         page = await client.get("/")
     assert page.status_code == 200
     assert 'href="/resources/owners"' in page.text
-    assert page.text.count(">Account security<") == 1
+    assert page.text.count(">Seguridad de la cuenta<") == 1
 
 
 @pytest.mark.asyncio
