@@ -23,7 +23,11 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
-from request_engine.entrypoints.http.admin_console.clinic_setup import long_date, zone_label
+from request_engine.entrypoints.http.admin_console.clinic_setup import (
+    long_date,
+    money_label,
+    zone_label,
+)
 from request_engine.entrypoints.http.admin_console.execution import (
     ExecutionOutcome,
     form_error,
@@ -84,7 +88,7 @@ def _slot_rows(
                 "start": start.astimezone(zone).strftime("%H:%M"),
                 "end": end.astimezone(zone).strftime("%H:%M"),
                 "location": location_names.get(str(slot.get("location_id")), ""),
-                "price": f"{amount} {slot.get('currency') or ''}".strip() if amount else "",
+                "price": money_label(amount, slot.get("currency")) if amount is not None else "",
             }
         )
     return rows

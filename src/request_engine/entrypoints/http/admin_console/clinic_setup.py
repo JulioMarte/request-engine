@@ -493,3 +493,21 @@ __all__ = [
     "valid_intent",
     "week_rows",
 ]
+
+
+_CURRENCY_SYMBOLS = {"DOP": "RD$", "USD": "US$"}
+
+
+def money_label(amount: object, currency: object) -> str:
+    """A price as the front desk says it: ``RD$ 1,500.00``, ``US$ 20.00``."""
+
+    try:
+        value = Decimal(str(amount))
+    except InvalidOperation:
+        return ""
+    if not value.is_finite():
+        return ""
+    code = str(currency or "").upper()
+    text = f"{value.quantize(Decimal('0.01')):,}"
+    symbol = _CURRENCY_SYMBOLS.get(code)
+    return f"{symbol} {text}" if symbol else f"{text} {code}".strip()

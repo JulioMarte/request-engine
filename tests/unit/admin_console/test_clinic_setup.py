@@ -24,6 +24,7 @@ from request_engine.entrypoints.http.admin_console.client import ControlResponse
 from request_engine.entrypoints.http.admin_console.clinic_setup import (
     SetupInputError,
     choose_key,
+    money_label,
     phone_number,
     slugify,
 )
@@ -625,3 +626,17 @@ async def test_resubmitted_service_with_a_price_is_never_priced_twice(
     assert response.status_code == 303, response.text
     assert response.headers["location"].endswith(f"step=services&done={done}")
     assert runtime.writes() == []
+
+
+@pytest.mark.parametrize(
+    ("amount", "currency", "label"),
+    [
+        ("1500.000000", "DOP", "RD$ 1,500.00"),
+        ("0", "DOP", "RD$ 0.00"),
+        ("20.5", "usd", "US$ 20.50"),
+        ("1234567.891", "EUR", "1,234,567.89 EUR"),
+        ("not-a-number", "DOP", ""),
+    ],
+)
+def test_prices_read_as_the_front_desk_says_them(amount: str, currency: str, label: str) -> None:
+    assert money_label(amount, currency) == label
