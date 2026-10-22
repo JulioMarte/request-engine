@@ -29,9 +29,12 @@ from request_engine.platform.security.assurance import (
 )
 from request_engine.platform.security.native_auth import issue_opaque_token
 from request_engine.platform.security.webauthn import (
+    VerifiedAuthentication,
+    VerifiedRegistration,
     WebAuthnError,
     WebAuthnPolicy,
     WebAuthnService,
+    WebAuthnVerificationError,
     challenge_digest,
     extract_authentication_challenge,
     extract_authentication_credential_id,
@@ -208,6 +211,21 @@ class NativeWebAuthnAuthService:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._session_ttl = session_ttl
 
+    def _verified_registration(self, *, rejected: str, **kwargs: Any) -> VerifiedRegistration:
+        # A failed attestation check (origin, RP ID, signature, challenge) is the
+        # caller's rejected ceremony, not a server fault: never a 500, and the
+        # specific reason stays server-side.
+        try:
+            return self._webauthn.verify_registration(**kwargs)
+        except WebAuthnVerificationError:
+            raise WebAuthnCeremonyError(rejected) from None
+
+    def _verified_authentication(self, *, rejected: str, **kwargs: Any) -> VerifiedAuthentication:
+        try:
+            return self._webauthn.verify_authentication(**kwargs)
+        except WebAuthnVerificationError:
+            raise WebAuthnCeremonyError(rejected) from None
+
     async def begin_registration(self, *, native_identity_id: UUID) -> WebAuthnCeremonyStarted:
         existing = await self._store.read_credentials(native_identity_id=native_identity_id)
         user_handle = _user_handle(native_identity_id)
@@ -240,8 +258,10 @@ class NativeWebAuthnAuthService:
         if native_identity_id is not None and scope.native_identity_id != native_identity_id:
             raise WebAuthnCeremonyError("webauthn_challenge_unknown")
 
-        verified = self._webauthn.verify_registration(
-            credential=credential, expected_challenge=challenge
+        verified = self._verified_registration(
+            rejected="webauthn_registration_rejected",
+            credential=credential,
+            expected_challenge=challenge,
         )
         credential_row_id = uuid4()
         finalized = await self._store.finalize_registration(
@@ -302,7 +322,8 @@ class NativeWebAuthnAuthService:
         record = await self._resolve_credential(
             credential=credential, native_identity_id=native_identity_id
         )
-        verified = self._webauthn.verify_authentication(
+        verified = self._verified_authentication(
+            rejected="webauthn_authentication_rejected",
             credential=credential,
             expected_challenge=challenge,
             credential_id=record.credential_id,
@@ -391,7 +412,8 @@ class NativeWebAuthnAuthService:
         ):
             raise WebAuthnCeremonyError("webauthn_credential_unknown")
 
-        verified = self._webauthn.verify_authentication(
+        verified = self._verified_authentication(
+            rejected="webauthn_authentication_rejected",
             credential=credential,
             expected_challenge=challenge,
             credential_id=record.credential_id,
@@ -455,7 +477,8 @@ class NativeWebAuthnAuthService:
         record = await self._resolve_credential(
             credential=credential, native_identity_id=native_identity_id
         )
-        verified = self._webauthn.verify_authentication(
+        verified = self._verified_authentication(
+            rejected="webauthn_step_up_rejected",
             credential=credential,
             expected_challenge=challenge,
             credential_id=record.credential_id,
@@ -527,8 +550,10 @@ class NativeWebAuthnAuthService:
             # The presented SetupSession must be the ceremony that owns the
             # challenge; another valid bearer is never sufficient.
             raise WebAuthnCeremonyError("webauthn_challenge_unknown")
-        verified = self._webauthn.verify_registration(
-            credential=credential, expected_challenge=challenge
+        verified = self._verified_registration(
+            rejected="webauthn_registration_rejected",
+            credential=credential,
+            expected_challenge=challenge,
         )
         return await self._store.finalize_setup_registration(
             challenge_digest=digest,

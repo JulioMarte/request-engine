@@ -128,3 +128,22 @@ async def test_setup_registration_accepts_owning_setup_session() -> None:
         setup_session_id=owner, credential=_credential()
     )
     assert store.finalized_sessions == [owner]
+
+
+@pytest.mark.asyncio
+async def test_registration_from_a_disallowed_origin_is_a_rejected_ceremony() -> None:
+    # A real attestation produced for another origin fails verification. That is
+    # the caller's rejected ceremony (a 4xx), never an unhandled server error.
+    owner = uuid4()
+    store = _ChallengeOwnerStore(owner_setup_session_id=owner)
+    foreign = SoftwareAuthenticator(rp_id=RP_ID, origin="http://localhost:5173")
+    credential = foreign.registration_credential(
+        challenge=b"\x42" * 32, user_handle=foreign.user_handle, user_verified=True
+    )
+
+    with pytest.raises(WebAuthnCeremonyError) as rejected:
+        await _service(store).complete_setup_registration(
+            setup_session_id=owner, credential=credential
+        )
+    assert rejected.value.code == "webauthn_registration_rejected"
+    assert store.finalized_sessions == []

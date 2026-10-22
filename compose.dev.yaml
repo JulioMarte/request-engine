@@ -51,7 +51,7 @@ services:
       REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY: ${RE_DEV_FINGERPRINT_KEY:?}
       REQUEST_ENGINE_WEBAUTHN_DECOY_KEY: ${RE_DEV_WEBAUTHN_DECOY_KEY:?}
       REQUEST_ENGINE_WEBAUTHN_RP_ID: localhost
-      REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS: http://localhost:${RE_DEV_CONSOLE_PORT:?}
+      REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS: http://localhost:${RE_DEV_CONSOLE_PORT:?},${RE_DEV_APP_ORIGINS:-http://localhost:5173,http://localhost:8788}
     command: [uvicorn, "request_engine.bootstrap.server:create_app", --factory, --host, "0.0.0.0", --port, "8000"]
     ports: ["127.0.0.1:${RE_DEV_API_PORT:?}:8000"]
     healthcheck:
@@ -71,7 +71,7 @@ services:
       REQUEST_ENGINE_WEBAUTHN_DECOY_KEY: ${RE_DEV_WEBAUTHN_DECOY_KEY:?}
       # Passkeys are created in the browser at the console origin.
       REQUEST_ENGINE_WEBAUTHN_RP_ID: localhost
-      REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS: http://localhost:${RE_DEV_CONSOLE_PORT:?}
+      REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS: http://localhost:${RE_DEV_CONSOLE_PORT:?},${RE_DEV_APP_ORIGINS:-http://localhost:5173,http://localhost:8788}
     command: [uvicorn, "request_engine.bootstrap.platform_server:create_app", --factory, --host, "0.0.0.0", --port, "8001"]
     ports: ["127.0.0.1:${RE_DEV_CONTROL_PORT:?}:8001"]
     healthcheck:
