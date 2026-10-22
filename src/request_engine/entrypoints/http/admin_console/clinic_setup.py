@@ -13,18 +13,48 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping
-from datetime import time
+from datetime import date, time
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
 
-WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+# Spanish (es-DO) calendar words, explicit so output never depends on the OS locale.
+WEEKDAYS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+MONTHS = (
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+)
 DEFAULT_TIMEZONE = "America/Santo_Domingo"
 DEFAULT_CURRENCY = "DOP"
 DEFAULT_LOCALE = "es-DO"
 DEFAULT_COUNTRY = "DO"
 MANAGE_PROFILE_SCOPE = "operations.manage_profile"
+
+
+def long_date(day: date) -> str:
+    """``miércoles 21 de octubre``: a business day in Spanish, independent of the OS locale."""
+
+    return f"{WEEKDAYS[day.weekday()]} {day.day} de {MONTHS[day.month - 1]}"
+
+
+def zone_label(zone_name: str) -> str:
+    """``hora de Santo Domingo`` for an IANA zone such as ``America/Santo_Domingo``."""
+
+    city = zone_name.rsplit("/", 1)[-1].replace("_", " ").strip()
+    return f"hora de {city}" if city else "hora del negocio"
+
+
 TIMEZONES = (
     ("America/Santo_Domingo", "Dominican Republic"),
     ("America/Puerto_Rico", "Puerto Rico"),
@@ -420,7 +450,10 @@ __all__ = [
     "PROVIDER_KINDS",
     "PROVINCES",
     "TIMEZONES",
+    "MONTHS",
     "WEEKDAYS",
+    "long_date",
+    "zone_label",
     "SetupInputError",
     "choice",
     "choose_key",
