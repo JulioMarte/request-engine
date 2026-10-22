@@ -23,7 +23,7 @@
       {% endif %}
       <fieldset data-structured-controls{% if not field.included or field.null_value %} disabled{% endif %}>
         <legend><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span></legend>
-        {% if field.description %}<p class="muted">{{ field.description }}</p>{% endif %}
+        {% if field.help %}<p class="muted">{{ field.help }}</p>{% endif %}
         {% if field.kind == 'object' %}
           {{ render(field.children) }}
         {% else %}
@@ -51,7 +51,7 @@
         {% endif %}
       </select>
       {% if field.readonly %}<input type="hidden" name="{{ field.name }}" value="{{ field.value }}" />{% endif %}
-      {% if field.description %}<small class="muted">{{ field.description }}</small>{% endif %}
+      {% if field.help %}<small class="muted">{{ field.help }}</small>{% endif %}
     </label>
   {% elif field.kind == 'boolean' %}
     <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
@@ -67,23 +67,23 @@
       <label>Configuración estructurada (JSON)
         <textarea name="{{ field.name }}" rows="6" spellcheck="false"{% if field.required %} required{% endif %}>{{ field.value }}</textarea>
       </label>
-      <small class="muted">Esta operación acepta una estructura libre. Escriba el documento de configuración en JSON.{% if field.description %} {{ field.description }}{% endif %}</small>
+      <small class="muted">Esta operación acepta una estructura libre. Escriba el documento de configuración en JSON.{% if field.help %} {{ field.help }}{% endif %}</small>
     </details>
   {% elif field.secret %}
     <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <input type="password" name="{{ field.name }}" value="" autocomplete="new-password"{% if field.required %} required{% endif %} />
-      <small class="muted">El valor secreto nunca se vuelve a mostrar{% if field.description %} &middot; {{ field.description }}{% endif %}</small>
+      <small class="muted">El valor secreto nunca se vuelve a mostrar{% if field.help %} &middot; {{ field.help }}{% endif %}</small>
     </label>
   {% elif field.kind in ('integer', 'number') %}
     <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <input type="number" step="{% if field.kind == 'integer' %}1{% else %}any{% endif %}" name="{{ field.name }}" value="{{ field.value }}"{% if field.required %} required{% endif %}{% if field.readonly %} readonly{% endif %} />
-      {% if field.description %}<small class="muted">{{ field.description }}</small>{% endif %}
+      {% if field.help %}<small class="muted">{{ field.help }}</small>{% endif %}
     </label>
   {% else %}
     <label><span class="field-label">{{ field.label }}{% if field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</span>
       <input type="{% if field.format in ('date', 'time') %}{{ field.format }}{% else %}text{% endif %}"{% if field.format == 'time' %} step="any"{% endif %} name="{{ field.name }}" value="{{ field.value }}"{% if field.required %} required{% endif %}{% if field.readonly %} readonly{% endif %} />
       {% if field.exact_time %}<small class="muted">Esta hora tiene una precisión o una zona horaria que el selector del navegador no puede conservar. Aquí se mantiene tal cual.</small>{% endif %}
-      {% if field.description %}<small class="muted">{{ field.description }}</small>{% endif %}
+      {% if field.help %}<small class="muted">{{ field.help }}</small>{% endif %}
     </label>
   {% endif %}
 {%- endmacro %}

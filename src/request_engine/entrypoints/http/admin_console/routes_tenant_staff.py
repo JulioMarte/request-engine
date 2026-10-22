@@ -526,6 +526,4 @@ def _label_reason_fields(inputs: list[dict[str, Any]]) -> None:
             view["label"] = "Nuevo estado"
         if view.get("name") == "provenance_reference":
             view["label"] = "Motivo del cambio"
-            view["description"] = (
-                "Queda en el historial del equipo para que otros sepan por qué cambió."
-            )
+            view["help"] = "Queda en el historial del equipo para que otros sepan por qué cambió."

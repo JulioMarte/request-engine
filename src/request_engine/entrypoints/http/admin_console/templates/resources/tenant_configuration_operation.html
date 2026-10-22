@@ -2,9 +2,8 @@
 {% import "partials/inputs.html" as ui %}
 {% block title %}{{ task_label(operation) }} · Request Engine{% endblock %}
 {% block content %}
-<header class="page-heading"><div><a href="{{ root }}">← Configuración del negocio</a><h1>{{ task_label(operation) }}</h1><p>Organización <code>{{ organization_id }}</code></p></div></header>
+<header class="page-heading"><div><a href="{{ root }}">← Configuración del negocio</a><h1>{{ task_label(operation) }}</h1></div></header>
 <section class="card">
-{% if operation.description %}<p>{{ operation.description }}</p>{% endif %}
 <p class="muted">El sistema revisa sus permisos y que los datos sigan vigentes. Elegir a quién representa no le da permisos. Revise los valores precargados antes de guardar.</p>
 {% for message in guidance %}<p class="alert notice">{{ message }}</p>{% endfor %}
 {% if change_selection_url %}<p><a href="{{ change_selection_url }}">Elegir otro elemento y cargar sus valores actuales</a></p>{% endif %}
@@ -15,5 +14,5 @@
 {{ ui.render(inputs) }}{% if operation.operation_id == 'catalog_location_hours_replace' %}<label class="check"><input type="checkbox" name="_confirm_replacement" value="true" required />Confirmo que este horario completo reemplaza todo el horario actual. Si deja el horario vacío, se borran todos los horarios de apertura.</label>{% endif %}<button type="submit">{{ 'Guardar cambios' if operation.is_mutating else 'Ver valores actuales' }}</button>
 </form>{% endif %}<div id="execution-outcome"></div>
 <details><summary>Detalles técnicos</summary><p><code>{{ operation.method }} {{ operation.path_template }}</code></p><p>Responsable: {{ operation.owner }}; permiso requerido: {{ operation.capability }}</p></details>
-</section>
+{% if operation.description %}<details class="technical-details"><summary>Detalles técnicos</summary><p class="muted small">Documentación del sistema (en inglés):</p><pre class="payload">{{ operation.description }}</pre></details>{% endif %}</section>
 {% endblock %}

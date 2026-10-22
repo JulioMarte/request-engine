@@ -80,7 +80,10 @@ def _input_view(
         "enum": field.enum,
         "value": value,
         "default": field.default,
+        # Owner schema text is integrator documentation (English); the console
+        # shows its own Spanish ``help`` and keeps the schema text out of forms.
         "description": field.description,
+        "help": "",
         "location": field.location,
         "multiline": field.multiline,
         "secret": field.name in secrets,

@@ -16,7 +16,7 @@
     {% if operation.tool_name %}<dt>herramienta</dt><dd>{{ operation.tool_name }}{% if operation.tool_audiences %} ({{ operation.tool_audiences | join(', ') }}){% endif %}</dd>{% endif %}
     <dt>autenticación</dt><dd>{{ operation.auth_kind }}</dd>
   </dl>
-  {% if operation.description %}<p class="muted">{{ operation.description }}</p>{% endif %}
+  {% if operation.description %}<details class="technical-details"><summary>Descripción técnica (en inglés)</summary><pre class="payload">{{ operation.description }}</pre></details>{% endif %}
 </section>
 <section class="card">
   <h2>Ejecutar</h2>
