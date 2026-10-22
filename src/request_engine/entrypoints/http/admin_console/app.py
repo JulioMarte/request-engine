@@ -247,7 +247,14 @@ def create_admin_console_app(
             target = _origin_identity(f"{request.url.scheme}://{request.url.netloc}")
             source = _origin_identity(origins[0]) if len(origins) == 1 else None
             if source is None or target is None or source != target:
-                response = JSONResponse({"error": "Same-origin request required"}, status_code=403)
+                response = JSONResponse(
+                    {
+                        "error": (
+                            "Esta acción debe enviarse desde la misma consola. Recargue la página."
+                        )
+                    },
+                    status_code=403,
+                )
             else:
                 response = await call_next(request)
         else:

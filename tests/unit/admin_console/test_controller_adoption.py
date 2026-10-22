@@ -157,6 +157,7 @@ async def test_list_review_apply_preserves_consent_revision_and_intent(tmp_path:
         assert 'name="expected_request_revision" value="7"' in review.text
         assert "appointments.book" in review.text and "staff.manage" in review.text
         assert "Enable appointment administration" in review.text
+        assert "Aplicar política revisada" in review.text
         csrf = re.search(r'name="csrf_token" value="([^"]+)"', review.text)
         assert csrf
         values = {
@@ -167,7 +168,7 @@ async def test_list_review_apply_preserves_consent_revision_and_intent(tmp_path:
         }
         for _ in range(2):
             result = await client.post(f"{_ROOT}/{_ID}/apply", data=values)
-            assert "Action completed" in result.text
+            assert "Acción completada" in result.text
         applies = [
             call for call in control.calls if call[0] == "POST" and call[1].endswith(":apply")
         ]
@@ -189,9 +190,9 @@ async def test_review_step_up_can_confirm_and_reload(tmp_path: Path, code: str) 
         await _login(client)
         control.failure = ControlResponse(403, {"error": {"code": code}}, {})
         page = await client.get(f"{_ROOT}/{_ID}")
-        assert "Confirm with passkey and retry" in page.text
+        assert "Confirmar con llave de acceso y repetir" in page.text
         assert 'data-retry-form="adoption-review"' in page.text
-        assert "Apply reviewed policy" not in page.text
+        assert "Aplicar política revisada" not in page.text
 
 
 @pytest.mark.asyncio
@@ -205,7 +206,7 @@ async def test_csrf_and_catalog_drift_never_forward_apply(tmp_path: Path) -> Non
         control.document["paths"].pop(f"{_API}/{{request_id}}")
         result = await client.get(f"{_ROOT}/{_ID}")
         assert "operation_unavailable" in result.text
-        assert "Apply reviewed policy" not in result.text
+        assert "Aplicar política revisada" not in result.text
 
 
 @pytest.mark.asyncio
@@ -216,7 +217,7 @@ async def test_failed_list_is_not_reported_as_empty(tmp_path: Path) -> None:
         control.failure = ControlResponse(403, {"error": {"code": "forbidden"}}, {})
         result = await client.get(_ROOT)
         assert "forbidden" in result.text
-        assert "No policy adoption requests" not in result.text
+        assert "No hay solicitudes de adopción de política" not in result.text
 
 
 @pytest.mark.asyncio
@@ -278,7 +279,7 @@ async def test_malformed_successful_review_never_offers_apply(
         page = await client.get(f"{_ROOT}/{_ID}")
         assert page.status_code == 502
         assert "control_response_invalid" in page.text
-        assert "Apply reviewed policy" not in page.text
+        assert "Aplicar política revisada" not in page.text
 
 
 @pytest.mark.asyncio
@@ -301,7 +302,7 @@ async def test_malformed_collection_is_not_a_successful_empty_result(
         page = await client.get(_ROOT)
         assert page.status_code == 502
         assert "control_response_invalid" in page.text
-        assert "No policy adoption requests" not in page.text
+        assert "No hay solicitudes de adopción de política" not in page.text
 
 
 @pytest.mark.asyncio
@@ -315,7 +316,7 @@ async def test_catalog_unreachable_returns_safe_unavailable_view(tmp_path: Path)
         page = await client.get(f"{_ROOT}/{_ID}")
         assert page.status_code == 503
         assert "catalog_unavailable" in page.text
-        assert "Apply reviewed policy" not in page.text
+        assert "Aplicar política revisada" not in page.text
         assert "internal-service-details" not in page.text
 
 
@@ -328,7 +329,7 @@ async def test_review_without_adoption_authority_explains_the_two_owner_rule(
         await _login(client)
         control.failure = ControlResponse(403, {"error": {"code": "capability_required"}}, {})
         page = await client.get(f"{_ROOT}/{_ID}")
-    assert "can't approve permission changes" in page.text
+    assert "no puede aprobar cambios de permisos" in page.text
     assert 'href="/resources/owners/invitations"' in page.text
-    assert "Apply reviewed policy" not in page.text
+    assert "Aplicar política revisada" not in page.text
     assert "Idempotency-Key" not in page.text

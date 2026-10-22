@@ -81,20 +81,38 @@ def _project_item(value: Any, *, invitation: bool) -> dict[str, Any] | None:
 
 def _read_error(status: int) -> str:
     return {
-        401: "Your session is no longer authorized. Sign in again.",
-        403: "You do not have permission to inspect platform owners.",
-        404: "This owner resource was not found.",
-        502: "The owner service returned an incomplete response. Try again.",
-    }.get(status, "Owner information is temporarily unavailable. Try again.")
+        401: "Su sesión ya no está autorizada. Inicie sesión de nuevo.",
+        403: "No tiene permiso para ver los dueños de la plataforma.",
+        404: "No se encontró este dueño o invitación.",
+        502: "El servicio de dueños devolvió una respuesta incompleta. Inténtelo de nuevo.",
+    }.get(
+        status,
+        "La información de los dueños no está disponible por el momento. Inténtelo de nuevo.",
+    )
 
 
 # The owner API returns one generic refusal for several causes, so these are
 # things to check, not a diagnosis.
 _ACTIVATION_CHECKS = (
-    "Check that the invited person has signed in, added a passkey and saved recovery "
-    "codes, and that this invitation is enrolled and not expired. Reload this page to see "
-    "its current state."
+    "Verifique que la persona invitada haya iniciado sesión, agregado una llave de acceso "
+    "(passkey) y guardado sus códigos de recuperación, y que esta invitación esté inscrita y "
+    "no haya vencido. Recargue esta página para ver su estado actual."
 )
+
+
+_SUBMIT_LABELS = {
+    "invite": "Crear invitación de dueño",
+    "activate": "Activar dueño inscrito",
+    "suspend": "Suspender dueño",
+    "reactivate": "Reactivar dueño",
+    "revoke": "Revocar",
+}
+_CONFIRMATIONS = {
+    "activate": "¿Activar a este dueño de la plataforma?",
+    "suspend": "¿Suspender a este dueño de la plataforma?",
+    "reactivate": "¿Reactivar a este dueño de la plataforma?",
+    "revoke": "¿Confirma que desea revocarlo?",
+}
 
 
 def _invitation_code(outcome: ExecutionOutcome) -> dict[str, str] | None:
@@ -191,12 +209,9 @@ def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
             ),
             form_id=f"owner-{key}",
             action_url=url,
-            submit_label={
-                "invite": "Create owner invitation",
-                "activate": "Activate enrolled owner",
-            }.get(key, key.title()),
+            submit_label=_SUBMIT_LABELS.get(key, key.title()),
             danger=key in {"suspend", "revoke"},
-            confirm="" if key == "invite" else f"{key.title()} this owner resource?",
+            confirm="" if key == "invite" else _CONFIRMATIONS.get(key, "¿Confirmar esta acción?"),
         )
 
     async def forms(
@@ -315,7 +330,9 @@ def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
         submitted = await request.form()
         values = {name: str(value) for name, value in submitted.items()}
         if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
-            outcome = local_error(403, "csrf_failed", "CSRF token missing or invalid")
+            outcome = local_error(
+                403, "csrf_failed", "El formulario venció. Recargue la página e inténtelo de nuevo."
+            )
         else:
             operation_id = (
                 OWNER_OPERATION_IDS["invite"]
@@ -337,7 +354,11 @@ def install_owner_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     state, operation, bearer=session.access_token, form=values
                 )
             except (httpx.HTTPError, MissingOperation, ValueError):
-                outcome = local_error(503, "operation_unavailable", "Owner action unavailable")
+                outcome = local_error(
+                    503,
+                    "operation_unavailable",
+                    "Esta acción sobre dueños no está disponible por el momento.",
+                )
         return state.templates.TemplateResponse(
             request,
             "partials/result.html",

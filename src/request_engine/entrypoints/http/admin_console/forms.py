@@ -16,9 +16,11 @@ from typing import Any, cast
 from urllib.parse import quote
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
+from request_engine.entrypoints.http.admin_console.field_labels import field_label
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
 
 _JSON_KINDS = frozenset({"object", "array"})
+_KIND_NAMES = {"object": "un objeto JSON", "array": "una lista JSON"}
 
 
 class FormSubmissionError(ValueError):
@@ -97,7 +99,7 @@ def _field_from_schema(
     return FormField(
         name=name,
         location=location,
-        label=name.replace("_", " ").strip().title() or name,
+        label=field_label(name),
         kind=kind,
         required=required,
         enum=enum,
@@ -152,20 +154,20 @@ def _coerce(field: FormField, raw: str) -> Any:
     if field.kind == "boolean":
         normalized = raw.strip().lower()
         if normalized not in {"1", "true", "on", "yes", "0", "false", "off", "no"}:
-            raise FormSubmissionError(f"{field.label} must be a boolean")
+            raise FormSubmissionError(f"{field.label}: elija sí o no.")
         return normalized in {"1", "true", "on", "yes"}
     if field.kind == "integer":
         try:
             return int(raw)
         except ValueError as exc:
-            raise FormSubmissionError(f"{field.label} must be an integer") from exc
+            raise FormSubmissionError(f"{field.label}: escriba un número entero.") from exc
     if field.kind == "number":
         try:
             number = float(raw)
         except ValueError as exc:
-            raise FormSubmissionError(f"{field.label} must be a number") from exc
+            raise FormSubmissionError(f"{field.label}: escriba un número.") from exc
         if not math.isfinite(number):
-            raise FormSubmissionError(f"{field.label} must be a finite number")
+            raise FormSubmissionError(f"{field.label}: escriba un número válido.")
         return number
     if field.kind in _JSON_KINDS:
         try:
@@ -175,7 +177,9 @@ def _coerce(field: FormField, raw: str) -> Any:
             json.dumps(value, allow_nan=False)
             return value
         except ValueError as exc:
-            raise FormSubmissionError(f"{field.label} must be valid JSON") from exc
+            raise FormSubmissionError(
+                f"{field.label}: el JSON no es válido. Revise comillas, comas y llaves."
+            ) from exc
     return raw
 
 
@@ -214,9 +218,13 @@ def _read_value(field: FormField, name: str, form: Mapping[str, str]) -> Any:
                     if match:
                         indices.add(int(match.group(1)))
             if len(indices) > _MAX_ARRAY_ITEMS:
-                raise FormSubmissionError(f"{field.label} has too many entries")
+                raise FormSubmissionError(
+                    f"{field.label}: hay demasiadas entradas. Quite algunas e intente de nuevo."
+                )
             return [_read_value(field.item, f"{name}[{index}]", form) for index in sorted(indices)]
-        raise FormSubmissionError(f"{field.label} has no structured input schema")
+        raise FormSubmissionError(
+            f"{field.label}: este campo no acepta entradas estructuradas. Recargue la página."
+        )
     raw = form.get(name, field.default).strip()
     if raw == "" and field.nullable and form.get("__null__" + name) == "true":
         return None
@@ -225,14 +233,16 @@ def _read_value(field: FormField, name: str, form: Mapping[str, str]) -> Any:
     if raw == "" and not field.required:
         return _OMITTED
     if raw == "":
-        raise FormSubmissionError(f"{field.label} is required")
+        raise FormSubmissionError(f"{field.label}: este campo es obligatorio.")
     value = _coerce(field, raw)
     if value is None and field.nullable:
         return None
     if field.kind in _JSON_KINDS and not isinstance(
         value, dict if field.kind == "object" else list
     ):
-        raise FormSubmissionError(f"{field.label} must be an {field.kind}")
+        raise FormSubmissionError(
+            f"{field.label}: el valor debe ser {_KIND_NAMES.get(field.kind, field.kind)}."
+        )
     return cast(Any, value)
 
 
@@ -251,7 +261,7 @@ def parse_submission(
                 target = path_params if field.location == "path" else query_params
                 target[field.name] = raw
             elif field.required:
-                raise FormSubmissionError(f"{field.label} is required")
+                raise FormSubmissionError(f"{field.label}: este campo es obligatorio.")
             continue
         has_body_field = True
         value = _read_value(field, field.name, form)
@@ -268,7 +278,9 @@ def render_path(path_template: str, path_params: Mapping[str, str]) -> str:
     rendered = path_template
     for name, value in path_params.items():
         if value in {".", ".."} or "/" in value or "\\" in value:
-            raise FormSubmissionError("Path parameters must identify a single resource segment")
+            raise FormSubmissionError(
+                "Un identificador no es válido: no puede contener barras ni ser «.» o «..»."
+            )
         rendered = rendered.replace("{" + name + "}", quote(value, safe=""))
     return rendered
 

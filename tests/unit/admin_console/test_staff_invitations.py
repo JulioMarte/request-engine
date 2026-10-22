@@ -246,7 +246,7 @@ async def test_resend_forwards_exact_revision_and_stable_intent() -> None:
         )
     assert result.status_code == 303
     assert 'value="7"' in page.text
-    assert "unknown" in page.text and "correo haya llegado" in page.text
+    assert "Resultado del envío desconocido" in page.text and "correo haya llegado" in page.text
     call = api.calls[-1]
     assert call[2]["json_body"] == {"expected_revision": 7, "provenance_reference": "owner:resend"}
     assert call[2]["extra_headers"] == {
@@ -265,7 +265,10 @@ async def test_failed_list_explains_failure_and_hides_create_and_mutations(statu
         page = await client.get(f"/tenants/{ORG}/staff-invitations")
     assert page.status_code == status
     assert 'role="alert"' in page.text
-    assert "Invitations unavailable. Check your session and permissions, then reload." in page.text
+    assert (
+        "Las invitaciones no están disponibles. "
+        "Revise su sesión y sus permisos, y luego recargue." in page.text
+    )
     assert "Crear invitación" not in page.text
     assert "recipient@example.org" not in page.text
     assert all(method != "POST" or path == "/auth/native/sessions" for method, path, _ in api.calls)
@@ -384,7 +387,7 @@ async def test_smtp_acceptance_never_claims_inbox_receipt_or_no_inflight_mail() 
     async with client_for(api) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff-invitations")
-    assert "Accepted by mail server (inbox not confirmed)" in page.text
+    assert "no se confirmó que llegó a la bandeja" in page.text
     assert "correo que ya se estaba enviando podría llegar" in page.text
 
 
@@ -417,8 +420,8 @@ async def test_existing_member_needs_access_review_not_another_invitation() -> N
             "/staff-invitations/accept", data={"csrf_token": csrf(page), "token": TOKEN}
         )
     assert response.status_code == 409
-    assert "existing membership and permissions" in response.json()["error"]
-    assert "another invitation will not restore access" in response.json()["error"]
+    assert "su membresía y sus permisos actuales" in response.json()["error"]
+    assert "otra invitación no le devolverá el acceso" in response.json()["error"]
     assert TOKEN not in response.text
     assert "must-never-be-echoed" not in response.text
 

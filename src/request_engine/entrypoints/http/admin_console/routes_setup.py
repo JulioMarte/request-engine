@@ -14,6 +14,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
+from request_engine.entrypoints.http.admin_console.execution import human_error
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
@@ -29,17 +30,20 @@ def _idempotency_key(token: str) -> str:
     return "admin-console-" + hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
 
 
+_PASSWORD_POLICY_COPY = (
+    "La contraseña no cumple la política: use al menos 12 caracteres y como máximo "
+    "1024 bytes UTF-8."
+)
+_SETUP_EXPIRED = "La sesión de configuración venció. Inicie una nueva sesión de configuración."
+
+
 def _error_text(response: Any) -> str:
+    # Upstream messages are English; show Spanish copy chosen by error code.
     body = response.error_body
-    if (
-        body is not None
-        and body.get("code") == "password_policy_violation"
-        and isinstance(body.get("message"), str)
-    ):
-        return str(body["message"])
-    if body is not None and isinstance(body.get("code"), str):
-        return str(body["code"])
-    return f"control_error_{response.status_code}"
+    code = body.get("code") if body is not None else None
+    if code == "password_policy_violation":
+        return _PASSWORD_POLICY_COPY
+    return human_error(code if isinstance(code, str) else "", response.status_code)
 
 
 def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
@@ -50,19 +54,23 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
             return {
                 "initialized": False,
                 "setup_required": False,
-                "detail": "control plane unreachable",
+                "detail": (
+                    "No se pudo conectar con el servidor de control. Revise que esté en marcha."
+                ),
             }
         if response.status_code == 503:
             return {
                 "initialized": False,
                 "setup_required": False,
-                "detail": "instance not initialized",
+                "detail": "La instancia no está inicializada. Revise la instalación del servidor.",
             }
         if not response.ok:
             return {
                 "initialized": False,
                 "setup_required": False,
-                "detail": f"discovery failed ({response.status_code})",
+                "detail": (
+                    f"No se pudo consultar el estado de la instancia (HTTP {response.status_code})."
+                ),
             }
         return {
             "initialized": True,
@@ -99,7 +107,11 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
             )
         token = as_mapping(response.payload).get("token")
         if not isinstance(token, str) or not token:
-            return RedirectResponse("/setup?error=setup+session+had+no+token", status_code=303)
+            return RedirectResponse(
+                "/setup?error="
+                + quote_plus("El servidor no abrió la sesión de configuración. Intente de nuevo."),
+                status_code=303,
+            )
         redirect = RedirectResponse("/setup?step=identity", status_code=303)
         state.attach_setup(redirect, token)
         return redirect
@@ -108,7 +120,7 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
         setup = state.setup(request)
         form = await request.form()
         if setup is None or not state.csrf_matches(str(form.get("csrf_token", "")), setup.csrf):
-            return RedirectResponse("/setup?error=setup+session+expired", status_code=303)
+            return RedirectResponse(f"/setup?error={quote_plus(_SETUP_EXPIRED)}", status_code=303)
         login_handle = str(form.get("login_handle", "")).strip()
         password = str(form.get("password", ""))
         response = await state.control_request(
@@ -126,7 +138,7 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def setup_webauthn_options(request: Request) -> Response:
         setup = state.setup(request)
         if setup is None:
-            return JSONResponse({"error": "setup session expired"}, status_code=401)
+            return JSONResponse({"error": _SETUP_EXPIRED}, status_code=401)
         response = await state.control_request(
             "POST",
             "/v1/setup/webauthn/registration-options",
@@ -137,11 +149,13 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def setup_webauthn_complete(request: Request) -> Response:
         setup = state.setup(request)
         if setup is None:
-            return JSONResponse({"error": "setup session expired"}, status_code=401)
+            return JSONResponse({"error": _SETUP_EXPIRED}, status_code=401)
         body = as_mapping(await _safe_json(request))
         credential = body.get("credential")
         if not isinstance(credential, dict):
-            return JSONResponse({"error": "credential is required"}, status_code=400)
+            return JSONResponse(
+                {"error": "Falta la llave de acceso. Intente de nuevo."}, status_code=400
+            )
         response = await state.control_request(
             "POST",
             "/v1/setup/webauthn/registrations",
@@ -155,7 +169,7 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def issue_recovery_codes(request: Request) -> Response:
         setup = state.setup(request)
         if setup is None:
-            return RedirectResponse("/setup?error=setup+session+expired", status_code=303)
+            return RedirectResponse(f"/setup?error={quote_plus(_SETUP_EXPIRED)}", status_code=303)
         response = await state.control_request(
             "POST",
             "/v1/setup/recovery-codes",
@@ -179,7 +193,7 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 has_setup_session=True,
                 setup_csrf=setup.csrf,
                 error=None,
-                notice="Store these recovery codes now. They are shown once.",
+                notice="Guarde estos códigos de recuperación ahora. Solo se muestran una vez.",
                 codes=codes,
                 claim=None,
             ),
@@ -189,7 +203,7 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
         setup = state.setup(request)
         form = await request.form()
         if setup is None or not state.csrf_matches(str(form.get("csrf_token", "")), setup.csrf):
-            return RedirectResponse("/setup?error=setup+session+expired", status_code=303)
+            return RedirectResponse(f"/setup?error={quote_plus(_SETUP_EXPIRED)}", status_code=303)
         claim_provenance = str(form.get("claim_provenance", "")).strip()
         response = await state.control_request(
             "POST",
@@ -214,7 +228,10 @@ def install_setup_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 has_setup_session=False,
                 setup_csrf="",
                 error=None,
-                notice="Instance claimed. Sign in with the new Platform Owner credentials.",
+                notice=(
+                    "Instancia reclamada. Inicie sesión con los datos del nuevo dueño "
+                    "de la plataforma."
+                ),
                 codes=None,
                 claim=as_mapping(response.payload),
             ),

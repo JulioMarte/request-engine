@@ -47,11 +47,34 @@ class ResourceSpec:
     item_key: str | None = None
     columns: tuple[str, ...] = ()
     create_operation_id: str | None = None
-    create_label: str = "Create"
+    create_label: str = "Crear"
     create_secret_fields: tuple[str, ...] = ()
     create_prefill: tuple[tuple[str, str], ...] = ()
     actions: tuple[ActionSpec, ...] = ()
     list_note: str = ""
+
+    @property
+    def column_headings(self) -> tuple[str, ...]:
+        """Spanish table headings; the raw field names stay the data keys."""
+
+        return tuple(COLUMN_HEADINGS.get(column, column) for column in self.columns)
+
+
+# Presentation-only Spanish headings for the payload fields shown as list columns.
+COLUMN_HEADINGS: dict[str, str] = {
+    "organization_key": "Clave del negocio",
+    "display_name": "Nombre",
+    "operational_status": "Estado operativo",
+    "default_timezone": "Zona horaria",
+    "status": "Estado",
+    "revision": "Revisión",
+    "created_at": "Creado",
+    "principal_kind": "Tipo de principal",
+    "active": "Activo",
+    "authority_revision": "Revisión de autoridad",
+    "binding_status": "Estado del vínculo",
+    "delivery_status": "Estado de entrega",
+}
 
 
 @dataclass(frozen=True)
@@ -68,116 +91,118 @@ class WorkspaceSpec:
 RESOURCE_SPECS: tuple[ResourceSpec, ...] = (
     ResourceSpec(
         key="organizations",
-        title="Organizations",
+        title="Negocios",
         owner="tenancy",
-        summary="Platform organization roots and their current operational profile.",
+        summary="Negocios registrados en la plataforma y su perfil operativo actual.",
         list_operation_id="platform_organization_list",
         get_operation_id="platform_organization_get",
         item_param="organization_id",
         item_key="organization_id",
         columns=("organization_key", "display_name", "operational_status", "default_timezone"),
         create_operation_id="platform_native_organization_create",
-        create_label="Create organization",
+        create_label="Crear negocio",
     ),
     ResourceSpec(
         key="native-identities",
-        title="Native identities",
+        title="Identidades nativas",
         owner="tenancy",
-        summary="Human/agent native identities, their status and disable lifecycle.",
+        summary="Identidades nativas de personas y asistentes, su estado y su desactivación.",
         list_operation_id="platform_native_identity_list",
         get_operation_id="platform_native_identity_get",
         item_param="native_identity_id",
         item_key="native_identity_id",
         columns=("status", "revision", "created_at"),
         create_operation_id="platform_native_identity_provision",
-        create_label="Provision identity",
+        create_label="Crear identidad",
         create_secret_fields=("password",),
         actions=(
             ActionSpec(
                 key="disable",
-                label="Disable",
+                label="Desactivar",
                 operation_id="platform_native_identity_disable",
-                description="Disable this identity. Requires the current revision.",
+                description="Desactiva esta identidad. Requiere la revisión actual.",
                 prefill=(("expected_revision", "revision"),),
                 danger=True,
-                confirm="Disable this native identity?",
+                confirm="¿Desactivar esta identidad nativa?",
             ),
         ),
     ),
     ResourceSpec(
         key="provisioners",
-        title="Provisioners",
+        title="Aprovisionadores",
         owner="tenancy",
-        summary="Tenant provisioner bindings and their suspend/reactivate/revoke lifecycle.",
+        summary=(
+            "Vínculos de aprovisionadores de negocios y su suspensión, reactivación o revocación."
+        ),
         list_operation_id="platform_native_provisioner_list",
         get_operation_id="platform_native_provisioner_get",
         item_param="principal_id",
         item_key="principal_id",
         columns=("principal_kind", "active", "authority_revision", "binding_status"),
         create_operation_id="platform_native_provisioner_create",
-        create_label="Create provisioner",
+        create_label="Crear aprovisionador",
         actions=(
             ActionSpec(
                 key="suspend",
-                label="Suspend",
+                label="Suspender",
                 operation_id="platform_native_provisioner_suspend",
-                description="Suspend the provisioner binding.",
+                description="Suspende el vínculo del aprovisionador.",
                 prefill=(("expected_revision", "authority_revision"),),
                 danger=True,
-                confirm="Suspend this provisioner?",
+                confirm="¿Suspender este aprovisionador?",
             ),
             ActionSpec(
                 key="reactivate",
-                label="Reactivate",
+                label="Reactivar",
                 operation_id="platform_native_provisioner_reactivate",
                 prefill=(("expected_revision", "authority_revision"),),
             ),
             ActionSpec(
                 key="revoke",
-                label="Revoke",
+                label="Revocar",
                 operation_id="platform_native_provisioner_revoke",
                 prefill=(("expected_revision", "authority_revision"),),
                 danger=True,
-                confirm="Revoke this provisioner? This cannot be undone.",
+                confirm="¿Revocar este aprovisionador? Esto no se puede deshacer.",
             ),
         ),
     ),
     ResourceSpec(
         key="recovery-cases",
-        title="Identity recovery cases",
+        title="Casos de recuperación",
         owner="tenancy",
-        summary="Governed assisted identity-recovery cases and their approval lifecycle.",
+        summary="Casos controlados de recuperación asistida de identidades y su aprobación.",
         list_operation_id="platform_identity_recovery_case_list",
         get_operation_id="platform_identity_recovery_case_get",
         item_param="case_id",
         item_key="case_id",
         columns=("status", "revision", "delivery_status", "created_at"),
         create_operation_id="platform_identity_recovery_case_create",
-        create_label="Open recovery case",
+        create_label="Abrir caso de recuperación",
         actions=(
             ActionSpec(
                 key="approve",
-                label="Approve",
+                label="Aprobar",
                 operation_id="platform_identity_recovery_case_approve",
                 prefill=(("expected_revision", "revision"),),
                 danger=True,
-                confirm="Approve this recovery case?",
+                confirm="¿Aprobar este caso de recuperación?",
             ),
             ActionSpec(
                 key="issue",
-                label="Issue",
+                label="Emitir",
                 operation_id="platform_identity_recovery_case_issue",
                 prefill=(("expected_revision", "revision"),),
                 danger=True,
-                confirm="Issue recovery material for this case?",
+                confirm="¿Emitir el material de recuperación de este caso?",
             ),
             ActionSpec(
                 key="revoke",
-                label="Revoke",
+                label="Revocar",
                 operation_id="platform_identity_recovery_case_revoke",
                 prefill=(("expected_revision", "revision"),),
                 danger=True,
-                confirm="Revoke this recovery case?",
+                confirm="¿Revocar este caso de recuperación?",
             ),
         ),
     ),
@@ -186,46 +211,53 @@ RESOURCE_SPECS: tuple[ResourceSpec, ...] = (
 WORKSPACE_SPECS: tuple[WorkspaceSpec, ...] = (
     WorkspaceSpec(
         key="controller-policy-adoptions",
-        title="Controller policy adoption",
+        title="Adopción de la política del controlador",
         owner="tenancy",
-        summary="Review tenant consent and apply the current controller policy safely.",
+        summary=(
+            "Revise el consentimiento del negocio y aplique la política actual "
+            "del controlador de forma segura."
+        ),
     ),
     WorkspaceSpec(
         key="configurations",
-        title="Platform configuration",
+        title="Configuración de la plataforma",
         owner="platform_configuration",
-        summary="Staged/validated/active configuration revisions and provider tests.",
+        summary=(
+            "Revisiones de configuración preparadas, validadas y activas, y pruebas de proveedores."
+        ),
     ),
     WorkspaceSpec(
         key="secrets",
-        title="Secrets and signing keyrings",
+        title="Secretos y llaveros de firma",
         owner="platform_configuration",
-        summary="Create, rotate and revoke platform secret bindings by binding id.",
+        summary="Cree, rote y revoque vínculos de secretos de la plataforma por su identificador.",
         no_list_note=(
-            "The control plane exposes secret metadata by binding id but has no "
-            "secret-enumeration operation, so secrets are looked up, never listed."
+            "El plano de control muestra los datos de un secreto por el identificador "
+            "de su vínculo, pero no tiene una operación para listarlos: los secretos "
+            "se buscan, nunca se listan."
         ),
     ),
     WorkspaceSpec(
         key="deployment-recovery",
-        title="Deployment recovery",
+        title="Recuperación del despliegue",
         owner="platform_configuration",
-        summary="Inspect the active deployment binding and reconcile it against Coolify.",
+        summary="Inspeccione el vínculo de despliegue activo y concílielo con Coolify.",
     ),
     WorkspaceSpec(
         key="owners",
-        title="Platform owners",
+        title="Dueños de la plataforma",
         owner="tenancy",
-        summary="Invite, enroll and govern additional Platform Owners.",
+        summary="Invite, registre y gestione a otros dueños de la plataforma.",
     ),
     WorkspaceSpec(
         key="provisioning",
-        title="Recovery operators",
+        title="Operadores de recuperación",
         owner="tenancy",
-        summary="Provision platform recovery operators through the available command.",
+        summary="Cree operadores de recuperación de la plataforma con el comando disponible.",
         no_list_note=(
-            "This is a create-only operation: no recovery-operator list/read operation "
-            "is mounted, so the workspace shows the command rather than a resource table."
+            "Esta operación solo permite crear: no hay una operación para listar o leer "
+            "operadores de recuperación, así que este espacio muestra el comando en vez "
+            "de una tabla."
         ),
     ),
 )
@@ -295,7 +327,7 @@ class MissingOperation(RuntimeError):
     """Raised when a spec references an operation the control plane no longer mounts."""
 
     def __init__(self, operation_id: str) -> None:
-        super().__init__(f"control plane does not expose operationId {operation_id!r}")
+        super().__init__(f"el plano de control no ofrece la operación {operation_id!r}")
         self.operation_id = operation_id
 
 
@@ -355,6 +387,7 @@ def next_cursor(payload: Any) -> str:
 
 __all__ = [
     "ActionSpec",
+    "COLUMN_HEADINGS",
     "CONFIGURATION_OPERATION_IDS",
     "CONTROLLER_ADOPTION_OPERATION_IDS",
     "DEPLOYMENT_OPERATION_IDS",

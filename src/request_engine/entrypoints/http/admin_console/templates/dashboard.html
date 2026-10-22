@@ -1,21 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Overview · Request Engine admin{% endblock %}
+{% block title %}Resumen · Administración de Request Engine{% endblock %}
 {% block content %}
 <header class="page-heading">
-  <div><p class="eyebrow">Dashboard / Overview</p><h1>Overview</h1><p>See what is healthy, what needs attention, and where to act.</p></div>
-  <div class="page-actions"><a class="button secondary" href="/">Refresh checks</a><a class="button quiet" href="/diagnostics">View diagnostics <span aria-hidden="true">→</span></a></div>
+  <div><p class="eyebrow">Panel / Resumen</p><h1>Resumen</h1><p>Vea qué funciona bien, qué requiere atención y dónde actuar.</p></div>
+  <div class="page-actions"><a class="button secondary" href="/">Volver a verificar</a><a class="button quiet" href="/diagnostics">Ver diagnóstico <span aria-hidden="true">→</span></a></div>
 </header>
-<p class="muted small">Checked <time datetime="{{ checked_at }}">{{ checked_at }}</time>. This is a snapshot of reported control-plane facts, not continuous monitoring or production certification.</p>
-{% if catalog_error %}<div class="alert error" role="alert">The operation catalog is unavailable. {{ catalog_error }}</div>{% endif %}
+<p class="muted small">Verificado <time datetime="{{ checked_at }}">{{ checked_at }}</time>. Esto es una foto de los datos que reporta el plano de control, no un monitoreo continuo ni una certificación de producción.</p>
+{% if catalog_error %}<div class="alert error" role="alert">El catálogo de operaciones no está disponible. {{ catalog_error }}</div>{% endif %}
 
 <section class="health-banner {% if overall_state != 'healthy' %}{{ overall_state }}{% endif %}" aria-labelledby="health-title">
   <span class="health-icon" aria-hidden="true">{% if overall_state == 'healthy' %}✓{% elif overall_state == 'attention' %}!{% else %}i{% endif %}</span>
-  <div><h2 id="health-title">{% if overall_state == 'healthy' %}Core operational checks are healthy{% elif overall_state == 'attention' %}Some operational checks need attention{% else %}Operational status is incomplete{% endif %}</h2>
-  <p>{% if overall_state == 'healthy' %}The control-plane surfaces checked by this page are responding normally.{% elif overall_state == 'attention' %}Review the items below before making sensitive changes.{% else %}One or more checks responded without enough information to claim a healthy state.{% endif %}</p></div>
-  <a href="/diagnostics">View system status <span aria-hidden="true">→</span></a>
+  <div><h2 id="health-title">{% if overall_state == 'healthy' %}Las verificaciones operativas principales están bien{% elif overall_state == 'attention' %}Algunas verificaciones operativas requieren atención{% else %}El estado operativo está incompleto{% endif %}</h2>
+  <p>{% if overall_state == 'healthy' %}Las partes del plano de control que revisa esta página responden con normalidad.{% elif overall_state == 'attention' %}Revise los puntos de abajo antes de hacer cambios delicados.{% else %}Una o más verificaciones respondieron sin información suficiente para afirmar que todo está bien.{% endif %}</p></div>
+  <a href="/diagnostics">Ver estado del sistema <span aria-hidden="true">→</span></a>
 </section>
 
-<div class="status-grid" aria-label="Platform status">
+<div class="status-grid" aria-label="Estado de la plataforma">
   {% for service in services %}
   <a class="status-card" href="{{ service.href }}">
     <span class="status-symbol {{ service.tone }}" aria-hidden="true">{% if service.tone == 'ok' %}✓{% elif service.tone == 'warn' %}!{% else %}i{% endif %}</span>
@@ -26,41 +26,41 @@
 
 <div class="overview-grid">
   <section class="panel" aria-labelledby="attention-title">
-    <div class="panel-heading"><div><p class="eyebrow">Act first</p><h2 id="attention-title">Needs attention <span class="count-badge">{{ attention | length }}</span></h2></div><a href="/diagnostics">View diagnostics →</a></div>
+    <div class="panel-heading"><div><p class="eyebrow">Atienda primero</p><h2 id="attention-title">Requiere atención <span class="count-badge">{{ attention | length }}</span></h2></div><a href="/diagnostics">Ver diagnóstico →</a></div>
     <div class="attention-list">
       {% for item in attention %}
       <article class="attention-item"><span aria-hidden="true">!</span><div><strong>{{ item.title }}</strong><p>{{ item.detail }}</p></div><a class="button quiet" href="{{ item.href }}">{{ item.action }}</a></article>
       {% else %}
-      <div class="empty-state compact {% if overall_state != 'healthy' %}neutral{% endif %}"><span aria-hidden="true">{% if overall_state == 'healthy' %}✓{% else %}i{% endif %}</span><div><strong>{% if overall_state == 'healthy' %}No issues reported by these checks{% else %}Checks are incomplete{% endif %}</strong><p>{% if overall_state == 'healthy' %}No alerts or unavailable operational surfaces were reported.{% else %}Missing facts cannot establish a healthy state. Review the reported evidence below.{% endif %}</p></div></div>
+      <div class="empty-state compact {% if overall_state != 'healthy' %}neutral{% endif %}"><span aria-hidden="true">{% if overall_state == 'healthy' %}✓{% else %}i{% endif %}</span><div><strong>{% if overall_state == 'healthy' %}Estas verificaciones no reportan problemas{% else %}Las verificaciones están incompletas{% endif %}</strong><p>{% if overall_state == 'healthy' %}No se reportaron alertas ni partes operativas sin disponibilidad.{% else %}Sin todos los datos no se puede afirmar que todo está bien. Revise la evidencia reportada abajo.{% endif %}</p></div></div>
       {% endfor %}
     </div>
   </section>
 
   <section class="panel" aria-labelledby="actions-title">
-    <div class="panel-heading"><div><p class="eyebrow">Shortcuts</p><h2 id="actions-title">Common tasks</h2></div><a href="/resources">All workspaces →</a></div>
+    <div class="panel-heading"><div><p class="eyebrow">Accesos directos</p><h2 id="actions-title">Tareas frecuentes</h2></div><a href="/resources">Todos los espacios de trabajo →</a></div>
     <div class="quick-grid">
-      <a href="/my-organizations"><span aria-hidden="true">♧</span><span><strong>People &amp; permissions</strong><small>Choose your organization, invite people, and review access</small></span><b aria-hidden="true">→</b></a>
-      <a href="/resources/native-identities"><span aria-hidden="true">◎</span><span><strong>Manage identities</strong><small>Provision and disable native identities</small></span><b aria-hidden="true">→</b></a>
-      <a href="/resources/owners"><span aria-hidden="true">◇</span><span><strong>Platform owners</strong><small>Review owners, invitations, and access lifecycle</small></span><b aria-hidden="true">→</b></a>
-      <a href="/resources/controller-policy-adoptions"><span aria-hidden="true">◫</span><span><strong>Controller policy adoption</strong><small>Review legacy policy and apply governed changes</small></span><b aria-hidden="true">→</b></a>
-      <a href="/resources/configurations"><span aria-hidden="true">◫</span><span><strong>Configure platform</strong><small>Stage, validate, test, and activate</small></span><b aria-hidden="true">→</b></a>
-      <a href="/resources/secrets"><span aria-hidden="true">⌁</span><span><strong>Manage secrets</strong><small>Use governed bindings and keyrings</small></span><b aria-hidden="true">→</b></a>
-      <a href="/resources/recovery-cases"><span aria-hidden="true">↻</span><span><strong>Recovery cases</strong><small>Review assisted identity recovery</small></span><b aria-hidden="true">→</b></a>
-      <a href="/resources/deployment-recovery"><span aria-hidden="true">◉</span><span><strong>Deployment recovery</strong><small>Inspect and reconcile the active binding</small></span><b aria-hidden="true">→</b></a>
-      <a href="/operations"><span aria-hidden="true">⌘</span><span><strong>Advanced operations</strong><small>Complete OpenAPI-driven escape hatch</small></span><b aria-hidden="true">→</b></a>
+      <a href="/my-organizations"><span aria-hidden="true">♧</span><span><strong>Personas y permisos</strong><small>Elija su negocio, invite personas y revise los accesos</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/native-identities"><span aria-hidden="true">◎</span><span><strong>Gestionar identidades</strong><small>Cree y desactive identidades nativas</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/owners"><span aria-hidden="true">◇</span><span><strong>Dueños de la plataforma</strong><small>Revise dueños, invitaciones y el ciclo de acceso</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/controller-policy-adoptions"><span aria-hidden="true">◫</span><span><strong>Adopción de la política del controlador</strong><small>Revise la política anterior y aplique cambios controlados</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/configurations"><span aria-hidden="true">◫</span><span><strong>Configurar la plataforma</strong><small>Prepare, valide, pruebe y active</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/secrets"><span aria-hidden="true">⌁</span><span><strong>Gestionar secretos</strong><small>Use vínculos y llaveros controlados</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/recovery-cases"><span aria-hidden="true">↻</span><span><strong>Casos de recuperación</strong><small>Revise la recuperación asistida de identidades</small></span><b aria-hidden="true">→</b></a>
+      <a href="/resources/deployment-recovery"><span aria-hidden="true">◉</span><span><strong>Recuperación del despliegue</strong><small>Inspeccione y concilie el vínculo activo</small></span><b aria-hidden="true">→</b></a>
+      <a href="/operations"><span aria-hidden="true">⌘</span><span><strong>Operaciones avanzadas</strong><small>Acceso completo basado en OpenAPI para casos especiales</small></span><b aria-hidden="true">→</b></a>
     </div>
   </section>
 </div>
 
 <section class="panel" aria-labelledby="readiness-evidence-title">
-  <div class="panel-heading"><div><h2 id="readiness-evidence-title">Reported readiness evidence</h2><p>Each value comes from the control plane. Follow its workspace to investigate or update the underlying configuration.</p></div></div>
-  <div class="table-scroll"><table class="ops"><caption class="sr-only">Current readiness checks and their workspaces</caption><thead><tr><th scope="col">Check</th><th scope="col">Reported value</th><th scope="col">Workspace</th></tr></thead><tbody>
-    {% for check in readiness_checks %}<tr><th scope="row">{{ check.title }}</th><td>{{ check.value }}</td><td><a href="{{ check.href }}">Review {{ check.title | lower }} →</a></td></tr>{% endfor %}
+  <div class="panel-heading"><div><h2 id="readiness-evidence-title">Evidencia de preparación reportada</h2><p>Cada valor viene del plano de control. Abra su espacio de trabajo para investigar o actualizar la configuración correspondiente.</p></div></div>
+  <div class="table-scroll"><table class="ops"><caption class="sr-only">Verificaciones de preparación actuales y sus espacios de trabajo</caption><thead><tr><th scope="col">Verificación</th><th scope="col">Valor reportado</th><th scope="col">Espacio de trabajo</th></tr></thead><tbody>
+    {% for check in readiness_checks %}<tr><th scope="row">{{ check.title }}</th><td>{{ check.value }}</td><td><a href="{{ check.href }}">Revisar {{ check.title | lower }} →</a></td></tr>{% endfor %}
   </tbody></table></div>
 </section>
 
 <section class="panel" aria-labelledby="configuration-counters-title">
-  <div class="panel-heading"><div><h2 id="configuration-counters-title">Configuration activity</h2><p>Counters reported by this control-plane process since its last restart. Not 24-hour totals or installation-wide user activity. Missing data is shown as —.</p></div><a href="/diagnostics">Inspect diagnostics →</a></div>
+  <div class="panel-heading"><div><h2 id="configuration-counters-title">Actividad de configuración</h2><p>Contadores reportados por este proceso del plano de control desde su último reinicio. No son totales de 24 horas ni la actividad de usuarios de toda la instalación. Los datos que faltan se muestran como —.</p></div><a href="/diagnostics">Revisar diagnóstico →</a></div>
   <div class="metric-grid">{% for counter in configuration_counters %}<article class="metric"><span>{{ counter.label }}</span><strong>{{ counter.value }}</strong></article>{% endfor %}</div>
 </section>
 

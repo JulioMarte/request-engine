@@ -1,31 +1,31 @@
 {% extends "base.html" %}
-{% block title %}Sign in &middot; Request Engine{% endblock %}
+{% block title %}Iniciar sesión &middot; Request Engine{% endblock %}
 {% block content %}
 <section class="card narrow auth">
   <div class="brand-mark" aria-hidden="true">RE</div>
-  <h1>Sign in</h1>
-  <p class="muted">Your business workspace: today's appointments, queues and team.</p>
+  <h1>Iniciar sesión</h1>
+  <p class="muted">El espacio de su negocio: las citas de hoy, las filas de espera y su equipo.</p>
 
   <form method="post" action="/login" class="stack" data-password-login>
     <input type="hidden" name="next" value="{{ next_url | default('/') }}" />
-    <label>Email or username
+    <label>Correo o usuario
       <input name="login_handle" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required />
     </label>
-    <label>Password
+    <label>Contraseña
       <input name="password" type="password" autocomplete="current-password" required />
     </label>
-    <button type="submit" class="wide">Sign in</button>
+    <button type="submit" class="wide">Iniciar sesión</button>
     <p data-password-login-status class="muted" role="status" aria-live="polite"></p>
   </form>
 
   <details class="auth-block">
-    <summary>Use a passkey instead</summary>
-    <button id="passkey-login-btn" type="button" class="secondary wide">Continue with passkey</button>
+    <summary>Usar una llave de acceso</summary>
+    <button id="passkey-login-btn" type="button" class="secondary wide">Continuar con una llave de acceso (passkey)</button>
     <p id="passkey-login-status" class="muted small">
-      No password or username needed. Your browser shows the passkeys saved on this device.
+      No necesita contraseña ni usuario. Su navegador le muestra las llaves de acceso guardadas en este dispositivo.
     </p>
   </details>
 
-  <p class="auth-footnote">Invited to own a business? <a href="/owner-invitations/enroll">Create your account</a></p>
+  <p class="auth-footnote">¿Le invitaron a ser dueño de un negocio? <a href="/owner-invitations/enroll">Cree su cuenta</a></p>
 </section>
 {% endblock %}

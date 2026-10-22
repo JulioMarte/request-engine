@@ -92,7 +92,7 @@ def _input_view(
         view["format"] = ""
         view["exact_time"] = True
     if field.name == "weekday" and field.enum == tuple(str(day) for day in range(7)):
-        weekdays = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+        weekdays = ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
         view["enum_options"] = [
             {"value": str(day), "label": label} for day, label in enumerate(weekdays)
         ]
@@ -155,7 +155,7 @@ def summarize_payload(payload: Any) -> tuple[list[tuple[str, str]], list[tuple[s
     nested: list[tuple[str, str]] = []
     for key, value in sorted(as_mapping(payload).items()):
         if isinstance(value, bool):
-            scalars.append((key, "yes" if value else "no"))
+            scalars.append((key, "sí" if value else "no"))
         elif value is None:
             scalars.append((key, "—"))
         elif isinstance(value, (str, int, float)):
@@ -172,7 +172,7 @@ def scalar_columns(payload: Mapping[str, Any], columns: tuple[str, ...]) -> list
     for column in columns:
         value = as_mapping(payload).get(column)
         if isinstance(value, bool):
-            rendered.append("yes" if value else "no")
+            rendered.append("sí" if value else "no")
         elif value is None:
             rendered.append("—")
         else:

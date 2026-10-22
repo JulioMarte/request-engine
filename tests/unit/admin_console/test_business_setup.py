@@ -140,8 +140,8 @@ async def test_incomplete_account_inventory_blocks_guided_creation(accounts: Any
     port = BusinessPort(accounts=accounts)
     async with client_for(port) as client:
         page = await open_form(client)
-    assert "Could not load named accounts" in page.text
-    assert "disabled>Create business and continue" in page.text
+    assert "No se pudieron cargar las cuentas" in page.text
+    assert "disabled>Crear negocio y continuar" in page.text
     assert not port.writes
 
 
@@ -173,5 +173,5 @@ async def test_incomplete_creation_result_does_not_invent_setup_authority() -> N
             },
         )
     assert "incomplete_creation_result" in result.text
-    assert "Continue with business setup" not in result.text
+    assert "Continuar con la configuración del negocio" not in result.text
     assert len(port.writes) == 1

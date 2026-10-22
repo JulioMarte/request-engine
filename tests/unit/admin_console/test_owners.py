@@ -132,7 +132,7 @@ async def test_owner_collections_project_canonical_http_and_pagination(invitatio
         assert page.status_code == 200
         assert (_INVITATION if invitations else _OWNER) in page.text
         assert f"after={_NEXT}&amp;limit=3" in page.text
-        assert "First page" in page.text
+        assert "Primera página" in page.text
         assert "no owner enumeration operation" not in page.text
         call = next(call for call in control.calls if call[1] == api_path)
         assert call[0] == "GET"
@@ -163,7 +163,7 @@ async def test_owner_detail_prefills_real_authority_revision_and_route_identity(
             "reason_code": "access_review",
         }
         result = await client.post(f"/resources/owners/{_OWNER}/actions/suspend", data=data)
-        assert "Action completed" in result.text
+        assert "Acción completada" in result.text
         call = control.calls[-1]
         assert call[1] == f"/v1/platform/owners/{_OWNER}:suspend"
         assert call[2]["json_body"] == {"expected_revision": 7, "reason_code": "access_review"}
@@ -183,8 +183,8 @@ async def test_owner_invitation_detail_and_activate_use_invitation_identity() ->
         page = await client.get(f"/resources/owners/invitations/{_INVITATION}")
         assert page.status_code == 200
         assert "enrolled" in page.text
-        assert "Activate enrolled owner" in page.text
-        assert "Expired is an observation" in page.text
+        assert "Activar dueño inscrito" in page.text
+        assert "solo indica que pasó la fecha" in page.text
         csrf = _CSRF.search(page.text)
         assert csrf is not None
         result = await client.post(
@@ -195,7 +195,7 @@ async def test_owner_invitation_detail_and_activate_use_invitation_identity() ->
                 "invitation_id": _NEXT,
             },
         )
-        assert "Action completed" in result.text
+        assert "Acción completada" in result.text
         assert control.calls[-1][1] == f"/v1/platform/owner-invitations/{_INVITATION}:activate"
 
 
@@ -210,10 +210,10 @@ async def test_owner_read_failure_hides_information_and_actions(status: int, pat
         page = await client.get(path)
         assert page.status_code == status
         assert "must-never-render" not in page.text
-        assert "No owner information or action forms are shown" in page.text
+        assert "No se muestran datos de dueños ni formularios de acción" in page.text
         assert "owner-suspend" not in page.text
         assert "owner-invite" not in page.text
-        assert "Sign in again" in page.text
+        assert "Iniciar sesión de nuevo" in page.text
 
 
 @pytest.mark.asyncio
@@ -224,9 +224,9 @@ async def test_owner_malformed_success_is_incomplete_not_empty_or_healthy() -> N
         control.malformed = True
         page = await client.get("/resources/owners")
         assert page.status_code == 502
-        assert "incomplete response" in page.text
+        assert "respuesta incompleta" in page.text
         assert "must-never-render" not in page.text
-        assert "No owner resources returned" not in page.text
+        assert "No hay dueños ni invitaciones" not in page.text
 
 
 @pytest.mark.asyncio
@@ -287,7 +287,7 @@ async def test_owner_partial_detail_never_offers_actions_and_unknown_fields_are_
         control.partial_revision = True
         page = await client.get(path)
         assert page.status_code == 502
-        assert "No owner information or action forms are shown" in page.text
+        assert "No se muestran datos de dueños ni formularios de acción" in page.text
         assert 'class="stack action-form"' not in page.text
 
 
@@ -299,12 +299,12 @@ async def test_owner_empty_success_and_network_failure_are_distinct() -> None:
         control.empty = True
         page = await client.get("/resources/owners")
         assert page.status_code == 200
-        assert "authorized owner service returned an empty page" in page.text
+        assert "servicio de dueños devolvió una página vacía" in page.text
         control.unreachable = True
         page = await client.get("/resources/owners")
         assert page.status_code == 503
-        assert "temporarily unavailable" in page.text
-        assert "authorized owner service returned an empty page" not in page.text
+        assert "no está disponible por el momento" in page.text
+        assert "servicio de dueños devolvió una página vacía" not in page.text
 
 
 class _InvitingControl(OwnerControl):
@@ -342,7 +342,7 @@ async def test_created_invitation_code_is_shown_once_as_the_handoff_value() -> N
             },
         )
         reread = await client.get("/resources/owners/invitations")
-    assert "Give this invitation code to the new owner" in result.text
+    assert "Entregue este código de invitación al nuevo dueño" in result.text
     # Exactly once: in the handoff box, not repeated in raw technical JSON.
     assert result.text.count("one-time-handoff-code") == 1
     assert "one-time-handoff-code" not in reread.text

@@ -372,7 +372,7 @@ async def test_owner_denial_and_forged_forms_never_succeed(tmp_path: Path) -> No
             data={"csrf_token": "wrong", "_intent_id": "book-intent-00002", "option_id": "tok"},
         )
     assert denied.status_code == 403
-    assert "permission" in denied.text
+    assert "permiso" in denied.text
     assert forged.status_code == 303 and forged.headers["location"].endswith("?done=")
     assert len(runtime.posted("/v1/appointments")) == 1
 

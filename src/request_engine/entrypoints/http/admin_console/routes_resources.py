@@ -70,6 +70,16 @@ _DEPLOYMENT_ACTIONS = {
 _PROVISIONING_ACTIONS = {
     "recovery-operator": PROVISIONING_OPERATION_IDS["recovery_operator_create"],
 }
+_CONFIG_ACTION_LABELS = {
+    "validate": "Validar",
+    "activate": "Activar",
+    "disable": "Desactivar",
+    "test": "Probar",
+}
+_CSRF_FAILED_MESSAGE = (
+    "La verificación de seguridad del formulario falta o no es válida. "
+    "Recargue la página e intente de nuevo."
+)
 
 
 def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
@@ -97,17 +107,18 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 "unavailable.html",
                 state.context(
                     request,
-                    title="Workspace unavailable",
+                    title="Espacio de trabajo no disponible",
                     message=(
-                        "The control plane no longer exposes the operation this workspace needs. "
-                        "No action is available until the console and control plane are aligned."
+                        "El plano de control ya no ofrece la operación que necesita este "
+                        "espacio de trabajo. No hay acciones disponibles hasta que la consola "
+                        "y el plano de control estén alineados."
                     ),
                     operation_id=operation_id,
                 ),
                 status_code=503,
             )
         outcome = local_error(
-            503, "operation_unavailable", f"control plane no longer exposes {operation_id}"
+            503, "operation_unavailable", f"el plano de control ya no ofrece {operation_id}"
         )
         return _result_response(request, outcome, form_id="drift")
 
@@ -125,7 +136,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         if not state.csrf_matches(values.get("csrf_token"), session.csrf_token):
             return _result_response(
                 request,
-                local_error(403, "csrf_failed", "CSRF token missing or invalid"),
+                local_error(403, "csrf_failed", _CSRF_FAILED_MESSAGE),
                 form_id=form_id,
             )
         outcome = await execute_operation(
@@ -141,7 +152,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         form_id: str,
         values: Mapping[str, str] | None = None,
         secret_fields: tuple[str, ...] = (),
-        submit_label: str = "Run",
+        submit_label: str = "Ejecutar",
         danger: bool = False,
         confirm: str = "",
         description: str = "",
@@ -176,7 +187,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
         if _session(request) is None:
             return login_redirect(request)
         sections = {
-            "People & access": (
+            "Personas y acceso": (
                 "native-identities",
                 "provisioners",
                 "recovery-cases",
@@ -184,8 +195,8 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 "organizations",
                 "provisioning",
             ),
-            "Platform": ("configurations", "secrets"),
-            "Reliability": ("deployment-recovery",),
+            "Plataforma": ("configurations", "secrets"),
+            "Confiabilidad": ("deployment-recovery",),
         }
         available = {
             item.key: {"key": item.key, "title": item.title, "summary": item.summary}
@@ -220,7 +231,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     spec=spec,
                     rows=[],
                     next_cursor="",
-                    list_error=f"control plane no longer exposes {exc.operation_id}",
+                    list_error=f"el plano de control ya no ofrece {exc.operation_id}",
                     create_inputs=[],
                 ),
             )
@@ -390,7 +401,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     stage_operation,
                     action_url="/resources/configurations/stage",
                     form_id="stage-first",
-                    submit_label="Stage revision",
+                    submit_label="Preparar revisión",
                 )
                 if stage_operation is not None
                 else None,
@@ -439,7 +450,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     action_url=f"/resources/configurations/{kind}/stage",
                     form_id="stage",
                     values=stage_values,
-                    submit_label="Stage revision",
+                    submit_label="Preparar revisión",
                 ),
             ),
         )
@@ -496,9 +507,9 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     action_url=f"/resources/configurations/{kind}/{revision}/actions/{key}",
                     form_id=f"action-{key}",
                     values=values,
-                    submit_label=key.title(),
+                    submit_label=_CONFIG_ACTION_LABELS[key],
                     danger=key == "disable",
-                    confirm=f"{key.title()} this configuration revision?",
+                    confirm=f"¿{_CONFIG_ACTION_LABELS[key]} esta revisión de configuración?",
                 )
             )
         return state.templates.TemplateResponse(
@@ -560,14 +571,14 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 request,
                 note=_note("secrets"),
                 create=_secret_form(
-                    request, create_operation, "create", ("value",), "Create secret"
+                    request, create_operation, "create", ("value",), "Crear secreto"
                 ),
                 keyring=_secret_form(
                     request,
                     keyring_operation,
                     "keyring-create",
                     (),
-                    "Create appointment signing keyring",
+                    "Crear llavero de firma de citas",
                 ),
             ),
         )
@@ -620,9 +631,9 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     form_id="secret-rotate",
                     values=revision_values,
                     secret_fields=() if is_keyring else ("value",),
-                    submit_label="Rotate",
+                    submit_label="Rotar",
                     danger=True,
-                    confirm="Rotate this secret?",
+                    confirm="¿Rotar este secreto?",
                 ),
                 revoke=_action_context(
                     request,
@@ -630,9 +641,9 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     action_url="/resources/secrets/actions/revoke",
                     form_id="secret-revoke",
                     values=revision_values,
-                    submit_label="Revoke",
+                    submit_label="Revocar",
                     danger=True,
-                    confirm="Revoke this secret? This cannot be undone.",
+                    confirm="¿Revocar este secreto? Esto no se puede deshacer.",
                 ),
             ),
         )
@@ -689,15 +700,15 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     action_url="/resources/deployment-recovery/actions/configure",
                     form_id="configure",
                     values=configure_values,
-                    submit_label="Save binding",
+                    submit_label="Guardar vínculo",
                 ),
                 reconcile=_action_context(
                     request,
                     reconcile,
                     action_url="/resources/deployment-recovery/actions/reconcile",
                     form_id="reconcile",
-                    submit_label="Reconcile",
-                    confirm="Reconcile the deployment binding with Coolify?",
+                    submit_label="Conciliar",
+                    confirm="¿Conciliar el vínculo de despliegue con Coolify?",
                 ),
             ),
         )
@@ -719,7 +730,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     configure,
                     action_url="/resources/deployment-recovery/actions/configure",
                     form_id="configure",
-                    submit_label="Configure binding",
+                    submit_label="Configurar vínculo",
                 ),
             ),
         )
@@ -749,7 +760,7 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 operation,
                 action_url=f"/resources/provisioning/actions/{key}",
                 form_id=f"provisioning-{key}",
-                submit_label="Create recovery operator",
+                submit_label="Crear operador de recuperación",
             )
             for key, operation in resolved.items()
         }
@@ -870,7 +881,12 @@ def install_resource_routes(app: FastAPI, state: AdminConsoleState) -> None:
 def _invalid_read() -> ControlResponse:
     return ControlResponse(
         502,
-        {"error": {"code": "invalid_owner_response", "message": "Owner read is incomplete"}},
+        {
+            "error": {
+                "code": "invalid_owner_response",
+                "message": "La lectura del dueño de la operación está incompleta",
+            }
+        },
         {},
     )
 

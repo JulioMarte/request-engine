@@ -662,7 +662,7 @@ async def test_staff_authority_apply_exists_only_after_successful_review() -> No
     ) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         detail = await client.get(f"/tenants/{ORG}/staff/{MEMBER}")
-        assert "Apply reviewed draft" not in detail.text
+        assert "Aplicar el borrador revisado" not in detail.text
         assert 'name="selected_capabilities" value="staff.read"' in detail.text
         assert 'name="desired_capabilities"' not in detail.text
         csrf = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)
@@ -695,7 +695,7 @@ async def test_staff_authority_apply_exists_only_after_successful_review() -> No
             "provenance_reference": "review:test",
         },
     ]
-    assert "Apply reviewed draft" in preview.text
+    assert "Aplicar el borrador revisado" in preview.text
     assert 'value="[&#34;staff.read&#34;]"' in preview.text
     assert 'value="1"' in preview.text
     assert 'value="review:test"' in preview.text
@@ -759,7 +759,7 @@ async def test_blocked_staff_authority_preview_never_offers_apply() -> None:
 
     assert preview.status_code == 200
     assert "last_controller" in preview.text
-    assert "Apply reviewed draft" not in preview.text
+    assert "Aplicar el borrador revisado" not in preview.text
 
 
 @pytest.mark.asyncio
@@ -1012,7 +1012,7 @@ async def test_staff_detail_real_render_has_parseable_forms_and_current_revision
         assert form["action"] == f"/tenants/{ORG}/staff/{MEMBER}/{name}"
         assert form[revision_name] == revision
         assert form["csrf_token"]
-    assert "Apply reviewed draft" not in page.text
+    assert "Aplicar el borrador revisado" not in page.text
 
 
 @pytest.mark.asyncio
@@ -1027,7 +1027,7 @@ async def test_staff_business_configuration_navigation_uses_validated_tenant_onl
     assert page.status_code == 200
     assert f'href="/tenants/{ORG}/configuration"' in page.text
     assert f'href="/tenants/{MEMBER}/configuration"' not in page.text
-    assert "Business configuration" in page.text
+    assert "Configuración del negocio" in page.text
     for _, _, kwargs in runtime.requests:
         assert kwargs["extra_headers"] == {"X-RE-Organization-ID": ORG}
         assert "authority_party_id" not in (kwargs.get("params") or {})

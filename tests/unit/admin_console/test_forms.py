@@ -82,7 +82,7 @@ def test_parse_submission_rejects_bad_integer() -> None:
 
 @pytest.mark.parametrize("raw", ["typo", "2", "maybe"])
 def test_boolean_typo_does_not_silently_disable_setting(raw: str) -> None:
-    with pytest.raises(FormSubmissionError, match="must be a boolean"):
+    with pytest.raises(FormSubmissionError, match="elija sí o no"):
         parse_submission(
             build_fields(_operation()), {"thing_id": "abc", "name": "x", "active": raw}
         )
@@ -99,13 +99,13 @@ def test_explicit_false_setting_remains_supported(raw: str) -> None:
 @pytest.mark.parametrize("raw", ["NaN", "Infinity", "-inf", "1e999"])
 def test_nonfinite_numbers_are_form_errors_not_transport_failures(raw: str) -> None:
     count = next(field for field in build_fields(_operation()) if field.name == "count")
-    with pytest.raises(FormSubmissionError, match="finite number"):
+    with pytest.raises(FormSubmissionError, match="escriba un número válido"):
         parse_submission((replace(count, kind="number"),), {"count": raw})
 
 
 @pytest.mark.parametrize("raw", ['{"nested": [NaN]}', "[Infinity]", '{"value": 1e999}'])
 def test_nonfinite_nested_json_is_rejected(raw: str) -> None:
-    with pytest.raises(FormSubmissionError, match="valid JSON"):
+    with pytest.raises(FormSubmissionError, match="el JSON no es válido"):
         parse_submission(build_fields(_operation()), {"thing_id": "abc", "name": "x", "meta": raw})
 
 
@@ -123,7 +123,7 @@ def test_render_path_substitutes_parameters() -> None:
 
 @pytest.mark.parametrize("value", [".", "..", "../other", "a/b", "a\\b"])
 def test_render_path_rejects_segment_traversal(value: str) -> None:
-    with pytest.raises(FormSubmissionError, match="single resource segment"):
+    with pytest.raises(FormSubmissionError, match="Un identificador no es válido"):
         render_path("/v1/things/{thing_id}:run", {"thing_id": value})
 
 
