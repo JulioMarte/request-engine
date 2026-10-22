@@ -16,6 +16,7 @@ from request_engine.modules.queue.adapters.db.live_queue_serialization import (
     entry_to_json,
 )
 from request_engine.modules.queue.adapters.db.live_queue_validation import (
+    ensure_reservation_not_served,
     require_active_subject,
     require_active_workload,
     require_offering,
@@ -75,6 +76,11 @@ async def check_in(
         )
         offering_id = command.offering_id or cast(UUID | None, queue["offering_id"])
         if command.reservation_id is not None:
+            # Lock order: service queue -> intake control -> reservation (FOR SHARE).
+            # Booking cancel/reschedule lock the reservation FOR UPDATE and never a
+            # service queue, so the edge is acyclic: a concurrent cancel either
+            # commits first (the reservation is then no longer confirmed) or waits
+            # until this admission commits.
             reservation_offering = await require_reservation_match(
                 session,
                 organization_id=command.organization_id,
@@ -82,6 +88,9 @@ async def check_in(
                 subject_party_id=command.subject_party_id,
                 queue_location_id=cast(UUID | None, queue["location_id"]),
                 queue_offering_id=cast(UUID | None, queue["offering_id"]),
+            )
+            await ensure_reservation_not_served(
+                session, command.organization_id, command.reservation_id
             )
             if offering_id is None:
                 offering_id = reservation_offering

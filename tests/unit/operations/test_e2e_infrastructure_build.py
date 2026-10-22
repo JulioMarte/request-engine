@@ -3,12 +3,19 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts/ci/run_e2e_suite.sh"
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="sources the Bash launcher and execs a #!/bin/bash fake docker via chmod +x; "
+    "Windows resolves `bash` to WSL without /bin/bash; runs on Linux CI",
+)
 
 
 @pytest.mark.parametrize("cached", [False, True])

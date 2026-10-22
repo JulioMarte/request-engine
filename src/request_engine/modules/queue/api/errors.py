@@ -13,6 +13,7 @@ from request_engine.modules.queue.application.errors import (
     QueueError,
     QueueInactive,
     QueueNotFound,
+    ReservationAlreadyServed,
     SubjectAuthorityRequired,
     TenantReferenceNotUsable,
 )
@@ -105,6 +106,14 @@ def _queue_error(exc: QueueError) -> tuple[int, ErrorBody]:
                 "queue_id": str(exc.queue_id),
                 "subject_party_id": str(exc.subject_party_id),
             },
+        )
+    if isinstance(exc, ReservationAlreadyServed):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="reservation_already_served",
+            message="the visit for this reservation was already completed; "
+            "it cannot be checked in or added to a queue again",
+            resolution=ErrorResolution.CHOOSE_ALTERNATIVE,
+            details={"reservation_id": str(exc.reservation_id)},
         )
     if isinstance(exc, ActiveQueueEntryNotFound):
         return status.HTTP_409_CONFLICT, ErrorBody(

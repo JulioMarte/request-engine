@@ -11,6 +11,7 @@ from request_engine.modules.booking.application.errors import (
     InvalidResourceSelection,
     OfferingVersionNotBookable,
     OfferingVersionNotFound,
+    ReservationAlreadyServed,
     ReservationNotReschedulable,
     ReservationRevisionConflict,
 )
@@ -34,7 +35,11 @@ class PostgresGuardedRecoveryReschedule:
             return await execute_recovery_reschedule(self._session_factory, request)
         except IntegrityError as exc:
             normalize_capacity_integrity_error(exc)
-        except (ReservationRevisionConflict, ReservationNotReschedulable) as exc:
+        except (
+            ReservationAlreadyServed,
+            ReservationRevisionConflict,
+            ReservationNotReschedulable,
+        ) as exc:
             raise RecoveryBookingConflict(str(exc)) from exc
         except (
             AppointmentUnavailable,

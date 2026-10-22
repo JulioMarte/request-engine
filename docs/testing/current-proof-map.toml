@@ -840,3 +840,13 @@ evidence = ["contract", "invariant", "adversarial", "security"]
 guarantee = "INV-STAFF-INVITATION-PROPOSAL-001"
 path = "tests/unit/test_staff_invitation_proposal_http.py"
 evidence = ["contract", "security"]
+
+[[proofs]]
+guarantee = "INV-SERVED-VISIT-001"
+path = "tests/e2e/test_served_visit_guards.py"
+evidence = ["invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-OUTBOX-001"
+path = "tests/e2e/test_change_feed_queue_triage_signals.py"
+evidence = ["invariant", "contract"]

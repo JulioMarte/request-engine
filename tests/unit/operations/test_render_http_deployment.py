@@ -4,6 +4,7 @@ import importlib.util
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -170,6 +171,11 @@ def test_accepts_only_explicit_single_host_proxy_prefixes(
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="plan contract requires POSIX absolute env_file paths (no colon/backslash); "
+    "Windows tmp_path cannot satisfy it; runs on Linux CI",
+)
 def test_docker_compose_config_when_available(tmp_path: Path) -> None:
     docker = shutil.which("docker")
     if docker is None:

@@ -43,6 +43,9 @@ from request_engine.modules.booking.adapters.db.resource_availability import (
     load_live_capacity_claims,
     load_resource_exceptions,
 )
+from request_engine.modules.booking.adapters.db.served_visit_guard import (
+    ensure_reservation_not_served,
+)
 from request_engine.modules.booking.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.booking.application.authority import MANAGE_APPOINTMENT_SCOPE
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
@@ -114,6 +117,9 @@ class PostgresBookingCommitmentCommands:
             status = cast(str, reservation_row["status"])
             if status != "confirmed":
                 raise ReservationNotReschedulable(command.reservation_id, status)
+            await ensure_reservation_not_served(
+                session, command.organization_id, command.reservation_id
+            )
 
             offering_version_id = cast(UUID, reservation_row["offering_version_id"])
             offering = await load_bookable_offering(

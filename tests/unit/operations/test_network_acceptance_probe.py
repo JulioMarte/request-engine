@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import socket
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,11 @@ def test_open_private_tcp_listener_fails_public_isolation() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows TCP retries SYN after RST (~2s), so the 0.2s probe of a non-listening "
+    "loopback port observes timeout instead of POSIX ECONNREFUSED; runs on Linux CI",
+)
 def test_closed_listener_is_observation_not_isolation_certification() -> None:
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))

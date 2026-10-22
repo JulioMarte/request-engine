@@ -68,6 +68,10 @@ _HUMAN_ERRORS = {
     "idempotency_conflict": (
         "Esta acción ya se envió con otros datos. Recargue la página e inicie la acción de nuevo."
     ),
+    "reservation_already_served": (
+        "Esta cita ya fue atendida. No se puede volver a registrar su llegada, "
+        "cancelar ni cambiar de fecha."
+    ),
     "rate_limited": "Se hicieron demasiados intentos. Espere un momento e intente de nuevo.",
     "control_unreachable": (
         "No se pudo conectar con el servidor. No se hizo ningún cambio. "

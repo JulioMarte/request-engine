@@ -23,6 +23,9 @@ from request_engine.modules.booking.adapters.db.reservation_commands import (
     load_bookable_offering,
     validate_subject_location_and_origin,
 )
+from request_engine.modules.booking.adapters.db.served_visit_guard import (
+    ensure_reservation_not_served,
+)
 from request_engine.modules.booking.adapters.db.subject_authority import (
     require_subject_authority,
 )
@@ -67,6 +70,7 @@ async def prepare_recovery(
     status = cast(str, row["status"])
     if status != "confirmed":
         raise ReservationNotReschedulable(request.reservation_id, status)
+    await ensure_reservation_not_served(session, request.organization_id, request.reservation_id)
     if request.location_id is None or request.expected_target_location_operational_revision is None:
         raise RecoveryTargetUnavailable("recovery target requires Location provenance")
     duration_minutes = request.expected_planned_duration_minutes or 0

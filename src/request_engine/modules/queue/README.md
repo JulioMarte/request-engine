@@ -86,6 +86,32 @@ They are distinct from the existing subject-facing `queue.join`.
 
 Reservation-backed check-in validates confirmed same-tenant planning context and creates QueueEntry without mutating Reservation or CapacityClaim.
 
+Served-visit guard (INV-SERVED-VISIT-001): `queue.check_in` and `queue.join` refuse a
+Reservation that already has a `completed` QueueEntry in **any** queue with
+`409 reservation_already_served`. Check-in reads the Reservation `FOR SHARE` after
+the ServiceQueue and intake-control locks (lock order: queue -> intake control ->
+reservation), so a concurrent Booking cancel/reschedule serializes with the
+admission. An entry that ended `cancelled` or `no_show` is not a served visit and
+does not block a new check-in. Concurrent active entries of one Reservation in
+*different* queues remain allowed: the Day Board multi-queue ambiguity contract
+(`active_queue_entry_count > 1`, `docs/v3/43-same-day-triage.md`) depends on it,
+and a lineage/handoff contract does not exist yet. A second active entry in the
+*same* queue is refused by the per-subject active-entry rule
+(`queue_entries_one_active_subject_uq`, `409 already_in_queue`). There is no
+PostgreSQL unique backstop on `reservation_id`: a partial unique index over
+completed entries would forbid completing both stages of a legitimate
+multi-queue visit, so the guard is the admission transaction itself.
+
+Every admission and triage fact appends a versioned outbox event on the
+`QueueEntry` aggregate in its own transaction, which is what lets the change feed
+(ADR 0020) signal it: `queue.entry_joined.v1`, `queue.entry_checked_in.v1`,
+`queue.entry_called.v1`, `queue.entry_skipped.v1`, `queue.entry_recall_held.v1`,
+`queue.entry_recall_released.v1`, `queue.entry_no_show.v1`,
+`queue.entry_cancelled.v1` and `queue.entry_expected_workload_classified.v1`.
+Payloads carry identifiers, closed enum values and revisions only; the operator's
+free-text recall-hold reason stays in the audit/hold record and never in the
+outbox.
+
 Walk-in creates QueueEntry with:
 
 ```text

@@ -136,6 +136,14 @@ class ReservationNotReschedulable(BookingError):
         self.status = status
 
 
+class ReservationAlreadyServed(BookingError):
+    """The reservation's visit already completed, so its commitment is consumed."""
+
+    def __init__(self, reservation_id: UUID) -> None:
+        super().__init__(f"Reservation {reservation_id} visit was already served")
+        self.reservation_id = reservation_id
+
+
 ReservationStateConflict = (
     ReservationNotConfirmed | ReservationNotCancellable | ReservationNotReschedulable
 )
