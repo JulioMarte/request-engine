@@ -15,6 +15,11 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "__init__.py",
     "app.py",
     "capabilities.py",
+    # Invalidation-only change feed (ADR 0020): per-topic authorization with
+    # existing owner read capabilities and the single fact->topic routing table.
+    # It carries no owner data; clients re-read through module-owned reads.
+    "change_topics.py",
+    "changes_stream.py",
     "discovery_app.py",
     "discovery_availability_app.py",
     "errors.py",

@@ -3,6 +3,7 @@ from .http_surface import PublicHttpOperation
 from .http_surface_administrative_configuration import ADMINISTRATIVE_CONFIGURATION_HTTP_OPERATIONS
 from .http_surface_agent import AGENT_HTTP_OPERATIONS
 from .http_surface_authority_inspection import RESOURCE_AUTHORITY_INSPECTION_HTTP_OPERATIONS
+from .http_surface_changes import CHANGES_HTTP_OPERATIONS
 from .http_surface_controller_policy import CONTROLLER_POLICY_HTTP_OPERATIONS
 from .http_surface_day_board import DAY_BOARD_HTTP_OPERATIONS
 from .http_surface_delegation import DELEGATION_HTTP_OPERATIONS
@@ -51,6 +52,7 @@ PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     + RESOURCE_AUTHORITY_INSPECTION_HTTP_OPERATIONS
     + OPERATION_CATALOG_HTTP_OPERATIONS
     + ADMINISTRATIVE_CONFIGURATION_HTTP_OPERATIONS
+    + CHANGES_HTTP_OPERATIONS
 )
 
 MATRIX_OPERATIONS: tuple[PublicHttpOperation, ...] = (

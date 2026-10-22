@@ -147,6 +147,8 @@ Do not create a second business implementation for agents. `CapabilityDefinition
 
 The historical `operational_copilot` package is not a separate source of business truth. Its structured tools are migration input toward the generic authorized operation/tool gateway described by doc 16.
 
+The product user interface is the external `request-engine-app` client (browser app plus a BFF that holds bearer tokens server-side; the API exposes no browser CORS). The Jinja admin console remains until that client reaches parity and receives no new product surface. `GET /v1/changes/stream` is the invalidation-only change feed those clients use to know when to re-read owner reads; it carries no personal or business payload. Decision and rationale: `adr/0020-external-ui-client-and-change-feed.md`; connection surface: doc 13 §10.
+
 Identity/authentication and deployment references:
 
 - `architecture/instance-claim-platform-owner-plan.md` — **current accepted first-run trust-root implementation plan**: Instance state, SetupSession, Platform Owner policy, WebAuthn/assurance, recovery separation and HTTP/TCP acceptance;
