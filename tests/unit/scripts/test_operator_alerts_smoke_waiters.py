@@ -9,6 +9,12 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts/ci/operator_alerts_smoke.sh"
 
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="runs Bash functions with #!/bin/sh PATH shims (chmod +x, colon PATH); "
+    "Windows resolves `bash` to WSL without /bin/bash; runs on Linux CI",
+)
+
 
 @pytest.mark.parametrize(
     ("waiter", "arguments"),

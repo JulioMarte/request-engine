@@ -22,6 +22,11 @@ def _load(path: Path, module_name: str) -> ModuleType:
     return module
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="systemd renderer resolves host paths and requires POSIX absolute paths; "
+    "Windows drive-letter tmp_path is rejected by design; runs on Linux CI",
+)
 def test_render_units_is_unprivileged_bounded_and_keeps_credentials_out_of_unit(
     tmp_path: Path,
 ) -> None:

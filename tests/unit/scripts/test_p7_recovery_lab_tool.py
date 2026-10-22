@@ -3,11 +3,18 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 WRAPPER = Path(__file__).resolve().parents[3] / "scripts/ci/p7_recovery_lab_tool.sh"
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="symlinks the shell wrapper (WinError 1314 without privilege), execs shebang "
+    "shims via colon PATH and asserts POSIX 0o600 modes; runs on Linux CI",
+)
 
 
 @pytest.mark.parametrize("mode,expected_status", [("valid", 0), ("empty", 1), ("invalid", 1)])
