@@ -59,11 +59,15 @@ def _day(value: str, zone: ZoneInfo) -> date:
         return datetime.now(UTC).astimezone(zone).date()
 
 
-def _window(day: date, zone: ZoneInfo) -> dict[str, str]:
+def _window(day: date, zone: ZoneInfo, now: datetime | None = None) -> dict[str, str]:
+    """The chosen business day, from now on: times that already began are not offered."""
+
     start = datetime.combine(day, time.min, tzinfo=zone)
+    end = start + timedelta(days=1)
+    start = max(start, now or datetime.now(UTC))
     return {
         "window_start": start.astimezone(UTC).isoformat(),
-        "window_end": (start + timedelta(days=1)).astimezone(UTC).isoformat(),
+        "window_end": max(end, start + timedelta(minutes=1)).astimezone(UTC).isoformat(),
     }
 
 

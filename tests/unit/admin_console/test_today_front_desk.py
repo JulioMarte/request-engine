@@ -10,11 +10,12 @@ import html
 import re
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import UTC, date, datetime
 from functools import cache
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -24,6 +25,9 @@ from pydantic import SecretStr
 from request_engine.entrypoints.http.admin_console.app import create_admin_console_app
 from request_engine.entrypoints.http.admin_console.client import ControlResponse
 from request_engine.entrypoints.http.admin_console.clinic_setup import long_date, zone_label
+from request_engine.entrypoints.http.admin_console.routes_front_desk_booking import (
+    _window,  # pyright: ignore[reportPrivateUsage]
+)
 from request_engine.entrypoints.http.admin_console.routes_tenant_workspace import (
     arrival_label,
     attendance_label,
@@ -491,8 +495,8 @@ async def test_slot_search_uses_business_day_and_offers_signed_options(tmp_path:
         [
             {
                 "option_id": "signed.option.token",
-                "start_at": "2026-10-22T13:00:00Z",
-                "end_at": "2026-10-22T13:30:00Z",
+                "start_at": "2030-01-07T13:00:00Z",
+                "end_at": "2030-01-07T13:30:00Z",
                 "location_id": LOCATION,
                 "amount": "1500.00",
                 "currency": "DOP",
@@ -503,7 +507,7 @@ async def test_slot_search_uses_business_day_and_offers_signed_options(tmp_path:
     async with _signed_in(_console(tmp_path, runtime)) as client:
         page = await client.get(
             f"/tenants/{ORG}/today/visit/{PARTY}",
-            params={"offering_version_id": VERSION, "day": "2026-10-22"},
+            params={"offering_version_id": VERSION, "day": "2030-01-07"},
         )
     assert page.status_code == 200
     assert 'value="signed.option.token"' in page.text
@@ -511,9 +515,21 @@ async def test_slot_search_uses_business_day_and_offers_signed_options(tmp_path:
     slots = next(call for call in runtime.calls if call[1] == "/v1/appointments/slots")
     params = slots[2]["params"]
     assert params["offering_version_id"] == VERSION
-    # The business day 2026-10-22 in Santo Domingo starts at 04:00 UTC.
-    assert params["window_start"] == "2026-10-22T04:00:00+00:00"
-    assert params["window_end"] == "2026-10-23T04:00:00+00:00"
+    # The business day 2030-01-07 in Santo Domingo starts at 04:00 UTC.
+    assert params["window_start"] == "2030-01-07T04:00:00+00:00"
+    assert params["window_end"] == "2030-01-08T04:00:00+00:00"
+
+
+def test_todays_slot_search_starts_now_not_at_midnight() -> None:
+    # Times that already began are never offered as free.
+    zone = ZoneInfo("America/Santo_Domingo")
+    now = datetime(2030, 1, 7, 18, 30, tzinfo=UTC)
+    window = _window(date(2030, 1, 7), zone, now=now)
+    assert window["window_start"] == "2030-01-07T18:30:00+00:00"
+    assert window["window_end"] == "2030-01-08T04:00:00+00:00"
+    past = _window(date(2030, 1, 6), zone, now=now)
+    assert past["window_start"] == "2030-01-07T18:30:00+00:00"
+    assert past["window_end"] == "2030-01-07T18:31:00+00:00"
 
 
 RESOURCE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
@@ -911,3 +927,25 @@ def test_business_dates_read_in_spanish_without_the_os_locale(day: date, expecte
     # Calendar facts (21 Oct 2026 is a Wednesday) are the oracle, not strftime.
     assert long_date(day) == expected
     assert zone_label("America/Santo_Domingo") == "hora de Santo Domingo"
+
+
+@pytest.mark.asyncio
+async def test_no_show_is_offered_only_for_called_entries_with_valid_skip_reasons(
+    tmp_path: Path,
+) -> None:
+    # The owner records a no-show only for a called entry, and skip accepts only
+    # its SkipReason values; the console must not offer or send anything else.
+    waiting = _Upstream(_today_routes())
+    async with _signed_in(_console(tmp_path, waiting)) as client:
+        page = await client.get(f"/tenants/{ORG}/today")
+    assert f"/today/entries/{ENTRY}/no-show" not in page.text
+    assert 'name="reason" value="temporarily_unavailable"' in page.text
+    assert "not_present" not in page.text
+
+    routes = _today_routes()
+    routes[("GET", f"/v1/queues/{QUEUE}/staff")] = _ok([_called_entry()])
+    called = _Upstream(routes)
+    async with _signed_in(_console(tmp_path / "called", called)) as client:
+        page = await client.get(f"/tenants/{ORG}/today")
+    assert "/no-show" in page.text
+    assert 'name="reason" value="no_response"' in page.text

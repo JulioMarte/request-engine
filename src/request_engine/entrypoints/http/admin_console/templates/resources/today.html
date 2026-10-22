@@ -124,17 +124,20 @@
               </form>
             </details>
             {% endif %}
+            {# The owner only records a no-show for someone already called. #}
+            {% if entry.status == 'called' %}
             <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/no-show" data-confirm="¿Marcar que {{ entry.subject_display_name }} no se presentó?">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
               <input type="hidden" name="_intent_id" value="{{ intent_id }}-n-{{ entry.queue_entry_id }}" data-form-intent />
               <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
               <button type="submit" class="secondary">No se presentó</button>
             </form>
+            {% endif %}
             <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/skip">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
               <input type="hidden" name="_intent_id" value="{{ intent_id }}-s-{{ entry.queue_entry_id }}" data-form-intent />
               <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
-              <input type="hidden" name="reason" value="not_present" />
+              <input type="hidden" name="reason" value="{{ 'no_response' if entry.status == 'called' else 'temporarily_unavailable' }}" />
               <button type="submit" class="secondary">Saltar</button>
             </form>
           </div>
