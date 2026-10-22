@@ -310,6 +310,12 @@ async def test_claimed_owner_provisions_native_human_and_tenant_without_sql_bind
             "operations.manage_discovery",
         }
         assert self_authority.json()["next_after"] is None
+        # Advisory own-capability list: the caller's resolved tenant grants, sorted,
+        # never the provisioner's platform authority.
+        own = self_authority.json()["capabilities"]
+        assert own == sorted(own)
+        assert {"authority.read_self", "queue.staff_read", "appointments.day_board"} <= set(own)
+        assert not any(capability.startswith("platform.") for capability in own)
         injected = await tenant_client.get(
             "/v1/me/authority",
             headers=tenant_headers,
