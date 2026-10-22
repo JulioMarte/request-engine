@@ -77,6 +77,13 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["provenance"]
 
 [[guarantees]]
+id = "INV-SERVED-VISIT-001"
+statement = "A Reservation whose visit was served (it has a completed QueueEntry) cannot be admitted again to any queue through queue.check_in or queue.join, and cannot be cancelled or rescheduled (including operational-recovery reschedule): each refusal is a 409 reservation_already_served with no new QueueEntry, no released or moved CapacityClaim, no Reservation revision change and no lifecycle outbox fact. The cancel/reschedule guard locks the Reservation's serving/completed QueueEntries FOR SHARE after the Reservation lock, so a cancel racing an in-flight service completion waits and refuses; admission reads the Reservation FOR SHARE after the queue/intake locks and concurrent admissions of one Reservation into one queue admit exactly one entry. Concurrent active entries of one Reservation in different queues remain allowed (Day Board multi-queue ambiguity); Queue/Delivery lifecycle commands do not re-check Reservation status."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["capacity"]
+
+[[guarantees]]
 id = "INV-PRIVILEGE-001"
 statement = "Runtime database roles and security-definer surfaces retain least privilege, tenant isolation and explicit callable/write authority."
 severity = "critical"

@@ -91,9 +91,15 @@ updated in the same change when they differ.
   functions are unchanged. NOTIFY's only commit-time failure mode is a full 8 GB
   notification queue, which requires a connected listener that stops draining.
 - Every visible Today change is only as live as its outbox fact. Facts that do not
-  append an outbox event (currently: walk-in `queue.join`, `queue.skip`,
-  `queue.recall_hold`, `queue.release_recall_hold`) do not signal; adding those
-  events is owner work in the queue module and is tracked as a follow-up.
+  append an outbox event do not signal. The original gap (walk-in `queue.join`,
+  `queue.skip`, `queue.recall_hold`, `queue.release_recall_hold`) is closed by the
+  queue owner: they append `queue.entry_joined.v1`, `queue.entry_skipped.v1`,
+  `queue.entry_recall_held.v1` and `queue.entry_recall_released.v1` on the
+  `QueueEntry` aggregate in the fact's transaction. The routing table needed no
+  change (it routes by the `queue.` prefix and aggregate). The outbox worker
+  dispatches internal handlers by exact type and publishes every other type
+  unchanged, and the dev gateway sink accepts any type, so the new types need no
+  consumer registration.
 - Within one feed read, facts are ordered by notification (commit) order; replay
   after reconnect is ordered by fact creation, which equals commit order for
   non-overlapping transactions. Duplicates after reconnect are possible and clients
@@ -102,7 +108,8 @@ updated in the same change when they differ.
 Evidence: `tests/e2e/test_change_feed_stream.py` (real uvicorn server, real LISTEN,
 PostgreSQL 18), `tests/db/test_change_feed_signal.py`,
 `tests/unit/platform/changes/test_change_feed_hub.py`,
-`tests/unit/test_change_feed_topics.py`.
+`tests/unit/test_change_feed_topics.py`,
+`tests/e2e/test_change_feed_queue_triage_signals.py` (join/skip/recall-hold signals).
 
 ## Rejected alternatives
 

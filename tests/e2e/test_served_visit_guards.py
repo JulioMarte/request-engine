@@ -49,7 +49,7 @@ from .tenant_sandbox import (
     seed_tenant_sandbox,
 )
 
-pytestmark = [pytest.mark.postgres, pytest.mark.e2e, pytest.mark.invariant]
+pytestmark = [pytest.mark.postgres, pytest.mark.e2e, pytest.mark.invariant, pytest.mark.adversarial]
 
 _STAFF_CAPABILITIES = frozenset(
     {
@@ -383,12 +383,14 @@ async def test_cancel_waits_for_an_in_flight_admission_of_the_same_reservation(
     clinic = seed_tenant_sandbox(e2e_admin_conn, "served-guard-race-admission")
     async with client_with_actors(e2e_session_factory, {clinic.token: _actor(clinic)}) as client:
         reservation = await _book(client, clinic, (await first_slot(client, clinic))["option_id"])
-        # Barrier on the subject Party: the admission's QueueEntry insert takes a
-        # FOR KEY SHARE foreign-key lock on it after the Reservation was read.
+        # Barrier on the Offering: the admission's QueueEntry insert checks the
+        # offering foreign key (FOR KEY SHARE) after the Reservation was read and
+        # before the reservation foreign-key check, so the only Reservation lock
+        # held while it waits is the admission's own FOR SHARE.
         blocker_pid = e2e_barrier_conn.info.backend_pid
         e2e_barrier_conn.execute(
-            "SELECT 1 FROM request_engine.parties WHERE id = %s FOR UPDATE",
-            (clinic.party_id,),
+            "SELECT 1 FROM request_engine.offerings WHERE id = %s FOR UPDATE",
+            (clinic.offering_id,),
         )
         try:
             admitting = asyncio.create_task(

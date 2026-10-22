@@ -132,6 +132,19 @@ A no-show is **not** a cancellation. It does not release capacity retroactively 
 
 Lifecycle automation reads only the Reservation's policy snapshot. It does not reinterpret the current mutable Offering policy after booking.
 
+Cancellation and reschedule (including operational-recovery reschedule) refuse a
+Reservation whose visit was already served (a `completed` QueueEntry of the
+Reservation) with `409 reservation_already_served` (INV-SERVED-VISIT-001): the
+commitment was consumed, so releasing or moving its capacity would be false.
+The guard runs after the Reservation `FOR UPDATE` lock and locks the
+Reservation's serving/completed QueueEntries `FOR SHARE` before any Resource lock;
+service completion locks queue -> entry -> resource and never a Reservation, so a
+cancel racing an in-flight completion waits for it and then refuses. Booking reads
+that Queue fact in SQL inside its own transaction because the module dependency
+direction is queue -> booking. Known limit: Queue/Delivery lifecycle commands do
+not re-check the Reservation, so a Reservation cancelled while its entry is still
+waiting/called/serving can still be served afterwards.
+
 Cancellation and reschedule may expose future capacity for recovery. That recovery begins only after the Booking transaction commits and then enters Queue through its public contract and the Phase 2B `SlotOpportunity -> SlotOffer` state machine.
 
 Provider/network I/O never occurs while booking locks are held. Confirmation/reminder communications and waitlist recovery begin after booking commit through outbox/contracts — but only where the reservation lifecycle outbox handler is actually composed (the reference worker factory passes `reservation_lifecycle_factory`; a `build_worker_process` composition that omits it persists lifecycle events without processing them).
