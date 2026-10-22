@@ -134,6 +134,7 @@ uv run pytest \
   tests/db/test_http_sql_execution_budget.py \
   tests/db/test_shared_http_auth_admission.py \
   tests/db/test_operator_metrics_projection.py \
+  tests/db/test_change_feed_signal.py \
   tests/db/test_operator_alert_smoke_setup.py \
   tests/db/test_workload_authentication.py \
   tests/db/test_agent_governance.py \

@@ -1,11 +1,16 @@
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from uuid import UUID
 
 from fastapi import FastAPI, Request, Response
 
 import request_engine.modules.booking.api as booking_api
 from request_engine.entrypoints.http.capabilities import create_capability_router
+from request_engine.entrypoints.http.changes_stream import (
+    build_change_feed,
+    create_change_stream_router,
+)
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
 from request_engine.entrypoints.http.mcp_gateway import create_mcp_router
 from request_engine.entrypoints.http.module_composition import install_business_modules
@@ -24,6 +29,7 @@ from request_engine.entrypoints.http.provider_callbacks import create_provider_c
 from request_engine.entrypoints.http.security import build_identity_principal_resolver
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.tenancy.api import build_principal_authority_reader
+from request_engine.platform.changes.feed import ChangeFeedSettings
 from request_engine.platform.db.agent_budget_enforcer import PostgresAgentBudgetEnforcer
 from request_engine.platform.db.agent_policy_reader import PostgresAgentPolicyReader
 from request_engine.platform.db.delegation_reader import PostgresDelegationReader
@@ -111,6 +117,7 @@ def create_app(
     native_webauthn_auth: NativeWebAuthnAuthService | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
     provider_callback_authenticator: ProviderCallbackAuthenticator | None = None,
+    change_feed_settings: ChangeFeedSettings | None = None,
 ) -> FastAPI:
     """Compose the full single-app HTTP surface (business + operational configuration).
 
@@ -164,7 +171,17 @@ def create_app(
     relay_actor_resolver = ActingOperatorActorResolver(actor_resolver, operator_actors)
     request_actor_resolver = RequestExecutionActorResolver(relay_actor_resolver)
     execution_actor_resolver = TenantCapabilityActorResolver(request_actor_resolver, policy)
+    change_feed = build_change_feed(session_factory, change_feed_settings)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+        try:
+            yield
+        finally:
+            await change_feed.aclose()
+
     app = FastAPI(
+        lifespan=lifespan,
         title="Request Engine",
         version="0.1.0",
         description=(
@@ -215,6 +232,11 @@ def create_app(
         actor_resolver=execution_actor_resolver,
     )
     app.include_router(create_operation_catalog_router(actor_resolver=execution_actor_resolver))
+    # Invalidation-only change feed (ADR 0020): per-topic owner read capabilities.
+    app.state.change_feed = change_feed
+    app.include_router(
+        create_change_stream_router(feed=change_feed, actor_resolver=execution_actor_resolver)
+    )
     if provider_callback_authenticator is not None:
         # Fail closed: without a configured callback authenticator the
         # provider-event surface is not mounted at all.

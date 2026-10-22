@@ -27,6 +27,8 @@ _DISCOVERY_OPERATIONS = frozenset(
         "operation_catalog.list_authorized",
     }
 )
+# Authorized per topic by existing owner read capabilities (ADR 0020).
+_TOPIC_AUTHORIZED_OPERATIONS = frozenset({"changes.stream"})
 
 
 class RejectAllResolver:
@@ -107,6 +109,14 @@ async def test_public_openapi_metadata_matches_frozen_capability_contract(
         assert operation_id not in operation_ids, operation_id
         operation_ids.add(operation_id)
 
+        if operation.name in _TOPIC_AUTHORIZED_OPERATIONS:
+            topics = contract["x-request-engine-topic-capabilities"]
+            assert isinstance(topics, dict) and topics
+            for capability in cast(dict[str, str], topics).values():
+                assert capability_definition(capability) is not None, capability
+            assert contract["x-request-engine-operation-id"] == operation_id
+            assert "x-request-engine-tool-name" not in contract
+            continue
         if operation.capability is None:
             assert operation.name in _DISCOVERY_OPERATIONS
             assert contract["x-request-engine-discovery"] is True
@@ -146,7 +156,7 @@ def test_public_http_operation_registry_has_complete_test_metadata() -> None:
     discovery = {
         operation.name for operation in PUBLIC_HTTP_OPERATIONS if operation.capability is None
     }
-    assert discovery == _DISCOVERY_OPERATIONS
+    assert discovery == _DISCOVERY_OPERATIONS | _TOPIC_AUTHORIZED_OPERATIONS
     for operation in PUBLIC_HTTP_OPERATIONS:
         assert operation.probe.path.startswith("/v1/")
         if operation.mutates:
