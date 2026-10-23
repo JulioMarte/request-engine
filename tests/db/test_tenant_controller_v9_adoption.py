@@ -1,11 +1,14 @@
-"""A populated v8-era database upgrades to v9 without silent authority changes.
+"""v8 roots reach tenant-controller-v9 only through adoption with the exact delta.
 
-The physical 0043 -> head upgrade must change no Principal, grant, root fact or
-consent. Afterwards a v8 root reaches v9 only through the platform-approved
-adoption primitives and gains exactly the reviewed front-desk delta; a pending
-v7-era consent stays bound to v8; an untouched v8 organization stays v8.
-Adoption runs through the restricted runtime primitives; this proves migration
-compatibility, not HTTP authentication or WebAuthn admission.
+Adapted at the 2026-10-23 rebaseline (docs/audits/postgresql-rebaseline-0047.md):
+the former physical 0043 -> head populated-upgrade half lost its subject when the
+history collapsed (no pre-0044 database can upgrade into the new 0001). The
+authority half remains current truth: on the current head a v8 root reaches v9
+only through the platform-approved adoption primitives and gains exactly the
+reviewed front-desk delta; provisioning a v7/v8 root grants none of it; adoption
+touches no other organization and rewrites no immutable policy row. Adoption runs
+through the restricted runtime primitives; this proves database authority, not
+HTTP authentication or WebAuthn admission.
 """
 
 import os
@@ -85,14 +88,14 @@ def _upgrade(database: str, revision: str) -> None:
 
 
 def test_v8_roots_reach_v9_only_through_adoption_with_exact_delta() -> None:
-    database = f"re_controller_v9_upgrade_{uuid4().hex}"
+    database = f"re_controller_v9_adoption_{uuid4().hex}"
     with psycopg.connect(_conninfo("postgres"), autocommit=True) as cluster:
         assert cluster.info.server_version >= 180000
         cluster.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
         try:
-            _upgrade(database, "0043_staff_invitation_proposals")
+            _upgrade(database, "head")
             with psycopg.connect(_conninfo(database), autocommit=True) as conn:
-                _prove_populated_upgrade(database, conn)
+                _prove_adoption_at_head(conn)
         finally:
             cluster.execute(
                 sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(database))
@@ -206,30 +209,18 @@ def _active(conn: Connection[Any], root: UUID) -> set[str]:
     }
 
 
-def _prove_populated_upgrade(database: str, conn: Connection[Any]) -> None:
-    legacy_org, legacy_root, legacy_binding = _root(conn, "tenant-controller-v7")
+def _prove_adoption_at_head(conn: Connection[Any]) -> None:
+    _, legacy_root, _ = _root(conn, "tenant-controller-v7")
     adopt_org, adopt_root, adopt_binding = _root(conn, "tenant-controller-v8")
     idle_org, idle_root, _ = _root(conn, "tenant-controller-v8")
-    pending = _consent(conn, legacy_org, legacy_root, legacy_binding)
-    assert pending[1:3] == ("tenant-controller-v7", "tenant-controller-v8")
+    # Catches: provisioning an older selected policy silently granting the v9 delta.
+    for root in (legacy_root, adopt_root, idle_root):
+        assert not _active(conn, root) & set(_V9_DELTA)
     policies_before = conn.execute(
         "SELECT policy_key,revision,grants FROM request_engine.initial_controller_policies "
         "ORDER BY revision"
     ).fetchall()
-    assert [row[0] for row in policies_before][-1] == "tenant-controller-v8"
-    before = _snapshot(conn)
-
-    _upgrade(database, "head")
-
-    # Catches: a migration that backfills/retargets authority, consent or root facts.
-    assert _snapshot(conn) == before
-    assert (
-        conn.execute(
-            "SELECT policy_key,revision,grants FROM request_engine.initial_controller_policies "
-            "WHERE revision<=8 ORDER BY revision"
-        ).fetchall()
-        == policies_before
-    )
+    assert [row[0] for row in policies_before][-1] == "tenant-controller-v9"
 
     approver = _approver(conn)
     after_approver = _snapshot(conn)
@@ -269,10 +260,14 @@ def _prove_populated_upgrade(database: str, conn: Connection[Any]) -> None:
         (adopt_org,),
     ).fetchone() == ("tenant-controller-v8",)
 
-    # Catches: pending pre-upgrade consent being retargeted to v9.
-    legacy_applied = _apply(conn, approver, pending)
-    assert legacy_applied[5] == "tenant-controller-v8"
-    assert list(legacy_applied[8]) == ["staff.propose_invitation"]
+    # Catches: adoption rewriting immutable policy rows or touching other roots.
+    assert (
+        conn.execute(
+            "SELECT policy_key,revision,grants FROM request_engine.initial_controller_policies "
+            "ORDER BY revision"
+        ).fetchall()
+        == policies_before
+    )
     assert not _active(conn, legacy_root) & set(_V9_DELTA)
     # Catches: migration or provisioning upgrading an organization that never consented.
     assert not _active(conn, idle_root) & set(_V9_DELTA)

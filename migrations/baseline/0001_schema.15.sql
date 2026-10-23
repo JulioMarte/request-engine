@@ -1,2561 +1,2311 @@
--- Name: COLUMN offering_service_classifications.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(id) ON TABLE request_engine.offering_service_classifications TO request_engine_discovery_definer;
-
-
---
--- Name: TABLE offering_version_booking_policies; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT ON TABLE request_engine.offering_version_booking_policies TO request_engine_app;
-GRANT ALL ON TABLE request_engine.offering_version_booking_policies TO request_engine_admin;
-
-
---
--- Name: TABLE offering_version_booking_terms; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT ON TABLE request_engine.offering_version_booking_terms TO request_engine_app;
-GRANT ALL ON TABLE request_engine.offering_version_booking_terms TO request_engine_admin;
-
-
---
--- Name: TABLE offering_versions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT ON TABLE request_engine.offering_versions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.offering_versions TO request_engine_admin;
-GRANT SELECT ON TABLE request_engine.offering_versions TO request_engine_discovery_definer;
-
-
---
--- Name: TABLE offerings; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.offerings TO request_engine_app;
-GRANT ALL ON TABLE request_engine.offerings TO request_engine_admin;
-GRANT SELECT ON TABLE request_engine.offerings TO request_engine_discovery_definer;
-
-
---
--- Name: COLUMN offerings.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(id) ON TABLE request_engine.offerings TO request_engine_discovery_definer;
-
-
---
--- Name: TABLE operational_recovery_actions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.operational_recovery_actions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.operational_recovery_actions TO request_engine_admin;
-
-
---
--- Name: TABLE operational_recovery_autonomy_policies; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.operational_recovery_autonomy_policies TO request_engine_app;
-GRANT ALL ON TABLE request_engine.operational_recovery_autonomy_policies TO request_engine_admin;
-
-
---
--- Name: TABLE operational_recovery_escalations; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT ON TABLE request_engine.operational_recovery_escalations TO request_engine_app;
-GRANT ALL ON TABLE request_engine.operational_recovery_escalations TO request_engine_admin;
-
-
---
--- Name: TABLE operational_recovery_executions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT ON TABLE request_engine.operational_recovery_executions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.operational_recovery_executions TO request_engine_admin;
-
-
---
--- Name: COLUMN operational_recovery_executions.resulting_reservation_revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(resulting_reservation_revision) ON TABLE request_engine.operational_recovery_executions TO request_engine_app;
-
-
---
--- Name: COLUMN operational_recovery_executions.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(status) ON TABLE request_engine.operational_recovery_executions TO request_engine_app;
-
-
---
--- Name: COLUMN operational_recovery_executions.failure_code; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(failure_code) ON TABLE request_engine.operational_recovery_executions TO request_engine_app;
-
-
---
--- Name: COLUMN operational_recovery_executions.communication_task_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(communication_task_id) ON TABLE request_engine.operational_recovery_executions TO request_engine_app;
-
-
---
--- Name: COLUMN operational_recovery_executions.completed_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(completed_at) ON TABLE request_engine.operational_recovery_executions TO request_engine_app;
-
-
---
--- Name: TABLE operational_recovery_incidents; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.operational_recovery_incidents TO request_engine_app;
-GRANT ALL ON TABLE request_engine.operational_recovery_incidents TO request_engine_admin;
-
-
---
--- Name: TABLE operational_recovery_proposals; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT ON TABLE request_engine.operational_recovery_proposals TO request_engine_app;
-GRANT ALL ON TABLE request_engine.operational_recovery_proposals TO request_engine_admin;
-
-
---
--- Name: TABLE operational_workload_classifications; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.operational_workload_classifications TO request_engine_app;
-GRANT ALL ON TABLE request_engine.operational_workload_classifications TO request_engine_admin;
-
-
---
--- Name: TABLE organization_channel_policies; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.organization_channel_policies TO request_engine_app;
-GRANT ALL ON TABLE request_engine.organization_channel_policies TO request_engine_admin;
-
-
---
--- Name: TABLE organization_party_bindings; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT ALL ON TABLE request_engine.organization_party_bindings TO request_engine_admin;
-
-
---
--- Name: COLUMN organization_provisioning_facts.organization_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT INSERT(organization_id) ON TABLE request_engine.organization_provisioning_facts TO request_platform_control_definer;
-
-
---
--- Name: COLUMN organization_provisioning_facts.provisioned_by_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT INSERT(provisioned_by_principal_id) ON TABLE request_engine.organization_provisioning_facts TO request_platform_control_definer;
-
-
---
--- Name: COLUMN organization_provisioning_facts.provenance_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT INSERT(provenance_reference) ON TABLE request_engine.organization_provisioning_facts TO request_platform_control_definer;
-
-
---
--- Name: TABLE organization_public_contact_endpoints; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
+ALTER TABLE ONLY request_engine.workload_credentials
+    ADD CONSTRAINT workload_credentials_workload_identity_id_fkey FOREIGN KEY (workload_identity_id) REFERENCES request_engine.workload_identities(id);
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.organization_public_contact_endpoints TO request_engine_app;
-GRANT ALL ON TABLE request_engine.organization_public_contact_endpoints TO request_engine_admin;
 
-
 --
--- Name: COLUMN organization_root_provisioning_facts.organization_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: workload_identities workload_identities_identity_authority_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(organization_id),INSERT(organization_id) ON TABLE request_engine.organization_root_provisioning_facts TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.workload_identities
+    ADD CONSTRAINT workload_identities_identity_authority_id_fkey FOREIGN KEY (identity_authority_id) REFERENCES request_engine.identity_authorities(id);
 
 
 --
--- Name: COLUMN organization_root_provisioning_facts.organization_party_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_budget_windows; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(organization_party_id),INSERT(organization_party_id) ON TABLE request_engine.organization_root_provisioning_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.agent_budget_windows ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN organization_root_provisioning_facts.controller_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_budget_windows agent_budget_windows_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(controller_principal_id),INSERT(controller_principal_id) ON TABLE request_engine.organization_root_provisioning_facts TO request_platform_control_definer;
+CREATE POLICY agent_budget_windows_tenant_isolation ON request_engine.agent_budget_windows USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN organization_root_provisioning_facts.controller_binding_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(controller_binding_id),INSERT(controller_binding_id) ON TABLE request_engine.organization_root_provisioning_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.agent_policies ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN organization_root_provisioning_facts.provisioned_by_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_policies agent_policies_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(provisioned_by_principal_id),INSERT(provisioned_by_principal_id) ON TABLE request_engine.organization_root_provisioning_facts TO request_platform_control_definer;
+CREATE POLICY agent_policies_tenant_isolation ON request_engine.agent_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN organization_root_provisioning_facts.provenance_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_profiles; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(provenance_reference),INSERT(provenance_reference) ON TABLE request_engine.organization_root_provisioning_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.agent_profiles ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: TABLE organizations; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_profiles agent_profiles_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.organizations TO request_engine_app;
-GRANT ALL ON TABLE request_engine.organizations TO request_engine_admin;
-GRANT SELECT ON TABLE request_engine.organizations TO request_engine_discovery_definer;
+CREATE POLICY agent_profiles_tenant_isolation ON request_engine.agent_profiles USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN organizations.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: attendance_responses; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT INSERT(id) ON TABLE request_engine.organizations TO request_platform_control_definer;
 
+ALTER TABLE request_engine.attendance_responses ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN organizations.organization_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: attendance_responses attendance_responses_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(organization_key) ON TABLE request_engine.organizations TO request_platform_control_definer;
+CREATE POLICY attendance_responses_tenant_isolation ON request_engine.attendance_responses USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN organizations.display_name; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: audit_records; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(display_name) ON TABLE request_engine.organizations TO request_platform_control_definer;
+ALTER TABLE request_engine.audit_records ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: TABLE parties; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: audit_records audit_records_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.parties TO request_engine_app;
-GRANT ALL ON TABLE request_engine.parties TO request_engine_admin;
+CREATE POLICY audit_records_tenant_isolation ON request_engine.audit_records USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN parties.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: booking_context_terms; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT INSERT(id) ON TABLE request_engine.parties TO request_platform_control_definer;
 
+ALTER TABLE request_engine.booking_context_terms ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN parties.organization_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: booking_context_terms booking_context_terms_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(organization_id) ON TABLE request_engine.parties TO request_platform_control_definer;
+CREATE POLICY booking_context_terms_tenant_policy ON request_engine.booking_context_terms USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN parties.party_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(party_kind) ON TABLE request_engine.parties TO request_platform_control_definer;
+ALTER TABLE request_engine.capacity_claims ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN parties.display_name; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(display_name) ON TABLE request_engine.parties TO request_platform_control_definer;
+CREATE POLICY capacity_claims_tenant_isolation ON request_engine.capacity_claims USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: TABLE party_administrative_identifiers; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.party_administrative_identifiers TO request_engine_app;
-GRANT ALL ON TABLE request_engine.party_administrative_identifiers TO request_engine_admin;
+ALTER TABLE request_engine.capacity_holds ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: TABLE party_contact_points; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds capacity_holds_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.party_contact_points TO request_engine_app;
-GRANT ALL ON TABLE request_engine.party_contact_points TO request_engine_admin;
+CREATE POLICY capacity_holds_tenant_isolation ON request_engine.capacity_holds USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: TABLE party_identity_documents; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_deliveries; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.party_identity_documents TO request_engine_app;
-GRANT ALL ON TABLE request_engine.party_identity_documents TO request_engine_admin;
 
+ALTER TABLE request_engine.communication_deliveries ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: TABLE party_identity_revisions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_deliveries communication_deliveries_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.party_identity_revisions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.party_identity_revisions TO request_engine_admin;
+CREATE POLICY communication_deliveries_tenant_isolation ON request_engine.communication_deliveries USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN party_identity_revisions.organization_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_escalations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(organization_id) ON TABLE request_engine.party_identity_revisions TO request_platform_control_definer;
+ALTER TABLE request_engine.communication_escalations ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN party_identity_revisions.party_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_escalations communication_escalations_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(party_id) ON TABLE request_engine.party_identity_revisions TO request_platform_control_definer;
+CREATE POLICY communication_escalations_tenant_policy ON request_engine.communication_escalations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN party_identity_revisions.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_tasks; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT INSERT(revision) ON TABLE request_engine.party_identity_revisions TO request_platform_control_definer;
 
+ALTER TABLE request_engine.communication_tasks ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN party_identity_revisions.change_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_tasks communication_tasks_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(change_kind) ON TABLE request_engine.party_identity_revisions TO request_platform_control_definer;
+CREATE POLICY communication_tasks_tenant_isolation ON request_engine.communication_tasks USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN party_identity_revisions.display_name; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts controller_policy_adoption_fact_owner_only; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(display_name) ON TABLE request_engine.party_identity_revisions TO request_platform_control_definer;
+CREATE POLICY controller_policy_adoption_fact_owner_only ON request_engine.controller_policy_adoption_facts TO request_engine_schema_owner USING (true) WITH CHECK (true);
 
 
 --
--- Name: COLUMN party_identity_revisions.active; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts controller_policy_adoption_fact_platform_control; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(active) ON TABLE request_engine.party_identity_revisions TO request_platform_control_definer;
+CREATE POLICY controller_policy_adoption_fact_platform_control ON request_engine.controller_policy_adoption_facts TO request_platform_control_definer USING (true) WITH CHECK (true);
 
 
 --
--- Name: COLUMN party_identity_revisions.state; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts controller_policy_adoption_fact_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(state) ON TABLE request_engine.party_identity_revisions TO request_platform_control_definer;
+CREATE POLICY controller_policy_adoption_fact_tenant_isolation ON request_engine.controller_policy_adoption_facts TO request_engine_app USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_authority_lifecycle_facts.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.controller_policy_adoption_facts ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_authority_lifecycle_facts.principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_requests controller_policy_adoption_platform_control; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(principal_id),INSERT(principal_id) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+CREATE POLICY controller_policy_adoption_platform_control ON request_engine.controller_policy_adoption_requests TO request_platform_control_definer USING (true) WITH CHECK (true);
 
 
 --
--- Name: COLUMN platform_authority_lifecycle_facts.action; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_requests controller_policy_adoption_platform_reader; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(action),INSERT(action) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+CREATE POLICY controller_policy_adoption_platform_reader ON request_engine.controller_policy_adoption_requests TO request_platform_definer USING (true);
 
 
 --
--- Name: COLUMN platform_authority_lifecycle_facts.actor_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_requests; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(actor_principal_id),INSERT(actor_principal_id) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.controller_policy_adoption_requests ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_authority_lifecycle_facts.actor_authentication_method; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_requests controller_policy_adoption_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(actor_authentication_method) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+CREATE POLICY controller_policy_adoption_tenant_isolation ON request_engine.controller_policy_adoption_requests USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_authority_lifecycle_facts.reason_code; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: delegations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(reason_code) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.delegations ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_authority_lifecycle_facts.external_case_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: delegations delegations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(external_case_reference) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+CREATE POLICY delegations_tenant_isolation ON request_engine.delegations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_authority_lifecycle_facts.revision_before; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_booking_handoffs; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(revision_before) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.discovery_booking_handoffs ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_authority_lifecycle_facts.revision_after; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_booking_handoffs discovery_booking_handoffs_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revision_after),INSERT(revision_after) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+CREATE POLICY discovery_booking_handoffs_tenant_policy ON request_engine.discovery_booking_handoffs USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_authority_lifecycle_facts.correlation_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_publications; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT INSERT(correlation_id) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.discovery_publications ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_authority_lifecycle_facts.capability_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_publications discovery_publications_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(capability_key),INSERT(capability_key) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+CREATE POLICY discovery_publications_tenant_policy ON request_engine.discovery_publications USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_authority_lifecycle_facts.idempotency_key_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: external_correlations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(idempotency_key_digest),INSERT(idempotency_key_digest) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.external_correlations ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_authority_lifecycle_facts.intent_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: external_correlations external_correlations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(intent_digest),INSERT(intent_digest) ON TABLE request_engine.platform_authority_lifecycle_facts TO request_platform_control_definer;
+CREATE POLICY external_correlations_tenant_isolation ON request_engine.external_correlations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_bootstrap_intents.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: idempotency_records; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(id) ON TABLE request_engine.platform_bootstrap_intents TO request_bootstrap_definer;
 
+ALTER TABLE request_engine.idempotency_records ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_bootstrap_intents.token_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: idempotency_records idempotency_records_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(token_digest) ON TABLE request_engine.platform_bootstrap_intents TO request_bootstrap_definer;
+CREATE POLICY idempotency_records_tenant_isolation ON request_engine.idempotency_records USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_bootstrap_intents.permitted_action; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_bindings; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(permitted_action) ON TABLE request_engine.platform_bootstrap_intents TO request_bootstrap_definer;
+ALTER TABLE request_engine.identity_bindings ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_bootstrap_intents.provenance_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_bindings identity_bindings_platform_control_read; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(provenance_reference) ON TABLE request_engine.platform_bootstrap_intents TO request_bootstrap_definer;
+CREATE POLICY identity_bindings_platform_control_read ON request_engine.identity_bindings FOR SELECT TO request_platform_control_definer USING (((principal_plane = 'platform'::text) AND (organization_id IS NULL)));
 
 
 --
--- Name: COLUMN platform_bootstrap_intents.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_bindings identity_bindings_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.platform_bootstrap_intents TO request_bootstrap_definer;
+CREATE POLICY identity_bindings_tenant_isolation ON request_engine.identity_bindings USING (((principal_plane = 'tenant'::text) AND (organization_id = request_engine.current_organization_id()))) WITH CHECK (((principal_plane = 'tenant'::text) AND (organization_id = request_engine.current_organization_id())));
 
 
 --
--- Name: COLUMN platform_bootstrap_intents.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_exchange_candidates; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(revision),UPDATE(revision) ON TABLE request_engine.platform_bootstrap_intents TO request_bootstrap_definer;
 
+ALTER TABLE request_engine.identity_exchange_candidates ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_bootstrap_intents.expires_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_exchange_candidates identity_exchange_candidates_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(expires_at) ON TABLE request_engine.platform_bootstrap_intents TO request_bootstrap_definer;
+CREATE POLICY identity_exchange_candidates_tenant_policy ON request_engine.identity_exchange_candidates USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_bootstrap_intents.consumed_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_facts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(consumed_at) ON TABLE request_engine.platform_bootstrap_intents TO request_bootstrap_definer;
+ALTER TABLE request_engine.identity_link_facts ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_configuration_facts.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_facts identity_link_facts_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
+CREATE POLICY identity_link_facts_tenant_isolation ON request_engine.identity_link_facts USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_facts.event_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(event_kind),INSERT(event_kind) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
-GRANT SELECT(event_kind) ON TABLE request_engine.platform_configuration_facts TO request_platform_definer;
+ALTER TABLE request_engine.identity_link_intents ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_configuration_facts.configuration_revision_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents identity_link_intents_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(configuration_revision_id),INSERT(configuration_revision_id) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
-GRANT SELECT(configuration_revision_id) ON TABLE request_engine.platform_configuration_facts TO request_platform_definer;
+CREATE POLICY identity_link_intents_tenant_isolation ON request_engine.identity_link_intents USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_facts.configuration_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: integration_governance_facts integration_facts_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(configuration_kind),INSERT(configuration_kind) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
+CREATE POLICY integration_facts_tenant_isolation ON request_engine.integration_governance_facts USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_facts.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: integration_governance_facts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(revision),INSERT(revision) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.integration_governance_facts ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_configuration_facts.secret_binding_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_projection_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(secret_binding_id),INSERT(secret_binding_id) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.live_capacity_projection_policies ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_configuration_facts.actor_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_projection_policies live_capacity_projection_policies_recovery_trigger_read; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(actor_principal_id),INSERT(actor_principal_id) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
+CREATE POLICY live_capacity_projection_policies_recovery_trigger_read ON request_engine.live_capacity_projection_policies FOR SELECT TO request_engine_schema_owner USING ((pg_trigger_depth() > 0));
 
 
 --
--- Name: COLUMN platform_configuration_facts.actor_authentication_method; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_projection_policies live_capacity_projection_policies_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(actor_authentication_method),INSERT(actor_authentication_method) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
+CREATE POLICY live_capacity_projection_policies_tenant_policy ON request_engine.live_capacity_projection_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_facts.correlation_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_workload_estimate_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(correlation_id),INSERT(correlation_id) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.live_capacity_workload_estimate_policies ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_configuration_facts.detail; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_workload_estimate_policies live_capacity_workload_estimate_policies_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(detail),INSERT(detail) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
-GRANT SELECT(detail) ON TABLE request_engine.platform_configuration_facts TO request_platform_definer;
+CREATE POLICY live_capacity_workload_estimate_policies_tenant_policy ON request_engine.live_capacity_workload_estimate_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_facts.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_hours_exceptions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_at) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
-GRANT SELECT(created_at) ON TABLE request_engine.platform_configuration_facts TO request_platform_definer;
+ALTER TABLE request_engine.location_hours_exceptions ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_configuration_facts.capability_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_hours_exceptions location_hours_exceptions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(capability_key),INSERT(capability_key) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
+CREATE POLICY location_hours_exceptions_tenant_policy ON request_engine.location_hours_exceptions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_facts.idempotency_key_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_operational_hours; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(idempotency_key_digest),INSERT(idempotency_key_digest) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.location_operational_hours ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_configuration_facts.intent_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_operational_hours location_operational_hours_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(intent_digest),INSERT(intent_digest) ON TABLE request_engine.platform_configuration_facts TO request_platform_control_definer;
+CREATE POLICY location_operational_hours_tenant_policy ON request_engine.location_operational_hours USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_revisions.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_public_contact_endpoints; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(id) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
+ALTER TABLE request_engine.location_public_contact_endpoints ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_configuration_revisions.configuration_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_public_contact_endpoints location_public_contact_endpoints_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(configuration_kind),INSERT(configuration_kind) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(configuration_kind) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
+CREATE POLICY location_public_contact_endpoints_tenant_policy ON request_engine.location_public_contact_endpoints USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_revisions.provider_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: locations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(provider_kind),INSERT(provider_kind) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(provider_kind) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
+ALTER TABLE request_engine.locations ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_configuration_revisions.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: locations locations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revision),INSERT(revision) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(revision) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
+CREATE POLICY locations_tenant_isolation ON request_engine.locations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_revisions.configuration; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identity_provision_receipts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(configuration),INSERT(configuration) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(configuration) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
 
+ALTER TABLE request_engine.native_identity_provision_receipts ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_configuration_revisions.secret_binding_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identity_provision_receipts native_identity_provision_receipts_control; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(secret_binding_id),INSERT(secret_binding_id) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(secret_binding_id) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
+CREATE POLICY native_identity_provision_receipts_control ON request_engine.native_identity_provision_receipts TO request_platform_control_definer USING (true) WITH CHECK (true);
 
 
 --
--- Name: COLUMN platform_configuration_revisions.state; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identity_provision_receipts native_identity_provision_receipts_owner; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(state),UPDATE(state) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(state) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
+CREATE POLICY native_identity_provision_receipts_owner ON request_engine.native_identity_provision_receipts TO request_engine_schema_owner USING (true) WITH CHECK (true);
 
 
 --
--- Name: COLUMN platform_configuration_revisions.created_by_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_resource_requirements; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_by_principal_id),INSERT(created_by_principal_id) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(created_by_principal_id) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
+ALTER TABLE request_engine.offering_resource_requirements ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_configuration_revisions.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_resource_requirements offering_resource_requirements_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_at) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(created_at) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
+CREATE POLICY offering_resource_requirements_tenant_isolation ON request_engine.offering_resource_requirements USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_revisions.validated_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_service_classifications; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(validated_at),UPDATE(validated_at) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(validated_at) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
 
+ALTER TABLE request_engine.offering_service_classifications ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_configuration_revisions.activated_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_service_classifications offering_service_classifications_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(activated_at),UPDATE(activated_at) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(activated_at) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
+CREATE POLICY offering_service_classifications_tenant_policy ON request_engine.offering_service_classifications USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_configuration_revisions.disabled_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_version_booking_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(disabled_at),UPDATE(disabled_at) ON TABLE request_engine.platform_configuration_revisions TO request_platform_control_definer;
-GRANT SELECT(disabled_at) ON TABLE request_engine.platform_configuration_revisions TO request_platform_definer;
+ALTER TABLE request_engine.offering_version_booking_policies ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_identity_disable_facts.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_version_booking_policies offering_version_booking_policies_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+CREATE POLICY offering_version_booking_policies_tenant_isolation ON request_engine.offering_version_booking_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_disable_facts.actor_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_version_booking_terms; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(actor_principal_id),INSERT(actor_principal_id) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.offering_version_booking_terms ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_identity_disable_facts.capability_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_version_booking_terms offering_version_booking_terms_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(capability_key),INSERT(capability_key) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+CREATE POLICY offering_version_booking_terms_tenant_policy ON request_engine.offering_version_booking_terms USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_disable_facts.native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_versions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(native_identity_id),INSERT(native_identity_id) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.offering_versions ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_identity_disable_facts.native_authority_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_versions offering_versions_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(native_authority_id) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+CREATE POLICY offering_versions_tenant_isolation ON request_engine.offering_versions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_disable_facts.revision_before; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offerings; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(revision_before) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.offerings ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_identity_disable_facts.revision_after; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offerings offerings_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revision_after),INSERT(revision_after) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+CREATE POLICY offerings_tenant_isolation ON request_engine.offerings USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_disable_facts.reason_code; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_actions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT INSERT(reason_code) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.operational_recovery_actions ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_identity_disable_facts.external_case_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_actions operational_recovery_actions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(external_case_reference) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+CREATE POLICY operational_recovery_actions_tenant_policy ON request_engine.operational_recovery_actions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_disable_facts.affected_tenant_count; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_autonomy_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(affected_tenant_count),INSERT(affected_tenant_count) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.operational_recovery_autonomy_policies ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_identity_disable_facts.affected_platform; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_autonomy_policies operational_recovery_autonomy_policies_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(affected_platform),INSERT(affected_platform) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+CREATE POLICY operational_recovery_autonomy_policies_tenant_policy ON request_engine.operational_recovery_autonomy_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_disable_facts.idempotency_key_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_escalations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(idempotency_key_digest),INSERT(idempotency_key_digest) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.operational_recovery_escalations ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_identity_disable_facts.intent_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_escalations operational_recovery_escalations_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(intent_digest),INSERT(intent_digest) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+CREATE POLICY operational_recovery_escalations_tenant_policy ON request_engine.operational_recovery_escalations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_disable_facts.correlation_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_executions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(correlation_id) ON TABLE request_engine.platform_identity_disable_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.operational_recovery_executions ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_identity_recovery_facts.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_executions operational_recovery_executions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+CREATE POLICY operational_recovery_executions_tenant_policy ON request_engine.operational_recovery_executions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_recovery_facts.case_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_incidents; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(case_id),INSERT(case_id) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.operational_recovery_incidents ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_identity_recovery_facts.action; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_incidents operational_recovery_incidents_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(action),INSERT(action) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+CREATE POLICY operational_recovery_incidents_tenant_policy ON request_engine.operational_recovery_incidents USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_recovery_facts.actor_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_proposals; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(actor_principal_id),INSERT(actor_principal_id) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.operational_recovery_proposals ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_identity_recovery_facts.actor_authentication_method; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_proposals operational_recovery_proposals_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(actor_authentication_method) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+CREATE POLICY operational_recovery_proposals_tenant_policy ON request_engine.operational_recovery_proposals USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_recovery_facts.reason_code; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_workload_classifications; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(reason_code) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.operational_workload_classifications ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_identity_recovery_facts.external_case_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_workload_classifications operational_workload_classifications_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(external_case_reference) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+CREATE POLICY operational_workload_classifications_tenant_policy ON request_engine.operational_workload_classifications USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_identity_recovery_facts.revision_before; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_deliveries operator_metrics_read; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(revision_before) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+CREATE POLICY operator_metrics_read ON request_engine.communication_deliveries FOR SELECT TO request_operator_metrics_definer USING (true);
 
 
 --
--- Name: COLUMN platform_identity_recovery_facts.revision_after; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: outbox_messages operator_metrics_read; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revision_after),INSERT(revision_after) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+CREATE POLICY operator_metrics_read ON request_engine.outbox_messages FOR SELECT TO request_operator_metrics_definer USING (true);
 
 
 --
--- Name: COLUMN platform_identity_recovery_facts.correlation_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: provider_events operator_metrics_read; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(correlation_id) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+CREATE POLICY operator_metrics_read ON request_engine.provider_events FOR SELECT TO request_operator_metrics_definer USING (true);
 
 
 --
--- Name: COLUMN platform_identity_recovery_facts.capability_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: scheduled_actions operator_metrics_read; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(capability_key),INSERT(capability_key) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+CREATE POLICY operator_metrics_read ON request_engine.scheduled_actions FOR SELECT TO request_operator_metrics_definer USING (true);
 
 
 --
--- Name: COLUMN platform_identity_recovery_facts.idempotency_key_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_channel_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(idempotency_key_digest),INSERT(idempotency_key_digest) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.organization_channel_policies ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_identity_recovery_facts.intent_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_channel_policies organization_channel_policies_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(intent_digest),INSERT(intent_digest) ON TABLE request_engine.platform_identity_recovery_facts TO request_platform_control_definer;
+CREATE POLICY organization_channel_policies_tenant_isolation ON request_engine.organization_channel_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_installation_claim_facts.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_party_bindings; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.organization_party_bindings ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_installation_claim_facts.instance_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_party_bindings organization_party_bindings_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(instance_id),INSERT(instance_id) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
+CREATE POLICY organization_party_bindings_tenant_policy ON request_engine.organization_party_bindings USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_installation_claim_facts.setup_session_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_provisioning_facts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(setup_session_id),INSERT(setup_session_id) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.organization_provisioning_facts ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_installation_claim_facts.owner_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_provisioning_facts organization_provisioning_facts_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(owner_principal_id),INSERT(owner_principal_id) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
+CREATE POLICY organization_provisioning_facts_tenant_isolation ON request_engine.organization_provisioning_facts USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_installation_claim_facts.native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_public_contact_endpoints; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(native_identity_id),INSERT(native_identity_id) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.organization_public_contact_endpoints ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_installation_claim_facts.policy_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_public_contact_endpoints organization_public_contact_endpoints_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(policy_key),INSERT(policy_key) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
+CREATE POLICY organization_public_contact_endpoints_tenant_policy ON request_engine.organization_public_contact_endpoints USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_installation_claim_facts.claim_provenance; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(claim_provenance),INSERT(claim_provenance) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.organization_root_provisioning_facts ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_installation_claim_facts.idempotency_key_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts organization_root_provisioning_facts_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(idempotency_key_digest),INSERT(idempotency_key_digest) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
+CREATE POLICY organization_root_provisioning_facts_tenant_isolation ON request_engine.organization_root_provisioning_facts USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_installation_claim_facts.intent_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organizations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(intent_digest),INSERT(intent_digest) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.organizations ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_installation_claim_facts.correlation_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organizations organizations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(correlation_id),INSERT(correlation_id) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
+CREATE POLICY organizations_tenant_isolation ON request_engine.organizations USING ((id = request_engine.current_organization_id())) WITH CHECK ((id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_installation_claim_facts.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: outbox_messages; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_at) ON TABLE request_engine.platform_installation_claim_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.outbox_messages ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_instance.singleton_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: outbox_messages outbox_messages_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(singleton_key) ON TABLE request_engine.platform_instance TO request_platform_control_definer;
+CREATE POLICY outbox_messages_tenant_isolation ON request_engine.outbox_messages USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_instance.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: parties; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(id) ON TABLE request_engine.platform_instance TO request_platform_control_definer;
 
+ALTER TABLE request_engine.parties ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_instance.state; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: parties parties_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(state),UPDATE(state) ON TABLE request_engine.platform_instance TO request_platform_control_definer;
+CREATE POLICY parties_tenant_isolation ON request_engine.parties USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_instance.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_administrative_identifiers; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revision),UPDATE(revision) ON TABLE request_engine.platform_instance TO request_platform_control_definer;
+ALTER TABLE request_engine.party_administrative_identifiers ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_instance.built_in_native_authority_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_administrative_identifiers party_administrative_identifiers_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(built_in_native_authority_id) ON TABLE request_engine.platform_instance TO request_platform_control_definer;
+CREATE POLICY party_administrative_identifiers_tenant_policy ON request_engine.party_administrative_identifiers USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_instance.built_in_workload_authority_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_contact_points; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(built_in_workload_authority_id) ON TABLE request_engine.platform_instance TO request_platform_control_definer;
 
+ALTER TABLE request_engine.party_contact_points ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_instance.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_contact_points party_contact_points_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_at) ON TABLE request_engine.platform_instance TO request_platform_control_definer;
+CREATE POLICY party_contact_points_tenant_isolation ON request_engine.party_contact_points USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_instance.claimed_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_documents; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(claimed_at),UPDATE(claimed_at) ON TABLE request_engine.platform_instance TO request_platform_control_definer;
+ALTER TABLE request_engine.party_identity_documents ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_instance.initial_owner_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_documents party_identity_documents_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(initial_owner_principal_id),UPDATE(initial_owner_principal_id) ON TABLE request_engine.platform_instance TO request_platform_control_definer;
+CREATE POLICY party_identity_documents_tenant_policy ON request_engine.party_identity_documents USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_instance.claim_provenance; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_revisions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(claim_provenance),UPDATE(claim_provenance) ON TABLE request_engine.platform_instance TO request_platform_control_definer;
 
+ALTER TABLE request_engine.party_identity_revisions ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_owner_invitation_facts.invitation_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_revisions party_identity_revisions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(invitation_id) ON TABLE request_engine.platform_owner_invitation_facts TO request_platform_control_definer;
+CREATE POLICY party_identity_revisions_tenant_policy ON request_engine.party_identity_revisions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_invitation_facts.action; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_authority_grants; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(action),INSERT(action) ON TABLE request_engine.platform_owner_invitation_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.principal_authority_grants ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_owner_invitation_facts.actor_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_authority_grants principal_authority_grants_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(actor_principal_id),INSERT(actor_principal_id) ON TABLE request_engine.platform_owner_invitation_facts TO request_platform_control_definer;
+CREATE POLICY principal_authority_grants_tenant_isolation ON request_engine.principal_authority_grants USING (((principal_plane = 'tenant'::text) AND (organization_id = request_engine.current_organization_id()))) WITH CHECK (((principal_plane = 'tenant'::text) AND (organization_id = request_engine.current_organization_id())));
 
 
 --
--- Name: COLUMN platform_owner_invitation_facts.native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_contacts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(native_identity_id) ON TABLE request_engine.platform_owner_invitation_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.principal_contacts ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_owner_invitation_facts.revision_before; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_contacts principal_contacts_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(revision_before) ON TABLE request_engine.platform_owner_invitation_facts TO request_platform_control_definer;
+CREATE POLICY principal_contacts_tenant_policy ON request_engine.principal_contacts USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_invitation_facts.revision_after; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principals; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(revision_after),INSERT(revision_after) ON TABLE request_engine.platform_owner_invitation_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.principals ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_owner_invitation_facts.correlation_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principals principals_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(correlation_id) ON TABLE request_engine.platform_owner_invitation_facts TO request_platform_control_definer;
+CREATE POLICY principals_tenant_isolation ON request_engine.principals USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_invitation_facts.reason_code; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: provider_events; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(reason_code) ON TABLE request_engine.platform_owner_invitation_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.provider_events ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_owner_invitation_facts.idempotency_key_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: provider_events provider_events_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(idempotency_key_digest),INSERT(idempotency_key_digest) ON TABLE request_engine.platform_owner_invitation_facts TO request_platform_control_definer;
+CREATE POLICY provider_events_tenant_isolation ON request_engine.provider_events USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_invitation_facts.intent_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entries; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(intent_digest),INSERT(intent_digest) ON TABLE request_engine.platform_owner_invitation_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.queue_entries ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_owner_invitations.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entries queue_entries_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+CREATE POLICY queue_entries_tenant_isolation ON request_engine.queue_entries USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_invitations.token_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entry_operator_selections; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(token_digest),INSERT(token_digest) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+ALTER TABLE request_engine.queue_entry_operator_selections ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_owner_invitations.token_fingerprint; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entry_operator_selections queue_entry_operator_selections_tenant; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(token_fingerprint),INSERT(token_fingerprint) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+CREATE POLICY queue_entry_operator_selections_tenant ON request_engine.queue_entry_operator_selections USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_invitations.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entry_recall_holds; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
 
+ALTER TABLE request_engine.queue_entry_recall_holds ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_owner_invitations.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entry_recall_holds queue_entry_recall_holds_tenant; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revision),UPDATE(revision) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+CREATE POLICY queue_entry_recall_holds_tenant ON request_engine.queue_entry_recall_holds USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_invitations.invited_by_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entry_skips; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(invited_by_principal_id),INSERT(invited_by_principal_id) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+ALTER TABLE request_engine.queue_entry_skips ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_owner_invitations.native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entry_skips queue_entry_skips_tenant; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(native_identity_id),UPDATE(native_identity_id) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+CREATE POLICY queue_entry_skips_tenant ON request_engine.queue_entry_skips USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_invitations.provenance_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: recovery_source_revisions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(provenance_reference),INSERT(provenance_reference) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+ALTER TABLE request_engine.recovery_source_revisions ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_owner_invitations.idempotency_key_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: recovery_source_revisions recovery_source_revisions_internal_writer_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(idempotency_key_digest),INSERT(idempotency_key_digest) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+CREATE POLICY recovery_source_revisions_internal_writer_policy ON request_engine.recovery_source_revisions TO request_engine_schema_owner USING ((pg_trigger_depth() > 0)) WITH CHECK ((pg_trigger_depth() > 0));
 
 
 --
--- Name: COLUMN platform_owner_invitations.intent_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: recovery_source_revisions recovery_source_revisions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(intent_digest),INSERT(intent_digest) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+CREATE POLICY recovery_source_revisions_tenant_policy ON request_engine.recovery_source_revisions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_invitations.expires_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reminder_acknowledgements; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(expires_at),INSERT(expires_at) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
 
+ALTER TABLE request_engine.reminder_acknowledgements ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_owner_invitations.enrolled_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reminder_acknowledgements reminder_acknowledgements_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(enrolled_at) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+CREATE POLICY reminder_acknowledgements_tenant_isolation ON request_engine.reminder_acknowledgements USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_invitations.consumed_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reminder_plans; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(consumed_at) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+ALTER TABLE request_engine.reminder_plans ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_owner_invitations.revoked_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reminder_plans reminder_plans_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(revoked_at) ON TABLE request_engine.platform_owner_invitations TO request_platform_control_definer;
+CREATE POLICY reminder_plans_tenant_isolation ON request_engine.reminder_plans USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_policies.policy_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: representations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(policy_key) ON TABLE request_engine.platform_owner_policies TO request_platform_control_definer;
 
+ALTER TABLE request_engine.representations ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_owner_policies.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: representations representations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revision) ON TABLE request_engine.platform_owner_policies TO request_platform_control_definer;
+CREATE POLICY representations_tenant_isolation ON request_engine.representations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_policies.grants; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: request_definition_versions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(grants) ON TABLE request_engine.platform_owner_policies TO request_platform_control_definer;
+ALTER TABLE request_engine.request_definition_versions ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_owner_provisioning_facts.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: request_definition_versions request_definition_versions_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id) ON TABLE request_engine.platform_owner_provisioning_facts TO request_platform_control_definer;
+CREATE POLICY request_definition_versions_tenant_isolation ON request_engine.request_definition_versions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_provisioning_facts.principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: request_definitions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(principal_id),INSERT(principal_id) ON TABLE request_engine.platform_owner_provisioning_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.request_definitions ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_owner_provisioning_facts.native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: request_definitions request_definitions_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(native_identity_id),INSERT(native_identity_id) ON TABLE request_engine.platform_owner_provisioning_facts TO request_platform_control_definer;
+CREATE POLICY request_definitions_tenant_isolation ON request_engine.request_definitions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_provisioning_facts.actor_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: request_participants; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(actor_principal_id),INSERT(actor_principal_id) ON TABLE request_engine.platform_owner_provisioning_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.request_participants ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_owner_provisioning_facts.policy_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: request_participants request_participants_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(policy_key),INSERT(policy_key) ON TABLE request_engine.platform_owner_provisioning_facts TO request_platform_control_definer;
+CREATE POLICY request_participants_tenant_isolation ON request_engine.request_participants USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_provisioning_facts.provenance_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: requests; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(provenance_reference),INSERT(provenance_reference) ON TABLE request_engine.platform_owner_provisioning_facts TO request_platform_control_definer;
+ALTER TABLE request_engine.requests ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_owner_provisioning_facts.idempotency_key_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: requests requests_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(idempotency_key_digest),INSERT(idempotency_key_digest) ON TABLE request_engine.platform_owner_provisioning_facts TO request_platform_control_definer;
+CREATE POLICY requests_tenant_isolation ON request_engine.requests USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_owner_provisioning_facts.intent_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_access; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(intent_digest),INSERT(intent_digest) ON TABLE request_engine.platform_owner_provisioning_facts TO request_platform_control_definer;
 
+ALTER TABLE request_engine.reservation_access ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_owner_provisioning_facts.correlation_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_access reservation_access_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(correlation_id),INSERT(correlation_id) ON TABLE request_engine.platform_owner_provisioning_facts TO request_platform_control_definer;
+CREATE POLICY reservation_access_tenant_isolation ON request_engine.reservation_access USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_bindings.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_arrival_estimates; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.platform_secret_bindings TO request_platform_control_definer;
-GRANT SELECT(id) ON TABLE request_engine.platform_secret_bindings TO request_platform_definer;
+ALTER TABLE request_engine.reservation_arrival_estimates ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_secret_bindings.purpose; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_arrival_estimates reservation_arrival_estimates_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(purpose),INSERT(purpose) ON TABLE request_engine.platform_secret_bindings TO request_platform_control_definer;
-GRANT SELECT(purpose) ON TABLE request_engine.platform_secret_bindings TO request_platform_definer;
+CREATE POLICY reservation_arrival_estimates_tenant_policy ON request_engine.reservation_arrival_estimates USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_bindings.backend; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_attendance; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(backend),INSERT(backend) ON TABLE request_engine.platform_secret_bindings TO request_platform_control_definer;
-GRANT SELECT(backend) ON TABLE request_engine.platform_secret_bindings TO request_platform_definer;
 
+ALTER TABLE request_engine.reservation_attendance ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_secret_bindings.secret_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_attendance reservation_attendance_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(secret_id),INSERT(secret_id) ON TABLE request_engine.platform_secret_bindings TO request_platform_control_definer;
-GRANT SELECT(secret_id) ON TABLE request_engine.platform_secret_bindings TO request_platform_definer;
+CREATE POLICY reservation_attendance_tenant_isolation ON request_engine.reservation_attendance USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_bindings.backend_version; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_commercial_commitment_context_terms; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(backend_version),INSERT(backend_version),UPDATE(backend_version) ON TABLE request_engine.platform_secret_bindings TO request_platform_control_definer;
-GRANT SELECT(backend_version) ON TABLE request_engine.platform_secret_bindings TO request_platform_definer;
+ALTER TABLE request_engine.reservation_commercial_commitment_context_terms ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_secret_bindings.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_commercial_commitment_context_terms reservation_commercial_commitment_context_terms_tenant_isolatio; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.platform_secret_bindings TO request_platform_control_definer;
-GRANT SELECT(status) ON TABLE request_engine.platform_secret_bindings TO request_platform_definer;
+CREATE POLICY reservation_commercial_commitment_context_terms_tenant_isolatio ON request_engine.reservation_commercial_commitment_context_terms USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_bindings.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_commercial_commitments; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(revision),UPDATE(revision) ON TABLE request_engine.platform_secret_bindings TO request_platform_control_definer;
-GRANT SELECT(revision) ON TABLE request_engine.platform_secret_bindings TO request_platform_definer;
 
+ALTER TABLE request_engine.reservation_commercial_commitments ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_secret_bindings.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_commercial_commitments reservation_commercial_commitments_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_at) ON TABLE request_engine.platform_secret_bindings TO request_platform_control_definer;
-GRANT SELECT(created_at) ON TABLE request_engine.platform_secret_bindings TO request_platform_definer;
+CREATE POLICY reservation_commercial_commitments_tenant_policy ON request_engine.reservation_commercial_commitments USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_bindings.rotated_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(rotated_at),UPDATE(rotated_at) ON TABLE request_engine.platform_secret_bindings TO request_platform_control_definer;
-GRANT SELECT(rotated_at) ON TABLE request_engine.platform_secret_bindings TO request_platform_definer;
+ALTER TABLE request_engine.reservations ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_secret_bindings.revoked_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservations reservations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revoked_at),UPDATE(revoked_at) ON TABLE request_engine.platform_secret_bindings TO request_platform_control_definer;
-GRANT SELECT(revoked_at) ON TABLE request_engine.platform_secret_bindings TO request_platform_definer;
+CREATE POLICY reservations_tenant_isolation ON request_engine.reservations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_activities; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+ALTER TABLE request_engine.resource_activities ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_secret_mutations.operation_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_activities resource_activities_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(operation_kind),INSERT(operation_kind) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY resource_activities_tenant_policy ON request_engine.resource_activities USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.capability_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_capabilities; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(capability_key),INSERT(capability_key) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
 
+ALTER TABLE request_engine.resource_capabilities ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_secret_mutations.actor_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_capabilities resource_capabilities_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(actor_principal_id),INSERT(actor_principal_id) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY resource_capabilities_tenant_isolation ON request_engine.resource_capabilities USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.actor_authentication_method; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_capability_assignments; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(actor_authentication_method),INSERT(actor_authentication_method) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+ALTER TABLE request_engine.resource_capability_assignments ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_secret_mutations.correlation_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_capability_assignments resource_capability_assignments_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(correlation_id),INSERT(correlation_id) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY resource_capability_assignments_tenant_isolation ON request_engine.resource_capability_assignments USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.binding_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_assignments; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(binding_id),INSERT(binding_id) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
 
+ALTER TABLE request_engine.resource_location_assignments ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_secret_mutations.secret_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_assignments resource_location_assignments_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(secret_id),INSERT(secret_id) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY resource_location_assignments_tenant_policy ON request_engine.resource_location_assignments USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.purpose; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_availability; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(purpose),INSERT(purpose) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+ALTER TABLE request_engine.resource_location_availability ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_secret_mutations.backend; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_availability resource_location_availability_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(backend),INSERT(backend) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY resource_location_availability_tenant_policy ON request_engine.resource_location_availability USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.expected_binding_revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_schedule_exceptions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(expected_binding_revision),INSERT(expected_binding_revision) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
 
+ALTER TABLE request_engine.resource_location_schedule_exceptions ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_secret_mutations.expected_backend_version; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_schedule_exceptions resource_location_schedule_exceptions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(expected_backend_version),INSERT(expected_backend_version) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY resource_location_schedule_exceptions_tenant_policy ON request_engine.resource_location_schedule_exceptions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.applied_backend_version; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_public_profiles; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(applied_backend_version),UPDATE(applied_backend_version) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+ALTER TABLE request_engine.resource_public_profiles ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_secret_mutations.state; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_public_profiles resource_public_profiles_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(state),UPDATE(state) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY resource_public_profiles_tenant_policy ON request_engine.resource_public_profiles USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.idempotency_key_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resources; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(idempotency_key_digest),INSERT(idempotency_key_digest) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+ALTER TABLE request_engine.resources ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_secret_mutations.intent_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resources resources_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(intent_digest),INSERT(intent_digest) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY resources_tenant_isolation ON request_engine.resources USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.result_binding_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: schedule_exceptions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(result_binding_id),UPDATE(result_binding_id) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
 
+ALTER TABLE request_engine.schedule_exceptions ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_secret_mutations.result_binding_revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: schedule_exceptions schedule_exceptions_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(result_binding_revision),UPDATE(result_binding_revision) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY schedule_exceptions_tenant_isolation ON request_engine.schedule_exceptions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.result_binding_status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: scheduled_actions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(result_binding_status),UPDATE(result_binding_status) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+ALTER TABLE request_engine.scheduled_actions ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN platform_secret_mutations.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: scheduled_actions scheduled_actions_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_at) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY scheduled_actions_tenant_isolation ON request_engine.scheduled_actions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.backend_applied_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_queue_intake_controls; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(backend_applied_at),UPDATE(backend_applied_at) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
 
+ALTER TABLE request_engine.service_queue_intake_controls ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN platform_secret_mutations.committed_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_queue_intake_controls service_queue_intake_controls_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(committed_at),UPDATE(committed_at) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY service_queue_intake_controls_tenant_policy ON request_engine.service_queue_intake_controls USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN platform_secret_mutations.reconcile_required_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_queue_intake_controls service_queue_intake_controls_trigger_writer_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(reconcile_required_at),UPDATE(reconcile_required_at) ON TABLE request_engine.platform_secret_mutations TO request_platform_control_definer;
+CREATE POLICY service_queue_intake_controls_trigger_writer_policy ON request_engine.service_queue_intake_controls FOR INSERT TO request_engine_schema_owner WITH CHECK ((pg_trigger_depth() > 0));
 
 
 --
--- Name: TABLE portable_party_identifiers; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_queues; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT ALL ON TABLE request_engine.portable_party_identifiers TO request_engine_admin;
+ALTER TABLE request_engine.service_queues ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: TABLE portable_party_identities; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_queues service_queues_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT ALL ON TABLE request_engine.portable_party_identities TO request_engine_admin;
+CREATE POLICY service_queues_tenant_isolation ON request_engine.service_queues USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: TABLE portable_party_profiles; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_session_interruptions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT ALL ON TABLE request_engine.portable_party_profiles TO request_engine_admin;
 
+ALTER TABLE request_engine.service_session_interruptions ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: TABLE principal_authority_grants; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_session_interruptions service_session_interruptions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.principal_authority_grants TO request_engine_app;
+CREATE POLICY service_session_interruptions_tenant_policy ON request_engine.service_session_interruptions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN principal_authority_grants.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_sessions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
+ALTER TABLE request_engine.service_sessions ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN principal_authority_grants.organization_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_sessions service_sessions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(organization_id) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
+CREATE POLICY service_sessions_tenant_policy ON request_engine.service_sessions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN principal_authority_grants.principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_bindings; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(principal_id) ON TABLE request_engine.principal_authority_grants TO request_platform_definer;
-GRANT INSERT(principal_id) ON TABLE request_engine.principal_authority_grants TO request_bootstrap_definer;
-GRANT SELECT(principal_id),INSERT(principal_id) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
+ALTER TABLE request_engine.shared_capacity_bindings ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN principal_authority_grants.principal_plane; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_bindings shared_capacity_bindings_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(principal_plane) ON TABLE request_engine.principal_authority_grants TO request_platform_definer;
-GRANT INSERT(principal_plane) ON TABLE request_engine.principal_authority_grants TO request_bootstrap_definer;
-GRANT SELECT(principal_plane),INSERT(principal_plane) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
+CREATE POLICY shared_capacity_bindings_tenant_isolation ON request_engine.shared_capacity_bindings USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN principal_authority_grants.authority_plane; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_offers; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(authority_plane) ON TABLE request_engine.principal_authority_grants TO request_platform_definer;
-GRANT INSERT(authority_plane) ON TABLE request_engine.principal_authority_grants TO request_bootstrap_definer;
-GRANT SELECT(authority_plane),INSERT(authority_plane) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
 
+ALTER TABLE request_engine.slot_offers ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN principal_authority_grants.capability_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(capability_key) ON TABLE request_engine.principal_authority_grants TO request_platform_definer;
-GRANT INSERT(capability_key) ON TABLE request_engine.principal_authority_grants TO request_bootstrap_definer;
-GRANT SELECT(capability_key),INSERT(capability_key) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
+CREATE POLICY slot_offers_tenant_isolation ON request_engine.slot_offers USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN principal_authority_grants.delegable; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_opportunities; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(delegable) ON TABLE request_engine.principal_authority_grants TO request_platform_definer;
-GRANT INSERT(delegable) ON TABLE request_engine.principal_authority_grants TO request_bootstrap_definer;
-GRANT SELECT(delegable),INSERT(delegable) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
+ALTER TABLE request_engine.slot_opportunities ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN principal_authority_grants.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_opportunities slot_opportunities_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(status) ON TABLE request_engine.principal_authority_grants TO request_platform_definer;
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
+CREATE POLICY slot_opportunities_tenant_isolation ON request_engine.slot_opportunities USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN principal_authority_grants.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_deliveries; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(revision),UPDATE(revision) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
 
+ALTER TABLE request_engine.staff_invitation_deliveries ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN principal_authority_grants.granted_by_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_proposals; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(granted_by_principal_id),INSERT(granted_by_principal_id) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
+ALTER TABLE request_engine.staff_invitation_proposals ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN principal_authority_grants.provenance_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT INSERT(provenance_kind) ON TABLE request_engine.principal_authority_grants TO request_bootstrap_definer;
-GRANT SELECT(provenance_kind),INSERT(provenance_kind) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
-GRANT SELECT(provenance_kind) ON TABLE request_engine.principal_authority_grants TO request_platform_definer;
 
+ALTER TABLE request_engine.staff_invitations ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN principal_authority_grants.provenance_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_member_profiles; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(provenance_reference) ON TABLE request_engine.principal_authority_grants TO request_bootstrap_definer;
-GRANT SELECT(provenance_reference),INSERT(provenance_reference) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
-GRANT SELECT(provenance_reference) ON TABLE request_engine.principal_authority_grants TO request_platform_definer;
+ALTER TABLE request_engine.staff_member_profiles ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN principal_authority_grants.granted_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(granted_at) ON TABLE request_engine.principal_authority_grants TO request_platform_definer;
+ALTER TABLE request_engine.staff_memberships ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN principal_authority_grants.revoked_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_memberships_platform_adoption_lock; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(revoked_at) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
+CREATE POLICY staff_memberships_platform_adoption_lock ON request_engine.staff_memberships FOR UPDATE TO request_platform_control_definer USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN principal_authority_grants.revoked_by_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_memberships_platform_adoption_read; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(revoked_by_principal_id) ON TABLE request_engine.principal_authority_grants TO request_platform_control_definer;
+CREATE POLICY staff_memberships_platform_adoption_read ON request_engine.staff_memberships FOR SELECT TO request_platform_control_definer USING ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: TABLE principal_contacts; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_memberships_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.principal_contacts TO request_engine_app;
-GRANT ALL ON TABLE request_engine.principal_contacts TO request_engine_admin;
+CREATE POLICY staff_memberships_tenant_isolation ON request_engine.staff_memberships USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: TABLE principals; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_member_profiles staff_profile_tenant; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.principals TO request_engine_app;
-GRANT ALL ON TABLE request_engine.principals TO request_engine_admin;
+CREATE POLICY staff_profile_tenant ON request_engine.staff_member_profiles USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN principals.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: temporary_proof_cleanup_results temporary_cleanup_results_owner; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id) ON TABLE request_engine.principals TO request_platform_definer;
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.principals TO request_bootstrap_definer;
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.principals TO request_platform_control_definer;
+CREATE POLICY temporary_cleanup_results_owner ON request_engine.temporary_proof_cleanup_results TO request_engine_schema_owner USING (true) WITH CHECK (true);
 
 
 --
--- Name: COLUMN principals.organization_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: temporary_proof_cleanup_work temporary_cleanup_work_owner; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(organization_id) ON TABLE request_engine.principals TO request_bootstrap_definer;
-GRANT SELECT(organization_id),INSERT(organization_id) ON TABLE request_engine.principals TO request_platform_control_definer;
+CREATE POLICY temporary_cleanup_work_owner ON request_engine.temporary_proof_cleanup_work TO request_engine_schema_owner USING (true) WITH CHECK (true);
 
 
 --
--- Name: COLUMN principals.principal_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: temporary_proof_cleanup_results; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(principal_kind) ON TABLE request_engine.principals TO request_platform_definer;
-GRANT INSERT(principal_kind) ON TABLE request_engine.principals TO request_bootstrap_definer;
-GRANT SELECT(principal_kind),INSERT(principal_kind) ON TABLE request_engine.principals TO request_platform_control_definer;
 
+ALTER TABLE request_engine.temporary_proof_cleanup_results ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN principals.external_subject; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: temporary_proof_cleanup_work; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(external_subject) ON TABLE request_engine.principals TO request_bootstrap_definer;
-GRANT SELECT(external_subject),INSERT(external_subject) ON TABLE request_engine.principals TO request_platform_control_definer;
+ALTER TABLE request_engine.temporary_proof_cleanup_work ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN principals.active; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: temporary_proof_retention_receipts temporary_proof_inventory_owner; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(active) ON TABLE request_engine.principals TO request_platform_definer;
-GRANT SELECT(active) ON TABLE request_engine.principals TO request_bootstrap_definer;
-GRANT SELECT(active) ON TABLE request_engine.principals TO request_platform_control_definer;
+CREATE POLICY temporary_proof_inventory_owner ON request_engine.temporary_proof_retention_receipts TO request_engine_schema_owner USING (true) WITH CHECK (true);
 
 
 --
--- Name: COLUMN principals.principal_plane; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: temporary_proof_retention_receipts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
-
-GRANT SELECT(principal_plane) ON TABLE request_engine.principals TO request_platform_definer;
-GRANT SELECT(principal_plane),INSERT(principal_plane) ON TABLE request_engine.principals TO request_bootstrap_definer;
-GRANT SELECT(principal_plane),INSERT(principal_plane) ON TABLE request_engine.principals TO request_platform_control_definer;
 
+ALTER TABLE request_engine.temporary_proof_retention_receipts ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: COLUMN principals.authority_revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_deliveries tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(authority_revision) ON TABLE request_engine.principals TO request_platform_definer;
-GRANT SELECT(authority_revision),UPDATE(authority_revision) ON TABLE request_engine.principals TO request_bootstrap_definer;
-GRANT SELECT(authority_revision),UPDATE(authority_revision) ON TABLE request_engine.principals TO request_platform_control_definer;
+CREATE POLICY tenant_isolation ON request_engine.staff_invitation_deliveries USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: TABLE queue_entries; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_proposals tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.queue_entries TO request_engine_app;
-GRANT ALL ON TABLE request_engine.queue_entries TO request_engine_admin;
+CREATE POLICY tenant_isolation ON request_engine.staff_invitation_proposals USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: TABLE queue_entry_operator_selections; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.queue_entry_operator_selections TO request_engine_app;
-GRANT ALL ON TABLE request_engine.queue_entry_operator_selections TO request_engine_admin;
+CREATE POLICY tenant_isolation ON request_engine.staff_invitations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: TABLE queue_entry_recall_holds; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: waitlist_entries; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.queue_entry_recall_holds TO request_engine_app;
-GRANT ALL ON TABLE request_engine.queue_entry_recall_holds TO request_engine_admin;
+ALTER TABLE request_engine.waitlist_entries ENABLE ROW LEVEL SECURITY;
 
-
 --
--- Name: COLUMN queue_entry_recall_holds.released_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: waitlist_entries waitlist_entries_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(released_at) ON TABLE request_engine.queue_entry_recall_holds TO request_engine_app;
+CREATE POLICY waitlist_entries_tenant_isolation ON request_engine.waitlist_entries USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
 
 
 --
--- Name: COLUMN queue_entry_recall_holds.release_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: SCHEMA request_admin; Type: ACL; Schema: -; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(release_kind) ON TABLE request_engine.queue_entry_recall_holds TO request_engine_app;
+GRANT USAGE ON SCHEMA request_admin TO request_engine_admin;
+GRANT USAGE ON SCHEMA request_admin TO request_operator_metrics_definer;
+GRANT USAGE ON SCHEMA request_admin TO request_operator_metrics;
 
 
 --
--- Name: TABLE queue_entry_skips; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: SCHEMA request_auth; Type: ACL; Schema: -; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.queue_entry_skips TO request_engine_app;
-GRANT ALL ON TABLE request_engine.queue_entry_skips TO request_engine_admin;
+GRANT USAGE ON SCHEMA request_auth TO request_engine_app;
+GRANT USAGE ON SCHEMA request_auth TO request_platform_control_definer;
+GRANT USAGE ON SCHEMA request_auth TO request_platform_definer;
+GRANT USAGE ON SCHEMA request_auth TO request_engine_worker;
+GRANT USAGE ON SCHEMA request_auth TO request_webauthn_retention;
 
 
 --
--- Name: COLUMN queue_entry_skips.consumed_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: SCHEMA request_cmd; Type: ACL; Schema: -; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(consumed_at) ON TABLE request_engine.queue_entry_skips TO request_engine_app;
+GRANT USAGE ON SCHEMA request_cmd TO request_engine_app;
+GRANT USAGE ON SCHEMA request_cmd TO request_engine_worker;
+GRANT USAGE ON SCHEMA request_cmd TO request_engine_admin;
+GRANT USAGE ON SCHEMA request_cmd TO request_retention_recorder;
+GRANT USAGE ON SCHEMA request_cmd TO request_proof_cleanup_worker;
 
 
 --
--- Name: COLUMN queue_entry_skips.consumed_by_entry_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: SCHEMA request_engine; Type: ACL; Schema: -; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(consumed_by_entry_id) ON TABLE request_engine.queue_entry_skips TO request_engine_app;
+GRANT USAGE ON SCHEMA request_engine TO request_engine_app;
+GRANT USAGE ON SCHEMA request_engine TO request_engine_worker;
+GRANT USAGE ON SCHEMA request_engine TO request_engine_admin;
+GRANT USAGE ON SCHEMA request_engine TO request_engine_discovery;
+GRANT USAGE ON SCHEMA request_engine TO request_engine_discovery_definer;
+GRANT USAGE ON SCHEMA request_engine TO request_platform_definer;
+GRANT USAGE ON SCHEMA request_engine TO request_bootstrap_definer;
+GRANT USAGE ON SCHEMA request_engine TO request_platform_control_definer;
+GRANT USAGE ON SCHEMA request_engine TO request_webauthn_retention_definer;
+GRANT USAGE ON SCHEMA request_engine TO request_http_admission_definer;
+GRANT USAGE ON SCHEMA request_engine TO request_operator_metrics_definer;
 
 
 --
--- Name: COLUMN recovery_code_sets.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: SCHEMA request_platform; Type: ACL; Schema: -; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id) ON TABLE request_engine.recovery_code_sets TO request_platform_control_definer;
+GRANT USAGE ON SCHEMA request_platform TO request_platform_definer;
+GRANT USAGE ON SCHEMA request_platform TO request_bootstrap_definer;
+GRANT USAGE ON SCHEMA request_platform TO request_platform_control;
+GRANT USAGE ON SCHEMA request_platform TO request_platform_control_definer;
+GRANT USAGE ON SCHEMA request_platform TO request_engine_worker;
+GRANT USAGE ON SCHEMA request_platform TO request_engine_app;
 
 
 --
--- Name: COLUMN recovery_code_sets.native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: SCHEMA request_read; Type: ACL; Schema: -; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(native_identity_id),UPDATE(native_identity_id) ON TABLE request_engine.recovery_code_sets TO request_platform_control_definer;
+GRANT USAGE ON SCHEMA request_read TO request_engine_app;
+GRANT USAGE ON SCHEMA request_read TO request_engine_admin;
 
 
 --
--- Name: COLUMN recovery_code_sets.setup_session_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION activate_shared_capacity_binding(p_organization_id uuid, p_resource_id uuid, p_shared_capacity_identity_id uuid, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(setup_session_id),UPDATE(setup_session_id) ON TABLE request_engine.recovery_code_sets TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_admin.activate_shared_capacity_binding(p_organization_id uuid, p_resource_id uuid, p_shared_capacity_identity_id uuid, p_authority_ref text, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_admin.activate_shared_capacity_binding(p_organization_id uuid, p_resource_id uuid, p_shared_capacity_identity_id uuid, p_authority_ref text, p_reason text) TO request_engine_admin;
 
 
 --
--- Name: COLUMN recovery_code_sets.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION create_global_identity(p_identity_kind text, p_evidence_ref text, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(status) ON TABLE request_engine.recovery_code_sets TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_admin.create_global_identity(p_identity_kind text, p_evidence_ref text, p_authority_ref text, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_admin.create_global_identity(p_identity_kind text, p_evidence_ref text, p_authority_ref text, p_reason text) TO request_engine_admin;
 
 
 --
--- Name: COLUMN recovery_codes.set_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION create_service_classification(p_classification_key text, p_canonical_name text, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(set_id) ON TABLE request_engine.recovery_codes TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_admin.create_service_classification(p_classification_key text, p_canonical_name text, p_authority_ref text, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_admin.create_service_classification(p_classification_key text, p_canonical_name text, p_authority_ref text, p_reason text) TO request_engine_admin;
 
 
 --
--- Name: COLUMN recovery_codes.used_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION create_shared_capacity_identity(p_global_identity_id uuid, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(used_at) ON TABLE request_engine.recovery_codes TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_admin.create_shared_capacity_identity(p_global_identity_id uuid, p_authority_ref text, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_admin.create_shared_capacity_identity(p_global_identity_id uuid, p_authority_ref text, p_reason text) TO request_engine_admin;
 
 
 --
--- Name: TABLE recovery_source_revisions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_operator_metrics(); Type: ACL; Schema: request_admin; Owner: request_operator_metrics_definer
 --
 
-GRANT ALL ON TABLE request_engine.recovery_source_revisions TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_admin.read_operator_metrics() FROM PUBLIC;
+GRANT ALL ON FUNCTION request_admin.read_operator_metrics() TO request_operator_metrics;
 
 
 --
--- Name: TABLE reminder_acknowledgements; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION replay_dead_outbox_message(p_organization_id uuid, p_message_id uuid, p_additional_attempts integer, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.reminder_acknowledgements TO request_engine_app;
-GRANT ALL ON TABLE request_engine.reminder_acknowledgements TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_admin.replay_dead_outbox_message(p_organization_id uuid, p_message_id uuid, p_additional_attempts integer, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_admin.replay_dead_outbox_message(p_organization_id uuid, p_message_id uuid, p_additional_attempts integer, p_reason text) TO request_engine_admin;
 
 
 --
--- Name: TABLE reminder_plans; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION replay_dead_scheduled_action(p_organization_id uuid, p_action_id uuid, p_additional_attempts integer, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.reminder_plans TO request_engine_app;
-GRANT ALL ON TABLE request_engine.reminder_plans TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_admin.replay_dead_scheduled_action(p_organization_id uuid, p_action_id uuid, p_additional_attempts integer, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_admin.replay_dead_scheduled_action(p_organization_id uuid, p_action_id uuid, p_additional_attempts integer, p_reason text) TO request_engine_admin;
 
 
 --
--- Name: TABLE representations; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION replay_provider_event(p_organization_id uuid, p_provider_event_row_id uuid, p_additional_attempts integer, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.representations TO request_engine_app;
-GRANT ALL ON TABLE request_engine.representations TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_admin.replay_provider_event(p_organization_id uuid, p_provider_event_row_id uuid, p_additional_attempts integer, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_admin.replay_provider_event(p_organization_id uuid, p_provider_event_row_id uuid, p_additional_attempts integer, p_reason text) TO request_engine_admin;
 
 
 --
--- Name: COLUMN representations.organization_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION retire_service_classification(p_service_classification_id uuid, p_expected_revision bigint, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(organization_id) ON TABLE request_engine.representations TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_admin.retire_service_classification(p_service_classification_id uuid, p_expected_revision bigint, p_authority_ref text, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_admin.retire_service_classification(p_service_classification_id uuid, p_expected_revision bigint, p_authority_ref text, p_reason text) TO request_engine_admin;
 
 
 --
--- Name: COLUMN representations.principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION revoke_shared_capacity_binding(p_binding_id uuid, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(principal_id) ON TABLE request_engine.representations TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_admin.revoke_shared_capacity_binding(p_binding_id uuid, p_authority_ref text, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_admin.revoke_shared_capacity_binding(p_binding_id uuid, p_authority_ref text, p_reason text) TO request_engine_admin;
 
 
 --
--- Name: COLUMN representations.represented_party_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION activate_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_secret_reference text, p_secret_digest text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(represented_party_id) ON TABLE request_engine.representations TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.activate_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_secret_reference text, p_secret_digest text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.activate_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_secret_reference text, p_secret_digest text) TO request_engine_worker;
 
 
 --
--- Name: COLUMN representations.scope_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION admit_http_authentication(p_limit integer); Type: ACL; Schema: request_auth; Owner: request_http_admission_definer
 --
 
-GRANT INSERT(scope_key) ON TABLE request_engine.representations TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.admit_http_authentication(p_limit integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.admit_http_authentication(p_limit integer) TO request_engine_app;
 
 
 --
--- Name: COLUMN representations.authority_kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION claim_native_recovery_delivery_requests(p_limit integer, p_lease_seconds integer); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(authority_kind) ON TABLE request_engine.representations TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.claim_native_recovery_delivery_requests(p_limit integer, p_lease_seconds integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.claim_native_recovery_delivery_requests(p_limit integer, p_lease_seconds integer) TO request_engine_worker;
 
 
 --
--- Name: TABLE request_definition_versions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION complete_native_recovery(p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.request_definition_versions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.request_definition_versions TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.complete_native_recovery(p_native_identity_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.complete_native_recovery(p_native_identity_id uuid) TO request_engine_app;
 
 
 --
--- Name: TABLE request_definitions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION complete_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_outcome text, p_error_class text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.request_definitions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.request_definitions TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.complete_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_outcome text, p_error_class text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.complete_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_outcome text, p_error_class text) TO request_engine_worker;
 
 
 --
--- Name: TABLE request_participants; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION complete_native_recovery_with_password(p_session_id uuid, p_credential_id uuid, p_expected_recovery_epoch bigint, p_expected_verifier text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.request_participants TO request_engine_app;
-GRANT ALL ON TABLE request_engine.request_participants TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.complete_native_recovery_with_password(p_session_id uuid, p_credential_id uuid, p_expected_recovery_epoch bigint, p_expected_verifier text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.complete_native_recovery_with_password(p_session_id uuid, p_credential_id uuid, p_expected_recovery_epoch bigint, p_expected_verifier text) TO request_engine_app;
 
 
 --
--- Name: TABLE requests; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION consume_native_recovery_intent(p_recovery_id uuid, p_token_digest bytea, p_new_credential_id uuid, p_new_verifier text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.requests TO request_engine_app;
-GRANT ALL ON TABLE request_engine.requests TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.consume_native_recovery_intent(p_recovery_id uuid, p_token_digest bytea, p_new_credential_id uuid, p_new_verifier text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.consume_native_recovery_intent(p_recovery_id uuid, p_token_digest bytea, p_new_credential_id uuid, p_new_verifier text) TO request_engine_app;
 
 
 --
--- Name: TABLE reservation_access; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION consume_recovery_code(p_code_digest bytea); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.reservation_access TO request_engine_app;
-GRANT ALL ON TABLE request_engine.reservation_access TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.consume_recovery_code(p_code_digest bytea) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.consume_recovery_code(p_code_digest bytea) TO request_engine_app;
 
 
 --
--- Name: TABLE reservation_arrival_estimates; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION consume_recovery_code_and_rotate_password(p_code_digest bytea, p_new_credential_id uuid, p_new_verifier text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.reservation_arrival_estimates TO request_engine_app;
-GRANT ALL ON TABLE request_engine.reservation_arrival_estimates TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.consume_recovery_code_and_rotate_password(p_code_digest bytea, p_new_credential_id uuid, p_new_verifier text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.consume_recovery_code_and_rotate_password(p_code_digest bytea, p_new_credential_id uuid, p_new_verifier text) TO request_engine_app;
 
 
 --
--- Name: TABLE reservation_attendance; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION create_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_verifier text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.reservation_attendance TO request_engine_app;
-GRANT ALL ON TABLE request_engine.reservation_attendance TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.create_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_verifier text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.create_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_verifier text) TO request_engine_app;
+GRANT ALL ON FUNCTION request_auth.create_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_verifier text) TO request_platform_control_definer;
 
 
 --
--- Name: TABLE reservation_commercial_commitment_context_terms; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION create_native_recovery_intent(p_native_identity_id uuid, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.reservation_commercial_commitment_context_terms TO request_engine_app;
-GRANT ALL ON TABLE request_engine.reservation_commercial_commitment_context_terms TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.create_native_recovery_intent(p_native_identity_id uuid, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.create_native_recovery_intent(p_native_identity_id uuid, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) TO request_engine_app;
+GRANT ALL ON FUNCTION request_auth.create_native_recovery_intent(p_native_identity_id uuid, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) TO request_platform_control_definer;
 
 
 --
--- Name: TABLE reservation_commercial_commitments; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION create_native_recovery_intent_for_verified_address(p_identity_authority_id uuid, p_login_handle text, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.reservation_commercial_commitments TO request_engine_app;
-GRANT ALL ON TABLE request_engine.reservation_commercial_commitments TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.create_native_recovery_intent_for_verified_address(p_identity_authority_id uuid, p_login_handle text, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
 
 
 --
--- Name: TABLE reservations; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION create_native_session(p_native_identity_id uuid, p_credential_id uuid, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.reservations TO request_engine_app;
-GRANT ALL ON TABLE request_engine.reservations TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.create_native_session(p_native_identity_id uuid, p_credential_id uuid, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.create_native_session(p_native_identity_id uuid, p_credential_id uuid, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) TO request_engine_app;
 
 
 --
--- Name: TABLE resource_activities; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION create_recovery_code_set(p_set_id uuid, p_native_identity_id uuid, p_setup_session_id uuid, p_code_digests bytea[]); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.resource_activities TO request_engine_app;
-GRANT ALL ON TABLE request_engine.resource_activities TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.create_recovery_code_set(p_set_id uuid, p_native_identity_id uuid, p_setup_session_id uuid, p_code_digests bytea[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.create_recovery_code_set(p_set_id uuid, p_native_identity_id uuid, p_setup_session_id uuid, p_code_digests bytea[]) TO request_engine_app;
 
 
 --
--- Name: TABLE resource_capabilities; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION create_webauthn_challenge(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.resource_capabilities TO request_engine_app;
-GRANT ALL ON TABLE request_engine.resource_capabilities TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.create_webauthn_challenge(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone) FROM PUBLIC;
 
 
 --
--- Name: TABLE resource_capability_assignments; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION create_webauthn_challenge_with_user_handle(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone, p_user_handle bytea); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.resource_capability_assignments TO request_engine_app;
-GRANT ALL ON TABLE request_engine.resource_capability_assignments TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.create_webauthn_challenge_with_user_handle(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone, p_user_handle bytea) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.create_webauthn_challenge_with_user_handle(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone, p_user_handle bytea) TO request_engine_app;
 
 
 --
--- Name: TABLE resource_location_assignments; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION delete_retained_webauthn_challenges(p_retention_seconds integer, p_batch_size integer); Type: ACL; Schema: request_auth; Owner: request_webauthn_retention_definer
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.resource_location_assignments TO request_engine_app;
-GRANT ALL ON TABLE request_engine.resource_location_assignments TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.delete_retained_webauthn_challenges(p_retention_seconds integer, p_batch_size integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.delete_retained_webauthn_challenges(p_retention_seconds integer, p_batch_size integer) TO request_webauthn_retention;
 
 
 --
--- Name: TABLE resource_location_availability; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION disable_native_identity(p_native_identity_id uuid, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE request_engine.resource_location_availability TO request_engine_app;
-GRANT ALL ON TABLE request_engine.resource_location_availability TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.disable_native_identity(p_native_identity_id uuid, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.disable_native_identity(p_native_identity_id uuid, p_reason text) TO request_engine_app;
 
 
 --
--- Name: TABLE resource_location_schedule_exceptions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION fill_claimed_webauthn_user_handle(); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.resource_location_schedule_exceptions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.resource_location_schedule_exceptions TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.fill_claimed_webauthn_user_handle() FROM PUBLIC;
 
 
 --
--- Name: TABLE resource_public_profiles; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION finalize_discoverable_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.resource_public_profiles TO request_engine_app;
-GRANT ALL ON TABLE request_engine.resource_public_profiles TO request_engine_admin;
-GRANT SELECT ON TABLE request_engine.resource_public_profiles TO request_engine_discovery_definer;
+REVOKE ALL ON FUNCTION request_auth.finalize_discoverable_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
 
 
 --
--- Name: TABLE resources; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION finalize_discoverable_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, p_expected_authority_id uuid, p_user_handle bytea); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.resources TO request_engine_app;
-GRANT ALL ON TABLE request_engine.resources TO request_engine_admin;
-GRANT SELECT ON TABLE request_engine.resources TO request_engine_discovery_definer;
+REVOKE ALL ON FUNCTION request_auth.finalize_discoverable_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, p_expected_authority_id uuid, p_user_handle bytea) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.finalize_discoverable_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, p_expected_authority_id uuid, p_user_handle bytea) TO request_engine_app;
 
 
 --
--- Name: TABLE schedule_exceptions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION finalize_setup_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_setup_session_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.schedule_exceptions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.schedule_exceptions TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.finalize_setup_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_setup_session_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.finalize_setup_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_setup_session_id uuid) TO request_engine_app;
 
 
 --
--- Name: TABLE service_classification_authority_events; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION finalize_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.service_classification_authority_events TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.finalize_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.finalize_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) TO request_engine_app;
 
 
 --
--- Name: TABLE service_classifications; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION finalize_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,REFERENCES,TRIGGER,MAINTAIN ON TABLE request_engine.service_classifications TO request_engine_admin;
-GRANT SELECT ON TABLE request_engine.service_classifications TO request_engine_discovery_definer;
+REVOKE ALL ON FUNCTION request_auth.finalize_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.finalize_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean) TO request_engine_app;
 
 
 --
--- Name: TABLE service_queue_intake_controls; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION finalize_webauthn_step_up(p_challenge_digest bytea, p_credential_row_id uuid, p_session_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_user_verified boolean); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.service_queue_intake_controls TO request_engine_app;
-GRANT ALL ON TABLE request_engine.service_queue_intake_controls TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.finalize_webauthn_step_up(p_challenge_digest bytea, p_credential_row_id uuid, p_session_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_user_verified boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.finalize_webauthn_step_up(p_challenge_digest bytea, p_credential_row_id uuid, p_session_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_user_verified boolean) TO request_engine_app;
 
 
 --
--- Name: TABLE service_queues; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION is_native_authority_ready(p_authority_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.service_queues TO request_engine_app;
-GRANT ALL ON TABLE request_engine.service_queues TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.is_native_authority_ready(p_authority_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.is_native_authority_ready(p_authority_id uuid) TO request_engine_app;
 
 
 --
--- Name: TABLE service_session_interruptions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION lock_accepted_native_credential(p_credential uuid, p_expected_authority uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.service_session_interruptions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.service_session_interruptions TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.lock_accepted_native_credential(p_credential uuid, p_expected_authority uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.lock_accepted_native_credential(p_credential uuid, p_expected_authority uuid) TO request_platform_control_definer;
 
 
 --
--- Name: TABLE service_sessions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION lock_accepted_native_session(p_session uuid, p_expected_authority uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.service_sessions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.service_sessions TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.lock_accepted_native_session(p_session uuid, p_expected_authority uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.lock_accepted_native_session(p_session uuid, p_expected_authority uuid) TO request_platform_control_definer;
 
 
 --
--- Name: COLUMN setup_pending_identity.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION lock_credentialed_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.setup_pending_identity TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.lock_credentialed_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.lock_credentialed_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid) TO request_platform_control_definer;
 
 
 --
--- Name: COLUMN setup_pending_identity.setup_session_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION lock_native_identity_recovery_postures(p_native_identity_ids uuid[]); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(setup_session_id),INSERT(setup_session_id) ON TABLE request_engine.setup_pending_identity TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.lock_native_identity_recovery_postures(p_native_identity_ids uuid[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.lock_native_identity_recovery_postures(p_native_identity_ids uuid[]) TO request_platform_control_definer;
 
 
 --
--- Name: COLUMN setup_pending_identity.login_handle; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION prepare_native_recovery_address(p_address_id uuid, p_native_identity_id uuid, p_kind text, p_normalized_address text, p_verification_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(login_handle),INSERT(login_handle),UPDATE(login_handle) ON TABLE request_engine.setup_pending_identity TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.prepare_native_recovery_address(p_address_id uuid, p_native_identity_id uuid, p_kind text, p_normalized_address text, p_verification_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.prepare_native_recovery_address(p_address_id uuid, p_native_identity_id uuid, p_kind text, p_normalized_address text, p_verification_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_identity.verifier; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION promote_recovery_code_set(p_set_id uuid, p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(verifier),INSERT(verifier),UPDATE(verifier) ON TABLE request_engine.setup_pending_identity TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.promote_recovery_code_set(p_set_id uuid, p_native_identity_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.promote_recovery_code_set(p_set_id uuid, p_native_identity_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_identity.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION queue_native_verified_recovery(p_identity_authority_id uuid, p_login_handle text, p_request_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.setup_pending_identity TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.queue_native_verified_recovery(p_identity_authority_id uuid, p_login_handle text, p_request_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.queue_native_verified_recovery(p_identity_authority_id uuid, p_login_handle text, p_request_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_identity.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_active_webauthn_identity(p_identity_authority_id uuid, p_login_handle text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_at) ON TABLE request_engine.setup_pending_identity TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_active_webauthn_identity(p_identity_authority_id uuid, p_login_handle text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_active_webauthn_identity(p_identity_authority_id uuid, p_login_handle text) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_identity.promoted_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_native_credential_verifier(p_credential_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(promoted_at),UPDATE(promoted_at) ON TABLE request_engine.setup_pending_identity TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_native_credential_verifier(p_credential_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_native_credential_verifier(p_credential_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_native_password_credential(p_identity_authority_id uuid, p_login_handle text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_native_password_credential(p_identity_authority_id uuid, p_login_handle text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_native_password_credential(p_identity_authority_id uuid, p_login_handle text) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.setup_session_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_native_recovery_addresses(p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(setup_session_id),INSERT(setup_session_id) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_native_recovery_addresses(p_native_identity_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_native_recovery_addresses(p_native_identity_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.credential_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_native_recovery_readiness(p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(credential_id),INSERT(credential_id) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_native_recovery_readiness(p_native_identity_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_native_recovery_readiness(p_native_identity_id uuid) TO request_engine_app;
+GRANT ALL ON FUNCTION request_auth.read_native_recovery_readiness(p_native_identity_id uuid) TO request_platform_control_definer;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.public_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_native_recovery_session_password_credential(p_session_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(public_key),INSERT(public_key) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_native_recovery_session_password_credential(p_session_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_native_recovery_session_password_credential(p_session_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.sign_count; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_native_session(p_session_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(sign_count),INSERT(sign_count) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_native_session(p_session_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_native_session(p_session_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.aaguid; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_native_session_password_credential(p_session_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(aaguid),INSERT(aaguid) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_native_session_password_credential(p_session_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_native_session_password_credential(p_session_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.backup_eligible; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_oidc_authorities(); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(backup_eligible),INSERT(backup_eligible) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_oidc_authorities() FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_oidc_authorities() TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.backup_state; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_platform_identity_bindings(p_identity_authority_id uuid, p_subject_id text); Type: ACL; Schema: request_auth; Owner: request_platform_definer
 --
 
-GRANT SELECT(backup_state),INSERT(backup_state) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_platform_identity_bindings(p_identity_authority_id uuid, p_subject_id text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_platform_identity_bindings(p_identity_authority_id uuid, p_subject_id text) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.user_verified; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_recovery_code_set_summary(p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(user_verified),INSERT(user_verified) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_recovery_code_set_summary(p_native_identity_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_recovery_code_set_summary(p_native_identity_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_self_organizations(p_identity_authority_id uuid, p_subject_id text, p_after uuid, p_limit integer); Type: ACL; Schema: request_auth; Owner: request_platform_definer
 --
 
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_self_organizations(p_identity_authority_id uuid, p_subject_id text, p_after uuid, p_limit integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_self_organizations(p_identity_authority_id uuid, p_subject_id text, p_after uuid, p_limit integer) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_pending_webauthn_credential.promoted_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_webauthn_challenge(p_challenge_digest bytea, p_purpose text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(promoted_at) ON TABLE request_engine.setup_pending_webauthn_credential TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_webauthn_challenge(p_challenge_digest bytea, p_purpose text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_webauthn_challenge(p_challenge_digest bytea, p_purpose text) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_sessions.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_webauthn_credential(p_credential_id_bytes bytea); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_webauthn_credential(p_credential_id_bytes bytea) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_webauthn_credential(p_credential_id_bytes bytea) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_sessions.instance_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_webauthn_credential_for_assertion(p_credential_id_bytes bytea); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(instance_id),INSERT(instance_id) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_webauthn_credential_for_assertion(p_credential_id_bytes bytea) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_webauthn_credential_for_assertion(p_credential_id_bytes bytea) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_sessions.token_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_webauthn_credentials(p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(token_digest),INSERT(token_digest) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_webauthn_credentials(p_native_identity_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_webauthn_credentials(p_native_identity_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_sessions.token_fingerprint; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION read_workload_credential(p_credential_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(token_fingerprint),INSERT(token_fingerprint) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.read_workload_credential(p_credential_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.read_workload_credential(p_credential_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_sessions.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION reauthenticate_native_session(p_session_id uuid, p_credential_id uuid, p_expected_verifier text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.reauthenticate_native_session(p_session_id uuid, p_credential_id uuid, p_expected_verifier text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.reauthenticate_native_session(p_session_id uuid, p_credential_id uuid, p_expected_verifier text) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_sessions.mode; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION rehash_native_password_verifier(p_credential_id uuid, p_native_identity_id uuid, p_new_verifier text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(mode),INSERT(mode) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.rehash_native_password_verifier(p_credential_id uuid, p_native_identity_id uuid, p_new_verifier text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.rehash_native_password_verifier(p_credential_id uuid, p_native_identity_id uuid, p_new_verifier text) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_sessions.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION renew_native_recovery_delivery_request_lease(p_request_id uuid, p_claim_token uuid, p_extension_seconds integer); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revision),UPDATE(revision) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.renew_native_recovery_delivery_request_lease(p_request_id uuid, p_claim_token uuid, p_extension_seconds integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.renew_native_recovery_delivery_request_lease(p_request_id uuid, p_claim_token uuid, p_extension_seconds integer) TO request_engine_worker;
 
 
 --
--- Name: COLUMN setup_sessions.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION retry_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_delay_seconds integer, p_error_class text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_at) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.retry_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_delay_seconds integer, p_error_class text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.retry_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_delay_seconds integer, p_error_class text) TO request_engine_worker;
 
 
 --
--- Name: COLUMN setup_sessions.expires_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION revoke_native_recovery_address(p_native_identity_id uuid, p_recovery_address_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(expires_at),INSERT(expires_at) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.revoke_native_recovery_address(p_native_identity_id uuid, p_recovery_address_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.revoke_native_recovery_address(p_native_identity_id uuid, p_recovery_address_id uuid) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_sessions.consumed_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION revoke_native_session(p_native_identity_id uuid, p_session_id uuid, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(consumed_at),UPDATE(consumed_at) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.revoke_native_session(p_native_identity_id uuid, p_session_id uuid, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.revoke_native_session(p_native_identity_id uuid, p_session_id uuid, p_reason text) TO request_engine_app;
 
 
 --
--- Name: COLUMN setup_sessions.revoked_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION revoke_native_sessions(p_native_identity_id uuid, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revoked_at) ON TABLE request_engine.setup_sessions TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_auth.revoke_native_sessions(p_native_identity_id uuid, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.revoke_native_sessions(p_native_identity_id uuid, p_reason text) TO request_engine_app;
 
 
 --
--- Name: TABLE shared_capacity_authority_events; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION revoke_recovery_code_set(p_set_id uuid, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.shared_capacity_authority_events TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.revoke_recovery_code_set(p_set_id uuid, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.revoke_recovery_code_set(p_set_id uuid, p_reason text) TO request_engine_app;
 
 
 --
--- Name: TABLE shared_capacity_bindings; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION revoke_webauthn_credential(p_credential_id uuid, p_native_identity_id uuid, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.shared_capacity_bindings TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.revoke_webauthn_credential(p_credential_id uuid, p_native_identity_id uuid, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.revoke_webauthn_credential(p_credential_id uuid, p_native_identity_id uuid, p_reason text) TO request_engine_app;
 
 
 --
--- Name: TABLE shared_capacity_claim_links; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION rotate_native_password(p_native_identity_id uuid, p_expected_credential_id uuid, p_new_credential_id uuid, p_new_verifier text, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.shared_capacity_claim_links TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.rotate_native_password(p_native_identity_id uuid, p_expected_credential_id uuid, p_new_credential_id uuid, p_new_verifier text, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.rotate_native_password(p_native_identity_id uuid, p_expected_credential_id uuid, p_new_credential_id uuid, p_new_verifier text, p_reason text) TO request_engine_app;
 
 
 --
--- Name: TABLE shared_capacity_identities; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION staff_invitation_target(p_id uuid, p_digest text); Type: ACL; Schema: request_auth; Owner: request_platform_definer
 --
 
-GRANT SELECT ON TABLE request_engine.shared_capacity_identities TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.staff_invitation_target(p_id uuid, p_digest text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.staff_invitation_target(p_id uuid, p_digest text) TO request_engine_app;
+GRANT ALL ON FUNCTION request_auth.staff_invitation_target(p_id uuid, p_digest text) TO request_engine_schema_owner;
 
 
 --
--- Name: TABLE slot_offers; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION touch_native_session(p_session_id uuid, p_min_interval_seconds integer); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.slot_offers TO request_engine_app;
-GRANT ALL ON TABLE request_engine.slot_offers TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.touch_native_session(p_session_id uuid, p_min_interval_seconds integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.touch_native_session(p_session_id uuid, p_min_interval_seconds integer) TO request_engine_app;
 
 
 --
--- Name: TABLE slot_opportunities; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION verify_native_recovery_address(p_verification_id uuid, p_token_digest bytea); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.slot_opportunities TO request_engine_app;
-GRANT ALL ON TABLE request_engine.slot_opportunities TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_auth.verify_native_recovery_address(p_verification_id uuid, p_token_digest bytea) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_auth.verify_native_recovery_address(p_verification_id uuid, p_token_digest bytea) TO request_engine_app;
 
 
 --
--- Name: TABLE staff_memberships; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION acquire_idempotency(p_organization_id uuid, p_principal_id uuid, p_capability text, p_idempotency_key text, p_request_fingerprint text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.staff_memberships TO request_engine_app;
+REVOKE ALL ON FUNCTION request_cmd.acquire_idempotency(p_organization_id uuid, p_principal_id uuid, p_capability text, p_idempotency_key text, p_request_fingerprint text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.acquire_idempotency(p_organization_id uuid, p_principal_id uuid, p_capability text, p_idempotency_key text, p_request_fingerprint text) TO request_engine_app;
 
 
 --
--- Name: TABLE waitlist_entries; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION assert_integration_manager(p_capability text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.waitlist_entries TO request_engine_app;
-GRANT ALL ON TABLE request_engine.waitlist_entries TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.assert_integration_manager(p_capability text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.assert_integration_manager(p_capability text) TO request_engine_app;
 
 
 --
--- Name: COLUMN webauthn_credentials.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION assert_staff_invitation_manager(); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(id) ON TABLE request_engine.webauthn_credentials TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_cmd.assert_staff_invitation_manager() FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.assert_staff_invitation_manager() TO request_engine_app;
 
 
 --
--- Name: COLUMN webauthn_credentials.native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION assert_staff_invitation_proposer(); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(native_identity_id),INSERT(native_identity_id) ON TABLE request_engine.webauthn_credentials TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_cmd.assert_staff_invitation_proposer() FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.assert_staff_invitation_proposer() TO request_engine_app;
 
 
 --
--- Name: COLUMN webauthn_credentials.credential_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION cancel_scheduled_action(p_organization_id uuid, p_action_id uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(credential_id) ON TABLE request_engine.webauthn_credentials TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_cmd.cancel_scheduled_action(p_organization_id uuid, p_action_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.cancel_scheduled_action(p_organization_id uuid, p_action_id uuid) TO request_engine_app;
+GRANT ALL ON FUNCTION request_cmd.cancel_scheduled_action(p_organization_id uuid, p_action_id uuid) TO request_engine_admin;
 
 
 --
--- Name: COLUMN webauthn_credentials.public_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION claim_outbox_messages(p_limit integer, p_lease interval); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(public_key) ON TABLE request_engine.webauthn_credentials TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_cmd.claim_outbox_messages(p_limit integer, p_lease interval) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.claim_outbox_messages(p_limit integer, p_lease interval) TO request_engine_worker;
+GRANT ALL ON FUNCTION request_cmd.claim_outbox_messages(p_limit integer, p_lease interval) TO request_engine_admin;
 
 
 --
--- Name: COLUMN webauthn_credentials.sign_count; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION claim_provider_events(p_limit integer, p_lease interval); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(sign_count) ON TABLE request_engine.webauthn_credentials TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_cmd.claim_provider_events(p_limit integer, p_lease interval) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.claim_provider_events(p_limit integer, p_lease interval) TO request_engine_worker;
+GRANT ALL ON FUNCTION request_cmd.claim_provider_events(p_limit integer, p_lease interval) TO request_engine_admin;
 
 
 --
--- Name: COLUMN webauthn_credentials.aaguid; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION claim_scheduled_actions(p_limit integer, p_lease interval); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(aaguid) ON TABLE request_engine.webauthn_credentials TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_cmd.claim_scheduled_actions(p_limit integer, p_lease interval) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.claim_scheduled_actions(p_limit integer, p_lease interval) TO request_engine_worker;
+GRANT ALL ON FUNCTION request_cmd.claim_scheduled_actions(p_limit integer, p_lease interval) TO request_engine_admin;
 
 
 --
--- Name: COLUMN webauthn_credentials.backup_eligible; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION claim_temporary_proof_cleanup(p_backend uuid, p_mount text, p_grace_seconds integer, p_lease_seconds integer); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(backup_eligible) ON TABLE request_engine.webauthn_credentials TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_cmd.claim_temporary_proof_cleanup(p_backend uuid, p_mount text, p_grace_seconds integer, p_lease_seconds integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.claim_temporary_proof_cleanup(p_backend uuid, p_mount text, p_grace_seconds integer, p_lease_seconds integer) TO request_proof_cleanup_worker;
 
 
 --
--- Name: COLUMN webauthn_credentials.backup_state; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION complete_idempotency(p_idempotency_id uuid, p_result_data jsonb); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(backup_state) ON TABLE request_engine.webauthn_credentials TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_cmd.complete_idempotency(p_idempotency_id uuid, p_result_data jsonb) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.complete_idempotency(p_idempotency_id uuid, p_result_data jsonb) TO request_engine_app;
 
 
 --
--- Name: COLUMN webauthn_credentials.user_verified; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION complete_outbox_message(p_message_id uuid, p_claim_token uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(user_verified),INSERT(user_verified) ON TABLE request_engine.webauthn_credentials TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_cmd.complete_outbox_message(p_message_id uuid, p_claim_token uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.complete_outbox_message(p_message_id uuid, p_claim_token uuid) TO request_engine_worker;
+GRANT ALL ON FUNCTION request_cmd.complete_outbox_message(p_message_id uuid, p_claim_token uuid) TO request_engine_admin;
 
 
 --
--- Name: COLUMN webauthn_credentials.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION complete_provider_event(p_provider_event_row_id uuid, p_claim_token uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(status) ON TABLE request_engine.webauthn_credentials TO request_platform_control_definer;
+REVOKE ALL ON FUNCTION request_cmd.complete_provider_event(p_provider_event_row_id uuid, p_claim_token uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.complete_provider_event(p_provider_event_row_id uuid, p_claim_token uuid) TO request_engine_worker;
+GRANT ALL ON FUNCTION request_cmd.complete_provider_event(p_provider_event_row_id uuid, p_claim_token uuid) TO request_engine_admin;
 
 
 --
--- Name: TABLE business_info_v1; Type: ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: FUNCTION complete_scheduled_action(p_action_id uuid, p_claim_token uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_read.business_info_v1 TO request_engine_app;
-GRANT SELECT ON TABLE request_read.business_info_v1 TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.complete_scheduled_action(p_action_id uuid, p_claim_token uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.complete_scheduled_action(p_action_id uuid, p_claim_token uuid) TO request_engine_worker;
+GRANT ALL ON FUNCTION request_cmd.complete_scheduled_action(p_action_id uuid, p_claim_token uuid) TO request_engine_admin;
 
 
 --
--- Name: TABLE service_queue_status_v2; Type: ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: FUNCTION dead_letter_outbox_message(p_message_id uuid, p_claim_token uuid, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_read.service_queue_status_v2 TO request_engine_app;
-GRANT SELECT ON TABLE request_read.service_queue_status_v2 TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.dead_letter_outbox_message(p_message_id uuid, p_claim_token uuid, p_error_class text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.dead_letter_outbox_message(p_message_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_worker;
+GRANT ALL ON FUNCTION request_cmd.dead_letter_outbox_message(p_message_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_admin;
 
 
 --
--- Name: TABLE live_service_staff_v1; Type: ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: FUNCTION dead_letter_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_read.live_service_staff_v1 TO request_engine_app;
-GRANT SELECT ON TABLE request_read.live_service_staff_v1 TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.dead_letter_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.dead_letter_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_worker;
+GRANT ALL ON FUNCTION request_cmd.dead_letter_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_admin;
 
 
 --
--- Name: TABLE locations_v1; Type: ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: FUNCTION dead_letter_scheduled_action(p_action_id uuid, p_claim_token uuid, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_read.locations_v1 TO request_engine_app;
-GRANT SELECT ON TABLE request_read.locations_v1 TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.dead_letter_scheduled_action(p_action_id uuid, p_claim_token uuid, p_error_class text) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.dead_letter_scheduled_action(p_action_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_worker;
+GRANT ALL ON FUNCTION request_cmd.dead_letter_scheduled_action(p_action_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_admin;
 
 
 --
--- Name: TABLE reservation_access_v1; Type: ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: FUNCTION find_recovery_sweep_scopes(p_limit integer); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_read.reservation_access_v1 TO request_engine_app;
-GRANT SELECT ON TABLE request_read.reservation_access_v1 TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.find_recovery_sweep_scopes(p_limit integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.find_recovery_sweep_scopes(p_limit integer) TO request_engine_worker;
+GRANT ALL ON FUNCTION request_cmd.find_recovery_sweep_scopes(p_limit integer) TO request_engine_admin;
 
 
 --
--- Name: TABLE reservation_day_v1; Type: ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: FUNCTION finish_temporary_proof_cleanup(p_work uuid, p_lease uuid, p_outcome text, p_admission uuid, p_digest text, p_retry_seconds integer); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_read.reservation_day_v1 TO request_engine_app;
-GRANT SELECT ON TABLE request_read.reservation_day_v1 TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.finish_temporary_proof_cleanup(p_work uuid, p_lease uuid, p_outcome text, p_admission uuid, p_digest text, p_retry_seconds integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.finish_temporary_proof_cleanup(p_work uuid, p_lease uuid, p_outcome text, p_admission uuid, p_digest text, p_retry_seconds integer) TO request_proof_cleanup_worker;
 
 
 --
--- Name: TABLE reservation_status_v1; Type: ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: FUNCTION lock_agent_credential_manager(p_target uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_read.reservation_status_v1 TO request_engine_app;
-GRANT SELECT ON TABLE request_read.reservation_status_v1 TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.lock_agent_credential_manager(p_target uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.lock_agent_credential_manager(p_target uuid) TO request_engine_app;
 
 
 --
--- Name: TABLE service_session_status_v1; Type: ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: FUNCTION lock_controller_policy_upgrade_authority(); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_read.service_session_status_v1 TO request_engine_app;
-GRANT SELECT ON TABLE request_read.service_session_status_v1 TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.lock_controller_policy_upgrade_authority() FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.lock_controller_policy_upgrade_authority() TO request_engine_app;
 
 
 --
--- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: FUNCTION lock_outbox_message_claim(p_organization_id uuid, p_message_id uuid, p_claim_token uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-ALTER DEFAULT PRIVILEGES FOR ROLE request_engine_schema_owner IN SCHEMA request_admin GRANT SELECT ON TABLES TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.lock_outbox_message_claim(p_organization_id uuid, p_message_id uuid, p_claim_token uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.lock_outbox_message_claim(p_organization_id uuid, p_message_id uuid, p_claim_token uuid) TO request_engine_app;
+GRANT ALL ON FUNCTION request_cmd.lock_outbox_message_claim(p_organization_id uuid, p_message_id uuid, p_claim_token uuid) TO request_engine_admin;
 
 
 --
--- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: FUNCTION lock_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-ALTER DEFAULT PRIVILEGES FOR ROLE request_engine_schema_owner IN SCHEMA request_engine GRANT ALL ON TABLES TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.lock_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.lock_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) TO request_engine_app;
+GRANT ALL ON FUNCTION request_cmd.lock_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) TO request_engine_admin;
 
 
 --
--- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: FUNCTION lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
 
-ALTER DEFAULT PRIVILEGES FOR ROLE request_engine_schema_owner IN SCHEMA request_read GRANT SELECT ON TABLES TO request_engine_admin;
+REVOKE ALL ON FUNCTION request_cmd.lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION request_cmd.lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid) TO request_engine_app;
+GRANT ALL ON FUNCTION request_cmd.lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid) TO request_engine_worker;
 
 
 --
--- PostgreSQL database dump complete
+-- Name: FUNCTION lock_shared_capacity_roots(p_organization_id uuid, p_resource_ids uuid[]); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
 --
-
 
+REVOKE ALL ON FUNCTION request_cmd.lock_shared_capacity_roots(p_organization_id uuid, p_resource_ids uuid[]) FROM PUBLIC;

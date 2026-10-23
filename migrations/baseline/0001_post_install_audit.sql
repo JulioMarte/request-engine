@@ -1,13 +1,5 @@
-"""Separate the audited retention extension role from accepted baseline roles."""
-
-from alembic import op
-
-revision: str = "0020_retention_recorder_role"
-down_revision: str | None = "0019_native_provision_reachable"
-branch_labels: str | None = None
-depends_on: str | None = None
-
-ROLE_INVENTORY_SQL = """
+-- Post-install retention-recorder inventory audit (historical 0020 ROLE_INVENTORY_SQL).
+-- Runs after the schema payload because it pins the recorder's exact ACL contract.
 DO $audit$
 DECLARE recorder record; expected_function oid;
 BEGIN
@@ -69,46 +61,16 @@ BEGIN
         END IF;
     END LOOP;
 END $audit$;
-"""
 
-
-def upgrade() -> None:
-    op.execute("SELECT pg_advisory_xact_lock(731527893422021)")
-    op.execute(ROLE_INVENTORY_SQL)
-    op.execute("""
-    DO $migration$
-    DECLARE legacy oid; canonical oid; database_id oid;
-    BEGIN
-        SELECT oid INTO legacy FROM pg_roles WHERE rolname='request_engine_retention_recorder';
-        SELECT oid INTO canonical FROM pg_roles WHERE rolname='request_retention_recorder';
-        SELECT oid INTO database_id FROM pg_database WHERE datname=current_database();
-        IF canonical IS NULL THEN
-            IF legacy IS NULL THEN RAISE EXCEPTION 'Retention recorder group is missing'; END IF;
-            -- OID, member credentials and all database-scoped grants stay intact.
-            ALTER ROLE request_engine_retention_recorder RENAME TO request_retention_recorder;
-        ELSIF legacy IS NOT NULL THEN
-            IF EXISTS(SELECT 1 FROM pg_auth_members WHERE roleid=legacy OR member=legacy)
-               OR EXISTS(SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass
-                    AND refobjid=legacy AND (dbid<>database_id OR deptype<>'a')) THEN
-                RAISE EXCEPTION 'Legacy recorder has members or external dependencies; '
-                    'coordinate the cluster rollout before retrying';
-            END IF;
-            -- A second fresh database's 0013 recreated only these two local ACLs.
-            GRANT USAGE ON SCHEMA request_cmd TO request_retention_recorder;
-            GRANT EXECUTE ON FUNCTION request_cmd.record_temporary_proof_retention(
-                uuid,text,text,bigint,timestamptz,timestamptz,timestamptz)
-                TO request_retention_recorder;
-            REVOKE USAGE ON SCHEMA request_cmd FROM request_engine_retention_recorder;
-            REVOKE EXECUTE ON FUNCTION request_cmd.record_temporary_proof_retention(
-                uuid,text,text,bigint,timestamptz,timestamptz,timestamptz)
-                FROM request_engine_retention_recorder;
-            -- No CASCADE: unanticipated dependencies abort/roll back the migration.
-            DROP ROLE request_engine_retention_recorder;
-        END IF;
-    END $migration$;
-    """)
-    op.execute(ROLE_INVENTORY_SQL)
-
-
-def downgrade() -> None:
-    raise NotImplementedError("Cluster-global role evolution requires coordinated roll-forward")
+-- Historical 0037 dependent-foreign-key check (needs the installed table).
+DO $$ BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE contype = 'f'
+           AND confrelid = 'request_engine.webauthn_challenges'::regclass
+    ) THEN
+        RAISE EXCEPTION
+            'WebAuthn challenge retention requires disposition of dependent foreign keys'
+            USING ERRCODE = '55000';
+    END IF;
+END $$;

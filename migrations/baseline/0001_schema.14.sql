@@ -1,2461 +1,2367 @@
-REVOKE ALL ON FUNCTION request_engine.bump_intake_control_recovery_source_revision() FROM PUBLIC;
+    ADD CONSTRAINT capacity_claims_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_interruption_recovery_source_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_resource_location_assignment_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_interruption_recovery_source_revision() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.capacity_claims
+    ADD CONSTRAINT capacity_claims_resource_location_assignment_fk FOREIGN KEY (organization_id, resource_location_assignment_id) REFERENCES request_engine.resource_location_assignments(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_location_operational_revision_from_child(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds capacity_holds_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_location_operational_revision_from_child() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.capacity_holds
+    ADD CONSTRAINT capacity_holds_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_location_revision_recovery_sources(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds capacity_holds_organization_id_offering_version_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_location_revision_recovery_sources() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.capacity_holds
+    ADD CONSTRAINT capacity_holds_organization_id_offering_version_id_fkey FOREIGN KEY (organization_id, offering_version_id) REFERENCES request_engine.offering_versions(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_principal_authority_from_grant(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds capacity_holds_organization_id_subject_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_principal_authority_from_grant() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.capacity_holds
+    ADD CONSTRAINT capacity_holds_organization_id_subject_party_id_fkey FOREIGN KEY (organization_id, subject_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_principal_authority_from_identity_binding(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_deliveries communication_deliveries_organization_id_communication_tas_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_principal_authority_from_identity_binding() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.communication_deliveries
+    ADD CONSTRAINT communication_deliveries_organization_id_communication_tas_fkey FOREIGN KEY (organization_id, communication_task_id) REFERENCES request_engine.communication_tasks(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_principal_authority_from_representation(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_escalations communication_escalations_organization_id_child_task_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_principal_authority_from_representation() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.communication_escalations
+    ADD CONSTRAINT communication_escalations_organization_id_child_task_id_fkey FOREIGN KEY (organization_id, child_task_id) REFERENCES request_engine.communication_tasks(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_escalations communication_escalations_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.communication_escalations
+    ADD CONSTRAINT communication_escalations_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION bump_reservation_recovery_source_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_escalations communication_escalations_organization_id_parent_task_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_reservation_recovery_source_revision() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.communication_escalations
+    ADD CONSTRAINT communication_escalations_organization_id_parent_task_id_fkey FOREIGN KEY (organization_id, parent_task_id) REFERENCES request_engine.communication_tasks(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_resource_activity_recovery_source_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_tasks communication_tasks_organization_id_contact_point_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_resource_activity_recovery_source_revision() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.communication_tasks
+    ADD CONSTRAINT communication_tasks_organization_id_contact_point_id_fkey FOREIGN KEY (organization_id, contact_point_id) REFERENCES request_engine.party_contact_points(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_resource_availability_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_tasks communication_tasks_organization_id_recipient_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_resource_availability_revision() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.communication_tasks
+    ADD CONSTRAINT communication_tasks_organization_id_recipient_party_id_fkey FOREIGN KEY (organization_id, recipient_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_resource_from_assignment(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_tasks communication_tasks_parent_task_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_resource_from_assignment() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.communication_tasks
+    ADD CONSTRAINT communication_tasks_parent_task_fk FOREIGN KEY (organization_id, parent_task_id) REFERENCES request_engine.communication_tasks(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_resource_from_assignment_child(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts controller_policy_adoption_fa_controller_native_identity_i_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_resource_from_assignment_child() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.controller_policy_adoption_facts
+    ADD CONSTRAINT controller_policy_adoption_fa_controller_native_identity_i_fkey FOREIGN KEY (controller_native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION bump_resource_revision_recovery_sources(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts controller_policy_adoption_fact_approver_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_resource_revision_recovery_sources() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.controller_policy_adoption_facts
+    ADD CONSTRAINT controller_policy_adoption_fact_approver_fk FOREIGN KEY (platform_approver_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION bump_service_session_recovery_source_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts controller_policy_adoption_fact_binding_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_service_session_recovery_source_revision() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.controller_policy_adoption_facts
+    ADD CONSTRAINT controller_policy_adoption_fact_binding_fk FOREIGN KEY (organization_id, controller_principal_id, controller_binding_id) REFERENCES request_engine.identity_bindings(organization_id, principal_id, id);
 
 
 --
--- Name: FUNCTION check_capacity_owner_completeness(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts controller_policy_adoption_fact_request_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.check_capacity_owner_completeness() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.controller_policy_adoption_facts
+    ADD CONSTRAINT controller_policy_adoption_fact_request_fk FOREIGN KEY (request_id, organization_id) REFERENCES request_engine.controller_policy_adoption_requests(id, organization_id);
 
 
 --
--- Name: FUNCTION check_offered_slot_offer_source_consistency(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts controller_policy_adoption_fact_requester_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.check_offered_slot_offer_source_consistency() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.controller_policy_adoption_facts
+    ADD CONSTRAINT controller_policy_adoption_fact_requester_fk FOREIGN KEY (organization_id, controller_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION confirm_identity_link_intent(p_intent_id uuid, p_expected_actor_binding_revision bigint, p_native_identity_id uuid, p_binding_id uuid, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_requests controller_policy_adoption_re_controller_native_identity_i_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.confirm_identity_link_intent(p_intent_id uuid, p_expected_actor_binding_revision bigint, p_native_identity_id uuid, p_binding_id uuid, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.confirm_identity_link_intent(p_intent_id uuid, p_expected_actor_binding_revision bigint, p_native_identity_id uuid, p_binding_id uuid, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.controller_policy_adoption_requests
+    ADD CONSTRAINT controller_policy_adoption_re_controller_native_identity_i_fkey FOREIGN KEY (controller_native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION confirm_identity_link_subject(p_intent_id uuid, p_expected_actor_binding_revision bigint, p_subject_id text, p_binding_id uuid, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_requests controller_policy_adoption_request_binding_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.confirm_identity_link_subject(p_intent_id uuid, p_expected_actor_binding_revision bigint, p_subject_id text, p_binding_id uuid, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.confirm_identity_link_subject(p_intent_id uuid, p_expected_actor_binding_revision bigint, p_subject_id text, p_binding_id uuid, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.controller_policy_adoption_requests
+    ADD CONSTRAINT controller_policy_adoption_request_binding_fk FOREIGN KEY (organization_id, controller_principal_id, controller_binding_id) REFERENCES request_engine.identity_bindings(organization_id, principal_id, id);
 
 
 --
--- Name: FUNCTION consume_identity_exchange_candidate_v1(p_candidate_id uuid, p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_requests controller_policy_adoption_request_controller_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.consume_identity_exchange_candidate_v1(p_candidate_id uuid, p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.consume_identity_exchange_candidate_v1(p_candidate_id uuid, p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid) TO request_engine_app;
+ALTER TABLE ONLY request_engine.controller_policy_adoption_requests
+    ADD CONSTRAINT controller_policy_adoption_request_controller_fk FOREIGN KEY (organization_id, controller_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION create_delegation(p_id uuid, p_delegator_principal_id uuid, p_delegate_principal_id uuid, p_purpose text, p_allowed_capabilities text[], p_not_before timestamp with time zone, p_expires_at timestamp with time zone, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_requests controller_policy_adoption_requests_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.create_delegation(p_id uuid, p_delegator_principal_id uuid, p_delegate_principal_id uuid, p_purpose text, p_allowed_capabilities text[], p_not_before timestamp with time zone, p_expires_at timestamp with time zone, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.create_delegation(p_id uuid, p_delegator_principal_id uuid, p_delegate_principal_id uuid, p_purpose text, p_allowed_capabilities text[], p_not_before timestamp with time zone, p_expires_at timestamp with time zone, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.controller_policy_adoption_requests
+    ADD CONSTRAINT controller_policy_adoption_requests_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION create_identity_exchange_candidate_v1(p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: delegations delegations_organization_id_delegate_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.create_identity_exchange_candidate_v1(p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.create_identity_exchange_candidate_v1(p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid) TO request_engine_app;
+ALTER TABLE ONLY request_engine.delegations
+    ADD CONSTRAINT delegations_organization_id_delegate_principal_id_fkey FOREIGN KEY (organization_id, delegate_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION create_identity_link_intent(p_intent_id uuid, p_actor_binding_id uuid, p_target_authority_id uuid, p_nonce_digest text, p_ttl_seconds integer, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: delegations delegations_organization_id_delegator_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.create_identity_link_intent(p_intent_id uuid, p_actor_binding_id uuid, p_target_authority_id uuid, p_nonce_digest text, p_ttl_seconds integer, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.create_identity_link_intent(p_intent_id uuid, p_actor_binding_id uuid, p_target_authority_id uuid, p_nonce_digest text, p_ttl_seconds integer, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.delegations
+    ADD CONSTRAINT delegations_organization_id_delegator_principal_id_fkey FOREIGN KEY (organization_id, delegator_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION current_authenticated_principal_id(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: delegations delegations_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.current_authenticated_principal_id() FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.current_authenticated_principal_id() TO request_engine_app;
-GRANT ALL ON FUNCTION request_engine.current_authenticated_principal_id() TO request_engine_worker;
-GRANT ALL ON FUNCTION request_engine.current_authenticated_principal_id() TO request_engine_admin;
+ALTER TABLE ONLY request_engine.delegations
+    ADD CONSTRAINT delegations_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION current_correlation_id(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: delegations delegations_organization_id_revoked_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.current_correlation_id() FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.current_correlation_id() TO request_engine_app;
-GRANT ALL ON FUNCTION request_engine.current_correlation_id() TO request_engine_worker;
-GRANT ALL ON FUNCTION request_engine.current_correlation_id() TO request_engine_admin;
+ALTER TABLE ONLY request_engine.delegations
+    ADD CONSTRAINT delegations_organization_id_revoked_by_principal_id_fkey FOREIGN KEY (organization_id, revoked_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION current_organization_id(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_booking_handoffs discovery_booking_handoffs_consumed_reservation_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.current_organization_id() FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.current_organization_id() TO request_engine_app;
-GRANT ALL ON FUNCTION request_engine.current_organization_id() TO request_engine_worker;
-GRANT ALL ON FUNCTION request_engine.current_organization_id() TO request_engine_admin;
-GRANT ALL ON FUNCTION request_engine.current_organization_id() TO request_engine_discovery_definer;
+ALTER TABLE ONLY request_engine.discovery_booking_handoffs
+    ADD CONSTRAINT discovery_booking_handoffs_consumed_reservation_fk FOREIGN KEY (organization_id, consumed_reservation_id) REFERENCES request_engine.reservations(organization_id, id) DEFERRABLE INITIALLY DEFERRED;
 
 
 --
--- Name: FUNCTION derive_authentication_assurance(p_methods text[], p_user_verified boolean, p_recovery_derived boolean); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_booking_handoffs discovery_booking_handoffs_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.derive_authentication_assurance(p_methods text[], p_user_verified boolean, p_recovery_derived boolean) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.discovery_booking_handoffs
+    ADD CONSTRAINT discovery_booking_handoffs_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_agent_profile(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_booking_handoffs discovery_booking_handoffs_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_agent_profile() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.discovery_booking_handoffs
+    ADD CONSTRAINT discovery_booking_handoffs_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_authority_reference_tenant(); Type: ACL; Schema: request_engine; Owner: request_platform_control_definer
+-- Name: discovery_booking_handoffs discovery_booking_handoffs_organization_id_mapping_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_authority_reference_tenant() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.discovery_booking_handoffs
+    ADD CONSTRAINT discovery_booking_handoffs_organization_id_mapping_id_fkey FOREIGN KEY (organization_id, mapping_id) REFERENCES request_engine.offering_service_classifications(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_booking_context_terms_scope(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_booking_handoffs discovery_booking_handoffs_organization_id_offering_versio_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_booking_context_terms_scope() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.discovery_booking_handoffs
+    ADD CONSTRAINT discovery_booking_handoffs_organization_id_offering_versio_fkey FOREIGN KEY (organization_id, offering_version_id) REFERENCES request_engine.offering_versions(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_capacity_claim(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_booking_handoffs discovery_booking_handoffs_organization_id_publication_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.discovery_booking_handoffs
+    ADD CONSTRAINT discovery_booking_handoffs_organization_id_publication_id_fkey FOREIGN KEY (organization_id, publication_id) REFERENCES request_engine.discovery_publications(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_capacity_claim_contextual_assignment(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_publications discovery_publications_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim_contextual_assignment() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.discovery_publications
+    ADD CONSTRAINT discovery_publications_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_capacity_claim_replacement_provenance(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_publications discovery_publications_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim_replacement_provenance() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.discovery_publications
+    ADD CONSTRAINT discovery_publications_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_capacity_claim_tenant_context(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_publications discovery_publications_organization_id_offering_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim_tenant_context() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.discovery_publications
+    ADD CONSTRAINT discovery_publications_organization_id_offering_id_fkey FOREIGN KEY (organization_id, offering_id) REFERENCES request_engine.offerings(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_capacity_claim_terminal_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_publications discovery_publications_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim_terminal_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.discovery_publications
+    ADD CONSTRAINT discovery_publications_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_capacity_hold_provenance_update(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: external_correlations external_correlations_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_capacity_hold_provenance_update() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.external_correlations
+    ADD CONSTRAINT external_correlations_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_communication_escalations(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: external_correlations external_correlations_organization_id_request_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_communication_escalations() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.external_correlations
+    ADD CONSTRAINT external_correlations_organization_id_request_id_fkey FOREIGN KEY (organization_id, request_id) REFERENCES request_engine.requests(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_delegation(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_authority_grants grant_principal_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_delegation() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.principal_authority_grants
+    ADD CONSTRAINT grant_principal_tenant_fk FOREIGN KEY (organization_id, principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_discovery_handoff_latest_version(); Type: ACL; Schema: request_engine; Owner: request_engine_discovery_definer
+-- Name: idempotency_records idempotency_records_organization_id_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_discovery_handoff_latest_version() FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.guard_discovery_handoff_latest_version() TO request_engine_schema_owner;
-GRANT ALL ON FUNCTION request_engine.guard_discovery_handoff_latest_version() TO request_engine_admin;
+ALTER TABLE ONLY request_engine.idempotency_records
+    ADD CONSTRAINT idempotency_records_organization_id_principal_id_fkey FOREIGN KEY (organization_id, principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_discovery_handoff_reservation(); Type: ACL; Schema: request_engine; Owner: request_engine_discovery_definer
+-- Name: identity_bindings identity_bindings_identity_authority_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_discovery_handoff_reservation() FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.guard_discovery_handoff_reservation() TO request_engine_schema_owner;
-GRANT ALL ON FUNCTION request_engine.guard_discovery_handoff_reservation() TO request_engine_admin;
+ALTER TABLE ONLY request_engine.identity_bindings
+    ADD CONSTRAINT identity_bindings_identity_authority_id_fkey FOREIGN KEY (identity_authority_id) REFERENCES request_engine.identity_authorities(id);
 
 
 --
--- Name: FUNCTION guard_exact_revision_step(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_bindings identity_bindings_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_exact_revision_step() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_bindings
+    ADD CONSTRAINT identity_bindings_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_f2_mapping_lifecycle(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_bindings identity_bindings_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_f2_mapping_lifecycle() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_bindings
+    ADD CONSTRAINT identity_bindings_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION guard_f2_publication_broad_specific_overlap(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_exchange_candidates identity_exchange_candidates_organization_id_created_by_pr_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_f2_publication_broad_specific_overlap() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_exchange_candidates
+    ADD CONSTRAINT identity_exchange_candidates_organization_id_created_by_pr_fkey FOREIGN KEY (organization_id, created_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_f2_publication_lifecycle(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_exchange_candidates identity_exchange_candidates_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_f2_publication_lifecycle() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_exchange_candidates
+    ADD CONSTRAINT identity_exchange_candidates_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_hold_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_exchange_candidates identity_exchange_candidates_portable_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_hold_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_exchange_candidates
+    ADD CONSTRAINT identity_exchange_candidates_portable_party_id_fkey FOREIGN KEY (portable_party_id) REFERENCES request_engine.portable_party_identities(id);
 
 
 --
--- Name: FUNCTION guard_identity_binding(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents identity_link_intents_actor_binding_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_identity_binding() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_link_intents
+    ADD CONSTRAINT identity_link_intents_actor_binding_id_fkey FOREIGN KEY (actor_binding_id) REFERENCES request_engine.identity_bindings(id);
 
 
 --
--- Name: FUNCTION guard_identity_link_intent(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents identity_link_intents_actor_binding_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_identity_link_intent() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_link_intents
+    ADD CONSTRAINT identity_link_intents_actor_binding_tenant_fk FOREIGN KEY (organization_id, actor_principal_id, actor_binding_id) REFERENCES request_engine.identity_bindings(organization_id, principal_id, id);
 
 
 --
--- Name: FUNCTION guard_integration_fact(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents identity_link_intents_actor_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_integration_fact() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_link_intents
+    ADD CONSTRAINT identity_link_intents_actor_principal_id_fkey FOREIGN KEY (actor_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION guard_linked_capacity_claim_provenance(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents identity_link_intents_actor_principal_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_linked_capacity_claim_provenance() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_link_intents
+    ADD CONSTRAINT identity_link_intents_actor_principal_tenant_fk FOREIGN KEY (organization_id, actor_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_live_capacity_projection_policy(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents identity_link_intents_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_live_capacity_projection_policy() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_link_intents
+    ADD CONSTRAINT identity_link_intents_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_live_capacity_workload_estimate_policy(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents identity_link_intents_resulting_binding_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_live_capacity_workload_estimate_policy() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_link_intents
+    ADD CONSTRAINT identity_link_intents_resulting_binding_id_fkey FOREIGN KEY (resulting_binding_id) REFERENCES request_engine.identity_bindings(id);
 
 
 --
--- Name: FUNCTION guard_live_resource_occupation(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents identity_link_intents_resulting_binding_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_live_resource_occupation() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_link_intents
+    ADD CONSTRAINT identity_link_intents_resulting_binding_tenant_fk FOREIGN KEY (organization_id, actor_principal_id, resulting_binding_id) REFERENCES request_engine.identity_bindings(organization_id, principal_id, id);
 
 
 --
--- Name: FUNCTION guard_location_operational_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents identity_link_intents_target_authority_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_location_operational_revision() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_link_intents
+    ADD CONSTRAINT identity_link_intents_target_authority_id_fkey FOREIGN KEY (target_authority_id) REFERENCES request_engine.identity_authorities(id);
 
 
 --
--- Name: FUNCTION guard_native_credential(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_recovery_cases identity_recovery_cases_approver_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_native_credential() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_recovery_cases
+    ADD CONSTRAINT identity_recovery_cases_approver_principal_id_fkey FOREIGN KEY (approver_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION guard_native_identity(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_recovery_cases identity_recovery_cases_recovery_intent_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_native_identity() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_recovery_cases
+    ADD CONSTRAINT identity_recovery_cases_recovery_intent_id_fkey FOREIGN KEY (recovery_intent_id) REFERENCES request_engine.native_recovery_intents(id);
 
 
 --
--- Name: FUNCTION guard_native_recovery_intent(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_recovery_cases identity_recovery_cases_requester_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_native_recovery_intent() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_recovery_cases
+    ADD CONSTRAINT identity_recovery_cases_requester_principal_id_fkey FOREIGN KEY (requester_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION guard_native_session(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_recovery_cases identity_recovery_cases_target_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_native_session() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_recovery_cases
+    ADD CONSTRAINT identity_recovery_cases_target_native_identity_id_fkey FOREIGN KEY (target_native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION guard_operational_recovery_escalation(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_recovery_delivery_tickets identity_recovery_delivery_tickets_case_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_operational_recovery_escalation() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_recovery_delivery_tickets
+    ADD CONSTRAINT identity_recovery_delivery_tickets_case_id_fkey FOREIGN KEY (case_id) REFERENCES request_engine.identity_recovery_cases(id);
 
 
 --
--- Name: FUNCTION guard_operational_recovery_execution(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_recovery_issuance_reservations identity_recovery_issuance_reservations_case_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_operational_recovery_execution() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_recovery_issuance_reservations
+    ADD CONSTRAINT identity_recovery_issuance_reservations_case_id_fkey FOREIGN KEY (case_id) REFERENCES request_engine.identity_recovery_cases(id);
 
 
 --
--- Name: FUNCTION guard_operational_recovery_proposal(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: integration_governance_facts integration_facts_actor_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_operational_recovery_proposal() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.integration_governance_facts
+    ADD CONSTRAINT integration_facts_actor_fk FOREIGN KEY (organization_id, actor_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_operational_workload_classification(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: integration_governance_facts integration_facts_target_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_operational_workload_classification() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.integration_governance_facts
+    ADD CONSTRAINT integration_facts_target_fk FOREIGN KEY (organization_id, integration_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_party_administrative_identifier_facts(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_projection_policies live_capacity_projection_poli_organization_id_service_queu_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_party_administrative_identifier_facts() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.live_capacity_projection_policies
+    ADD CONSTRAINT live_capacity_projection_poli_organization_id_service_queu_fkey FOREIGN KEY (organization_id, service_queue_id) REFERENCES request_engine.service_queues(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_party_contact_point_verification(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_projection_policies live_capacity_projection_polic_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_party_contact_point_verification() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.live_capacity_projection_policies
+    ADD CONSTRAINT live_capacity_projection_polic_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_party_identity_documents(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_projection_policies live_capacity_projection_polic_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_party_identity_documents() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.live_capacity_projection_policies
+    ADD CONSTRAINT live_capacity_projection_polic_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_party_identity_revisions(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_projection_policies live_capacity_projection_policies_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_party_identity_revisions() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.live_capacity_projection_policies
+    ADD CONSTRAINT live_capacity_projection_policies_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_party_kind_immutable(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_workload_estimate_policies live_capacity_workload_estima_organization_id_workload_cla_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_party_kind_immutable() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.live_capacity_workload_estimate_policies
+    ADD CONSTRAINT live_capacity_workload_estima_organization_id_workload_cla_fkey FOREIGN KEY (organization_id, workload_classification_id) REFERENCES request_engine.operational_workload_classifications(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_person_shared_capacity_cardinality(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_workload_estimate_policies live_capacity_workload_estimate_policies_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_person_shared_capacity_cardinality() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.live_capacity_workload_estimate_policies
+    ADD CONSTRAINT live_capacity_workload_estimate_policies_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_platform_bootstrap_intent(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_hours_exceptions location_hours_exceptions_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_platform_bootstrap_intent() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.location_hours_exceptions
+    ADD CONSTRAINT location_hours_exceptions_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_platform_configuration_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_operational_hours location_operational_hours_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_platform_configuration_revision() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.location_operational_hours
+    ADD CONSTRAINT location_operational_hours_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_platform_instance(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_public_contact_endpoints location_public_contact_endpoi_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_platform_instance() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.location_public_contact_endpoints
+    ADD CONSTRAINT location_public_contact_endpoi_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_platform_secret_binding(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: locations locations_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_platform_secret_binding() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.locations
+    ADD CONSTRAINT locations_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_principal_authority_grant(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_credentials native_credentials_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_principal_authority_grant() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_credentials
+    ADD CONSTRAINT native_credentials_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION guard_principal_contacts(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identities native_identities_identity_authority_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_principal_contacts() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_identities
+    ADD CONSTRAINT native_identities_identity_authority_id_fkey FOREIGN KEY (identity_authority_id) REFERENCES request_engine.identity_authorities(id);
 
 
 --
--- Name: FUNCTION guard_principal_security_identity(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identity_provision_receipts native_identity_provision_receipts_actor_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_principal_security_identity() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_identity_provision_receipts
+    ADD CONSTRAINT native_identity_provision_receipts_actor_principal_id_fkey FOREIGN KEY (actor_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION guard_promoted_capacity_claim_owner(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identity_provision_receipts native_identity_provision_receipts_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_promoted_capacity_claim_owner() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_identity_provision_receipts
+    ADD CONSTRAINT native_identity_provision_receipts_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION guard_queue_entry_recall_hold(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identity_recovery_state native_identity_recovery_state_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_queue_entry_recall_hold() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_identity_recovery_state
+    ADD CONSTRAINT native_identity_recovery_state_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION guard_queue_entry_skip(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_recovery_address_verifications native_recovery_address_verifications_recovery_address_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_queue_entry_skip() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_recovery_address_verifications
+    ADD CONSTRAINT native_recovery_address_verifications_recovery_address_id_fkey FOREIGN KEY (recovery_address_id) REFERENCES request_engine.native_recovery_addresses(id);
 
 
 --
--- Name: FUNCTION guard_queue_entry_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_recovery_addresses native_recovery_addresses_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_queue_entry_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_recovery_addresses
+    ADD CONSTRAINT native_recovery_addresses_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION guard_reminder_plan_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_recovery_delivery_facts native_recovery_delivery_facts_request_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_reminder_plan_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_recovery_delivery_facts
+    ADD CONSTRAINT native_recovery_delivery_facts_request_id_fkey FOREIGN KEY (request_id) REFERENCES request_engine.native_recovery_delivery_requests(id);
 
 
 --
--- Name: FUNCTION guard_request_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_recovery_delivery_requests native_recovery_delivery_requests_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_request_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_recovery_delivery_requests
+    ADD CONSTRAINT native_recovery_delivery_requests_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION guard_reservation_arrival_estimate(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_recovery_delivery_requests native_recovery_delivery_requests_recovery_address_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_reservation_arrival_estimate() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_recovery_delivery_requests
+    ADD CONSTRAINT native_recovery_delivery_requests_recovery_address_id_fkey FOREIGN KEY (recovery_address_id) REFERENCES request_engine.native_recovery_addresses(id);
 
 
 --
--- Name: FUNCTION guard_reservation_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_recovery_delivery_requests native_recovery_delivery_requests_recovery_intent_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_reservation_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_recovery_delivery_requests
+    ADD CONSTRAINT native_recovery_delivery_requests_recovery_intent_id_fkey FOREIGN KEY (recovery_intent_id) REFERENCES request_engine.native_recovery_intents(id);
 
 
 --
--- Name: FUNCTION guard_resource_activity_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_recovery_intents native_recovery_intents_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_resource_activity_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_recovery_intents
+    ADD CONSTRAINT native_recovery_intents_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION guard_resource_commitment_sensitive_change(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_sessions native_sessions_credential_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_resource_commitment_sensitive_change() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_sessions
+    ADD CONSTRAINT native_sessions_credential_id_fkey FOREIGN KEY (password_credential_id) REFERENCES request_engine.native_credentials(id);
 
 
 --
--- Name: FUNCTION guard_resource_location_assignment(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_sessions native_sessions_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_resource_location_assignment() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_sessions
+    ADD CONSTRAINT native_sessions_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION guard_service_session_interruption_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_sessions native_sessions_webauthn_credential_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_service_session_interruption_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.native_sessions
+    ADD CONSTRAINT native_sessions_webauthn_credential_id_fkey FOREIGN KEY (webauthn_credential_id) REFERENCES request_engine.webauthn_credentials(id);
 
 
 --
--- Name: FUNCTION guard_service_session_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_resource_requirements offering_resource_requirement_organization_id_capability_i_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_service_session_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.offering_resource_requirements
+    ADD CONSTRAINT offering_resource_requirement_organization_id_capability_i_fkey FOREIGN KEY (organization_id, capability_id) REFERENCES request_engine.resource_capabilities(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_setup_session(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_resource_requirements offering_resource_requirement_organization_id_offering_ver_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_setup_session() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.offering_resource_requirements
+    ADD CONSTRAINT offering_resource_requirement_organization_id_offering_ver_fkey FOREIGN KEY (organization_id, offering_version_id) REFERENCES request_engine.offering_versions(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_shared_capacity_binding(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_service_classifications offering_service_classificatio_organization_id_offering_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_shared_capacity_binding() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.offering_service_classifications
+    ADD CONSTRAINT offering_service_classificatio_organization_id_offering_id_fkey FOREIGN KEY (organization_id, offering_id) REFERENCES request_engine.offerings(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_shared_capacity_rebinding(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_service_classifications offering_service_classifications_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_shared_capacity_rebinding() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.offering_service_classifications
+    ADD CONSTRAINT offering_service_classifications_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_slot_offer_live_hold(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_service_classifications offering_service_classifications_service_classification_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_slot_offer_live_hold() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.offering_service_classifications
+    ADD CONSTRAINT offering_service_classifications_service_classification_id_fkey FOREIGN KEY (service_classification_id) REFERENCES request_engine.service_classifications(id);
 
 
 --
--- Name: FUNCTION guard_slot_offer_provenance_update(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_version_booking_policies offering_version_booking_poli_organization_id_offering_ver_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_slot_offer_provenance_update() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.offering_version_booking_policies
+    ADD CONSTRAINT offering_version_booking_poli_organization_id_offering_ver_fkey FOREIGN KEY (organization_id, offering_version_id) REFERENCES request_engine.offering_versions(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_slot_offer_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_version_booking_terms offering_version_booking_term_organization_id_offering_ver_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_slot_offer_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.offering_version_booking_terms
+    ADD CONSTRAINT offering_version_booking_term_organization_id_offering_ver_fkey FOREIGN KEY (organization_id, offering_version_id) REFERENCES request_engine.offering_versions(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_slot_opportunity_provenance_update(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_versions offering_versions_organization_id_offering_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_slot_opportunity_provenance_update() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.offering_versions
+    ADD CONSTRAINT offering_versions_organization_id_offering_id_fkey FOREIGN KEY (organization_id, offering_id) REFERENCES request_engine.offerings(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_slot_opportunity_transition(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offerings offerings_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_slot_opportunity_transition() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.offerings
+    ADD CONSTRAINT offerings_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_staff_membership(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_actions operational_recovery_actions_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_staff_membership() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_actions
+    ADD CONSTRAINT operational_recovery_actions_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION guard_waitlist_entry_provenance_update(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_actions operational_recovery_actions_organization_id_incident_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_waitlist_entry_provenance_update() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_actions
+    ADD CONSTRAINT operational_recovery_actions_organization_id_incident_id_fkey FOREIGN KEY (organization_id, incident_id) REFERENCES request_engine.operational_recovery_incidents(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_workload_credential(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_actions operational_recovery_actions_organization_id_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_workload_credential() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_actions
+    ADD CONSTRAINT operational_recovery_actions_organization_id_principal_id_fkey FOREIGN KEY (organization_id, principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION guard_workload_identity(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_autonomy_policies operational_recovery_autonomy_organization_id_service_queu_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.guard_workload_identity() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_autonomy_policies
+    ADD CONSTRAINT operational_recovery_autonomy_organization_id_service_queu_fkey FOREIGN KEY (organization_id, service_queue_id) REFERENCES request_engine.service_queues(organization_id, id);
 
 
 --
--- Name: FUNCTION has_active_discovery_mapping(p_classification_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_discovery_definer
+-- Name: operational_recovery_autonomy_policies operational_recovery_autonomy_p_organization_id_granted_by_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.has_active_discovery_mapping(p_classification_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.has_active_discovery_mapping(p_classification_id uuid) TO request_engine_schema_owner;
-GRANT ALL ON FUNCTION request_engine.has_active_discovery_mapping(p_classification_id uuid) TO request_engine_admin;
+ALTER TABLE ONLY request_engine.operational_recovery_autonomy_policies
+    ADD CONSTRAINT operational_recovery_autonomy_p_organization_id_granted_by_fkey FOREIGN KEY (organization_id, granted_by) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION identity_exchange_country_code_v1(p_code text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_escalations operational_recovery_escalatio_organization_id_incident_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.identity_exchange_country_code_v1(p_code text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_escalations
+    ADD CONSTRAINT operational_recovery_escalatio_organization_id_incident_id_fkey FOREIGN KEY (organization_id, incident_id) REFERENCES request_engine.operational_recovery_incidents(organization_id, id);
 
 
 --
--- Name: FUNCTION identity_exchange_existing_party_v1(p_candidate_id uuid, p_principal_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_escalations operational_recovery_escalations_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.identity_exchange_existing_party_v1(p_candidate_id uuid, p_principal_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.identity_exchange_existing_party_v1(p_candidate_id uuid, p_principal_id uuid) TO request_engine_app;
+ALTER TABLE ONLY request_engine.operational_recovery_escalations
+    ADD CONSTRAINT operational_recovery_escalations_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION identity_exchange_identifier_valid_v1(p_kind text, p_authority text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_executions operational_recovery_executio_organization_id_communicatio_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.identity_exchange_identifier_valid_v1(p_kind text, p_authority text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_executions
+    ADD CONSTRAINT operational_recovery_executio_organization_id_communicatio_fkey FOREIGN KEY (organization_id, communication_task_id) REFERENCES request_engine.communication_tasks(organization_id, id);
 
 
 --
--- Name: FUNCTION identity_exchange_subject_kind_v1(p_kind text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_executions operational_recovery_executio_organization_id_executed_by__fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.identity_exchange_subject_kind_v1(p_kind text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_executions
+    ADD CONSTRAINT operational_recovery_executio_organization_id_executed_by__fkey FOREIGN KEY (organization_id, executed_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION initialize_queue_entry_times(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_executions operational_recovery_executio_organization_id_reservation__fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.initialize_queue_entry_times() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_executions
+    ADD CONSTRAINT operational_recovery_executio_organization_id_reservation__fkey FOREIGN KEY (organization_id, reservation_id) REFERENCES request_engine.reservations(organization_id, id);
 
 
 --
--- Name: FUNCTION initialize_service_queue_intake_control(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_executions operational_recovery_execution_organization_id_proposal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.initialize_service_queue_intake_control() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_executions
+    ADD CONSTRAINT operational_recovery_execution_organization_id_proposal_id_fkey FOREIGN KEY (organization_id, proposal_id) REFERENCES request_engine.operational_recovery_proposals(organization_id, id);
 
 
 --
--- Name: FUNCTION invite_native_staff(p_membership_id uuid, p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_authority_anchor_party_id uuid, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_executions operational_recovery_executions_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.invite_native_staff(p_membership_id uuid, p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_authority_anchor_party_id uuid, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.invite_native_staff(p_membership_id uuid, p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_authority_anchor_party_id uuid, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.operational_recovery_executions
+    ADD CONSTRAINT operational_recovery_executions_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION issue_discovery_booking_handoff(p_token_hash text, p_publication_id uuid, p_expected_publication_revision bigint, p_mapping_id uuid, p_expected_mapping_revision bigint, p_offering_version_id uuid, p_location_id uuid, p_selection jsonb, p_expires_at timestamp with time zone); Type: ACL; Schema: request_engine; Owner: request_engine_discovery_definer
+-- Name: operational_recovery_incidents operational_recovery_incident_organization_id_current_prop_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.issue_discovery_booking_handoff(p_token_hash text, p_publication_id uuid, p_expected_publication_revision bigint, p_mapping_id uuid, p_expected_mapping_revision bigint, p_offering_version_id uuid, p_location_id uuid, p_selection jsonb, p_expires_at timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.issue_discovery_booking_handoff(p_token_hash text, p_publication_id uuid, p_expected_publication_revision bigint, p_mapping_id uuid, p_expected_mapping_revision bigint, p_offering_version_id uuid, p_location_id uuid, p_selection jsonb, p_expires_at timestamp with time zone) TO request_engine_discovery;
-GRANT ALL ON FUNCTION request_engine.issue_discovery_booking_handoff(p_token_hash text, p_publication_id uuid, p_expected_publication_revision bigint, p_mapping_id uuid, p_expected_mapping_revision bigint, p_offering_version_id uuid, p_location_id uuid, p_selection jsonb, p_expires_at timestamp with time zone) TO request_engine_admin;
+ALTER TABLE ONLY request_engine.operational_recovery_incidents
+    ADD CONSTRAINT operational_recovery_incident_organization_id_current_prop_fkey FOREIGN KEY (organization_id, current_proposal_id) REFERENCES request_engine.operational_recovery_proposals(organization_id, id);
 
 
 --
--- Name: FUNCTION lock_booking_context_terms_resource(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_incidents operational_recovery_incident_organization_id_service_queu_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.lock_booking_context_terms_resource() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_incidents
+    ADD CONSTRAINT operational_recovery_incident_organization_id_service_queu_fkey FOREIGN KEY (organization_id, service_queue_id) REFERENCES request_engine.service_queues(organization_id, id);
 
 
 --
--- Name: FUNCTION lock_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_incidents operational_recovery_incidents_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.lock_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.lock_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text) TO request_engine_app;
-GRANT ALL ON FUNCTION request_engine.lock_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text) TO request_engine_admin;
+ALTER TABLE ONLY request_engine.operational_recovery_incidents
+    ADD CONSTRAINT operational_recovery_incidents_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION lock_offering_version_booking_terms_root(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_incidents operational_recovery_incidents_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.lock_offering_version_booking_terms_root() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_incidents
+    ADD CONSTRAINT operational_recovery_incidents_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION lock_tenant_staff_root(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_incidents operational_recovery_incidents_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.lock_tenant_staff_root() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_incidents
+    ADD CONSTRAINT operational_recovery_incidents_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: FUNCTION lookup_active_service_classification(p_key text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_proposals operational_recovery_proposal_organization_id_created_by_p_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.lookup_active_service_classification(p_key text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.lookup_active_service_classification(p_key text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.operational_recovery_proposals
+    ADD CONSTRAINT operational_recovery_proposal_organization_id_created_by_p_fkey FOREIGN KEY (organization_id, created_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION lookup_service_classification(p_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_proposals operational_recovery_proposal_organization_id_service_queu_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.lookup_service_classification(p_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.lookup_service_classification(p_id uuid) TO request_engine_app;
+ALTER TABLE ONLY request_engine.operational_recovery_proposals
+    ADD CONSTRAINT operational_recovery_proposal_organization_id_service_queu_fkey FOREIGN KEY (organization_id, service_queue_id) REFERENCES request_engine.service_queues(organization_id, id);
 
 
 --
--- Name: FUNCTION notify_platform_secret_runtime_change(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_proposals operational_recovery_proposals_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.notify_platform_secret_runtime_change() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_proposals
+    ADD CONSTRAINT operational_recovery_proposals_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION principal_is_effective_tenant_controller(p_organization_id uuid, p_principal_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_proposals operational_recovery_proposals_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.principal_is_effective_tenant_controller(p_organization_id uuid, p_principal_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.principal_is_effective_tenant_controller(p_organization_id uuid, p_principal_id uuid) TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.operational_recovery_proposals
+    ADD CONSTRAINT operational_recovery_proposals_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION project_managed_oidc_authority(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_proposals operational_recovery_proposals_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.project_managed_oidc_authority() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.operational_recovery_proposals
+    ADD CONSTRAINT operational_recovery_proposals_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: FUNCTION provision_agent(p_principal_id uuid, p_binding_id uuid, p_workload_identity_id uuid, p_credential_id uuid, p_identity_authority_id uuid, p_token_digest bytea, p_token_fingerprint text, p_credential_expires_at timestamp with time zone, p_display_name text, p_purpose text, p_sponsor_principal_id uuid, p_operating_mode text, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_workload_classifications operational_workload_classifications_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.provision_agent(p_principal_id uuid, p_binding_id uuid, p_workload_identity_id uuid, p_credential_id uuid, p_identity_authority_id uuid, p_token_digest bytea, p_token_fingerprint text, p_credential_expires_at timestamp with time zone, p_display_name text, p_purpose text, p_sponsor_principal_id uuid, p_operating_mode text, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.provision_agent(p_principal_id uuid, p_binding_id uuid, p_workload_identity_id uuid, p_credential_id uuid, p_identity_authority_id uuid, p_token_digest bytea, p_token_fingerprint text, p_credential_expires_at timestamp with time zone, p_display_name text, p_purpose text, p_sponsor_principal_id uuid, p_operating_mode text, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.operational_workload_classifications
+    ADD CONSTRAINT operational_workload_classifications_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION provision_integration(p_principal_id uuid, p_binding_id uuid, p_workload_identity_id uuid, p_credential_id uuid, p_identity_authority_id uuid, p_token_digest bytea, p_token_fingerprint text, p_credential_expires_at timestamp with time zone, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_party_bindings organization_party_bindings_organization_id_created_by_pri_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.provision_integration(p_principal_id uuid, p_binding_id uuid, p_workload_identity_id uuid, p_credential_id uuid, p_identity_authority_id uuid, p_token_digest bytea, p_token_fingerprint text, p_credential_expires_at timestamp with time zone, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.provision_integration(p_principal_id uuid, p_binding_id uuid, p_workload_identity_id uuid, p_credential_id uuid, p_identity_authority_id uuid, p_token_digest bytea, p_token_fingerprint text, p_credential_expires_at timestamp with time zone, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.organization_party_bindings
+    ADD CONSTRAINT organization_party_bindings_organization_id_created_by_pri_fkey FOREIGN KEY (organization_id, created_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION provision_integration_state(p_principal_id uuid, p_binding_id uuid, p_workload_identity_id uuid, p_credential_id uuid, p_identity_authority_id uuid, p_token_digest bytea, p_token_fingerprint text, p_credential_expires_at timestamp with time zone, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_party_bindings organization_party_bindings_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.provision_integration_state(p_principal_id uuid, p_binding_id uuid, p_workload_identity_id uuid, p_credential_id uuid, p_identity_authority_id uuid, p_token_digest bytea, p_token_fingerprint text, p_credential_expires_at timestamp with time zone, p_provenance_reference text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.organization_party_bindings
+    ADD CONSTRAINT organization_party_bindings_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION publish_portable_party_v1(p_party_id uuid, p_kind text, p_authority text, p_fingerprint text, p_consent_fields text[], p_principal_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_party_bindings organization_party_bindings_organization_id_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.publish_portable_party_v1(p_party_id uuid, p_kind text, p_authority text, p_fingerprint text, p_consent_fields text[], p_principal_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.publish_portable_party_v1(p_party_id uuid, p_kind text, p_authority text, p_fingerprint text, p_consent_fields text[], p_principal_id uuid) TO request_engine_app;
+ALTER TABLE ONLY request_engine.organization_party_bindings
+    ADD CONSTRAINT organization_party_bindings_organization_id_party_id_fkey FOREIGN KEY (organization_id, party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION read_discovery_booking_handoff(p_token_hash text); Type: ACL; Schema: request_engine; Owner: request_engine_discovery_definer
+-- Name: organization_party_bindings organization_party_bindings_portable_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.read_discovery_booking_handoff(p_token_hash text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.read_discovery_booking_handoff(p_token_hash text) TO request_engine_app;
-GRANT ALL ON FUNCTION request_engine.read_discovery_booking_handoff(p_token_hash text) TO request_engine_admin;
+ALTER TABLE ONLY request_engine.organization_party_bindings
+    ADD CONSTRAINT organization_party_bindings_portable_party_id_fkey FOREIGN KEY (portable_party_id) REFERENCES request_engine.portable_party_identities(id);
 
 
 --
--- Name: FUNCTION read_identity_link_intent(p_intent_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_provisioning_facts organization_provisioning_fact_provisioned_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.read_identity_link_intent(p_intent_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.read_identity_link_intent(p_intent_id uuid) TO request_engine_app;
+ALTER TABLE ONLY request_engine.organization_provisioning_facts
+    ADD CONSTRAINT organization_provisioning_fact_provisioned_by_principal_id_fkey FOREIGN KEY (provisioned_by_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION read_onboarding_identity_facts(p_organization_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_provisioning_facts organization_provisioning_facts_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.read_onboarding_identity_facts(p_organization_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.read_onboarding_identity_facts(p_organization_id uuid) TO request_engine_app;
+ALTER TABLE ONLY request_engine.organization_provisioning_facts
+    ADD CONSTRAINT organization_provisioning_facts_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION reject_immutable_mutation(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_public_contact_endpoints organization_public_contact_endpoints_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.reject_immutable_mutation() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.organization_public_contact_endpoints
+    ADD CONSTRAINT organization_public_contact_endpoints_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION reject_queue_entry_operator_selection_mutation(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts organization_root_provisionin_initial_controller_policy_ke_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.reject_queue_entry_operator_selection_mutation() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.organization_root_provisioning_facts
+    ADD CONSTRAINT organization_root_provisionin_initial_controller_policy_ke_fkey FOREIGN KEY (initial_controller_policy_key) REFERENCES request_engine.initial_controller_policies(policy_key);
 
 
 --
--- Name: FUNCTION replace_agent_authority(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts organization_root_provisioning_fac_controller_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.replace_agent_authority(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.replace_agent_authority(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.organization_root_provisioning_facts
+    ADD CONSTRAINT organization_root_provisioning_fac_controller_principal_id_fkey FOREIGN KEY (controller_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION replace_integration_authority(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts organization_root_provisioning_facts_controller_binding_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.replace_integration_authority(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.replace_integration_authority(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.organization_root_provisioning_facts
+    ADD CONSTRAINT organization_root_provisioning_facts_controller_binding_id_fkey FOREIGN KEY (controller_binding_id) REFERENCES request_engine.identity_bindings(id);
 
 
 --
--- Name: FUNCTION replace_integration_authority_state(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts organization_root_provisioning_facts_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.replace_integration_authority_state(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.organization_root_provisioning_facts
+    ADD CONSTRAINT organization_root_provisioning_facts_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION replace_staff_authority(p_membership_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts organization_root_provisioning_facts_organization_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.replace_staff_authority(p_membership_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.replace_staff_authority(p_membership_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.organization_root_provisioning_facts
+    ADD CONSTRAINT organization_root_provisioning_facts_organization_party_id_fkey FOREIGN KEY (organization_party_id) REFERENCES request_engine.parties(id);
 
 
 --
--- Name: FUNCTION require_trusted_actor_context(p_organization_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts organization_root_provisioning_provisioned_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.require_trusted_actor_context(p_organization_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.organization_root_provisioning_facts
+    ADD CONSTRAINT organization_root_provisioning_provisioned_by_principal_id_fkey FOREIGN KEY (provisioned_by_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION resolve_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: outbox_messages outbox_messages_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.resolve_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.resolve_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text) TO request_engine_app;
-GRANT ALL ON FUNCTION request_engine.resolve_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text) TO request_engine_admin;
+ALTER TABLE ONLY request_engine.outbox_messages
+    ADD CONSTRAINT outbox_messages_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION revoke_delegation(p_id uuid, p_expected_revision bigint, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: parties parties_created_by_principal_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.revoke_delegation(p_id uuid, p_expected_revision bigint, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.revoke_delegation(p_id uuid, p_expected_revision bigint, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.parties
+    ADD CONSTRAINT parties_created_by_principal_fk FOREIGN KEY (organization_id, created_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION revoke_webauthn_credentials_on_disable(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: parties parties_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.revoke_webauthn_credentials_on_disable() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.parties
+    ADD CONSTRAINT parties_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION search_discovery_candidates_v2(p_classification_key text, p_origin_latitude double precision, p_origin_longitude double precision, p_radius_meters integer, p_window_start timestamp with time zone, p_window_end timestamp with time zone, p_limit integer); Type: ACL; Schema: request_engine; Owner: request_engine_discovery_definer
+-- Name: parties parties_relay_principal_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.search_discovery_candidates_v2(p_classification_key text, p_origin_latitude double precision, p_origin_longitude double precision, p_radius_meters integer, p_window_start timestamp with time zone, p_window_end timestamp with time zone, p_limit integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.search_discovery_candidates_v2(p_classification_key text, p_origin_latitude double precision, p_origin_longitude double precision, p_radius_meters integer, p_window_start timestamp with time zone, p_window_end timestamp with time zone, p_limit integer) TO request_engine_discovery;
-GRANT ALL ON FUNCTION request_engine.search_discovery_candidates_v2(p_classification_key text, p_origin_latitude double precision, p_origin_longitude double precision, p_radius_meters integer, p_window_start timestamp with time zone, p_window_end timestamp with time zone, p_limit integer) TO request_engine_admin;
+ALTER TABLE ONLY request_engine.parties
+    ADD CONSTRAINT parties_relay_principal_fk FOREIGN KEY (organization_id, relay_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION seed_initial_controller_policy(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_administrative_identifiers party_administrative_identifi_organization_id_created_by_p_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.seed_initial_controller_policy() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.party_administrative_identifiers
+    ADD CONSTRAINT party_administrative_identifi_organization_id_created_by_p_fkey FOREIGN KEY (organization_id, created_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION seed_root_staff_membership(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_administrative_identifiers party_administrative_identifi_organization_id_relay_princi_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.seed_root_staff_membership() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.party_administrative_identifiers
+    ADD CONSTRAINT party_administrative_identifi_organization_id_relay_princi_fkey FOREIGN KEY (organization_id, relay_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION seed_root_staff_read_authority(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_administrative_identifiers party_administrative_identifiers_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.seed_root_staff_read_authority() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.party_administrative_identifiers
+    ADD CONSTRAINT party_administrative_identifiers_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION set_integration_status(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_administrative_identifiers party_administrative_identifiers_organization_id_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.set_integration_status(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.set_integration_status(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.party_administrative_identifiers
+    ADD CONSTRAINT party_administrative_identifiers_organization_id_party_id_fkey FOREIGN KEY (organization_id, party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION set_integration_status_state(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_contact_points party_contact_points_created_by_principal_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.set_integration_status_state(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.party_contact_points
+    ADD CONSTRAINT party_contact_points_created_by_principal_fk FOREIGN KEY (organization_id, created_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION stamp_shared_capacity_authority_event_context(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_contact_points party_contact_points_organization_id_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.stamp_shared_capacity_authority_event_context() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.party_contact_points
+    ADD CONSTRAINT party_contact_points_organization_id_party_id_fkey FOREIGN KEY (organization_id, party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION touch_updated_at(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_contact_points party_contact_points_relay_principal_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.touch_updated_at() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.party_contact_points
+    ADD CONSTRAINT party_contact_points_relay_principal_fk FOREIGN KEY (organization_id, relay_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION transition_agent_profile(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_documents party_identity_documents_organization_id_created_by_princi_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.transition_agent_profile(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.transition_agent_profile(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.party_identity_documents
+    ADD CONSTRAINT party_identity_documents_organization_id_created_by_princi_fkey FOREIGN KEY (organization_id, created_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION transition_identity_binding(p_binding_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_documents party_identity_documents_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.transition_identity_binding(p_binding_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.transition_identity_binding(p_binding_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.party_identity_documents
+    ADD CONSTRAINT party_identity_documents_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION transition_staff_membership(p_membership_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_documents party_identity_documents_organization_id_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.transition_staff_membership(p_membership_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.transition_staff_membership(p_membership_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.party_identity_documents
+    ADD CONSTRAINT party_identity_documents_organization_id_party_id_fkey FOREIGN KEY (organization_id, party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION upgrade_controller_policy(p_target_principal_id uuid, p_source_policy_key text, p_target_policy_key text, p_expected_authority_revision bigint, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_documents party_identity_documents_relay_principal_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.upgrade_controller_policy(p_target_principal_id uuid, p_source_policy_key text, p_target_policy_key text, p_expected_authority_revision bigint, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.upgrade_controller_policy(p_target_principal_id uuid, p_source_policy_key text, p_target_policy_key text, p_expected_authority_revision bigint, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.party_identity_documents
+    ADD CONSTRAINT party_identity_documents_relay_principal_fk FOREIGN KEY (organization_id, relay_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION upsert_agent_policy(p_agent_principal_id uuid, p_allowed_capabilities text[], p_denied_capabilities text[], p_risk_ceiling text, p_max_mutations_per_minute integer, p_provenance_reference text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_revisions party_identity_revisions_organization_id_actor_principal_i_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.upsert_agent_policy(p_agent_principal_id uuid, p_allowed_capabilities text[], p_denied_capabilities text[], p_risk_ceiling text, p_max_mutations_per_minute integer, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.upsert_agent_policy(p_agent_principal_id uuid, p_allowed_capabilities text[], p_denied_capabilities text[], p_risk_ceiling text, p_max_mutations_per_minute integer, p_provenance_reference text) TO request_engine_app;
+ALTER TABLE ONLY request_engine.party_identity_revisions
+    ADD CONSTRAINT party_identity_revisions_organization_id_actor_principal_i_fkey FOREIGN KEY (organization_id, actor_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION validate_offering_version_delivery_policy(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_revisions party_identity_revisions_organization_id_attributed_operat_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.validate_offering_version_delivery_policy() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.party_identity_revisions
+    ADD CONSTRAINT party_identity_revisions_organization_id_attributed_operat_fkey FOREIGN KEY (organization_id, attributed_operator_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION activate_platform_configuration(p_configuration_kind text, p_revision bigint, p_expected_active_revision bigint, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: party_identity_revisions party_identity_revisions_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.activate_platform_configuration(p_configuration_kind text, p_revision bigint, p_expected_active_revision bigint, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.activate_platform_configuration(p_configuration_kind text, p_revision bigint, p_expected_active_revision bigint, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.party_identity_revisions
+    ADD CONSTRAINT party_identity_revisions_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION activate_platform_owner_invitation(p_invitation_id uuid, p_principal_id uuid, p_binding_id uuid, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: party_identity_revisions party_identity_revisions_organization_id_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.activate_platform_owner_invitation(p_invitation_id uuid, p_principal_id uuid, p_binding_id uuid, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.activate_platform_owner_invitation(p_invitation_id uuid, p_principal_id uuid, p_binding_id uuid, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.party_identity_revisions
+    ADD CONSTRAINT party_identity_revisions_organization_id_party_id_fkey FOREIGN KEY (organization_id, party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION approve_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_reason_code text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_authority_lifecycle_facts platform_authority_lifecycle_facts_actor_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.approve_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_reason_code text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.approve_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_reason_code text, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.platform_authority_lifecycle_facts
+    ADD CONSTRAINT platform_authority_lifecycle_facts_actor_principal_id_fkey FOREIGN KEY (actor_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION assert_other_platform_controller(p_excluded_principal_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_authority_lifecycle_facts platform_authority_lifecycle_facts_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.assert_other_platform_controller(p_excluded_principal_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.platform_authority_lifecycle_facts
+    ADD CONSTRAINT platform_authority_lifecycle_facts_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION assert_other_platform_owner(p_excluded_principal_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_configuration_revisions platform_configuration_revisions_secret_binding_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.assert_other_platform_owner(p_excluded_principal_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.platform_configuration_revisions
+    ADD CONSTRAINT platform_configuration_revisions_secret_binding_id_fkey FOREIGN KEY (secret_binding_id) REFERENCES request_engine.platform_secret_bindings(id);
 
 
 --
--- Name: FUNCTION assert_platform_configuration_actor(p_capability text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_identity_disable_facts platform_identity_disable_facts_actor_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.assert_platform_configuration_actor(p_capability text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.assert_platform_configuration_actor(p_capability text) TO request_platform_definer;
+ALTER TABLE ONLY request_engine.platform_identity_disable_facts
+    ADD CONSTRAINT platform_identity_disable_facts_actor_principal_id_fkey FOREIGN KEY (actor_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION assert_platform_has_controller(); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_identity_recovery_facts platform_identity_recovery_facts_actor_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.assert_platform_has_controller() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.platform_identity_recovery_facts
+    ADD CONSTRAINT platform_identity_recovery_facts_actor_principal_id_fkey FOREIGN KEY (actor_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION assert_platform_identity_actor(p_capability text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_identity_recovery_facts platform_identity_recovery_facts_case_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.assert_platform_identity_actor(p_capability text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.platform_identity_recovery_facts
+    ADD CONSTRAINT platform_identity_recovery_facts_case_id_fkey FOREIGN KEY (case_id) REFERENCES request_engine.identity_recovery_cases(id);
 
 
 --
--- Name: FUNCTION assert_platform_owner_actor(p_capability text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_owner_invitations platform_owner_invitations_invited_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.assert_platform_owner_actor(p_capability text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.platform_owner_invitations
+    ADD CONSTRAINT platform_owner_invitations_invited_by_principal_id_fkey FOREIGN KEY (invited_by_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION claim_identity_recovery_delivery_tickets(p_limit integer, p_lease_seconds integer); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_owner_invitations platform_owner_invitations_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.claim_identity_recovery_delivery_tickets(p_limit integer, p_lease_seconds integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.claim_identity_recovery_delivery_tickets(p_limit integer, p_lease_seconds integer) TO request_engine_worker;
+ALTER TABLE ONLY request_engine.platform_owner_invitations
+    ADD CONSTRAINT platform_owner_invitations_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION commit_platform_secret_mutation(p_operation_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_owner_provisioning_facts platform_owner_provisioning_facts_actor_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.commit_platform_secret_mutation(p_operation_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.commit_platform_secret_mutation(p_operation_id uuid) TO request_platform_control;
+ALTER TABLE ONLY request_engine.platform_owner_provisioning_facts
+    ADD CONSTRAINT platform_owner_provisioning_facts_actor_principal_id_fkey FOREIGN KEY (actor_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION commit_platform_secret_rotation(p_binding_id uuid, p_expected_revision bigint, p_expected_backend_version integer, p_new_backend_version integer, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_owner_provisioning_facts platform_owner_provisioning_facts_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.commit_platform_secret_rotation(p_binding_id uuid, p_expected_revision bigint, p_expected_backend_version integer, p_new_backend_version integer, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.platform_owner_provisioning_facts
+    ADD CONSTRAINT platform_owner_provisioning_facts_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION complete_identity_recovery_delivery_ticket(p_ticket_id uuid, p_claim_token uuid, p_outcome text, p_error_class text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: platform_owner_provisioning_facts platform_owner_provisioning_facts_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.complete_identity_recovery_delivery_ticket(p_ticket_id uuid, p_claim_token uuid, p_outcome text, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.complete_identity_recovery_delivery_ticket(p_ticket_id uuid, p_claim_token uuid, p_outcome text, p_error_class text) TO request_engine_worker;
+ALTER TABLE ONLY request_engine.platform_owner_provisioning_facts
+    ADD CONSTRAINT platform_owner_provisioning_facts_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION create_identity_recovery_case(p_case_id uuid, p_target_native_identity_id uuid, p_reason_code text, p_evidence_reference text, p_delivery_destination_reference text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: portable_party_identifiers portable_party_identifiers_portable_party_id_party_kind_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.create_identity_recovery_case(p_case_id uuid, p_target_native_identity_id uuid, p_reason_code text, p_evidence_reference text, p_delivery_destination_reference text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.create_identity_recovery_case(p_case_id uuid, p_target_native_identity_id uuid, p_reason_code text, p_evidence_reference text, p_delivery_destination_reference text, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.portable_party_identifiers
+    ADD CONSTRAINT portable_party_identifiers_portable_party_id_party_kind_fkey FOREIGN KEY (portable_party_id, party_kind) REFERENCES request_engine.portable_party_identities(id, party_kind);
 
 
 --
--- Name: FUNCTION create_platform_owner_invitation(p_invitation_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, p_provenance_reference text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: portable_party_profiles portable_party_profiles_portable_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.create_platform_owner_invitation(p_invitation_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, p_provenance_reference text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.create_platform_owner_invitation(p_invitation_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, p_provenance_reference text, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.portable_party_profiles
+    ADD CONSTRAINT portable_party_profiles_portable_party_id_fkey FOREIGN KEY (portable_party_id) REFERENCES request_engine.portable_party_identities(id);
 
 
 --
--- Name: FUNCTION create_setup_session(p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_mode text, p_ttl_seconds integer); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: portable_party_profiles portable_party_profiles_publisher_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.create_setup_session(p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_mode text, p_ttl_seconds integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.create_setup_session(p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_mode text, p_ttl_seconds integer) TO request_platform_control;
+ALTER TABLE ONLY request_engine.portable_party_profiles
+    ADD CONSTRAINT portable_party_profiles_publisher_organization_id_fkey FOREIGN KEY (publisher_organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION disable_native_identity(p_native_identity_id uuid, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: principal_authority_grants principal_authority_grants_granted_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.disable_native_identity(p_native_identity_id uuid, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.disable_native_identity(p_native_identity_id uuid, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.principal_authority_grants
+    ADD CONSTRAINT principal_authority_grants_granted_by_principal_id_fkey FOREIGN KEY (granted_by_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION disable_platform_configuration(p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: principal_authority_grants principal_authority_grants_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.disable_platform_configuration(p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.disable_platform_configuration(p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.principal_authority_grants
+    ADD CONSTRAINT principal_authority_grants_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION enroll_platform_owner_invitation(p_token_digest bytea, p_native_identity_id uuid, p_credential_id uuid, p_login_handle text, p_password_verifier text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: principal_authority_grants principal_authority_grants_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.enroll_platform_owner_invitation(p_token_digest bytea, p_native_identity_id uuid, p_credential_id uuid, p_login_handle text, p_password_verifier text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.enroll_platform_owner_invitation(p_token_digest bytea, p_native_identity_id uuid, p_credential_id uuid, p_login_handle text, p_password_verifier text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.principal_authority_grants
+    ADD CONSTRAINT principal_authority_grants_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION establish_root(p_intent_id uuid, p_token_digest bytea, p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_password_verifier text, p_principal_id uuid, p_binding_id uuid); Type: ACL; Schema: request_platform; Owner: request_bootstrap_definer
+-- Name: principal_authority_grants principal_authority_grants_revoked_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.establish_root(p_intent_id uuid, p_token_digest bytea, p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_password_verifier text, p_principal_id uuid, p_binding_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.principal_authority_grants
+    ADD CONSTRAINT principal_authority_grants_revoked_by_principal_id_fkey FOREIGN KEY (revoked_by_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: FUNCTION finalize_instance_claim(p_setup_session_id uuid, p_idempotency_key_digest text, p_intent_digest text, p_claim_provenance text, p_actor_authentication_method text, p_correlation_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: principal_contacts principal_contacts_organization_id_created_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.finalize_instance_claim(p_setup_session_id uuid, p_idempotency_key_digest text, p_intent_digest text, p_claim_provenance text, p_actor_authentication_method text, p_correlation_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.finalize_instance_claim(p_setup_session_id uuid, p_idempotency_key_digest text, p_intent_digest text, p_claim_provenance text, p_actor_authentication_method text, p_correlation_id uuid) TO request_platform_control;
+ALTER TABLE ONLY request_engine.principal_contacts
+    ADD CONSTRAINT principal_contacts_organization_id_created_by_principal_id_fkey FOREIGN KEY (organization_id, created_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION grant_platform_owner_v2_capabilities_on_claim(); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: principal_contacts principal_contacts_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.grant_platform_owner_v2_capabilities_on_claim() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.principal_contacts
+    ADD CONSTRAINT principal_contacts_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION issue_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_ticket_id uuid, p_secret_reference text, p_secret_digest text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: principal_contacts principal_contacts_organization_id_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.issue_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_ticket_id uuid, p_secret_reference text, p_secret_digest text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.issue_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_ticket_id uuid, p_secret_reference text, p_secret_digest text, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.principal_contacts
+    ADD CONSTRAINT principal_contacts_organization_id_principal_id_fkey FOREIGN KEY (organization_id, principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION managed_oidc_projection_matches(p_issuer text, p_jwks_uri text, p_audience text, p_revision bigint); Type: ACL; Schema: request_platform; Owner: request_engine_schema_owner
+-- Name: principals principals_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.managed_oidc_projection_matches(p_issuer text, p_jwks_uri text, p_audience text, p_revision bigint) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.managed_oidc_projection_matches(p_issuer text, p_jwks_uri text, p_audience text, p_revision bigint) TO request_platform_definer;
+ALTER TABLE ONLY request_engine.principals
+    ADD CONSTRAINT principals_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION mark_platform_secret_backend_applied(p_operation_id uuid, p_applied_backend_version integer); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: provider_events provider_events_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.mark_platform_secret_backend_applied(p_operation_id uuid, p_applied_backend_version integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.mark_platform_secret_backend_applied(p_operation_id uuid, p_applied_backend_version integer) TO request_platform_control;
+ALTER TABLE ONLY request_engine.provider_events
+    ADD CONSTRAINT provider_events_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION native_identity_ready_for_platform_owner(p_identity_authority_id uuid, p_native_identity_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: queue_entries queue_entries_expected_workload_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.native_identity_ready_for_platform_owner(p_identity_authority_id uuid, p_native_identity_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.queue_entries
+    ADD CONSTRAINT queue_entries_expected_workload_fk FOREIGN KEY (organization_id, expected_workload_classification_id) REFERENCES request_engine.operational_workload_classifications(organization_id, id);
 
 
 --
--- Name: FUNCTION prepare_identity_recovery_issue(p_case_id uuid, p_expected_revision bigint, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: queue_entries queue_entries_organization_id_offering_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.prepare_identity_recovery_issue(p_case_id uuid, p_expected_revision bigint, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.prepare_identity_recovery_issue(p_case_id uuid, p_expected_revision bigint, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.queue_entries
+    ADD CONSTRAINT queue_entries_organization_id_offering_id_fkey FOREIGN KEY (organization_id, offering_id) REFERENCES request_engine.offerings(organization_id, id);
 
 
 --
--- Name: FUNCTION prepare_platform_secret_mutation(p_operation_kind text, p_purpose text, p_backend text, p_binding_id uuid, p_expected_binding_revision bigint, p_expected_backend_version integer, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: queue_entries queue_entries_organization_id_reservation_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.prepare_platform_secret_mutation(p_operation_kind text, p_purpose text, p_backend text, p_binding_id uuid, p_expected_binding_revision bigint, p_expected_backend_version integer, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.prepare_platform_secret_mutation(p_operation_kind text, p_purpose text, p_backend text, p_binding_id uuid, p_expected_binding_revision bigint, p_expected_backend_version integer, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.queue_entries
+    ADD CONSTRAINT queue_entries_organization_id_reservation_id_fkey FOREIGN KEY (organization_id, reservation_id) REFERENCES request_engine.reservations(organization_id, id);
 
 
 --
--- Name: FUNCTION principal_is_effective_platform_controller(p_principal_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: queue_entries queue_entries_organization_id_service_queue_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.principal_is_effective_platform_controller(p_principal_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.queue_entries
+    ADD CONSTRAINT queue_entries_organization_id_service_queue_id_fkey FOREIGN KEY (organization_id, service_queue_id) REFERENCES request_engine.service_queues(organization_id, id);
 
 
 --
--- Name: FUNCTION principal_is_effective_platform_owner(p_principal_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: queue_entries queue_entries_organization_id_subject_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.principal_is_effective_platform_owner(p_principal_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.queue_entries
+    ADD CONSTRAINT queue_entries_organization_id_subject_party_id_fkey FOREIGN KEY (organization_id, subject_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION provision_native_organization_root(p_organization_id uuid, p_organization_key text, p_display_name text, p_organization_party_id uuid, p_controller_principal_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: queue_entry_operator_selections queue_entry_operator_selectio_organization_id_queue_entry__fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.provision_native_organization_root(p_organization_id uuid, p_organization_key text, p_display_name text, p_organization_party_id uuid, p_controller_principal_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.provision_native_organization_root(p_organization_id uuid, p_organization_key text, p_display_name text, p_organization_party_id uuid, p_controller_principal_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.queue_entry_operator_selections
+    ADD CONSTRAINT queue_entry_operator_selectio_organization_id_queue_entry__fkey FOREIGN KEY (organization_id, queue_entry_id) REFERENCES request_engine.queue_entries(organization_id, id);
 
 
 --
--- Name: FUNCTION provision_native_platform_owner(p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: queue_entry_operator_selections queue_entry_operator_selectio_organization_id_selected_by__fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.provision_native_platform_owner(p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.queue_entry_operator_selections
+    ADD CONSTRAINT queue_entry_operator_selectio_organization_id_selected_by__fkey FOREIGN KEY (organization_id, selected_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION provision_native_recovery_operator(p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: queue_entry_recall_holds queue_entry_recall_holds_organization_id_created_by_princi_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.provision_native_recovery_operator(p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.provision_native_recovery_operator(p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.queue_entry_recall_holds
+    ADD CONSTRAINT queue_entry_recall_holds_organization_id_created_by_princi_fkey FOREIGN KEY (organization_id, created_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION provision_native_tenant_provisioner(p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: queue_entry_recall_holds queue_entry_recall_holds_organization_id_queue_entry_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.provision_native_tenant_provisioner(p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.provision_native_tenant_provisioner(p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.queue_entry_recall_holds
+    ADD CONSTRAINT queue_entry_recall_holds_organization_id_queue_entry_id_fkey FOREIGN KEY (organization_id, queue_entry_id) REFERENCES request_engine.queue_entries(organization_id, id);
 
 
 --
--- Name: FUNCTION provision_tenant_provisioner(p_new_principal_id uuid, p_external_subject text, p_provenance_reference text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: queue_entry_skips queue_entry_skips_organization_id_consumed_by_entry_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.provision_tenant_provisioner(p_new_principal_id uuid, p_external_subject text, p_provenance_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.provision_tenant_provisioner(p_new_principal_id uuid, p_external_subject text, p_provenance_reference text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.queue_entry_skips
+    ADD CONSTRAINT queue_entry_skips_organization_id_consumed_by_entry_id_fkey FOREIGN KEY (organization_id, consumed_by_entry_id) REFERENCES request_engine.queue_entries(organization_id, id);
 
 
 --
--- Name: FUNCTION read_active_appointment_option_signing_keyring(); Type: ACL; Schema: request_platform; Owner: request_platform_definer
+-- Name: queue_entry_skips queue_entry_skips_organization_id_created_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_active_appointment_option_signing_keyring() FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.read_active_appointment_option_signing_keyring() TO request_engine_app;
+ALTER TABLE ONLY request_engine.queue_entry_skips
+    ADD CONSTRAINT queue_entry_skips_organization_id_created_by_principal_id_fkey FOREIGN KEY (organization_id, created_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION read_active_platform_runtime_configuration(p_configuration_kind text); Type: ACL; Schema: request_platform; Owner: request_platform_definer
+-- Name: queue_entry_skips queue_entry_skips_organization_id_queue_entry_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_active_platform_runtime_configuration(p_configuration_kind text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.read_active_platform_runtime_configuration(p_configuration_kind text) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_platform.read_active_platform_runtime_configuration(p_configuration_kind text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.queue_entry_skips
+    ADD CONSTRAINT queue_entry_skips_organization_id_queue_entry_id_fkey FOREIGN KEY (organization_id, queue_entry_id) REFERENCES request_engine.queue_entries(organization_id, id);
 
 
 --
--- Name: FUNCTION read_claim_readiness(p_setup_session_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: recovery_code_sets recovery_code_sets_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_claim_readiness(p_setup_session_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.read_claim_readiness(p_setup_session_id uuid) TO request_platform_control;
+ALTER TABLE ONLY request_engine.recovery_code_sets
+    ADD CONSTRAINT recovery_code_sets_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: FUNCTION read_identity_recovery_cases(p_case_id uuid, p_after uuid, p_limit integer); Type: ACL; Schema: request_platform; Owner: request_platform_definer
+-- Name: recovery_code_sets recovery_code_sets_setup_session_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_identity_recovery_cases(p_case_id uuid, p_after uuid, p_limit integer) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.recovery_code_sets
+    ADD CONSTRAINT recovery_code_sets_setup_session_id_fkey FOREIGN KEY (setup_session_id) REFERENCES request_engine.setup_sessions(id);
 
 
 --
--- Name: FUNCTION read_installation_claim(p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: recovery_codes recovery_codes_set_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_installation_claim(p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.read_installation_claim(p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.recovery_codes
+    ADD CONSTRAINT recovery_codes_set_id_fkey FOREIGN KEY (set_id) REFERENCES request_engine.recovery_code_sets(id);
 
 
 --
--- Name: FUNCTION read_installation_claim_intent_digest(p_idempotency_key_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: recovery_source_revisions recovery_source_revisions_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_installation_claim_intent_digest(p_idempotency_key_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.read_installation_claim_intent_digest(p_idempotency_key_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.recovery_source_revisions
+    ADD CONSTRAINT recovery_source_revisions_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION read_native_identities(p_identity_id uuid, p_after uuid, p_limit integer); Type: ACL; Schema: request_platform; Owner: request_platform_definer
+-- Name: recovery_source_revisions recovery_source_revisions_organization_id_service_queue_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_native_identities(p_identity_id uuid, p_after uuid, p_limit integer) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.recovery_source_revisions
+    ADD CONSTRAINT recovery_source_revisions_organization_id_service_queue_id_fkey FOREIGN KEY (organization_id, service_queue_id) REFERENCES request_engine.service_queues(organization_id, id);
 
 
 --
--- Name: FUNCTION read_platform_configuration_revisions(p_configuration_kind text); Type: ACL; Schema: request_platform; Owner: request_platform_definer
+-- Name: reminder_acknowledgements reminder_acknowledgements_organization_id_reminder_plan_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_platform_configuration_revisions(p_configuration_kind text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.reminder_acknowledgements
+    ADD CONSTRAINT reminder_acknowledgements_organization_id_reminder_plan_id_fkey FOREIGN KEY (organization_id, reminder_plan_id) REFERENCES request_engine.reminder_plans(organization_id, id);
 
 
 --
--- Name: FUNCTION read_platform_instance(); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reminder_acknowledgements reminder_acknowledgements_organization_id_subject_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_platform_instance() FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.read_platform_instance() TO request_platform_control;
+ALTER TABLE ONLY request_engine.reminder_acknowledgements
+    ADD CONSTRAINT reminder_acknowledgements_organization_id_subject_party_id_fkey FOREIGN KEY (organization_id, subject_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION read_platform_provider_candidate(p_configuration_kind text, p_revision bigint, p_capability_key text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reminder_plans reminder_plans_organization_id_subject_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_platform_provider_candidate(p_configuration_kind text, p_revision bigint, p_capability_key text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.read_platform_provider_candidate(p_configuration_kind text, p_revision bigint, p_capability_key text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.reminder_plans
+    ADD CONSTRAINT reminder_plans_organization_id_subject_party_id_fkey FOREIGN KEY (organization_id, subject_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION read_platform_provisioners(p_principal_id uuid, p_after uuid, p_limit integer); Type: ACL; Schema: request_platform; Owner: request_platform_definer
+-- Name: representations representations_organization_id_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_platform_provisioners(p_principal_id uuid, p_after uuid, p_limit integer) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.representations
+    ADD CONSTRAINT representations_organization_id_principal_id_fkey FOREIGN KEY (organization_id, principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION read_platform_readiness(); Type: ACL; Schema: request_platform; Owner: request_platform_definer
+-- Name: representations representations_organization_id_represented_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_platform_readiness() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.representations
+    ADD CONSTRAINT representations_organization_id_represented_party_id_fkey FOREIGN KEY (organization_id, represented_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION read_platform_runtime_configuration_revision(p_configuration_kind text, p_revision bigint); Type: ACL; Schema: request_platform; Owner: request_platform_definer
+-- Name: request_definition_versions request_definition_versions_organization_id_request_defini_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_platform_runtime_configuration_revision(p_configuration_kind text, p_revision bigint) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.read_platform_runtime_configuration_revision(p_configuration_kind text, p_revision bigint) TO request_engine_worker;
+ALTER TABLE ONLY request_engine.request_definition_versions
+    ADD CONSTRAINT request_definition_versions_organization_id_request_defini_fkey FOREIGN KEY (organization_id, request_definition_id) REFERENCES request_engine.request_definitions(organization_id, id);
 
 
 --
--- Name: FUNCTION read_platform_secret_binding(p_binding_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_definer
+-- Name: request_definitions request_definitions_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_platform_secret_binding(p_binding_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.request_definitions
+    ADD CONSTRAINT request_definitions_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION read_principal_authority(p_principal_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_definer
+-- Name: request_participants request_participants_organization_id_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_principal_authority(p_principal_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.request_participants
+    ADD CONSTRAINT request_participants_organization_id_party_id_fkey FOREIGN KEY (organization_id, party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION read_setup_pending_identity(p_setup_session_id uuid); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: request_participants request_participants_organization_id_request_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_setup_pending_identity(p_setup_session_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.read_setup_pending_identity(p_setup_session_id uuid) TO request_platform_control;
+ALTER TABLE ONLY request_engine.request_participants
+    ADD CONSTRAINT request_participants_organization_id_request_id_fkey FOREIGN KEY (organization_id, request_id) REFERENCES request_engine.requests(organization_id, id);
 
 
 --
--- Name: FUNCTION read_setup_session(p_token_digest bytea); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: requests requests_organization_id_recipient_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.read_setup_session(p_token_digest bytea) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.read_setup_session(p_token_digest bytea) TO request_platform_control;
+ALTER TABLE ONLY request_engine.requests
+    ADD CONSTRAINT requests_organization_id_recipient_party_id_fkey FOREIGN KEY (organization_id, recipient_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION record_platform_provider_test(p_configuration_kind text, p_revision bigint, p_expected_binding_revision bigint, p_expected_backend_version integer, p_outcome text, p_detail_code text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: requests requests_organization_id_request_definition_version_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.record_platform_provider_test(p_configuration_kind text, p_revision bigint, p_expected_binding_revision bigint, p_expected_backend_version integer, p_outcome text, p_detail_code text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.record_platform_provider_test(p_configuration_kind text, p_revision bigint, p_expected_binding_revision bigint, p_expected_backend_version integer, p_outcome text, p_detail_code text, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.requests
+    ADD CONSTRAINT requests_organization_id_request_definition_version_id_fkey FOREIGN KEY (organization_id, request_definition_version_id) REFERENCES request_engine.request_definition_versions(organization_id, id);
 
 
 --
--- Name: FUNCTION record_platform_secret_binding(p_purpose text, p_backend text, p_secret_id uuid, p_backend_version integer, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: requests requests_organization_id_requester_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.record_platform_secret_binding(p_purpose text, p_backend text, p_secret_id uuid, p_backend_version integer, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.requests
+    ADD CONSTRAINT requests_organization_id_requester_party_id_fkey FOREIGN KEY (organization_id, requester_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION renew_identity_recovery_delivery_ticket_lease(p_ticket_id uuid, p_claim_token uuid, p_extension_seconds integer); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservation_access reservation_access_organization_id_reservation_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.renew_identity_recovery_delivery_ticket_lease(p_ticket_id uuid, p_claim_token uuid, p_extension_seconds integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.renew_identity_recovery_delivery_ticket_lease(p_ticket_id uuid, p_claim_token uuid, p_extension_seconds integer) TO request_engine_worker;
+ALTER TABLE ONLY request_engine.reservation_access
+    ADD CONSTRAINT reservation_access_organization_id_reservation_id_fkey FOREIGN KEY (organization_id, reservation_id) REFERENCES request_engine.reservations(organization_id, id);
 
 
 --
--- Name: FUNCTION resolve_platform_provider_secret(p_binding_id uuid, p_capability_key text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservation_arrival_estimates reservation_arrival_estimates_organization_id_asserted_by__fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.resolve_platform_provider_secret(p_binding_id uuid, p_capability_key text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.resolve_platform_provider_secret(p_binding_id uuid, p_capability_key text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.reservation_arrival_estimates
+    ADD CONSTRAINT reservation_arrival_estimates_organization_id_asserted_by__fkey FOREIGN KEY (organization_id, asserted_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION retry_identity_recovery_delivery_ticket(p_ticket_id uuid, p_claim_token uuid, p_delay_seconds integer, p_error_class text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservation_arrival_estimates reservation_arrival_estimates_organization_id_reservation__fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.retry_identity_recovery_delivery_ticket(p_ticket_id uuid, p_claim_token uuid, p_delay_seconds integer, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.retry_identity_recovery_delivery_ticket(p_ticket_id uuid, p_claim_token uuid, p_delay_seconds integer, p_error_class text) TO request_engine_worker;
+ALTER TABLE ONLY request_engine.reservation_arrival_estimates
+    ADD CONSTRAINT reservation_arrival_estimates_organization_id_reservation__fkey FOREIGN KEY (organization_id, reservation_id) REFERENCES request_engine.reservations(organization_id, id);
 
 
 --
--- Name: FUNCTION revoke_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_reason_code text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservation_attendance reservation_attendance_organization_id_reservation_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.revoke_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_reason_code text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.revoke_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_reason_code text, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.reservation_attendance
+    ADD CONSTRAINT reservation_attendance_organization_id_reservation_id_fkey FOREIGN KEY (organization_id, reservation_id) REFERENCES request_engine.reservations(organization_id, id);
 
 
 --
--- Name: FUNCTION revoke_platform_owner_invitation(p_invitation_id uuid, p_reason_code text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservation_commercial_commitment_context_terms reservation_commercial_commi_organization_id_reservation__fkey1; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.revoke_platform_owner_invitation(p_invitation_id uuid, p_reason_code text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.revoke_platform_owner_invitation(p_invitation_id uuid, p_reason_code text, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.reservation_commercial_commitment_context_terms
+    ADD CONSTRAINT reservation_commercial_commi_organization_id_reservation__fkey1 FOREIGN KEY (organization_id, reservation_id) REFERENCES request_engine.reservation_commercial_commitments(organization_id, reservation_id);
 
 
 --
--- Name: FUNCTION revoke_platform_secret_binding(p_binding_id uuid, p_expected_revision bigint, p_expected_backend_version integer, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservation_commercial_commitment_context_terms reservation_commercial_commit_organization_id_booking_cont_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.revoke_platform_secret_binding(p_binding_id uuid, p_expected_revision bigint, p_expected_backend_version integer, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.reservation_commercial_commitment_context_terms
+    ADD CONSTRAINT reservation_commercial_commit_organization_id_booking_cont_fkey FOREIGN KEY (organization_id, booking_context_terms_id) REFERENCES request_engine.booking_context_terms(organization_id, id);
 
 
 --
--- Name: FUNCTION select_initial_controller_policy(p_policy_key text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservation_commercial_commitments reservation_commercial_commit_organization_id_offering_ver_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.select_initial_controller_policy(p_policy_key text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.select_initial_controller_policy(p_policy_key text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.reservation_commercial_commitments
+    ADD CONSTRAINT reservation_commercial_commit_organization_id_offering_ver_fkey FOREIGN KEY (organization_id, offering_version_booking_terms_id) REFERENCES request_engine.offering_version_booking_terms(organization_id, id);
 
 
 --
--- Name: FUNCTION set_setup_pending_identity(p_native_identity_id uuid, p_setup_session_id uuid, p_login_handle text, p_verifier text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservation_commercial_commitments reservation_commercial_commit_organization_id_reservation__fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.set_setup_pending_identity(p_native_identity_id uuid, p_setup_session_id uuid, p_login_handle text, p_verifier text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.set_setup_pending_identity(p_native_identity_id uuid, p_setup_session_id uuid, p_login_handle text, p_verifier text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.reservation_commercial_commitments
+    ADD CONSTRAINT reservation_commercial_commit_organization_id_reservation__fkey FOREIGN KEY (organization_id, reservation_id) REFERENCES request_engine.reservations(organization_id, id);
 
 
 --
--- Name: FUNCTION stage_platform_configuration(p_configuration_kind text, p_provider_kind text, p_configuration jsonb, p_secret_binding_id uuid, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservations reservations_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.stage_platform_configuration(p_configuration_kind text, p_provider_kind text, p_configuration jsonb, p_secret_binding_id uuid, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.stage_platform_configuration(p_configuration_kind text, p_provider_kind text, p_configuration jsonb, p_secret_binding_id uuid, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.reservations
+    ADD CONSTRAINT reservations_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION transition_native_platform_owner(p_principal_id uuid, p_action text, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservations reservations_organization_id_offering_version_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.transition_native_platform_owner(p_principal_id uuid, p_action text, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.transition_native_platform_owner(p_principal_id uuid, p_action text, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.reservations
+    ADD CONSTRAINT reservations_organization_id_offering_version_id_fkey FOREIGN KEY (organization_id, offering_version_id) REFERENCES request_engine.offering_versions(organization_id, id);
 
 
 --
--- Name: FUNCTION transition_native_platform_provisioner(p_principal_id uuid, p_action text, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservations reservations_organization_id_origin_request_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.transition_native_platform_provisioner(p_principal_id uuid, p_action text, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.transition_native_platform_provisioner(p_principal_id uuid, p_action text, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.reservations
+    ADD CONSTRAINT reservations_organization_id_origin_request_id_fkey FOREIGN KEY (organization_id, origin_request_id) REFERENCES request_engine.requests(organization_id, id);
 
 
 --
--- Name: FUNCTION validate_platform_configuration(p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reservations reservations_organization_id_subject_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.validate_platform_configuration(p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.reservations
+    ADD CONSTRAINT reservations_organization_id_subject_party_id_fkey FOREIGN KEY (organization_id, subject_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION validate_platform_configuration_provider(p_configuration_kind text, p_revision bigint, p_expected_binding_revision bigint, p_expected_backend_version integer, p_idempotency_key_digest text, p_intent_digest text); Type: ACL; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: resource_activities resource_activities_organization_id_ended_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_platform.validate_platform_configuration_provider(p_configuration_kind text, p_revision bigint, p_expected_binding_revision bigint, p_expected_backend_version integer, p_idempotency_key_digest text, p_intent_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_platform.validate_platform_configuration_provider(p_configuration_kind text, p_revision bigint, p_expected_binding_revision bigint, p_expected_backend_version integer, p_idempotency_key_digest text, p_intent_digest text) TO request_platform_control;
+ALTER TABLE ONLY request_engine.resource_activities
+    ADD CONSTRAINT resource_activities_organization_id_ended_by_principal_id_fkey FOREIGN KEY (organization_id, ended_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION integrations(p_principal_id uuid, p_after uuid, p_limit integer); Type: ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: resource_activities resource_activities_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_read.integrations(p_principal_id uuid, p_after uuid, p_limit integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_read.integrations(p_principal_id uuid, p_after uuid, p_limit integer) TO request_engine_app;
+ALTER TABLE ONLY request_engine.resource_activities
+    ADD CONSTRAINT resource_activities_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: FUNCTION recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid); Type: ACL; Schema: request_read; Owner: request_engine_schema_owner
+-- Name: resource_activities resource_activities_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_read.recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_read.recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) TO request_engine_app;
-GRANT ALL ON FUNCTION request_read.recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) TO request_engine_admin;
+ALTER TABLE ONLY request_engine.resource_activities
+    ADD CONSTRAINT resource_activities_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: TABLE outbox_messages; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_activities resource_activities_organization_id_started_by_principal_i_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.outbox_messages TO request_engine_app;
-GRANT ALL ON TABLE request_engine.outbox_messages TO request_engine_admin;
+ALTER TABLE ONLY request_engine.resource_activities
+    ADD CONSTRAINT resource_activities_organization_id_started_by_principal_i_fkey FOREIGN KEY (organization_id, started_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: TABLE provider_events; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_capabilities resource_capabilities_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.provider_events TO request_engine_app;
-GRANT ALL ON TABLE request_engine.provider_events TO request_engine_admin;
+ALTER TABLE ONLY request_engine.resource_capabilities
+    ADD CONSTRAINT resource_capabilities_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: TABLE scheduled_actions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_capability_assignments resource_capability_assignmen_organization_id_capability_i_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.scheduled_actions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.scheduled_actions TO request_engine_admin;
+ALTER TABLE ONLY request_engine.resource_capability_assignments
+    ADD CONSTRAINT resource_capability_assignmen_organization_id_capability_i_fkey FOREIGN KEY (organization_id, capability_id) REFERENCES request_engine.resource_capabilities(organization_id, id);
 
 
 --
--- Name: TABLE worker_dead_letters_v1; Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: resource_capability_assignments resource_capability_assignment_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_admin.worker_dead_letters_v1 TO request_engine_admin;
+ALTER TABLE ONLY request_engine.resource_capability_assignments
+    ADD CONSTRAINT resource_capability_assignment_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: TABLE agent_budget_windows; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_assignments resource_location_assignments_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.agent_budget_windows TO request_engine_app;
+ALTER TABLE ONLY request_engine.resource_location_assignments
+    ADD CONSTRAINT resource_location_assignments_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: TABLE agent_policies; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_assignments resource_location_assignments_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.agent_policies TO request_engine_app;
+ALTER TABLE ONLY request_engine.resource_location_assignments
+    ADD CONSTRAINT resource_location_assignments_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: TABLE agent_profiles; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_availability resource_location_availabilit_organization_id_resource_loc_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.agent_profiles TO request_engine_app;
+ALTER TABLE ONLY request_engine.resource_location_availability
+    ADD CONSTRAINT resource_location_availabilit_organization_id_resource_loc_fkey FOREIGN KEY (organization_id, resource_location_assignment_id) REFERENCES request_engine.resource_location_assignments(organization_id, id);
 
 
 --
--- Name: TABLE attendance_responses; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_schedule_exceptions resource_location_schedule_ex_organization_id_resource_loc_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.attendance_responses TO request_engine_app;
-GRANT ALL ON TABLE request_engine.attendance_responses TO request_engine_admin;
+ALTER TABLE ONLY request_engine.resource_location_schedule_exceptions
+    ADD CONSTRAINT resource_location_schedule_ex_organization_id_resource_loc_fkey FOREIGN KEY (organization_id, resource_location_assignment_id) REFERENCES request_engine.resource_location_assignments(organization_id, id);
 
 
 --
--- Name: TABLE audit_records; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_public_profiles resource_public_profiles_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.audit_records TO request_engine_app;
-GRANT ALL ON TABLE request_engine.audit_records TO request_engine_admin;
+ALTER TABLE ONLY request_engine.resource_public_profiles
+    ADD CONSTRAINT resource_public_profiles_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: TABLE booking_context_terms; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resources resources_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.booking_context_terms TO request_engine_app;
-GRANT ALL ON TABLE request_engine.booking_context_terms TO request_engine_admin;
+ALTER TABLE ONLY request_engine.resources
+    ADD CONSTRAINT resources_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: TABLE capacity_claims; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts root_binding_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.capacity_claims TO request_engine_app;
-GRANT ALL ON TABLE request_engine.capacity_claims TO request_engine_admin;
+ALTER TABLE ONLY request_engine.organization_root_provisioning_facts
+    ADD CONSTRAINT root_binding_tenant_fk FOREIGN KEY (organization_id, controller_principal_id, controller_binding_id) REFERENCES request_engine.identity_bindings(organization_id, principal_id, id);
 
 
 --
--- Name: TABLE capacity_holds; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts root_party_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.capacity_holds TO request_engine_app;
-GRANT ALL ON TABLE request_engine.capacity_holds TO request_engine_admin;
+ALTER TABLE ONLY request_engine.organization_root_provisioning_facts
+    ADD CONSTRAINT root_party_tenant_fk FOREIGN KEY (organization_id, organization_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: TABLE communication_deliveries; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts root_principal_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.communication_deliveries TO request_engine_app;
-GRANT ALL ON TABLE request_engine.communication_deliveries TO request_engine_admin;
+ALTER TABLE ONLY request_engine.organization_root_provisioning_facts
+    ADD CONSTRAINT root_principal_tenant_fk FOREIGN KEY (organization_id, controller_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: TABLE communication_escalations; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: schedule_exceptions schedule_exceptions_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT ON TABLE request_engine.communication_escalations TO request_engine_app;
-GRANT ALL ON TABLE request_engine.communication_escalations TO request_engine_admin;
+ALTER TABLE ONLY request_engine.schedule_exceptions
+    ADD CONSTRAINT schedule_exceptions_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: TABLE communication_tasks; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: scheduled_actions scheduled_actions_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.communication_tasks TO request_engine_app;
-GRANT ALL ON TABLE request_engine.communication_tasks TO request_engine_admin;
+ALTER TABLE ONLY request_engine.scheduled_actions
+    ADD CONSTRAINT scheduled_actions_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: TABLE delegations; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_classification_authority_events service_classification_authority_service_classification_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.delegations TO request_engine_app;
+ALTER TABLE ONLY request_engine.service_classification_authority_events
+    ADD CONSTRAINT service_classification_authority_service_classification_id_fkey FOREIGN KEY (service_classification_id) REFERENCES request_engine.service_classifications(id);
 
 
 --
--- Name: TABLE discovery_booking_handoffs; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_queue_intake_controls service_queue_intake_controls_organization_id_service_queu_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT ALL ON TABLE request_engine.discovery_booking_handoffs TO request_engine_admin;
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.discovery_booking_handoffs TO request_engine_discovery_definer;
+ALTER TABLE ONLY request_engine.service_queue_intake_controls
+    ADD CONSTRAINT service_queue_intake_controls_organization_id_service_queu_fkey FOREIGN KEY (organization_id, service_queue_id) REFERENCES request_engine.service_queues(organization_id, id);
 
 
 --
--- Name: TABLE discovery_publications; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_queue_intake_controls service_queue_intake_controls_organization_id_updated_by_p_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.discovery_publications TO request_engine_app;
-GRANT ALL ON TABLE request_engine.discovery_publications TO request_engine_admin;
-GRANT SELECT ON TABLE request_engine.discovery_publications TO request_engine_discovery_definer;
+ALTER TABLE ONLY request_engine.service_queue_intake_controls
+    ADD CONSTRAINT service_queue_intake_controls_organization_id_updated_by_p_fkey FOREIGN KEY (organization_id, updated_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: COLUMN discovery_publications.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_queues service_queues_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(id) ON TABLE request_engine.discovery_publications TO request_engine_discovery_definer;
+ALTER TABLE ONLY request_engine.service_queues
+    ADD CONSTRAINT service_queues_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: TABLE external_correlations; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_queues service_queues_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.external_correlations TO request_engine_app;
-GRANT ALL ON TABLE request_engine.external_correlations TO request_engine_admin;
+ALTER TABLE ONLY request_engine.service_queues
+    ADD CONSTRAINT service_queues_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: TABLE global_identities; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_queues service_queues_organization_id_offering_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.global_identities TO request_engine_admin;
+ALTER TABLE ONLY request_engine.service_queues
+    ADD CONSTRAINT service_queues_organization_id_offering_id_fkey FOREIGN KEY (organization_id, offering_id) REFERENCES request_engine.offerings(organization_id, id);
 
 
 --
--- Name: TABLE idempotency_records; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_session_interruptions service_session_interruptions_organization_id_ended_by_pri_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.idempotency_records TO request_engine_app;
-GRANT ALL ON TABLE request_engine.idempotency_records TO request_engine_admin;
+ALTER TABLE ONLY request_engine.service_session_interruptions
+    ADD CONSTRAINT service_session_interruptions_organization_id_ended_by_pri_fkey FOREIGN KEY (organization_id, ended_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: COLUMN identity_authorities.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_session_interruptions service_session_interruptions_organization_id_service_sess_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id) ON TABLE request_engine.identity_authorities TO request_bootstrap_definer;
-GRANT SELECT(id) ON TABLE request_engine.identity_authorities TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.service_session_interruptions
+    ADD CONSTRAINT service_session_interruptions_organization_id_service_sess_fkey FOREIGN KEY (organization_id, service_session_id) REFERENCES request_engine.service_sessions(organization_id, id);
 
 
 --
--- Name: COLUMN identity_authorities.kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_session_interruptions service_session_interruptions_organization_id_started_by_p_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(kind) ON TABLE request_engine.identity_authorities TO request_bootstrap_definer;
-GRANT SELECT(kind) ON TABLE request_engine.identity_authorities TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.service_session_interruptions
+    ADD CONSTRAINT service_session_interruptions_organization_id_started_by_p_fkey FOREIGN KEY (organization_id, started_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: COLUMN identity_authorities.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_sessions service_sessions_organization_id_actual_workload_classific_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(status) ON TABLE request_engine.identity_authorities TO request_bootstrap_definer;
-GRANT SELECT(status) ON TABLE request_engine.identity_authorities TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.service_sessions
+    ADD CONSTRAINT service_sessions_organization_id_actual_workload_classific_fkey FOREIGN KEY (organization_id, actual_workload_classification_id) REFERENCES request_engine.operational_workload_classifications(organization_id, id);
 
 
 --
--- Name: TABLE identity_bindings; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_sessions service_sessions_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT ON TABLE request_engine.identity_bindings TO request_engine_app;
+ALTER TABLE ONLY request_engine.service_sessions
+    ADD CONSTRAINT service_sessions_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: COLUMN identity_bindings.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_sessions service_sessions_organization_id_queue_entry_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(id) ON TABLE request_engine.identity_bindings TO request_bootstrap_definer;
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.identity_bindings TO request_platform_control_definer;
-GRANT SELECT(id) ON TABLE request_engine.identity_bindings TO request_platform_definer;
+ALTER TABLE ONLY request_engine.service_sessions
+    ADD CONSTRAINT service_sessions_organization_id_queue_entry_id_fkey FOREIGN KEY (organization_id, queue_entry_id) REFERENCES request_engine.queue_entries(organization_id, id);
 
 
 --
--- Name: COLUMN identity_bindings.organization_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_sessions service_sessions_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(organization_id),INSERT(organization_id) ON TABLE request_engine.identity_bindings TO request_platform_control_definer;
-GRANT SELECT(organization_id) ON TABLE request_engine.identity_bindings TO request_platform_definer;
+ALTER TABLE ONLY request_engine.service_sessions
+    ADD CONSTRAINT service_sessions_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: COLUMN identity_bindings.principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: setup_pending_identity setup_pending_identity_setup_session_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(principal_id) ON TABLE request_engine.identity_bindings TO request_bootstrap_definer;
-GRANT SELECT(principal_id),INSERT(principal_id) ON TABLE request_engine.identity_bindings TO request_platform_control_definer;
-GRANT SELECT(principal_id) ON TABLE request_engine.identity_bindings TO request_platform_definer;
+ALTER TABLE ONLY request_engine.setup_pending_identity
+    ADD CONSTRAINT setup_pending_identity_setup_session_id_fkey FOREIGN KEY (setup_session_id) REFERENCES request_engine.setup_sessions(id);
 
 
 --
--- Name: COLUMN identity_bindings.principal_plane; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: setup_pending_webauthn_credential setup_pending_webauthn_credential_setup_session_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(principal_plane) ON TABLE request_engine.identity_bindings TO request_bootstrap_definer;
-GRANT SELECT(principal_plane),INSERT(principal_plane) ON TABLE request_engine.identity_bindings TO request_platform_control_definer;
-GRANT SELECT(principal_plane) ON TABLE request_engine.identity_bindings TO request_platform_definer;
+ALTER TABLE ONLY request_engine.setup_pending_webauthn_credential
+    ADD CONSTRAINT setup_pending_webauthn_credential_setup_session_id_fkey FOREIGN KEY (setup_session_id) REFERENCES request_engine.setup_sessions(id);
 
 
 --
--- Name: COLUMN identity_bindings.identity_authority_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: setup_sessions setup_sessions_instance_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(identity_authority_id) ON TABLE request_engine.identity_bindings TO request_bootstrap_definer;
-GRANT SELECT(identity_authority_id),INSERT(identity_authority_id) ON TABLE request_engine.identity_bindings TO request_platform_control_definer;
-GRANT SELECT(identity_authority_id) ON TABLE request_engine.identity_bindings TO request_platform_definer;
+ALTER TABLE ONLY request_engine.setup_sessions
+    ADD CONSTRAINT setup_sessions_instance_id_fkey FOREIGN KEY (instance_id) REFERENCES request_engine.platform_instance(id);
 
 
 --
--- Name: COLUMN identity_bindings.subject_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_authority_events shared_capacity_authority_even_shared_capacity_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(subject_id) ON TABLE request_engine.identity_bindings TO request_bootstrap_definer;
-GRANT SELECT(subject_id),INSERT(subject_id) ON TABLE request_engine.identity_bindings TO request_platform_control_definer;
-GRANT SELECT(subject_id) ON TABLE request_engine.identity_bindings TO request_platform_definer;
+ALTER TABLE ONLY request_engine.shared_capacity_authority_events
+    ADD CONSTRAINT shared_capacity_authority_even_shared_capacity_identity_id_fkey FOREIGN KEY (shared_capacity_identity_id) REFERENCES request_engine.shared_capacity_identities(id);
 
 
 --
--- Name: COLUMN identity_bindings.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_authority_events shared_capacity_authority_events_global_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT INSERT(status) ON TABLE request_engine.identity_bindings TO request_bootstrap_definer;
-GRANT SELECT(status),INSERT(status),UPDATE(status) ON TABLE request_engine.identity_bindings TO request_platform_control_definer;
-GRANT SELECT(status) ON TABLE request_engine.identity_bindings TO request_platform_definer;
+ALTER TABLE ONLY request_engine.shared_capacity_authority_events
+    ADD CONSTRAINT shared_capacity_authority_events_global_identity_id_fkey FOREIGN KEY (global_identity_id) REFERENCES request_engine.global_identities(id);
 
 
 --
--- Name: COLUMN identity_bindings.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_bindings shared_capacity_bindings_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revision) ON TABLE request_engine.identity_bindings TO request_platform_definer;
-GRANT SELECT(revision),UPDATE(revision) ON TABLE request_engine.identity_bindings TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.shared_capacity_bindings
+    ADD CONSTRAINT shared_capacity_bindings_organization_id_resource_id_fkey FOREIGN KEY (organization_id, resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: COLUMN identity_bindings.revoked_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_bindings shared_capacity_bindings_shared_capacity_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT UPDATE(revoked_at) ON TABLE request_engine.identity_bindings TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.shared_capacity_bindings
+    ADD CONSTRAINT shared_capacity_bindings_shared_capacity_identity_id_fkey FOREIGN KEY (shared_capacity_identity_id) REFERENCES request_engine.shared_capacity_identities(id);
 
 
 --
--- Name: TABLE identity_exchange_candidates; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_claim_links shared_capacity_claim_links_capacity_claim_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT ALL ON TABLE request_engine.identity_exchange_candidates TO request_engine_admin;
+ALTER TABLE ONLY request_engine.shared_capacity_claim_links
+    ADD CONSTRAINT shared_capacity_claim_links_capacity_claim_id_fkey FOREIGN KEY (capacity_claim_id) REFERENCES request_engine.capacity_claims(id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_claim_links shared_capacity_claim_links_shared_capacity_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(id) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.shared_capacity_claim_links
+    ADD CONSTRAINT shared_capacity_claim_links_shared_capacity_identity_id_fkey FOREIGN KEY (shared_capacity_identity_id) REFERENCES request_engine.shared_capacity_identities(id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.target_native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_identities shared_capacity_identities_global_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(target_native_identity_id),INSERT(target_native_identity_id) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(target_native_identity_id) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.shared_capacity_identities
+    ADD CONSTRAINT shared_capacity_identities_global_identity_id_fkey FOREIGN KEY (global_identity_id) REFERENCES request_engine.global_identities(id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.requester_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_organization_id_capacity_hold_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(requester_principal_id),INSERT(requester_principal_id) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.slot_offers
+    ADD CONSTRAINT slot_offers_organization_id_capacity_hold_id_fkey FOREIGN KEY (organization_id, capacity_hold_id) REFERENCES request_engine.capacity_holds(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.approver_principal_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_organization_id_slot_opportunity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(approver_principal_id),UPDATE(approver_principal_id) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.slot_offers
+    ADD CONSTRAINT slot_offers_organization_id_slot_opportunity_id_fkey FOREIGN KEY (organization_id, slot_opportunity_id) REFERENCES request_engine.slot_opportunities(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_organization_id_waitlist_entry_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(status),INSERT(status),UPDATE(status) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(status) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.slot_offers
+    ADD CONSTRAINT slot_offers_organization_id_waitlist_entry_id_fkey FOREIGN KEY (organization_id, waitlist_entry_id) REFERENCES request_engine.waitlist_entries(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.delivery_status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_opportunities slot_opportunities_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(delivery_status),UPDATE(delivery_status) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(delivery_status) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.slot_opportunities
+    ADD CONSTRAINT slot_opportunities_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.reason_code; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_opportunities slot_opportunities_organization_id_offering_version_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(reason_code),INSERT(reason_code) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.slot_opportunities
+    ADD CONSTRAINT slot_opportunities_organization_id_offering_version_id_fkey FOREIGN KEY (organization_id, offering_version_id) REFERENCES request_engine.offering_versions(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.evidence_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_opportunities slot_opportunities_organization_id_source_reservation_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(evidence_reference),INSERT(evidence_reference) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.slot_opportunities
+    ADD CONSTRAINT slot_opportunities_organization_id_source_reservation_id_fkey FOREIGN KEY (organization_id, source_reservation_id) REFERENCES request_engine.reservations(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.delivery_destination_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_anchor_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(delivery_destination_reference),INSERT(delivery_destination_reference) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_memberships
+    ADD CONSTRAINT staff_anchor_tenant_fk FOREIGN KEY (organization_id, authority_anchor_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.recovery_intent_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_binding_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(recovery_intent_id),UPDATE(recovery_intent_id) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_memberships
+    ADD CONSTRAINT staff_binding_tenant_fk FOREIGN KEY (organization_id, principal_id, identity_binding_id) REFERENCES request_engine.identity_bindings(organization_id, principal_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.issuance_generation; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_deliveries staff_invitation_deliveries_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(issuance_generation),UPDATE(issuance_generation) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(issuance_generation) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.staff_invitation_deliveries
+    ADD CONSTRAINT staff_invitation_deliveries_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.approval_expires_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_deliveries staff_invitation_deliveries_organization_id_invitation_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(approval_expires_at),UPDATE(approval_expires_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(approval_expires_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.staff_invitation_deliveries
+    ADD CONSTRAINT staff_invitation_deliveries_organization_id_invitation_id_fkey FOREIGN KEY (organization_id, invitation_id) REFERENCES request_engine.staff_invitations(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.proof_expires_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_proposals staff_invitation_proposals_organization_id_decided_by_prin_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(proof_expires_at),UPDATE(proof_expires_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(proof_expires_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.staff_invitation_proposals
+    ADD CONSTRAINT staff_invitation_proposals_organization_id_decided_by_prin_fkey FOREIGN KEY (organization_id, decided_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_proposals staff_invitation_proposals_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revision),UPDATE(revision) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(revision) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.staff_invitation_proposals
+    ADD CONSTRAINT staff_invitation_proposals_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_proposals staff_invitation_proposals_organization_id_invitation_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(created_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.staff_invitation_proposals
+    ADD CONSTRAINT staff_invitation_proposals_organization_id_invitation_id_fkey FOREIGN KEY (organization_id, invitation_id) REFERENCES request_engine.staff_invitations(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.updated_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_proposals staff_invitation_proposals_organization_id_proposed_by_pri_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(updated_at),UPDATE(updated_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_invitation_proposals
+    ADD CONSTRAINT staff_invitation_proposals_organization_id_proposed_by_pri_fkey FOREIGN KEY (organization_id, proposed_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.approved_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations staff_invitations_accepted_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(approved_at),UPDATE(approved_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(approved_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.staff_invitations
+    ADD CONSTRAINT staff_invitations_accepted_native_identity_id_fkey FOREIGN KEY (accepted_native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.issued_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations staff_invitations_binding_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(issued_at),UPDATE(issued_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(issued_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.staff_invitations
+    ADD CONSTRAINT staff_invitations_binding_id_fkey FOREIGN KEY (binding_id) REFERENCES request_engine.identity_bindings(id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.consumed_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations staff_invitations_invited_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(consumed_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(consumed_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.staff_invitations
+    ADD CONSTRAINT staff_invitations_invited_by_principal_id_fkey FOREIGN KEY (invited_by_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.revoked_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations staff_invitations_membership_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revoked_at),UPDATE(revoked_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
-GRANT SELECT(revoked_at) ON TABLE request_engine.identity_recovery_cases TO request_platform_definer;
+ALTER TABLE ONLY request_engine.staff_invitations
+    ADD CONSTRAINT staff_invitations_membership_id_fkey FOREIGN KEY (membership_id) REFERENCES request_engine.staff_memberships(id);
 
 
 --
--- Name: COLUMN identity_recovery_cases.revoke_reason_code; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations staff_invitations_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(revoke_reason_code),UPDATE(revoke_reason_code) ON TABLE request_engine.identity_recovery_cases TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_invitations
+    ADD CONSTRAINT staff_invitations_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations staff_invitations_organization_id_invited_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_invitations
+    ADD CONSTRAINT staff_invitations_organization_id_invited_by_principal_id_fkey FOREIGN KEY (organization_id, invited_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.case_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations staff_invitations_organization_id_membership_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(case_id),INSERT(case_id) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_invitations
+    ADD CONSTRAINT staff_invitations_organization_id_membership_id_fkey FOREIGN KEY (organization_id, membership_id) REFERENCES request_engine.staff_memberships(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.generation; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations staff_invitations_organization_id_principal_id_binding_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(generation),INSERT(generation) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_invitations
+    ADD CONSTRAINT staff_invitations_organization_id_principal_id_binding_id_fkey FOREIGN KEY (organization_id, principal_id, binding_id) REFERENCES request_engine.identity_bindings(organization_id, principal_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations staff_invitations_organization_id_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(status),INSERT(status),UPDATE(status) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_invitations
+    ADD CONSTRAINT staff_invitations_organization_id_principal_id_fkey FOREIGN KEY (organization_id, principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.secret_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations staff_invitations_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(secret_reference),INSERT(secret_reference) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_invitations
+    ADD CONSTRAINT staff_invitations_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.secret_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_member_profiles staff_member_profiles_organization_id_membership_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(secret_digest),INSERT(secret_digest) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_member_profiles
+    ADD CONSTRAINT staff_member_profiles_organization_id_membership_id_fkey FOREIGN KEY (organization_id, membership_id) REFERENCES request_engine.staff_memberships(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.destination_reference; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_member_profiles staff_member_profiles_organization_id_updated_by_principal_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(destination_reference),INSERT(destination_reference) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_member_profiles
+    ADD CONSTRAINT staff_member_profiles_organization_id_updated_by_principal_fkey FOREIGN KEY (organization_id, updated_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.expires_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_memberships_authority_anchor_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(expires_at),INSERT(expires_at) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_memberships
+    ADD CONSTRAINT staff_memberships_authority_anchor_party_id_fkey FOREIGN KEY (authority_anchor_party_id) REFERENCES request_engine.parties(id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.claim_token; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_memberships_established_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(claim_token),UPDATE(claim_token) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_memberships
+    ADD CONSTRAINT staff_memberships_established_by_principal_id_fkey FOREIGN KEY (established_by_principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.lease_until; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_memberships_identity_binding_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(lease_until),UPDATE(lease_until) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_memberships
+    ADD CONSTRAINT staff_memberships_identity_binding_id_fkey FOREIGN KEY (identity_binding_id) REFERENCES request_engine.identity_bindings(id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.attempt_count; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_memberships_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(attempt_count),UPDATE(attempt_count) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_memberships
+    ADD CONSTRAINT staff_memberships_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.max_attempts; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_memberships_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(max_attempts) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_memberships
+    ADD CONSTRAINT staff_memberships_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES request_engine.principals(id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.next_attempt_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_principal_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(next_attempt_at),UPDATE(next_attempt_at) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.staff_memberships
+    ADD CONSTRAINT staff_principal_tenant_fk FOREIGN KEY (organization_id, principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.last_error_class; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: temporary_proof_cleanup_results temporary_proof_cleanup_results_work_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(last_error_class),UPDATE(last_error_class) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.temporary_proof_cleanup_results
+    ADD CONSTRAINT temporary_proof_cleanup_results_work_id_fkey FOREIGN KEY (work_id) REFERENCES request_engine.temporary_proof_cleanup_work(id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: temporary_proof_cleanup_work temporary_proof_cleanup_work_backend_id_mount_reference_ve_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(created_at) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.temporary_proof_cleanup_work
+    ADD CONSTRAINT temporary_proof_cleanup_work_backend_id_mount_reference_ve_fkey FOREIGN KEY (backend_id, mount, reference, version, created_at) REFERENCES request_engine.temporary_proof_retention_receipts(backend_id, mount, reference, version, created_at);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.updated_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: waitlist_entries waitlist_entries_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(updated_at),UPDATE(updated_at) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.waitlist_entries
+    ADD CONSTRAINT waitlist_entries_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_delivery_tickets.delivered_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: waitlist_entries waitlist_entries_organization_id_offering_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(delivered_at),UPDATE(delivered_at) ON TABLE request_engine.identity_recovery_delivery_tickets TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.waitlist_entries
+    ADD CONSTRAINT waitlist_entries_organization_id_offering_id_fkey FOREIGN KEY (organization_id, offering_id) REFERENCES request_engine.offerings(organization_id, id);
 
 
 --
--- Name: TABLE identity_recovery_issuance_reservations; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: waitlist_entries waitlist_entries_organization_id_preferred_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT DELETE ON TABLE request_engine.identity_recovery_issuance_reservations TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.waitlist_entries
+    ADD CONSTRAINT waitlist_entries_organization_id_preferred_resource_id_fkey FOREIGN KEY (organization_id, preferred_resource_id) REFERENCES request_engine.resources(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_issuance_reservations.case_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: waitlist_entries waitlist_entries_organization_id_subject_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(case_id),INSERT(case_id) ON TABLE request_engine.identity_recovery_issuance_reservations TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.waitlist_entries
+    ADD CONSTRAINT waitlist_entries_organization_id_subject_party_id_fkey FOREIGN KEY (organization_id, subject_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: COLUMN identity_recovery_issuance_reservations.generation; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: webauthn_challenges webauthn_challenges_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(generation),INSERT(generation) ON TABLE request_engine.identity_recovery_issuance_reservations TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.webauthn_challenges
+    ADD CONSTRAINT webauthn_challenges_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: COLUMN identity_recovery_issuance_reservations.idempotency_key_digest; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: webauthn_challenges webauthn_challenges_setup_session_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(idempotency_key_digest),INSERT(idempotency_key_digest) ON TABLE request_engine.identity_recovery_issuance_reservations TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.webauthn_challenges
+    ADD CONSTRAINT webauthn_challenges_setup_session_id_fkey FOREIGN KEY (setup_session_id) REFERENCES request_engine.setup_sessions(id);
 
 
 --
--- Name: COLUMN initial_controller_policies.policy_key; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: webauthn_credentials webauthn_credentials_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT(policy_key) ON TABLE request_engine.initial_controller_policies TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.webauthn_credentials
+    ADD CONSTRAINT webauthn_credentials_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
 
 
 --
--- Name: TABLE live_capacity_projection_policies; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: workload_credentials workload_credentials_workload_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.live_capacity_projection_policies TO request_engine_app;
-GRANT ALL ON TABLE request_engine.live_capacity_projection_policies TO request_engine_admin;
-
-
---
--- Name: TABLE live_capacity_workload_estimate_policies; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.live_capacity_workload_estimate_policies TO request_engine_app;
-GRANT ALL ON TABLE request_engine.live_capacity_workload_estimate_policies TO request_engine_admin;
-
-
---
--- Name: TABLE location_hours_exceptions; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.location_hours_exceptions TO request_engine_app;
-GRANT ALL ON TABLE request_engine.location_hours_exceptions TO request_engine_admin;
-
-
---
--- Name: TABLE location_operational_hours; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.location_operational_hours TO request_engine_app;
-GRANT ALL ON TABLE request_engine.location_operational_hours TO request_engine_admin;
-
-
---
--- Name: TABLE location_public_contact_endpoints; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.location_public_contact_endpoints TO request_engine_app;
-GRANT ALL ON TABLE request_engine.location_public_contact_endpoints TO request_engine_admin;
-
-
---
--- Name: TABLE locations; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.locations TO request_engine_app;
-GRANT ALL ON TABLE request_engine.locations TO request_engine_admin;
-GRANT SELECT ON TABLE request_engine.locations TO request_engine_discovery_definer;
-
-
---
--- Name: COLUMN native_credentials.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT INSERT(id) ON TABLE request_engine.native_credentials TO request_bootstrap_definer;
-GRANT INSERT(id) ON TABLE request_engine.native_credentials TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_credentials.native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT INSERT(native_identity_id) ON TABLE request_engine.native_credentials TO request_bootstrap_definer;
-GRANT SELECT(native_identity_id),INSERT(native_identity_id) ON TABLE request_engine.native_credentials TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_credentials.kind; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(kind) ON TABLE request_engine.native_credentials TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_credentials.verifier; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT INSERT(verifier) ON TABLE request_engine.native_credentials TO request_bootstrap_definer;
-GRANT INSERT(verifier) ON TABLE request_engine.native_credentials TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_credentials.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.native_credentials TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_credentials.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(revision),UPDATE(revision) ON TABLE request_engine.native_credentials TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_credentials.revoked_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(revoked_at) ON TABLE request_engine.native_credentials TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_identities.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT INSERT(id) ON TABLE request_engine.native_identities TO request_bootstrap_definer;
-GRANT SELECT(id),INSERT(id) ON TABLE request_engine.native_identities TO request_platform_control_definer;
-GRANT SELECT(id) ON TABLE request_engine.native_identities TO request_platform_definer;
-
-
---
--- Name: COLUMN native_identities.identity_authority_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT INSERT(identity_authority_id) ON TABLE request_engine.native_identities TO request_bootstrap_definer;
-GRANT SELECT(identity_authority_id),INSERT(identity_authority_id) ON TABLE request_engine.native_identities TO request_platform_control_definer;
-GRANT SELECT(identity_authority_id) ON TABLE request_engine.native_identities TO request_platform_definer;
-
-
---
--- Name: COLUMN native_identities.login_handle; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT INSERT(login_handle) ON TABLE request_engine.native_identities TO request_bootstrap_definer;
-GRANT INSERT(login_handle) ON TABLE request_engine.native_identities TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_identities.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.native_identities TO request_platform_control_definer;
-GRANT SELECT(status) ON TABLE request_engine.native_identities TO request_platform_definer;
-
-
---
--- Name: COLUMN native_identities.session_epoch; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(session_epoch),UPDATE(session_epoch) ON TABLE request_engine.native_identities TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_identities.revision; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(revision) ON TABLE request_engine.native_identities TO request_platform_definer;
-GRANT SELECT(revision),UPDATE(revision) ON TABLE request_engine.native_identities TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_identities.created_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(created_at) ON TABLE request_engine.native_identities TO request_platform_definer;
-
-
---
--- Name: COLUMN native_identities.updated_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(updated_at),UPDATE(updated_at) ON TABLE request_engine.native_identities TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_identities.disabled_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(disabled_at) ON TABLE request_engine.native_identities TO request_platform_definer;
-GRANT SELECT(disabled_at),UPDATE(disabled_at) ON TABLE request_engine.native_identities TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_recovery_intents.id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(id) ON TABLE request_engine.native_recovery_intents TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_recovery_intents.native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(native_identity_id) ON TABLE request_engine.native_recovery_intents TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_recovery_intents.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.native_recovery_intents TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_recovery_intents.revoked_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(revoked_at) ON TABLE request_engine.native_recovery_intents TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_sessions.native_identity_id; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(native_identity_id) ON TABLE request_engine.native_sessions TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_sessions.status; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT(status),UPDATE(status) ON TABLE request_engine.native_sessions TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_sessions.revoked_at; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(revoked_at) ON TABLE request_engine.native_sessions TO request_platform_control_definer;
-
-
---
--- Name: COLUMN native_sessions.revocation_reason; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT UPDATE(revocation_reason) ON TABLE request_engine.native_sessions TO request_platform_control_definer;
-
-
---
--- Name: TABLE offering_resource_requirements; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT ON TABLE request_engine.offering_resource_requirements TO request_engine_app;
-GRANT ALL ON TABLE request_engine.offering_resource_requirements TO request_engine_admin;
-
-
---
--- Name: TABLE offering_service_classifications; Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
---
-
-GRANT SELECT,INSERT,UPDATE ON TABLE request_engine.offering_service_classifications TO request_engine_app;
-GRANT ALL ON TABLE request_engine.offering_service_classifications TO request_engine_admin;
-GRANT SELECT ON TABLE request_engine.offering_service_classifications TO request_engine_discovery_definer;
-
-
---

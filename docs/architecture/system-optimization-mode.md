@@ -67,6 +67,16 @@ migrations/baseline/
 
 The accepted baseline was derived from the audited effective model, reproduced on independent PostgreSQL 18 clusters, promoted to a single Alembic root and re-proved by the normal current-product CI after the historical chain was removed.
 
+Rebaseline history:
+
+| Date | Collapsed chain | Reason | Evidence |
+|---|---|---|---|
+| 2026-09-07 | effective model at 0050 → 0001 | first pre-production effective-schema cohesion cut | `docs/audits/postgresql-schema-cohesion.md` |
+| 2026-09-28 | 0001..0094 → 0001 | canonical PostgreSQL 18 baseline promotion | PR #135, GitHub Actions run 36354361866 |
+| 2026-10-23 | 0001 + 0002..0047 → 0001 | pre-production history collapse requested by the product owner after ADR 0020 (change feed), tenant-controller v9 and the front-desk read contracts; a collapse, not a redesign (all effective objects kept) | `docs/audits/postgresql-rebaseline-0047.md` |
+
+Each completed rebaseline makes every database created from the collapsed chain non-upgradable; that is acceptable only while no customer-owned data exists, and such databases are recreated rather than migrated.
+
 From this point forward:
 
 1. `0001_initial` and `migrations/baseline/` are immutable accepted history;

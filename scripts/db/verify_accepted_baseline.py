@@ -76,7 +76,11 @@ def verify(
             f"expected={expected!r} actual={actual_model!r}"
         )
 
-    expected_roles = manifest["role_bootstrap"]["expected_roles"]
+    role_bootstrap = manifest["role_bootstrap"]
+    expected_roles = {
+        **role_bootstrap["expected_roles"],
+        **role_bootstrap.get("extension_roles", {}).get("expected_roles", {}),
+    }
     actual_roles = {
         role["role_name"]: {key: value for key, value in role.items() if key != "role_name"}
         for role in role_catalog["roles"]
@@ -89,14 +93,21 @@ def verify(
         raise RuntimeError("accepted baseline role settings drifted")
 
     nonempty = {name: analysis.get(name) for name in _EMPTY_ANALYZER_FINDINGS if analysis.get(name)}
-    if nonempty:
-        raise RuntimeError(f"accepted baseline cohesion findings are no longer empty: {nonempty!r}")
+    # A rebaseline is a history collapse, not a redesign: findings present in the
+    # audited source head are recorded explicitly in the manifest and must match
+    # exactly (a new finding or a silently vanished one both fail).
+    accepted = manifest.get("accepted_analyzer_findings", {})
+    if nonempty != accepted:
+        raise RuntimeError(
+            "accepted baseline cohesion findings drifted: "
+            f"expected={accepted!r} actual={nonempty!r}"
+        )
 
     return {
         "schema_equivalent": True,
         "role_equivalent": True,
         "effective_model": actual_model,
-        "analyzer_anomalies": {},
+        "analyzer_anomalies": nonempty,
         "baseline_revision": "0001_initial",
     }
 

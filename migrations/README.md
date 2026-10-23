@@ -19,7 +19,9 @@ migrations/baseline/          immutable payload for accepted 0001_initial
 migrations/sql/design_chain/  historical V2 design proof still required by CI
 ```
 
-`migrations/versions/0001_initial.py` is the accepted pre-production baseline. It bootstraps the ten audited Request Engine/platform bootstrap roles and installs the checksummed PostgreSQL 18 schema payload from `migrations/baseline/`.
+`migrations/versions/0001_initial.py` is the accepted pre-production baseline. It bootstraps the ten audited Request Engine/platform bootstrap roles (exact topology, no memberships), ensures the seven audited extension roles with their historical fail-closed ensure blocks, installs the checksummed PostgreSQL 18 schema payload from `migrations/baseline/` and then runs the post-install extension-role audit.
+
+The current baseline was promoted by the **2026-10-23 rebaseline**, which collapsed the former `0001_initial` + `0002..0047` chain (historical head `0047_reservation_calendar_read`). See `docs/audits/postgresql-rebaseline-0047.md` for the effective-schema audit, object disposition and the clean-cluster reproduction proof.
 
 The baseline is **history now, not a mutable schema template**. Future product changes append `0002+` revisions. Do not regenerate or edit `0001_initial` or `migrations/baseline/` merely because current HEAD evolves.
 
@@ -35,29 +37,31 @@ Those contracts must not be collapsed into `HEAD == 0001`. A reviewed `0002+` is
 The accepted baseline model recorded in `migrations/baseline/manifest.json` is:
 
 ```text
-151 relations = 142 tables + 9 views
-1,654 columns
-2,441 validated constraints
-404 indexes
-325 routines
-208 triggers
-96 RLS policies
-10 Request Engine/platform bootstrap roles
+164 relations = 153 tables + 11 views
+1,820 columns
+2,673 validated constraints
+442 indexes
+376 routines
+218 triggers
+118 RLS policies
+17 roles = 10 bootstrap roles + 7 extension roles
 0 role memberships
-677 column grants
+819 column grants
 ```
 
 These counts describe the accepted `0001` checkpoint. They are **not ratchets for current HEAD**. Current product counts may change through legitimate migrations; baseline-integrity proof remains pinned to the historical baseline.
 
-Current cluster role extensions are separately audited, not baseline rewrites.
-`0020_retention_recorder_role` evolves the dedicated append-only recorder to
-`request_retention_recorder`, with a closed extension namespace and strict
-attributes, membership and local ACL inventory. Upgrade the existing database
-through this revision before installing another database in the same cluster.
-The migration preserves the original group OID or converges only an empty,
-dependency-free legacy group created by unchanged `0013`. See
-`docs/architecture/temporary-proof-cleanup-inventory-proposal.md` for fail-closed
-rollout and multi-database acceptance requirements.
+Cluster role extensions keep their own audited semantics inside the baseline.
+`migrations/baseline/0001_extension_roles.sql` holds the historical ensure blocks of
+`request_retention_recorder`, `request_proof_cleanup_worker`,
+`request_webauthn_retention[_definer]`, `request_http_admission_definer` and
+`request_operator_metrics[_definer]`: each creates its closed-namespace NOLOGIN group
+only when missing and fails closed on unsafe attributes, memberships or pre-existing
+local ACLs (these groups may legitimately have isolated LOGIN members, so they are not
+held to the bootstrap roles' empty-membership contract). The recorder's exact ACL
+inventory and the WebAuthn dependent-foreign-key check run after the schema from
+`0001_post_install_audit.sql`. A cluster that still holds the legacy
+`request_engine_retention_recorder` group predates the rebaseline and must be reset.
 
 Fresh-install identity is intentionally **not** a literal part of the checkpoint: `platform_instance.id`, the two built-in authority UUIDs and their creation timestamps are generated anew on every installation. Seed-state evidence normalizes only those fields, and CI proves two clean installs do not reuse the same installation UUIDs.
 
@@ -65,7 +69,9 @@ Fresh-install identity is intentionally **not** a literal part of the checkpoint
 
 `migrations/sql/design_chain/` is retained because the repository's V2 design-history status check still executes it through `scripts/db/apply_design_chain.sh`. It is not the current schema source of truth.
 
-The old V3 payloads, candidate SQL, feature-step helper modules and the certified pre-rebaseline 0002..0094 chain are intentionally absent from current HEAD. Their provenance remains in Git history and in GitHub Actions run 36354361866; keeping dead executable migration machinery beside the accepted baseline would create a false second authority.
+The old V3 payloads, candidate SQL, feature-step helper modules, the certified pre-rebaseline 0002..0094 chain (GitHub Actions run 36354361866) and the 0002..0047 chain collapsed on 2026-10-23 (last present at commit `afbbe397681732399702aad34da917e15d503018`) are intentionally absent from current HEAD. Their provenance remains in Git history; keeping dead executable migration machinery beside the accepted baseline would create a false second authority.
+
+Existing databases created from a collapsed chain cannot upgrade across a rebaseline: their recorded revision no longer exists. Recreate them (local stack: `scripts/dev/local_stack.ps1 down --volumes`, then `up`).
 
 ## Schema-change discipline
 

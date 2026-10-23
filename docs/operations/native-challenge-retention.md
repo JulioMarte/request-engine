@@ -4,7 +4,7 @@ WebAuthn challenges contain only a digest plus ceremony scope and timestamps.
 The retention pass removes rows that can no longer authorize an operation. It
 never deletes credentials, native sessions, audit/security facts or secrets.
 
-Migration `0037_webauthn_retention` installs the bounded
+The accepted `0001_initial` baseline (historically migration `0037_webauthn_retention`) installs the bounded
 `request_auth.delete_retained_webauthn_challenges(integer, integer)` function.
 The default retention is seven days after the later of expiry and consumption;
 the minimum is 24 hours and the maximum is 90 days. Expired-but-still-pending

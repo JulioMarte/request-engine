@@ -18,6 +18,8 @@ def test_accepted_baseline_surface_is_canonical_and_transitional_surfaces_are_go
     assert (baseline / "manifest.json").is_file()
     assert (baseline / "loader.py").is_file()
     assert (baseline / "0001_roles.sql").is_file()
+    assert (baseline / "0001_extension_roles.sql").is_file()
+    assert (baseline / "0001_post_install_audit.sql").is_file()
     assert (baseline / "seed-data-catalog.json").is_file()
     assert list(baseline.glob("0001_schema.*.sql"))
 
@@ -45,6 +47,9 @@ def test_baseline_integrity_proof_does_not_freeze_current_head_to_0001() -> None
         "prove_rebaseline_reproduction.sh",
         "prove_rebaseline_single_alembic.sh",
         "render_role_bootstrap.py",
+        "build_rebaseline_0047_candidate.py",
+        "extract_rebaseline_0047_extension_roles.py",
+        "write_rebaseline_0047_manifest.py",
     )
     assert all(not (ROOT / "scripts" / "db" / name).exists() for name in retired)
 
@@ -58,6 +63,10 @@ def test_baseline_does_not_freeze_proof_database_installation_identity() -> None
         "63b59f87-62b8-499c-bb75-fa63e01ae520",
         "8b2ea2d3-acb2-4442-9709-bff751a31350",
         "9e915fcf-775e-4836-8ea3-23119ec9afc3",
+        # 0047 rebaseline source cluster (platform instance, native, workload).
+        "bbef0531-d62f-4eae-9527-95619c4ae30c",
+        "e3b30a25-6e55-4543-822b-fa50c92f08ea",
+        "d5dda585-73c3-4ebb-a6dd-d61e7c30b675",
     ):
         assert frozen not in schema
 

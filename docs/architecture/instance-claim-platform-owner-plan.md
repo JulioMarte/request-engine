@@ -12,6 +12,14 @@ administrative actions through the same API operations projected by the console.
 Explicit password-based recovery completion is bound to its session and epoch,
 and requires a fresh ordinary sign-in afterwards. Historical migration numbers
 and delivery checkpoints below are provenance, not the current Alembic head.
+Since the 2026-10-23 rebaseline (`docs/audits/postgresql-rebaseline-0047.md`) the
+WebAuthn, instance-claim and Platform Owner schema — including the former
+`0002`/`0034`/`0036`/`0037` WebAuthn revisions and the extension roles
+`request_webauthn_retention[_definer]` — is installed by the accepted
+`0001_initial` baseline. The populated-upgrade proof for legacy pre-binding
+passkeys became historical with it; discoverable login stays proven by
+`tests/db/test_webauthn_persistence.py` and `tests/e2e/test_native_webauthn_login_http.py`,
+and the shared-role ACL guard by `tests/db/test_webauthn_challenge_retention.py`.
 
 The reference software-authenticator runner keeps Python `3.13-slim` and the
 same isolated TCP/WebAuthn claim journey. Its base image is now Docker's

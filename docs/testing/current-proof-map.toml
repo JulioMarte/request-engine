@@ -498,11 +498,6 @@ path = "tests/integration/f1_operational_profile/test_configuration_command_auth
 evidence = ["invariant", "adversarial", "security"]
 
 [[proofs]]
-guarantee = "INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001"
-path = "tests/db/test_webauthn_populated_upgrade.py"
-evidence = ["invariant", "adversarial", "security", "provenance"]
-
-[[proofs]]
 guarantee = "INV-WEBAUTHN-CHALLENGE-RETENTION-001"
 path = "tests/db/test_webauthn_challenge_retention.py"
 evidence = ["invariant", "adversarial", "security"]

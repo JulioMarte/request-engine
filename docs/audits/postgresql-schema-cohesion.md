@@ -1,6 +1,6 @@
 # PostgreSQL schema cohesion audit
 
-Status: **closed — rebaseline accepted and installed**.
+Status: **closed — rebaseline accepted and installed**. Historical for current counts: the 2026-10-23 history collapse (`postgresql-rebaseline-0047.md`) is the current baseline audit.
 
 This audit classified the effective PostgreSQL model for the product Request Engine actually implements, removed unsupported pre-launch compatibility state, proved the resulting model from clean PostgreSQL 18 clusters, and then replaced the historical Alembic chain with the accepted `0001_initial` baseline.
 
