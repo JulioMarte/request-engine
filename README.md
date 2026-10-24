@@ -50,6 +50,7 @@ src/request_engine/
 ├── platform/        # technical cross-cutting mechanics
 └── modules/
     ├── tenancy/
+    ├── platform_configuration/
     ├── catalog/
     ├── requests/
     ├── booking/
@@ -60,11 +61,10 @@ src/request_engine/
     ├── live_capacity/
     ├── operational_recovery/
     ├── operational_copilot/
-    ├── payments/             # deferred/incubating
-    └── dispatch/             # deferred/incubating
+    └── onboarding/
 ```
 
-`operational_copilot` is a historical module name for the bounded typed operational-tool/admission boundary; it is not an embedded conversational/LLM runtime. `payments` and `dispatch` remain deferred/incubating until a concrete accepted capability establishes ownership.
+`operational_copilot` is a historical module name for the bounded typed operational-tool/admission boundary; it is not an embedded conversational/LLM runtime. `payments` and `dispatch` are future product areas, not current Python modules; they need a concrete accepted capability before establishing ownership.
 
 See `docs/09-python-module-architecture.md`, `docs/10-module-ownership-map.md`, `docs/13-connection-surfaces.md` and `docs/14-architecture-fitness-functions.md` for normative architecture.
 
@@ -136,15 +136,18 @@ Executable schema evolution lives in:
 migrations/versions/       current Alembic line
 ```
 
-Historical/provenance surfaces currently include:
+Current baseline and retained historical evidence:
 
 ```text
-migrations/sql/design_chain/   V2 design history
-migrations/sql/v3_candidate/   V3 release-candidate provenance
-migrations/f2_steps/           preserved feature-development SQL provenance/support
+migrations/baseline/           checksummed current 0001 payload
+migrations/sql/design_chain/   retained V2 design-history proof
 ```
 
-Those historical paths are not current schema authority merely because they remain in the working tree.
+The retired V3 candidate/feature-step payloads and collapsed revision chains remain
+in Git history, not as a second executable schema authority. The 2026-10-23
+pre-production rebaseline and parallel-install procedure are documented in
+`docs/audits/postgresql-rebaseline-0047.md`. Existing development data is not
+migrated or discarded by replacing the code.
 
 Current CI requires exactly one repository Alembic head and upgrades a clean PostgreSQL 18 database to that head. Do not hardcode one old revision in documentation as timeless current truth.
 

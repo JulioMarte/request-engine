@@ -1,113 +1,128 @@
 {
   "schema_version": 1,
   "source": {
-    "branch": "feature/rebaseline-0094",
-    "head_sha": "3e938a888e576919b5b75f449fe86014b5cbd7f9",
-    "ci_run_number": 17,
-    "ci_run_id": 36354361866,
+    "branch": "tmp/rebaseline-0047",
+    "head_sha": "afbbe397681732399702aad34da917e15d503018",
     "postgresql_version": "18.6",
     "pg_dump_version": "pg_dump (PostgreSQL) 18.6 (Debian 18.6-1.pgdg13+2)",
-    "source_alembic_head": "0094_managed_oidc_readiness"
+    "source_alembic_head": "0047_reservation_calendar_read",
+    "collapsed_history": "0001_initial(0094 baseline)+0002..0047",
+    "rebaseline_date": "2026-10-23"
   },
   "schema_payload": {
-    "bytes": 1779614,
-    "sha256": "4ca49de594e06cac8a1af94738dcc83b792540efa76226397290e0187d793b01",
+    "bytes": 2071156,
+    "sha256": "53592797b4947f5a14dd1d769f6e8709b0c066867ab551850d99e9190d589db1",
     "materialized_parts": [
       {
         "path": "0001_schema.01.sql",
-        "bytes": 119996,
-        "sha256": "fa69d8483fe2203721cedc31bcf8d39237f7517df5a8811947cb4d816294047d"
+        "bytes": 119715,
+        "sha256": "260f4474980e19895f89b87a8ccd445a1dafd435fee848a16f3c9e59027524bd"
       },
       {
         "path": "0001_schema.02.sql",
-        "bytes": 119983,
-        "sha256": "b4e9318978df418a2836b1dd30f68b2d773e4683f096283aa6086fb9f6889e52"
+        "bytes": 119999,
+        "sha256": "b37a5c262998a8ac474da72223620e1c98348a7f2effba7937a2c0877847d192"
       },
       {
         "path": "0001_schema.03.sql",
-        "bytes": 119998,
-        "sha256": "1392ba665c06a290b070036b772bfca10e985c8110879d8e839d6aaed84efcfd"
+        "bytes": 119976,
+        "sha256": "898a8616647e1c0037a6c7641c8f0526dc9fb86b4183fec84d0efb772c4f13f7"
       },
       {
         "path": "0001_schema.04.sql",
-        "bytes": 119999,
-        "sha256": "813b27b73f162c52793da72e8424af4169ec198fc6ac0b9a00f01326e9dbdfe0"
+        "bytes": 119968,
+        "sha256": "479feab11b592816a007b4a31fece21dc53d2b7416ddf3d571b85b1a6765ddc7"
       },
       {
         "path": "0001_schema.05.sql",
-        "bytes": 119990,
-        "sha256": "be8194cb51af9084618d3353598e4b93f844e9d5da83b4a85dc7023df21013d6"
+        "bytes": 119998,
+        "sha256": "6a001c3f852268c0d66d41f03c8e6bf60b5eb63a25fce9a46cc101b4fb950cb0"
       },
       {
         "path": "0001_schema.06.sql",
-        "bytes": 119985,
-        "sha256": "70fc1de6c59c66301fdf94c6ce259197f978e5824657765e31e6cf30da81d073"
+        "bytes": 119914,
+        "sha256": "0dd4bc03c20fdc1b8dbf2a7abd977753b7a475c7cbb9e6f8b2bd6c5b70271c11"
       },
       {
         "path": "0001_schema.07.sql",
-        "bytes": 119913,
-        "sha256": "bfc73fa64bec29485602946f63c73dcbf55ab39119a3284c840f0f9c8887f8d0"
+        "bytes": 119981,
+        "sha256": "4014862836c6a8ff032f0786e210125beb563a8062d8314d1e512f2bc0e23601"
       },
       {
         "path": "0001_schema.08.sql",
-        "bytes": 119948,
-        "sha256": "44289fa5bea0395d90445f8287ad99bd10439b09efca786cbeb51160dcaefa73"
+        "bytes": 119992,
+        "sha256": "b818a79be3bbc3707a40b4ccbf2bb987ad90d4745a187e900f6c1097d3a9a5d9"
       },
       {
         "path": "0001_schema.09.sql",
-        "bytes": 119951,
-        "sha256": "c20bffcf256281057a863aa6d64377e65efb69c8c36290246f5d470fb3862545"
+        "bytes": 119978,
+        "sha256": "2fea55fb4e590d470f6f98680aded2febd60918226a5b89af8e1aee4509ffa4f"
       },
       {
         "path": "0001_schema.10.sql",
-        "bytes": 120034,
-        "sha256": "b2a61e4eb8e8e2dfe07425e434f6605e514e2677cef6cb81193cb78d59dcdf09"
+        "bytes": 119976,
+        "sha256": "75092617f4935a63bc1889ed53b16b840281a61f3550554ee6a87727ce15c24b"
       },
       {
         "path": "0001_schema.11.sql",
-        "bytes": 119981,
-        "sha256": "5417b43abb5e12f7434681e8579589b57710d02ae42737b89141a49a8d1475ab"
+        "bytes": 119946,
+        "sha256": "691bd6ab5e6d044fdd56c170ef326f6b6dc04aacf1b27abe3f5ab655c73daff7"
       },
       {
         "path": "0001_schema.12.sql",
-        "bytes": 119971,
-        "sha256": "439278566a5a4e74d276b9124eb18ed7f54a902f8dc0a1b5c8aa88c78ebf7ec3"
+        "bytes": 119914,
+        "sha256": "8e7a200d8b5b4692894207c2c9ef99e8ceb5e847e721b8dad7ea66dcb72215f7"
       },
       {
         "path": "0001_schema.13.sql",
-        "bytes": 119943,
-        "sha256": "f9f58542e067963557d7856bac6ba8e274e58a7587539a4b63d275a406a149ec"
+        "bytes": 119985,
+        "sha256": "ba05c500bde44f801048c4f1c122b1371080fb1fe7b496054bf18e0a4f9351a1"
       },
       {
         "path": "0001_schema.14.sql",
-        "bytes": 119946,
-        "sha256": "927d3c4c8465f1cad43acc19eaf87dd5ebb4fe4accb6976a343d36142d8bac92"
+        "bytes": 119952,
+        "sha256": "b658f86a955a8968fc2245af24996f58cc48731425c90302fd41ff8f0bd4d2b1"
       },
       {
         "path": "0001_schema.15.sql",
-        "bytes": 99976,
-        "sha256": "fef433056d5858409d348e45c384317a2a528b2efac020ad43ee5bf19ba0bdf6"
+        "bytes": 119961,
+        "sha256": "e15106e412e78abfbd9b540eaa20e3e25b3a3cd78d79f97d76d388ed17596aba"
+      },
+      {
+        "path": "0001_schema.16.sql",
+        "bytes": 119939,
+        "sha256": "a8df8c4636ae6288c40e1984389c5632124d7de5c0f9ec528193a37f9e28e23a"
+      },
+      {
+        "path": "0001_schema.17.sql",
+        "bytes": 119975,
+        "sha256": "d51c052cd6ac73ab52383f68187010c2cfe95638c91995ef2707f0f5d37bdbd6"
+      },
+      {
+        "path": "0001_schema.18.sql",
+        "bytes": 31987,
+        "sha256": "73a20f6f1f64f1977ed3b9b1ce5d688709b268e9ffa694590ac33c159a4d61e1"
       }
     ],
     "source_artifact": {
-      "name": "rebaseline-0094-candidate-v2/0001_schema.sql",
-      "bytes": 1779489,
-      "sha256": "66daabe2f565153f736c6802f895cfe311f99d84652b6349833041caf2424849"
+      "name": "rebaseline-0047/source-full-dump.sql",
+      "bytes": 2071108,
+      "sha256": "26946d93ba757eebcd0d6118702321614f75cd011cf2ae046ceb97646e6f23a6"
     },
     "canonicalization": {
       "reason": "installation-local identity must be generated independently for every fresh installation",
       "changes": [
         "built-in native/workload identity-authority UUIDs use table defaults instead of copied source values",
         "platform_instance references the freshly generated built-in authorities",
-        "installation-local creation timestamps use PostgreSQL defaults instead of copied source timestamps"
+        "installation-local creation timestamps use PostgreSQL defaults instead of copied source timestamps",
+        "COMMENT ON EXTENSION is omitted because CREATE EXTENSION recreates the extension's own comment",
+        "four leftmost length(x) >= a AND length(x) <= b CHECK conjuncts are restored to their original BETWEEN source form so replay reproduces the exact stored expression tree"
       ],
       "ddl_changed": false,
-      "canonical_payload_bytes": 1779614,
-      "canonical_payload_sha256": "4ca49de594e06cac8a1af94738dcc83b792540efa76226397290e0187d793b01"
+      "schema_only_pg_dump_byte_identical_to_source": true
     }
   },
   "role_bootstrap": {
-    "source_artifact_name": "rebaseline-0094-candidate-v2/0001_roles.sql",
     "path": "0001_roles.sql",
     "bytes": 1549,
     "sha256": "82fc350878ddfe46e6874810d4584c72dc5183243c022575b4fdad79fbaacdb9",
@@ -234,17 +249,113 @@
       }
     },
     "role_memberships": [],
-    "role_settings": []
+    "role_settings": [],
+    "extension_roles": {
+      "path": "0001_extension_roles.sql",
+      "bytes": 19863,
+      "sha256": "b9ba77ed4be9712d185b78926d7fa2af789288be91498412d956b8b7fc15c7a1",
+      "expected_roles": {
+        "request_http_admission_definer": {
+          "bypass_rls": false,
+          "can_login": false,
+          "connection_limit": -1,
+          "create_db": false,
+          "create_role": false,
+          "has_password": false,
+          "inherit": true,
+          "replication": false,
+          "superuser": false,
+          "valid_until": null
+        },
+        "request_operator_metrics": {
+          "bypass_rls": false,
+          "can_login": false,
+          "connection_limit": -1,
+          "create_db": false,
+          "create_role": false,
+          "has_password": false,
+          "inherit": false,
+          "replication": false,
+          "superuser": false,
+          "valid_until": null
+        },
+        "request_operator_metrics_definer": {
+          "bypass_rls": false,
+          "can_login": false,
+          "connection_limit": -1,
+          "create_db": false,
+          "create_role": false,
+          "has_password": false,
+          "inherit": false,
+          "replication": false,
+          "superuser": false,
+          "valid_until": null
+        },
+        "request_proof_cleanup_worker": {
+          "bypass_rls": false,
+          "can_login": false,
+          "connection_limit": -1,
+          "create_db": false,
+          "create_role": false,
+          "has_password": false,
+          "inherit": true,
+          "replication": false,
+          "superuser": false,
+          "valid_until": null
+        },
+        "request_retention_recorder": {
+          "bypass_rls": false,
+          "can_login": false,
+          "connection_limit": -1,
+          "create_db": false,
+          "create_role": false,
+          "has_password": false,
+          "inherit": true,
+          "replication": false,
+          "superuser": false,
+          "valid_until": null
+        },
+        "request_webauthn_retention": {
+          "bypass_rls": false,
+          "can_login": false,
+          "connection_limit": -1,
+          "create_db": false,
+          "create_role": false,
+          "has_password": false,
+          "inherit": true,
+          "replication": false,
+          "superuser": false,
+          "valid_until": null
+        },
+        "request_webauthn_retention_definer": {
+          "bypass_rls": false,
+          "can_login": false,
+          "connection_limit": -1,
+          "create_db": false,
+          "create_role": false,
+          "has_password": false,
+          "inherit": true,
+          "replication": false,
+          "superuser": false,
+          "valid_until": null
+        }
+      }
+    },
+    "post_install_audit": {
+      "path": "0001_post_install_audit.sql",
+      "bytes": 3986,
+      "sha256": "332f4736781d3ed4cfc6e37a61f412a6659f438d211bd051603302646fb25e24"
+    }
   },
   "seed_data": {
     "path": "seed-data-catalog.json",
-    "bytes": 40056,
-    "sha256": "cebf4efcc8100d9f89d6cd85e1e91e3732e50734afc4730cdbeb2d1dc99af74a",
+    "bytes": 66442,
+    "sha256": "543d0c062c85fb2ed5b2674aa8b0113a6f734fefc378bedee0518f0f6d822818",
     "counts": {
-      "nonempty_tables": 4,
-      "rows": 11,
+      "nonempty_tables": 5,
+      "rows": 18,
       "sequences": 0,
-      "tables": 142
+      "tables": 153
     },
     "representation": "semantic-normalized",
     "normalized_fresh_install_fields": [
@@ -253,48 +364,36 @@
       "request_engine.platform_instance.id",
       "request_engine.platform_instance.created_at",
       "request_engine.platform_instance built-in authority foreign keys"
-    ],
-    "source_artifact": {
-      "name": "rebaseline-0094-candidate-v2/source-seed-data-catalog.json",
-      "bytes": 40115,
-      "sha256": "8a71a29e7be3038b112db99dd6b69a0c4b7386858227ded86f816cc918d4c7f6"
-    },
-    "canonicalization": {
-      "raw_byte_identical_to_source_artifact": false,
-      "semantic_equivalence_after_installation_identity_normalization": true
-    }
+    ]
   },
   "effective_model": {
-    "relations": 151,
-    "tables": 142,
-    "views": 9,
-    "columns": 1654,
-    "constraints": 2441,
-    "indexes": 404,
-    "routines": 325,
-    "triggers": 208,
-    "policies": 96,
-    "roles": 10,
+    "relations": 164,
+    "tables": 153,
+    "views": 11,
+    "columns": 1820,
+    "constraints": 2673,
+    "indexes": 442,
+    "routines": 376,
+    "triggers": 218,
+    "policies": 118,
+    "roles": 17,
     "role_memberships": 0,
-    "column_grants": 677
+    "column_grants": 819
+  },
+  "accepted_analyzer_findings": {
+    "exact_index_definition_duplicates": [
+      [
+        "request_engine.staff_memberships.staff_memberships_org_id_unique",
+        "request_engine.staff_memberships.staff_memberships_org_id_uq"
+      ]
+    ]
+  },
+  "accepted_analyzer_findings_disposition": {
+    "exact_index_definition_duplicates": "KEEP in the collapse: staff_memberships_org_id_unique (historical 0011) duplicates staff_memberships_org_id_uq (historical 0009); both foreign keys use _uq. Removal is ordinary 0002+ schema evolution, not part of a history collapse."
   },
   "proof": {
-    "historical_chain_to_0094": true,
-    "candidate_schema_equivalent": true,
-    "candidate_roles_equivalent": true,
-    "candidate_seed_data_equivalent": true,
-    "candidate_exact_ddl_equivalent": true,
-    "clean_postgresql18_install_equivalent": true,
-    "clean_seed_data_equivalent": true,
-    "clean_exact_ddl_equivalent": true,
-    "ci_run_id": 36354361866,
-    "ci_run_number": 17,
-    "proof_head_sha": "3e938a888e576919b5b75f449fe86014b5cbd7f9",
-    "schema_comparison_first_difference": null,
-    "canonical_payload_byte_identical_to_candidate": false,
-    "canonical_ddl_equivalent_to_candidate": true,
-    "canonical_seed_data_semantically_equivalent": true,
-    "canonical_installation_identity_unique": true
+    "historical_chain_to_0047": true,
+    "independent_clean_cluster_reproduction": "docs/audits/postgresql-rebaseline-0047.md"
   },
   "installation_identity": {
     "generated_per_fresh_install": true,

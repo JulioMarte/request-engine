@@ -65,7 +65,25 @@ migrations/versions/0001_initial.py
 migrations/baseline/
 ```
 
-The accepted baseline was derived from the audited effective model, reproduced on independent PostgreSQL 18 clusters, promoted to a single Alembic root and re-proved by the normal current-product CI after the historical chain was removed.
+The baseline is derived from the audited effective model and reproduced on
+independent PostgreSQL 18 clusters. The 2026-10-23 replacement is integrated in
+the local worktree; its executed validation and remaining exact-head CI limits
+are recorded in `docs/audits/postgresql-rebaseline-0047.md`. Earlier CI evidence
+does not certify a later replacement payload.
+
+Rebaseline history:
+
+| Date | Collapsed chain | Reason | Evidence |
+|---|---|---|---|
+| 2026-09-07 | effective model at 0050 → 0001 | first pre-production effective-schema cohesion cut | `docs/audits/postgresql-schema-cohesion.md` |
+| 2026-09-28 | 0001..0094 → 0001 | canonical PostgreSQL 18 baseline promotion | PR #135, GitHub Actions run 36354361866 |
+| 2026-10-23 | 0001 + 0002..0047 → 0001 | pre-production history collapse requested by the product owner after ADR 0020 (change feed), tenant-controller v9 and the front-desk read contracts; a collapse, not a redesign (all effective objects kept) | `docs/audits/postgresql-rebaseline-0047.md` |
+
+Each completed rebaseline removes the automatic upgrade path from the collapsed
+chain. This code operation never implies permission to delete an existing local
+database. Preserve old projects/volumes and validate a parallel clean installation;
+data retention or transfer is a separate explicit decision. Customer-owned data
+requires a migration/cutover project under the permanent evolution policy.
 
 From this point forward:
 

@@ -11,11 +11,12 @@
 > recorded consent only) and v1-v8→v9.
 > Immutable v1–v6 remain historical authority manifests, not rewritten defaults.
 
-Current migration: `0040_tenant_controller_v7` appends v7 after
-`0039_operator_metrics_projection`. The accepted `0021_tenant_controller_v6`
-manifest remains unchanged. Historical 0036/0037/0038/0053 labels below are
-provenance from the pre-rebaseline design chain, not current Alembic revisions
-or current release certification. Exact-head CI remains authoritative.
+Schema authority: the immutable v1–v9 manifests are seed rows of the accepted
+`0001_initial` baseline (2026-10-23 rebaseline, `docs/audits/postgresql-rebaseline-0047.md`).
+Revision labels below (0021, 0039, 0040, 0043, 0044 and the older
+0036/0037/0038/0053) are provenance from collapsed migration chains, not current
+Alembic revisions or current release certification. Exact-head CI remains
+authoritative.
 Owner: Tenancy. Scope: new native organizations created by the private owner command.
 This does not define a core administrator role or make platform authority tenant authority.
 
@@ -230,10 +231,11 @@ Apply accepts only v1-v5 to v6 or v1-v6 to v7. V7 self-adoption is rejected.
 
 Local PostgreSQL 18.6 evidence covers immutable v6/v7 manifests, fresh v7
 provisioning, revocation-safe replay, all six legacy source policies, existing
-native-auth adoption and physical populated 0039-to-head transition preserving
-old authority and applying an original v6 consent. The populated transition
-executes restricted database primitives; it does not prove WebAuthn admission.
-Exact-head CI and deployed schema/application compatibility remain separate.
+native-auth adoption and (until the 2026-10-23 rebaseline removed its subject)
+a physical populated 0039-to-head transition preserving old authority and
+applying an original v6 consent. That populated-upgrade proof is historical: no
+pre-rebaseline database can upgrade into the current baseline. Exact-head CI and
+deployed schema/application compatibility remain separate.
 
 
 ## v9 front-desk authority (migration 0044)
@@ -267,6 +269,7 @@ widens both adoption target constraints to v6-v9 and re-creates the consent/appl
 definer functions through unique anchors; pending consent keeps its recorded
 target. No existing principal, grant, root fact or consent is changed by the
 migration. Proof: `tests/db/test_initial_controller_policy.py`,
-`tests/db/test_tenant_controller_v9_populated_upgrade.py`,
+`tests/db/test_tenant_controller_v9_adoption.py` (adoption delta on head; its former
+populated 0043→head half became historical at the 2026-10-23 rebaseline),
 `tests/e2e/test_tenant_controller_v9_front_desk_http.py` and the adoption HTTP
 journeys in `tests/e2e/test_controller_policy_adoption_http.py`.

@@ -73,3 +73,43 @@ def test_baseline_loader_rejects_psql_meta_commands(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="psql meta-command"):
         module.load_schema_sql()
+
+
+def _with_role_sql(baseline: Path, extension: bytes, audit: bytes) -> None:
+    manifest = json.loads((baseline / "manifest.json").read_text(encoding="utf-8"))
+    entries = {}
+    for name, payload in (
+        ("0001_extension_roles.sql", extension),
+        ("0001_post_install_audit.sql", audit),
+    ):
+        (baseline / name).write_bytes(payload)
+        entries[name] = {"path": name, "bytes": len(payload), "sha256": _sha256(payload)}
+    manifest["role_bootstrap"] = {
+        "extension_roles": entries["0001_extension_roles.sql"],
+        "post_install_audit": entries["0001_post_install_audit.sql"],
+    }
+    (baseline / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_baseline_loader_verifies_extension_role_and_audit_payloads(tmp_path: Path) -> None:
+    module = _load()
+    baseline = _baseline(tmp_path, [b"SELECT 1;\n"])
+    _with_role_sql(baseline, b"DO $$ BEGIN END $$;\n", b"SELECT 2;\n")
+    _point_loader_at(module, baseline)
+
+    assert module.load_extension_role_sql() == "DO $$ BEGIN END $$;\n"
+    assert module.load_post_install_audit_sql() == "SELECT 2;\n"
+
+    (baseline / "0001_extension_roles.sql").write_bytes(b"CREATE ROLE x;\n    \n")
+    with pytest.raises(RuntimeError, match="expected"):
+        module.load_extension_role_sql()
+
+
+def test_baseline_loader_rejects_meta_commands_in_audit_payload(tmp_path: Path) -> None:
+    module = _load()
+    baseline = _baseline(tmp_path, [b"SELECT 1;\n"])
+    _with_role_sql(baseline, b"SELECT 1;\n", b"\\connect other\n")
+    _point_loader_at(module, baseline)
+
+    with pytest.raises(RuntimeError, match="psql meta-command"):
+        module.load_post_install_audit_sql()

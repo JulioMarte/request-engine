@@ -233,6 +233,12 @@ migrations/sql/design_chain/  retained historical V2 evidence still exercised by
 
 `0001_initial` is immutable migration history, **not the maximum schema Request Engine is allowed to have**. Ordinary product evolution appends `0002+` from the single current Alembic head.
 
+The explicit 2026-10-23 pre-production replacement collapses the former
+`0001 + 0002..0047` chain. See `audits/postgresql-rebaseline-0047.md` and
+`testing/rebaseline-0047-validation-2026-10-23.md` for object disposition,
+executed evidence and the parallel-install procedure that preserves existing
+development volumes. This is not an in-place migration of those databases.
+
 Never copy a current migration number into general documentation as a timeless head. CI discovers the actual graph, requires one current head and proves clean `alembic upgrade head`.
 
 The old V3 Base85 payload, V3 candidate SQL, feature-step migration helpers and pre-rebaseline revision chain have been removed from current executable authority. Their provenance remains in Git/history. Do not reintroduce them merely because an old handoff or release document mentions them.

@@ -4,14 +4,19 @@
     uv run python scripts/dev/local_stack.py status  # health of every service
     uv run python scripts/dev/local_stack.py down [--volumes]
 
-`up` stages: build image -> PostgreSQL 18 -> alembic upgrade head -> least-privilege
-runtime logins -> runtime API + control plane + admin console + dev gateway ->
+`up` stages: PostgreSQL 18 -> lineage check -> build image -> alembic upgrade head ->
+least-privilege runtime logins -> runtime API + control plane + admin console + dev gateway ->
 dev claim/organization/integration principal over public HTTP -> worker.
 `--manual-claim` leaves the instance UNCLAIMED for the console setup wizard and
 starts the worker later with `worker --principal-id <integration principal>`.
 
 Secrets are generated per stack into the gitignored `.local-stack/<project>/` and
 are dev-only. The tool refuses remote Docker hosts and binds ports to 127.0.0.1.
+
+Pre-production rebaselines collapse the migration history; a dev database created
+before one cannot upgrade across it. `up` refuses an unknown revision without
+migrating it. Keep that project and use a new project with different ports for a
+parallel installation; see docs/audits/postgresql-rebaseline-0047.md.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -110,11 +116,39 @@ class Stack:
             "-v", "ON_ERROR_STOP=1", "-tA", stdin=sql, capture=True,
         )  # fmt: skip
 
+    def require_known_revision(self) -> None:
+        """Fail early when the dev volume predates a pre-production rebaseline.
+
+        A database created from a collapsed migration history records a revision
+        that no longer exists in migrations/versions and cannot be upgraded.
+        """
+        # PostgreSQL resolves relation names before evaluating CASE branches. A
+        # separate existence query is required for a genuinely empty database.
+        exists = self.psql("SELECT to_regclass('public.alembic_version') IS NOT NULL;").strip()
+        if exists == "f":
+            return
+        if exists != "t":
+            raise SystemExit("could not determine the dev database migration state")
+        current = self.psql(
+            "SELECT string_agg(version_num, ',' ORDER BY version_num) FROM public.alembic_version;"
+        ).strip()
+        if not current:
+            return
+        unknown = set(current.split(",")) - _repository_revisions()
+        if unknown:
+            raise SystemExit(
+                f"dev database is at {', '.join(sorted(unknown))}, which is not in "
+                "migrations/versions (the history was rebaselined). Data was not migrated. "
+                "Preserve this project; use a new --project and distinct ports for a parallel "
+                "installation. See docs/audits/postgresql-rebaseline-0047.md."
+            )
+
     # -- lifecycle ---------------------------------------------------------------
     def up(self) -> None:
         values = self.configure()
-        self.compose("--profile", "setup", "build", "migrate")
         self.compose("up", "-d", "--wait", "postgres")
+        self.require_known_revision()
+        self.compose("--profile", "setup", "build", "migrate")
         self.compose("--profile", "setup", "run", "--rm", "migrate")
         self.provision_roles(values)
         ids = self.psql(
@@ -201,6 +235,15 @@ def _probe(port: str, path: str) -> str:
             return f"HTTP {response.status}"
     except Exception as exc:  # status report only
         return f"DOWN ({type(exc).__name__})"
+
+
+def _repository_revisions() -> set[str]:
+    pattern = re.compile(r'^revision: str = "([^"]+)"$', re.MULTILINE)
+    return {
+        match.group(1)
+        for path in (REPO / "migrations" / "versions").glob("*.py")
+        for match in pattern.finditer(path.read_text(encoding="utf-8"))
+    }
 
 
 def _ensure_tls(directory: Path) -> None:

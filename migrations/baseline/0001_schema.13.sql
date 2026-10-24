@@ -1,2315 +1,2538 @@
-    ADD CONSTRAINT slot_opportunities_organization_id_offering_version_id_fkey FOREIGN KEY (organization_id, offering_version_id) REFERENCES request_engine.offering_versions(organization_id, id);
+-- Name: discovery_booking_handoffs_expiry_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX discovery_booking_handoffs_expiry_idx ON request_engine.discovery_booking_handoffs USING btree (expires_at) WHERE (consumed_reservation_id IS NULL);
+
+
+--
+-- Name: discovery_publications_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX discovery_publications_lookup_idx ON request_engine.discovery_publications USING btree (organization_id, offering_id, location_id, status);
+
+
+--
+-- Name: identity_bindings_platform_subject_live_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX identity_bindings_platform_subject_live_uq ON request_engine.identity_bindings USING btree (identity_authority_id, subject_id) WHERE ((organization_id IS NULL) AND (status <> 'revoked'::text));
+
+
+--
+-- Name: identity_bindings_principal_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX identity_bindings_principal_lookup_idx ON request_engine.identity_bindings USING btree (principal_id, status, identity_authority_id);
+
+
+--
+-- Name: identity_bindings_tenant_subject_live_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX identity_bindings_tenant_subject_live_uq ON request_engine.identity_bindings USING btree (identity_authority_id, subject_id, organization_id) WHERE ((organization_id IS NOT NULL) AND (status <> 'revoked'::text));
+
+
+--
+-- Name: identity_exchange_candidate_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX identity_exchange_candidate_lookup_idx ON request_engine.identity_exchange_candidates USING btree (organization_id, id, expires_at);
+
+
+--
+-- Name: identity_link_intents_actor_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX identity_link_intents_actor_lookup_idx ON request_engine.identity_link_intents USING btree (actor_principal_id, status, created_at);
+
+
+--
+-- Name: identity_link_intents_live_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX identity_link_intents_live_uq ON request_engine.identity_link_intents USING btree (organization_id, actor_principal_id, target_authority_id) WHERE (status = 'pending'::text);
+
+
+--
+-- Name: identity_link_intents_nonce_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX identity_link_intents_nonce_uq ON request_engine.identity_link_intents USING btree (organization_id, nonce_digest);
+
+
+--
+-- Name: integration_facts_history_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX integration_facts_history_idx ON request_engine.integration_governance_facts USING btree (organization_id, integration_principal_id, occurred_at, id);
+
+
+--
+-- Name: location_operational_hours_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX location_operational_hours_lookup_idx ON request_engine.location_operational_hours USING btree (organization_id, location_id, weekday, active);
+
+
+--
+-- Name: native_credentials_one_active_password_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX native_credentials_one_active_password_uq ON request_engine.native_credentials USING btree (native_identity_id, kind) WHERE (status = 'active'::text);
+
+
+--
+-- Name: native_identity_recovery_facts_identity_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX native_identity_recovery_facts_identity_idx ON request_engine.native_identity_recovery_facts USING btree (native_identity_id, created_at);
+
+
+--
+-- Name: native_recovery_address_verifications_pending_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX native_recovery_address_verifications_pending_uq ON request_engine.native_recovery_address_verifications USING btree (recovery_address_id) WHERE (status = 'pending'::text);
+
+
+--
+-- Name: native_recovery_addresses_identity_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX native_recovery_addresses_identity_idx ON request_engine.native_recovery_addresses USING btree (native_identity_id, status, verified_at DESC);
+
+
+--
+-- Name: native_recovery_addresses_live_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX native_recovery_addresses_live_uq ON request_engine.native_recovery_addresses USING btree (native_identity_id, kind, normalized_address) WHERE (status <> 'revoked'::text);
+
+
+--
+-- Name: native_recovery_delivery_requests_claim_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX native_recovery_delivery_requests_claim_idx ON request_engine.native_recovery_delivery_requests USING btree (next_attempt_at, id) WHERE (status = 'pending'::text);
+
+
+--
+-- Name: native_recovery_delivery_requests_identity_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX native_recovery_delivery_requests_identity_idx ON request_engine.native_recovery_delivery_requests USING btree (native_identity_id, created_at DESC);
+
+
+--
+-- Name: native_recovery_identity_pending_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX native_recovery_identity_pending_idx ON request_engine.native_recovery_intents USING btree (native_identity_id, expires_at) WHERE (status = 'pending'::text);
+
+
+--
+-- Name: native_recovery_token_digest_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX native_recovery_token_digest_uq ON request_engine.native_recovery_intents USING btree (token_digest);
+
+
+--
+-- Name: native_sessions_identity_active_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX native_sessions_identity_active_idx ON request_engine.native_sessions USING btree (native_identity_id, expires_at) WHERE (status = 'active'::text);
+
+
+--
+-- Name: native_sessions_token_digest_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX native_sessions_token_digest_uq ON request_engine.native_sessions USING btree (token_digest);
+
+
+--
+-- Name: native_sessions_webauthn_credential_active_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX native_sessions_webauthn_credential_active_idx ON request_engine.native_sessions USING btree (webauthn_credential_id) WHERE (status = 'active'::text);
+
+
+--
+-- Name: offering_service_classifications_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX offering_service_classifications_lookup_idx ON request_engine.offering_service_classifications USING btree (service_classification_id, status, organization_id, offering_id);
+
+
+--
+-- Name: offering_service_classifications_one_active_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX offering_service_classifications_one_active_idx ON request_engine.offering_service_classifications USING btree (organization_id, offering_id) WHERE (status = 'active'::text);
+
+
+--
+-- Name: offering_version_booking_policies_effective_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX offering_version_booking_policies_effective_idx ON request_engine.offering_version_booking_policies USING btree (organization_id, offering_version_id, revision DESC);
+
+
+--
+-- Name: one_pending_controller_policy_adoption_per_org; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX one_pending_controller_policy_adoption_per_org ON request_engine.controller_policy_adoption_requests USING btree (organization_id) WHERE (status = 'pending'::text);
+
+
+--
+-- Name: operational_recovery_actions_incident_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX operational_recovery_actions_incident_idx ON request_engine.operational_recovery_actions USING btree (organization_id, incident_id, created_at, id);
+
+
+--
+-- Name: operational_recovery_auto_proposal_revision_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX operational_recovery_auto_proposal_revision_uq ON request_engine.operational_recovery_proposals USING btree (organization_id, service_queue_id, source_revision) WHERE (creation_kind = 'automatic'::text);
+
+
+--
+-- Name: operational_recovery_escalations_incident_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX operational_recovery_escalations_incident_idx ON request_engine.operational_recovery_escalations USING btree (organization_id, incident_id, source_revision DESC);
+
+
+--
+-- Name: operational_recovery_incidents_scope_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX operational_recovery_incidents_scope_idx ON request_engine.operational_recovery_incidents USING btree (organization_id, service_queue_id, last_assessed_at DESC);
+
+
+--
+-- Name: operational_recovery_one_unresolved_scope_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX operational_recovery_one_unresolved_scope_uq ON request_engine.operational_recovery_incidents USING btree (organization_id, service_queue_id) WHERE (status <> 'resolved'::text);
+
+
+--
+-- Name: operational_recovery_proposals_queue_created_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX operational_recovery_proposals_queue_created_idx ON request_engine.operational_recovery_proposals USING btree (organization_id, service_queue_id, created_at DESC);
+
+
+--
+-- Name: organization_party_binding_identity_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX organization_party_binding_identity_uq ON request_engine.organization_party_bindings USING btree (organization_id, portable_party_id) WHERE active;
+
+
+--
+-- Name: organization_party_binding_party_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE UNIQUE INDEX organization_party_binding_party_uq ON request_engine.organization_party_bindings USING btree (organization_id, party_id) WHERE active;
+
+
+--
+-- Name: outbox_messages_change_feed_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX outbox_messages_change_feed_idx ON request_engine.outbox_messages USING btree (organization_id, change_xid) WHERE (change_xid IS NOT NULL);
+
+
+--
+-- Name: outbox_messages_due_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX outbox_messages_due_idx ON request_engine.outbox_messages USING btree (next_attempt_at, id) WHERE (status = 'pending'::text);
+
 
+--
+-- Name: outbox_messages_metrics_oldest_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE INDEX outbox_messages_metrics_oldest_idx ON request_engine.outbox_messages USING btree (created_at) WHERE (status = ANY (ARRAY['pending'::text, 'leased'::text]));
+
 
 --
--- Name: slot_opportunities slot_opportunities_organization_id_source_reservation_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: outbox_messages_reclaim_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.slot_opportunities
-    ADD CONSTRAINT slot_opportunities_organization_id_source_reservation_id_fkey FOREIGN KEY (organization_id, source_reservation_id) REFERENCES request_engine.reservations(organization_id, id);
+CREATE INDEX outbox_messages_reclaim_idx ON request_engine.outbox_messages USING btree (lease_until, id) WHERE (status = 'leased'::text);
 
 
 --
--- Name: staff_memberships staff_anchor_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_admin_ids_active_value_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.staff_memberships
-    ADD CONSTRAINT staff_anchor_tenant_fk FOREIGN KEY (organization_id, authority_anchor_party_id) REFERENCES request_engine.parties(organization_id, id);
+CREATE UNIQUE INDEX party_admin_ids_active_value_uq ON request_engine.party_administrative_identifiers USING btree (organization_id, kind, normalized_issuer, normalized_value) WHERE active;
 
 
 --
--- Name: staff_memberships staff_binding_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_admin_ids_one_active_per_issuer_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.staff_memberships
-    ADD CONSTRAINT staff_binding_tenant_fk FOREIGN KEY (organization_id, principal_id, identity_binding_id) REFERENCES request_engine.identity_bindings(organization_id, principal_id, id);
+CREATE UNIQUE INDEX party_admin_ids_one_active_per_issuer_uq ON request_engine.party_administrative_identifiers USING btree (organization_id, party_id, kind, normalized_issuer) WHERE active;
 
 
 --
--- Name: staff_memberships staff_memberships_authority_anchor_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_contact_points_value_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.staff_memberships
-    ADD CONSTRAINT staff_memberships_authority_anchor_party_id_fkey FOREIGN KEY (authority_anchor_party_id) REFERENCES request_engine.parties(id);
+CREATE INDEX party_contact_points_value_lookup_idx ON request_engine.party_contact_points USING btree (organization_id, normalized_value, channel) WHERE active;
 
 
 --
--- Name: staff_memberships staff_memberships_established_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_contact_points_verified_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.staff_memberships
-    ADD CONSTRAINT staff_memberships_established_by_principal_id_fkey FOREIGN KEY (established_by_principal_id) REFERENCES request_engine.principals(id);
+CREATE INDEX party_contact_points_verified_lookup_idx ON request_engine.party_contact_points USING btree (organization_id, party_id, created_at, id) WHERE (active AND verified);
 
 
 --
--- Name: staff_memberships staff_memberships_identity_binding_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_documents_active_value_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.staff_memberships
-    ADD CONSTRAINT staff_memberships_identity_binding_id_fkey FOREIGN KEY (identity_binding_id) REFERENCES request_engine.identity_bindings(id);
+CREATE UNIQUE INDEX party_identity_documents_active_value_uq ON request_engine.party_identity_documents USING btree (organization_id, kind, COALESCE(authority, ''::text), normalized_value) WHERE active;
 
 
 --
--- Name: staff_memberships staff_memberships_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_documents_one_active_per_kind_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.staff_memberships
-    ADD CONSTRAINT staff_memberships_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
+CREATE UNIQUE INDEX party_identity_documents_one_active_per_kind_uq ON request_engine.party_identity_documents USING btree (organization_id, party_id, kind, COALESCE(authority, ''::text)) WHERE active;
 
 
 --
--- Name: staff_memberships staff_memberships_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_bootstrap_intents_pending_expiry_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.staff_memberships
-    ADD CONSTRAINT staff_memberships_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES request_engine.principals(id);
+CREATE INDEX platform_bootstrap_intents_pending_expiry_idx ON request_engine.platform_bootstrap_intents USING btree (expires_at) WHERE (status = 'pending'::text);
 
 
 --
--- Name: staff_memberships staff_principal_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_configuration_fact_idempotency_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.staff_memberships
-    ADD CONSTRAINT staff_principal_tenant_fk FOREIGN KEY (organization_id, principal_id) REFERENCES request_engine.principals(organization_id, id);
+CREATE UNIQUE INDEX platform_configuration_fact_idempotency_uq ON request_engine.platform_configuration_facts USING btree (actor_principal_id, capability_key, idempotency_key_digest) WHERE (idempotency_key_digest IS NOT NULL);
 
 
 --
--- Name: waitlist_entries waitlist_entries_organization_id_location_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_configuration_kind_revision_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.waitlist_entries
-    ADD CONSTRAINT waitlist_entries_organization_id_location_id_fkey FOREIGN KEY (organization_id, location_id) REFERENCES request_engine.locations(organization_id, id);
+CREATE INDEX platform_configuration_kind_revision_idx ON request_engine.platform_configuration_revisions USING btree (configuration_kind, revision DESC);
 
 
 --
--- Name: waitlist_entries waitlist_entries_organization_id_offering_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_configuration_one_active_kind_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.waitlist_entries
-    ADD CONSTRAINT waitlist_entries_organization_id_offering_id_fkey FOREIGN KEY (organization_id, offering_id) REFERENCES request_engine.offerings(organization_id, id);
+CREATE UNIQUE INDEX platform_configuration_one_active_kind_uq ON request_engine.platform_configuration_revisions USING btree (configuration_kind) WHERE (state = 'active'::text);
 
 
 --
--- Name: waitlist_entries waitlist_entries_organization_id_preferred_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_identity_disable_facts_idempotency_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.waitlist_entries
-    ADD CONSTRAINT waitlist_entries_organization_id_preferred_resource_id_fkey FOREIGN KEY (organization_id, preferred_resource_id) REFERENCES request_engine.resources(organization_id, id);
+CREATE UNIQUE INDEX platform_identity_disable_facts_idempotency_uq ON request_engine.platform_identity_disable_facts USING btree (actor_principal_id, capability_key, idempotency_key_digest);
 
 
 --
--- Name: waitlist_entries waitlist_entries_organization_id_subject_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_secret_bindings_active_purpose_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.waitlist_entries
-    ADD CONSTRAINT waitlist_entries_organization_id_subject_party_id_fkey FOREIGN KEY (organization_id, subject_party_id) REFERENCES request_engine.parties(organization_id, id);
+CREATE UNIQUE INDEX platform_secret_bindings_active_purpose_uq ON request_engine.platform_secret_bindings USING btree (purpose) WHERE (status = 'active'::text);
 
 
 --
--- Name: webauthn_challenges webauthn_challenges_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_secret_mutations_open_binding_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.webauthn_challenges
-    ADD CONSTRAINT webauthn_challenges_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
+CREATE UNIQUE INDEX platform_secret_mutations_open_binding_uq ON request_engine.platform_secret_mutations USING btree (binding_id) WHERE ((binding_id IS NOT NULL) AND (state = ANY (ARRAY['prepared'::text, 'backend_applied'::text, 'reconcile_required'::text])));
 
 
 --
--- Name: webauthn_challenges webauthn_challenges_setup_session_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_secret_mutations_open_create_purpose_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.webauthn_challenges
-    ADD CONSTRAINT webauthn_challenges_setup_session_id_fkey FOREIGN KEY (setup_session_id) REFERENCES request_engine.setup_sessions(id);
+CREATE UNIQUE INDEX platform_secret_mutations_open_create_purpose_uq ON request_engine.platform_secret_mutations USING btree (purpose) WHERE ((operation_kind = 'create'::text) AND (state = ANY (ARRAY['prepared'::text, 'backend_applied'::text, 'reconcile_required'::text])));
 
 
 --
--- Name: webauthn_credentials webauthn_credentials_native_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_secret_mutations_state_created_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.webauthn_credentials
-    ADD CONSTRAINT webauthn_credentials_native_identity_id_fkey FOREIGN KEY (native_identity_id) REFERENCES request_engine.native_identities(id);
+CREATE INDEX platform_secret_mutations_state_created_idx ON request_engine.platform_secret_mutations USING btree (state, created_at);
 
 
 --
--- Name: workload_credentials workload_credentials_workload_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: portable_party_identifier_active_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.workload_credentials
-    ADD CONSTRAINT workload_credentials_workload_identity_id_fkey FOREIGN KEY (workload_identity_id) REFERENCES request_engine.workload_identities(id);
+CREATE UNIQUE INDEX portable_party_identifier_active_uq ON request_engine.portable_party_identifiers USING btree (party_kind, kind, authority, fingerprint) WHERE active;
 
 
 --
--- Name: workload_identities workload_identities_identity_authority_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: portable_party_identifier_party_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE ONLY request_engine.workload_identities
-    ADD CONSTRAINT workload_identities_identity_authority_id_fkey FOREIGN KEY (identity_authority_id) REFERENCES request_engine.identity_authorities(id);
+CREATE INDEX portable_party_identifier_party_idx ON request_engine.portable_party_identifiers USING btree (portable_party_id) WHERE active;
 
 
 --
--- Name: agent_budget_windows; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: portable_party_profiles_party_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.agent_budget_windows ENABLE ROW LEVEL SECURITY;
+CREATE INDEX portable_party_profiles_party_idx ON request_engine.portable_party_profiles USING btree (portable_party_id) WHERE active;
 
+
 --
--- Name: agent_budget_windows agent_budget_windows_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_authority_grants_active_capability_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY agent_budget_windows_tenant_isolation ON request_engine.agent_budget_windows USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE UNIQUE INDEX principal_authority_grants_active_capability_uq ON request_engine.principal_authority_grants USING btree (principal_id, capability_key) WHERE (status = 'active'::text);
 
 
 --
--- Name: agent_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_authority_grants_tenant_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE INDEX principal_authority_grants_tenant_lookup_idx ON request_engine.principal_authority_grants USING btree (organization_id, principal_id, authority_plane, capability_key) WHERE (status = 'active'::text);
 
-ALTER TABLE request_engine.agent_policies ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: agent_policies agent_policies_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_contacts_one_active_per_principal_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY agent_policies_tenant_isolation ON request_engine.agent_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE UNIQUE INDEX principal_contacts_one_active_per_principal_uq ON request_engine.principal_contacts USING btree (organization_id, principal_id) WHERE active;
 
 
 --
--- Name: agent_profiles; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principals_platform_subject_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.agent_profiles ENABLE ROW LEVEL SECURITY;
+CREATE UNIQUE INDEX principals_platform_subject_uq ON request_engine.principals USING btree (principal_kind, external_subject) WHERE (principal_plane = 'platform'::text);
 
+
 --
--- Name: agent_profiles agent_profiles_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: provider_events_due_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY agent_profiles_tenant_isolation ON request_engine.agent_profiles USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX provider_events_due_idx ON request_engine.provider_events USING btree (next_attempt_at, id) WHERE (status = 'received'::text);
 
 
 --
--- Name: attendance_responses; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: provider_events_metrics_failure_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.attendance_responses ENABLE ROW LEVEL SECURITY;
+CREATE INDEX provider_events_metrics_failure_idx ON request_engine.provider_events USING btree (updated_at) WHERE (status = 'dead'::text);
 
+
 --
--- Name: attendance_responses attendance_responses_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: provider_events_metrics_oldest_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY attendance_responses_tenant_isolation ON request_engine.attendance_responses USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX provider_events_metrics_oldest_idx ON request_engine.provider_events USING btree (received_at) WHERE (status = ANY (ARRAY['received'::text, 'leased'::text]));
 
 
 --
--- Name: audit_records; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: provider_events_reclaim_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE INDEX provider_events_reclaim_idx ON request_engine.provider_events USING btree (lease_until, id) WHERE (status = 'leased'::text);
 
-ALTER TABLE request_engine.audit_records ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: audit_records audit_records_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entries_fifo_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY audit_records_tenant_isolation ON request_engine.audit_records USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX queue_entries_fifo_idx ON request_engine.queue_entries USING btree (organization_id, service_queue_id, status, admitted_at, id);
 
 
 --
--- Name: booking_context_terms; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entries_one_active_subject_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.booking_context_terms ENABLE ROW LEVEL SECURITY;
+CREATE UNIQUE INDEX queue_entries_one_active_subject_uq ON request_engine.queue_entries USING btree (organization_id, service_queue_id, subject_party_id) WHERE (status = ANY (ARRAY['waiting'::text, 'called'::text, 'serving'::text]));
 
+
 --
--- Name: booking_context_terms booking_context_terms_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entry_recall_holds_one_active_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY booking_context_terms_tenant_policy ON request_engine.booking_context_terms USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE UNIQUE INDEX queue_entry_recall_holds_one_active_uq ON request_engine.queue_entry_recall_holds USING btree (organization_id, queue_entry_id) WHERE (released_at IS NULL);
 
 
 --
--- Name: capacity_claims; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entry_skips_one_active_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE UNIQUE INDEX queue_entry_skips_one_active_uq ON request_engine.queue_entry_skips USING btree (organization_id, queue_entry_id) WHERE (consumed_at IS NULL);
 
-ALTER TABLE request_engine.capacity_claims ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: capacity_claims capacity_claims_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: recovery_code_sets_active_identity_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY capacity_claims_tenant_isolation ON request_engine.capacity_claims USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE UNIQUE INDEX recovery_code_sets_active_identity_uq ON request_engine.recovery_code_sets USING btree (native_identity_id) WHERE ((status = 'active'::text) AND (native_identity_id IS NOT NULL));
 
 
 --
--- Name: capacity_holds; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: recovery_code_sets_active_setup_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.capacity_holds ENABLE ROW LEVEL SECURITY;
+CREATE UNIQUE INDEX recovery_code_sets_active_setup_uq ON request_engine.recovery_code_sets USING btree (setup_session_id) WHERE ((status = 'active'::text) AND (setup_session_id IS NOT NULL));
 
+
 --
--- Name: capacity_holds capacity_holds_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: recovery_codes_set_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY capacity_holds_tenant_isolation ON request_engine.capacity_holds USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX recovery_codes_set_idx ON request_engine.recovery_codes USING btree (set_id);
 
 
 --
--- Name: communication_deliveries; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: representations_authority_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE INDEX representations_authority_lookup_idx ON request_engine.representations USING btree (organization_id, principal_id, represented_party_id, scope_key, valid_from, id) WHERE (status = 'active'::text);
 
-ALTER TABLE request_engine.communication_deliveries ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: communication_deliveries communication_deliveries_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_access_active_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY communication_deliveries_tenant_isolation ON request_engine.communication_deliveries USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX reservation_access_active_idx ON request_engine.reservation_access USING btree (organization_id, reservation_id, reservation_revision, access_key) WHERE (status <> 'revoked'::text);
 
 
 --
--- Name: communication_escalations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_arrival_estimates_history_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.communication_escalations ENABLE ROW LEVEL SECURITY;
+CREATE INDEX reservation_arrival_estimates_history_idx ON request_engine.reservation_arrival_estimates USING btree (organization_id, reservation_id, asserted_at);
 
+
 --
--- Name: communication_escalations communication_escalations_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_arrival_estimates_one_active_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY communication_escalations_tenant_policy ON request_engine.communication_escalations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE UNIQUE INDEX reservation_arrival_estimates_one_active_uq ON request_engine.reservation_arrival_estimates USING btree (organization_id, reservation_id) WHERE (superseded_at IS NULL);
 
 
 --
--- Name: communication_tasks; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservation_attendance_status_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE INDEX reservation_attendance_status_idx ON request_engine.reservation_attendance USING btree (organization_id, status, reservation_id);
 
-ALTER TABLE request_engine.communication_tasks ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: communication_tasks communication_tasks_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: reservations_org_during_gist; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY communication_tasks_tenant_isolation ON request_engine.communication_tasks USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX reservations_org_during_gist ON request_engine.reservations USING gist (organization_id, during);
 
 
 --
--- Name: delegations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_activities_one_open_resource_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.delegations ENABLE ROW LEVEL SECURITY;
+CREATE UNIQUE INDEX resource_activities_one_open_resource_uq ON request_engine.resource_activities USING btree (organization_id, resource_id) WHERE (ended_at IS NULL);
 
+
 --
--- Name: delegations delegations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_assignments_location_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY delegations_tenant_isolation ON request_engine.delegations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX resource_location_assignments_location_idx ON request_engine.resource_location_assignments USING btree (organization_id, location_id, status);
 
 
 --
--- Name: discovery_booking_handoffs; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_assignments_resource_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.discovery_booking_handoffs ENABLE ROW LEVEL SECURITY;
+CREATE INDEX resource_location_assignments_resource_idx ON request_engine.resource_location_assignments USING btree (organization_id, resource_id, status);
 
+
 --
--- Name: discovery_booking_handoffs discovery_booking_handoffs_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: resource_location_availability_lookup_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY discovery_booking_handoffs_tenant_policy ON request_engine.discovery_booking_handoffs USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX resource_location_availability_lookup_idx ON request_engine.resource_location_availability USING btree (organization_id, resource_location_assignment_id, weekday, active);
 
 
 --
--- Name: discovery_publications; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: schedule_exceptions_resource_during_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE INDEX schedule_exceptions_resource_during_idx ON request_engine.schedule_exceptions USING gist (resource_id, during);
 
-ALTER TABLE request_engine.discovery_publications ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: discovery_publications discovery_publications_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: scheduled_actions_active_subject_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY discovery_publications_tenant_policy ON request_engine.discovery_publications USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX scheduled_actions_active_subject_idx ON request_engine.scheduled_actions USING btree (organization_id, owner_module, subject_kind, subject_id, action_type, action_version, execute_at) WHERE (status = ANY (ARRAY['pending'::text, 'leased'::text]));
 
 
 --
--- Name: external_correlations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: scheduled_actions_due_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.external_correlations ENABLE ROW LEVEL SECURITY;
+CREATE INDEX scheduled_actions_due_idx ON request_engine.scheduled_actions USING btree (next_attempt_at, id) WHERE (status = 'pending'::text);
 
+
 --
--- Name: external_correlations external_correlations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: scheduled_actions_metrics_expired_lease_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY external_correlations_tenant_isolation ON request_engine.external_correlations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX scheduled_actions_metrics_expired_lease_idx ON request_engine.scheduled_actions USING btree (lease_until) WHERE (status = 'leased'::text);
 
 
 --
--- Name: idempotency_records; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: scheduled_actions_metrics_pending_due_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE INDEX scheduled_actions_metrics_pending_due_idx ON request_engine.scheduled_actions USING btree (GREATEST(execute_at, next_attempt_at)) WHERE (status = 'pending'::text);
 
-ALTER TABLE request_engine.idempotency_records ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: idempotency_records idempotency_records_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: scheduled_actions_reclaim_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY idempotency_records_tenant_isolation ON request_engine.idempotency_records USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX scheduled_actions_reclaim_idx ON request_engine.scheduled_actions USING btree (lease_until, id) WHERE (status = 'leased'::text);
 
 
 --
--- Name: identity_bindings; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: scheduled_actions_recovery_scope_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.identity_bindings ENABLE ROW LEVEL SECURITY;
+CREATE INDEX scheduled_actions_recovery_scope_idx ON request_engine.scheduled_actions USING btree (organization_id, action_type, subject_id) WHERE (owner_module = 'operational_recovery'::text);
 
+
 --
--- Name: identity_bindings identity_bindings_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_session_interruptions_one_open_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY identity_bindings_tenant_isolation ON request_engine.identity_bindings USING (((principal_plane = 'tenant'::text) AND (organization_id = request_engine.current_organization_id()))) WITH CHECK (((principal_plane = 'tenant'::text) AND (organization_id = request_engine.current_organization_id())));
+CREATE UNIQUE INDEX service_session_interruptions_one_open_uq ON request_engine.service_session_interruptions USING btree (organization_id, service_session_id) WHERE (ended_at IS NULL);
 
 
 --
--- Name: identity_exchange_candidates; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_sessions_one_live_resource_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE UNIQUE INDEX service_sessions_one_live_resource_uq ON request_engine.service_sessions USING btree (organization_id, resource_id) WHERE (status = ANY (ARRAY['active'::text, 'paused'::text]));
 
-ALTER TABLE request_engine.identity_exchange_candidates ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: identity_exchange_candidates identity_exchange_candidates_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: setup_pending_webauthn_session_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY identity_exchange_candidates_tenant_policy ON request_engine.identity_exchange_candidates USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX setup_pending_webauthn_session_idx ON request_engine.setup_pending_webauthn_credential USING btree (setup_session_id) WHERE (status = 'pending'::text);
 
 
 --
--- Name: identity_link_facts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: setup_sessions_active_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.identity_link_facts ENABLE ROW LEVEL SECURITY;
+CREATE INDEX setup_sessions_active_idx ON request_engine.setup_sessions USING btree (expires_at) WHERE (status = 'pending'::text);
 
+
 --
--- Name: identity_link_facts identity_link_facts_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: setup_sessions_token_digest_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY identity_link_facts_tenant_isolation ON request_engine.identity_link_facts USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE UNIQUE INDEX setup_sessions_token_digest_uq ON request_engine.setup_sessions USING btree (token_digest);
 
 
 --
--- Name: identity_link_intents; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_authority_events_global_identity_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE INDEX shared_capacity_authority_events_global_identity_idx ON request_engine.shared_capacity_authority_events USING btree (global_identity_id);
 
-ALTER TABLE request_engine.identity_link_intents ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: identity_link_intents identity_link_intents_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_authority_events_shared_capacity_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY identity_link_intents_tenant_isolation ON request_engine.identity_link_intents USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX shared_capacity_authority_events_shared_capacity_idx ON request_engine.shared_capacity_authority_events USING btree (shared_capacity_identity_id);
 
 
 --
--- Name: integration_governance_facts integration_facts_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_bindings_active_root_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY integration_facts_tenant_isolation ON request_engine.integration_governance_facts USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX shared_capacity_bindings_active_root_idx ON request_engine.shared_capacity_bindings USING btree (shared_capacity_identity_id, organization_id, resource_id) WHERE (status = 'active'::text);
 
 
 --
--- Name: integration_governance_facts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_bindings_one_active_resource_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.integration_governance_facts ENABLE ROW LEVEL SECURITY;
+CREATE UNIQUE INDEX shared_capacity_bindings_one_active_resource_idx ON request_engine.shared_capacity_bindings USING btree (organization_id, resource_id) WHERE (status = 'active'::text);
 
+
 --
--- Name: live_capacity_projection_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_claim_links_root_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.live_capacity_projection_policies ENABLE ROW LEVEL SECURITY;
+CREATE INDEX shared_capacity_claim_links_root_idx ON request_engine.shared_capacity_claim_links USING btree (shared_capacity_identity_id, capacity_claim_id);
 
+
 --
--- Name: live_capacity_projection_policies live_capacity_projection_policies_recovery_trigger_read; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: shared_capacity_identities_global_identity_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY live_capacity_projection_policies_recovery_trigger_read ON request_engine.live_capacity_projection_policies FOR SELECT TO request_engine_schema_owner USING ((pg_trigger_depth() > 0));
+CREATE INDEX shared_capacity_identities_global_identity_idx ON request_engine.shared_capacity_identities USING btree (global_identity_id);
 
 
 --
--- Name: live_capacity_projection_policies live_capacity_projection_policies_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_offers_active_waitlist_source_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY live_capacity_projection_policies_tenant_policy ON request_engine.live_capacity_projection_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX slot_offers_active_waitlist_source_idx ON request_engine.slot_offers USING btree (organization_id, waitlist_entry_id) WHERE (status = 'offered'::text);
 
 
 --
--- Name: live_capacity_workload_estimate_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_offers_one_accepted_per_opportunity_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE UNIQUE INDEX slot_offers_one_accepted_per_opportunity_uq ON request_engine.slot_offers USING btree (organization_id, slot_opportunity_id) WHERE (status = 'accepted'::text);
 
-ALTER TABLE request_engine.live_capacity_workload_estimate_policies ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: live_capacity_workload_estimate_policies live_capacity_workload_estimate_policies_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_offers_one_active_per_opportunity_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY live_capacity_workload_estimate_policies_tenant_policy ON request_engine.live_capacity_workload_estimate_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE UNIQUE INDEX slot_offers_one_active_per_opportunity_uq ON request_engine.slot_offers USING btree (organization_id, slot_opportunity_id) WHERE (status = 'offered'::text);
 
 
 --
--- Name: location_hours_exceptions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_offers_opportunity_waitlist_history_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.location_hours_exceptions ENABLE ROW LEVEL SECURITY;
+CREATE INDEX slot_offers_opportunity_waitlist_history_idx ON request_engine.slot_offers USING btree (organization_id, slot_opportunity_id, waitlist_entry_id);
 
+
 --
--- Name: location_hours_exceptions location_hours_exceptions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: slot_offers_waitlist_history_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY location_hours_exceptions_tenant_policy ON request_engine.location_hours_exceptions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX slot_offers_waitlist_history_idx ON request_engine.slot_offers USING btree (organization_id, waitlist_entry_id);
 
 
 --
--- Name: location_operational_hours; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_pending_email; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE UNIQUE INDEX staff_invitation_pending_email ON request_engine.staff_invitations USING btree (organization_id, email) WHERE (status = 'pending'::text);
 
-ALTER TABLE request_engine.location_operational_hours ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: location_operational_hours location_operational_hours_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_proposals_inbox_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY location_operational_hours_tenant_policy ON request_engine.location_operational_hours USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX staff_invitation_proposals_inbox_idx ON request_engine.staff_invitation_proposals USING btree (organization_id, status, id);
 
 
 --
--- Name: location_public_contact_endpoints; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_proposals_invitation_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.location_public_contact_endpoints ENABLE ROW LEVEL SECURITY;
+CREATE UNIQUE INDEX staff_invitation_proposals_invitation_uq ON request_engine.staff_invitation_proposals USING btree (organization_id, invitation_id) WHERE (invitation_id IS NOT NULL);
 
+
 --
--- Name: location_public_contact_endpoints location_public_contact_endpoints_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_proposals_pending_email_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY location_public_contact_endpoints_tenant_policy ON request_engine.location_public_contact_endpoints USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE UNIQUE INDEX staff_invitation_proposals_pending_email_uq ON request_engine.staff_invitation_proposals USING btree (organization_id, email) WHERE (status = 'pending'::text);
 
 
 --
--- Name: locations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships_binding_live_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE UNIQUE INDEX staff_memberships_binding_live_uq ON request_engine.staff_memberships USING btree (identity_binding_id) WHERE (status <> 'revoked'::text);
 
-ALTER TABLE request_engine.locations ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: locations locations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships_principal_live_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY locations_tenant_isolation ON request_engine.locations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE UNIQUE INDEX staff_memberships_principal_live_uq ON request_engine.staff_memberships USING btree (principal_id) WHERE (status <> 'revoked'::text);
 
 
 --
--- Name: offering_resource_requirements; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships_tenant_status_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.offering_resource_requirements ENABLE ROW LEVEL SECURITY;
+CREATE INDEX staff_memberships_tenant_status_idx ON request_engine.staff_memberships USING btree (organization_id, status, principal_id);
 
+
 --
--- Name: offering_resource_requirements offering_resource_requirements_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: temporary_cleanup_due; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY offering_resource_requirements_tenant_isolation ON request_engine.offering_resource_requirements USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX temporary_cleanup_due ON request_engine.temporary_proof_cleanup_work USING btree (backend_id, mount, next_attempt_at, id) WHERE (NOT terminal);
 
 
 --
--- Name: offering_service_classifications; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: waitlist_entries_offer_candidate_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE INDEX waitlist_entries_offer_candidate_idx ON request_engine.waitlist_entries USING btree (organization_id, offering_id, status, created_at, id) INCLUDE (subject_party_id, location_id, preferred_resource_id, earliest_start, latest_start);
 
-ALTER TABLE request_engine.offering_service_classifications ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: offering_service_classifications offering_service_classifications_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: waitlist_entries_one_active_subject_offering_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY offering_service_classifications_tenant_policy ON request_engine.offering_service_classifications USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE UNIQUE INDEX waitlist_entries_one_active_subject_offering_uq ON request_engine.waitlist_entries USING btree (organization_id, offering_id, subject_party_id) WHERE (status = 'active'::text);
 
 
 --
--- Name: offering_version_booking_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: webauthn_challenges_retention_scan_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.offering_version_booking_policies ENABLE ROW LEVEL SECURITY;
+CREATE INDEX webauthn_challenges_retention_scan_idx ON request_engine.webauthn_challenges USING btree (expires_at, id) INCLUDE (status, consumed_at);
 
+
 --
--- Name: offering_version_booking_policies offering_version_booking_policies_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: webauthn_challenges_scope_pending_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY offering_version_booking_policies_tenant_isolation ON request_engine.offering_version_booking_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX webauthn_challenges_scope_pending_idx ON request_engine.webauthn_challenges USING btree (purpose, expires_at) WHERE (status = 'pending'::text);
 
 
 --
--- Name: offering_version_booking_terms; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: webauthn_credentials_identity_active_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE INDEX webauthn_credentials_identity_active_idx ON request_engine.webauthn_credentials USING btree (native_identity_id) WHERE (status = 'active'::text);
 
-ALTER TABLE request_engine.offering_version_booking_terms ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: offering_version_booking_terms offering_version_booking_terms_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: workload_credentials_identity_active_idx; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY offering_version_booking_terms_tenant_policy ON request_engine.offering_version_booking_terms USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE INDEX workload_credentials_identity_active_idx ON request_engine.workload_credentials USING btree (workload_identity_id, expires_at) WHERE (status = 'active'::text);
 
 
 --
--- Name: offering_versions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: workload_credentials_token_digest_uq; Type: INDEX; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.offering_versions ENABLE ROW LEVEL SECURITY;
+CREATE UNIQUE INDEX workload_credentials_token_digest_uq ON request_engine.workload_credentials USING btree (token_digest);
 
+
 --
--- Name: offering_versions offering_versions_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_profiles agent_profiles_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY offering_versions_tenant_isolation ON request_engine.offering_versions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER agent_profiles_guard BEFORE INSERT OR DELETE OR UPDATE ON request_engine.agent_profiles FOR EACH ROW EXECUTE FUNCTION request_engine.guard_agent_profile();
 
 
 --
--- Name: offerings; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: attendance_responses attendance_responses_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER attendance_responses_append_only BEFORE DELETE OR UPDATE ON request_engine.attendance_responses FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
-ALTER TABLE request_engine.offerings ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: offerings offerings_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: audit_records audit_records_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY offerings_tenant_isolation ON request_engine.offerings USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER audit_records_append_only BEFORE DELETE OR UPDATE ON request_engine.audit_records FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: operational_recovery_actions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts authority_reference_tenant_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.operational_recovery_actions ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER authority_reference_tenant_guard BEFORE INSERT OR UPDATE ON request_engine.controller_policy_adoption_facts FOR EACH ROW EXECUTE FUNCTION request_engine.guard_authority_reference_tenant();
 
+
 --
--- Name: operational_recovery_actions operational_recovery_actions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_provisioning_facts authority_reference_tenant_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY operational_recovery_actions_tenant_policy ON request_engine.operational_recovery_actions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER authority_reference_tenant_guard BEFORE INSERT OR UPDATE ON request_engine.organization_provisioning_facts FOR EACH ROW EXECUTE FUNCTION request_engine.guard_authority_reference_tenant();
 
 
 --
--- Name: operational_recovery_autonomy_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts authority_reference_tenant_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER authority_reference_tenant_guard BEFORE INSERT OR UPDATE ON request_engine.organization_root_provisioning_facts FOR EACH ROW EXECUTE FUNCTION request_engine.guard_authority_reference_tenant();
 
-ALTER TABLE request_engine.operational_recovery_autonomy_policies ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: operational_recovery_autonomy_policies operational_recovery_autonomy_policies_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_authority_grants authority_reference_tenant_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY operational_recovery_autonomy_policies_tenant_policy ON request_engine.operational_recovery_autonomy_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER authority_reference_tenant_guard BEFORE INSERT OR UPDATE ON request_engine.principal_authority_grants FOR EACH ROW EXECUTE FUNCTION request_engine.guard_authority_reference_tenant();
 
 
 --
--- Name: operational_recovery_escalations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_memberships authority_reference_tenant_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.operational_recovery_escalations ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER authority_reference_tenant_guard BEFORE INSERT OR UPDATE ON request_engine.staff_memberships FOR EACH ROW EXECUTE FUNCTION request_engine.guard_authority_reference_tenant();
 
+
 --
--- Name: operational_recovery_escalations operational_recovery_escalations_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: booking_context_terms booking_context_terms_guard_scope; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY operational_recovery_escalations_tenant_policy ON request_engine.operational_recovery_escalations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER booking_context_terms_guard_scope BEFORE UPDATE ON request_engine.booking_context_terms FOR EACH ROW EXECUTE FUNCTION request_engine.guard_booking_context_terms_scope();
 
 
 --
--- Name: operational_recovery_executions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: booking_context_terms booking_context_terms_lock_resource; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER booking_context_terms_lock_resource BEFORE INSERT OR DELETE OR UPDATE ON request_engine.booking_context_terms FOR EACH ROW EXECUTE FUNCTION request_engine.lock_booking_context_terms_resource();
 
-ALTER TABLE request_engine.operational_recovery_executions ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: operational_recovery_executions operational_recovery_executions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: booking_context_terms booking_context_terms_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY operational_recovery_executions_tenant_policy ON request_engine.operational_recovery_executions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER booking_context_terms_revision_step BEFORE UPDATE ON request_engine.booking_context_terms FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: operational_recovery_incidents; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: booking_context_terms booking_context_terms_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.operational_recovery_incidents ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER booking_context_terms_touch BEFORE UPDATE ON request_engine.booking_context_terms FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
+
 --
--- Name: operational_recovery_incidents operational_recovery_incidents_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_00_guard_tenant_context; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY operational_recovery_incidents_tenant_policy ON request_engine.operational_recovery_incidents USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER capacity_claims_00_guard_tenant_context BEFORE INSERT OR UPDATE ON request_engine.capacity_claims FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim_tenant_context();
 
 
 --
--- Name: operational_recovery_proposals; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_10_guard_contextual_assignment; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.operational_recovery_proposals ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER capacity_claims_10_guard_contextual_assignment BEFORE INSERT OR UPDATE OF organization_id, resource_id, hold_id, reservation_id, resource_location_assignment_id, during, status ON request_engine.capacity_claims FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim_contextual_assignment();
 
+
 --
--- Name: operational_recovery_proposals operational_recovery_proposals_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_attach_shared_capacity; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY operational_recovery_proposals_tenant_policy ON request_engine.operational_recovery_proposals USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER capacity_claims_attach_shared_capacity AFTER INSERT OR UPDATE OF resource_id, hold_id, reservation_id, status ON request_engine.capacity_claims FOR EACH ROW EXECUTE FUNCTION request_engine.attach_shared_capacity_claim_link();
 
 
 --
--- Name: operational_workload_classifications; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_bump_recovery_source_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER capacity_claims_bump_recovery_source_revision AFTER INSERT OR DELETE OR UPDATE ON request_engine.capacity_claims FOR EACH ROW EXECUTE FUNCTION request_engine.bump_capacity_claim_recovery_source_revision();
 
-ALTER TABLE request_engine.operational_workload_classifications ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: operational_workload_classifications operational_workload_classifications_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_guard_capacity; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY operational_workload_classifications_tenant_policy ON request_engine.operational_workload_classifications USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER capacity_claims_guard_capacity BEFORE INSERT OR UPDATE OF resource_id, requirement_id, hold_id, reservation_id, during, quantity, status ON request_engine.capacity_claims FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim();
 
 
 --
--- Name: organization_channel_policies; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_guard_linked_provenance; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.organization_channel_policies ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER capacity_claims_guard_linked_provenance BEFORE UPDATE ON request_engine.capacity_claims FOR EACH ROW EXECUTE FUNCTION request_engine.guard_linked_capacity_claim_provenance();
 
+
 --
--- Name: organization_channel_policies organization_channel_policies_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_guard_promoted_owner; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY organization_channel_policies_tenant_isolation ON request_engine.organization_channel_policies USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER capacity_claims_guard_promoted_owner BEFORE INSERT OR UPDATE OF hold_id, reservation_id, status ON request_engine.capacity_claims FOR EACH ROW EXECUTE FUNCTION request_engine.guard_promoted_capacity_claim_owner();
 
 
 --
--- Name: organization_party_bindings; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_guard_replacement_provenance; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER capacity_claims_guard_replacement_provenance BEFORE INSERT OR UPDATE OF status, replaced_by_claim_id ON request_engine.capacity_claims FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim_replacement_provenance();
 
-ALTER TABLE request_engine.organization_party_bindings ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: organization_party_bindings organization_party_bindings_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_guard_terminal_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY organization_party_bindings_tenant_policy ON request_engine.organization_party_bindings USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER capacity_claims_guard_terminal_transition BEFORE UPDATE OF status, released_at, replaced_by_claim_id ON request_engine.capacity_claims FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim_terminal_transition();
 
 
 --
--- Name: organization_provisioning_facts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_owner_completeness; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.organization_provisioning_facts ENABLE ROW LEVEL SECURITY;
+CREATE CONSTRAINT TRIGGER capacity_claims_owner_completeness AFTER INSERT OR DELETE OR UPDATE ON request_engine.capacity_claims DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.check_capacity_owner_completeness();
 
+
 --
--- Name: organization_provisioning_facts organization_provisioning_facts_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY organization_provisioning_facts_tenant_isolation ON request_engine.organization_provisioning_facts USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER capacity_claims_touch BEFORE UPDATE ON request_engine.capacity_claims FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: organization_public_contact_endpoints; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds capacity_holds_claim_completeness; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE CONSTRAINT TRIGGER capacity_holds_claim_completeness AFTER INSERT OR UPDATE ON request_engine.capacity_holds DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.check_capacity_owner_completeness();
 
-ALTER TABLE request_engine.organization_public_contact_endpoints ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: organization_public_contact_endpoints organization_public_contact_endpoints_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds capacity_holds_guard_provenance; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY organization_public_contact_endpoints_tenant_policy ON request_engine.organization_public_contact_endpoints USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER capacity_holds_guard_provenance BEFORE UPDATE ON request_engine.capacity_holds FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_hold_provenance_update();
 
 
 --
--- Name: organization_root_provisioning_facts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds capacity_holds_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.organization_root_provisioning_facts ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER capacity_holds_guard_transition BEFORE UPDATE ON request_engine.capacity_holds FOR EACH ROW EXECUTE FUNCTION request_engine.guard_hold_transition();
 
+
 --
--- Name: organization_root_provisioning_facts organization_root_provisioning_facts_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds capacity_holds_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY organization_root_provisioning_facts_tenant_isolation ON request_engine.organization_root_provisioning_facts USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER capacity_holds_revision_step BEFORE UPDATE ON request_engine.capacity_holds FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: organizations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds capacity_holds_slot_offer_consistency_deferred; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE CONSTRAINT TRIGGER capacity_holds_slot_offer_consistency_deferred AFTER UPDATE ON request_engine.capacity_holds DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.check_offered_slot_offer_source_consistency();
 
-ALTER TABLE request_engine.organizations ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: organizations organizations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_holds capacity_holds_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY organizations_tenant_isolation ON request_engine.organizations USING ((id = request_engine.current_organization_id())) WITH CHECK ((id = request_engine.current_organization_id()));
+CREATE TRIGGER capacity_holds_touch BEFORE UPDATE ON request_engine.capacity_holds FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: outbox_messages; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_deliveries communication_deliveries_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.outbox_messages ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER communication_deliveries_touch BEFORE UPDATE ON request_engine.communication_deliveries FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
+
 --
--- Name: outbox_messages outbox_messages_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_escalations communication_escalations_guard_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY outbox_messages_tenant_isolation ON request_engine.outbox_messages USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER communication_escalations_guard_append_only BEFORE DELETE OR UPDATE ON request_engine.communication_escalations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_communication_escalations();
 
 
 --
--- Name: parties; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_tasks communication_tasks_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.parties ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER communication_tasks_revision_step BEFORE UPDATE ON request_engine.communication_tasks FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
+
 --
--- Name: parties parties_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: communication_tasks communication_tasks_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY parties_tenant_isolation ON request_engine.parties USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER communication_tasks_touch BEFORE UPDATE ON request_engine.communication_tasks FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: party_administrative_identifiers; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: controller_policy_adoption_facts controller_policy_adoption_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER controller_policy_adoption_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.controller_policy_adoption_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
-ALTER TABLE request_engine.party_administrative_identifiers ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: party_administrative_identifiers party_administrative_identifiers_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: delegations delegations_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY party_administrative_identifiers_tenant_policy ON request_engine.party_administrative_identifiers USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER delegations_guard BEFORE INSERT OR DELETE OR UPDATE ON request_engine.delegations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_delegation();
 
 
 --
--- Name: party_contact_points; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_publications discovery_publications_broad_specific_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.party_contact_points ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER discovery_publications_broad_specific_guard BEFORE INSERT OR UPDATE ON request_engine.discovery_publications FOR EACH ROW EXECUTE FUNCTION request_engine.guard_f2_publication_broad_specific_overlap();
 
+
 --
--- Name: party_contact_points party_contact_points_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_publications discovery_publications_lifecycle; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY party_contact_points_tenant_isolation ON request_engine.party_contact_points USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER discovery_publications_lifecycle BEFORE UPDATE ON request_engine.discovery_publications FOR EACH ROW EXECUTE FUNCTION request_engine.guard_f2_publication_lifecycle();
 
 
 --
--- Name: party_identity_documents; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_publications discovery_publications_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER discovery_publications_revision_step BEFORE UPDATE ON request_engine.discovery_publications FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
-ALTER TABLE request_engine.party_identity_documents ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: party_identity_documents party_identity_documents_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: discovery_publications discovery_publications_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY party_identity_documents_tenant_policy ON request_engine.party_identity_documents USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER discovery_publications_touch BEFORE UPDATE ON request_engine.discovery_publications FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: party_identity_revisions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: webauthn_credentials fill_claimed_webauthn_user_handle; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.party_identity_revisions ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER fill_claimed_webauthn_user_handle BEFORE INSERT ON request_engine.webauthn_credentials FOR EACH ROW EXECUTE FUNCTION request_auth.fill_claimed_webauthn_user_handle();
 
+
 --
--- Name: party_identity_revisions party_identity_revisions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitations guard_staff_invitation; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY party_identity_revisions_tenant_policy ON request_engine.party_identity_revisions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER guard_staff_invitation BEFORE INSERT OR UPDATE ON request_engine.staff_invitations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_staff_invitation();
 
 
 --
--- Name: principal_authority_grants; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: staff_invitation_proposals guard_staff_invitation_proposal; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER guard_staff_invitation_proposal BEFORE INSERT OR UPDATE ON request_engine.staff_invitation_proposals FOR EACH ROW EXECUTE FUNCTION request_engine.guard_staff_invitation_proposal();
 
-ALTER TABLE request_engine.principal_authority_grants ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: principal_authority_grants principal_authority_grants_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_bindings identity_bindings_bump_principal_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY principal_authority_grants_tenant_isolation ON request_engine.principal_authority_grants USING (((principal_plane = 'tenant'::text) AND (organization_id = request_engine.current_organization_id()))) WITH CHECK (((principal_plane = 'tenant'::text) AND (organization_id = request_engine.current_organization_id())));
+CREATE TRIGGER identity_bindings_bump_principal_revision AFTER INSERT OR UPDATE ON request_engine.identity_bindings FOR EACH ROW EXECUTE FUNCTION request_engine.bump_principal_authority_from_identity_binding();
 
 
 --
--- Name: principal_contacts; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_bindings identity_bindings_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.principal_contacts ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER identity_bindings_guard BEFORE INSERT OR DELETE OR UPDATE ON request_engine.identity_bindings FOR EACH ROW EXECUTE FUNCTION request_engine.guard_identity_binding();
 
+
 --
--- Name: principal_contacts principal_contacts_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_link_intents identity_link_intents_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY principal_contacts_tenant_policy ON request_engine.principal_contacts USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER identity_link_intents_guard BEFORE DELETE OR UPDATE ON request_engine.identity_link_intents FOR EACH ROW EXECUTE FUNCTION request_engine.guard_identity_link_intent();
 
 
 --
--- Name: principals; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: initial_controller_policies initial_controller_policy_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER initial_controller_policy_immutable BEFORE DELETE OR UPDATE ON request_engine.initial_controller_policies FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
-ALTER TABLE request_engine.principals ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: principals principals_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: integration_governance_facts integration_facts_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY principals_tenant_isolation ON request_engine.principals USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER integration_facts_immutable BEFORE DELETE OR UPDATE ON request_engine.integration_governance_facts FOR EACH ROW EXECUTE FUNCTION request_engine.guard_integration_fact();
 
 
 --
--- Name: provider_events; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: service_session_interruptions interruptions_session_coherence; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.provider_events ENABLE ROW LEVEL SECURITY;
+CREATE CONSTRAINT TRIGGER interruptions_session_coherence AFTER INSERT OR UPDATE ON request_engine.service_session_interruptions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.assert_session_interruption_coherence();
 
+
 --
--- Name: provider_events provider_events_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_projection_policies live_capacity_projection_policies_bump_recovery_source_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY provider_events_tenant_isolation ON request_engine.provider_events USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER live_capacity_projection_policies_bump_recovery_source_revision AFTER INSERT OR DELETE OR UPDATE ON request_engine.live_capacity_projection_policies FOR EACH ROW EXECUTE FUNCTION request_engine.bump_direct_queue_recovery_source_revision();
 
 
 --
--- Name: queue_entries; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_projection_policies live_capacity_projection_policies_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.queue_entries ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER live_capacity_projection_policies_guard_transition BEFORE DELETE OR UPDATE ON request_engine.live_capacity_projection_policies FOR EACH ROW EXECUTE FUNCTION request_engine.guard_live_capacity_projection_policy();
 
+
 --
--- Name: queue_entries queue_entries_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_workload_estimate_policies live_capacity_workload_estimate_policies_bump_recovery_source_r; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY queue_entries_tenant_isolation ON request_engine.queue_entries USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER live_capacity_workload_estimate_policies_bump_recovery_source_r AFTER INSERT OR DELETE OR UPDATE ON request_engine.live_capacity_workload_estimate_policies FOR EACH ROW EXECUTE FUNCTION request_engine.bump_estimate_policy_recovery_source_revision();
 
 
 --
--- Name: queue_entry_operator_selections; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: live_capacity_workload_estimate_policies live_capacity_workload_estimate_policies_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER live_capacity_workload_estimate_policies_guard_transition BEFORE DELETE OR UPDATE ON request_engine.live_capacity_workload_estimate_policies FOR EACH ROW EXECUTE FUNCTION request_engine.guard_live_capacity_workload_estimate_policy();
 
-ALTER TABLE request_engine.queue_entry_operator_selections ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: queue_entry_operator_selections queue_entry_operator_selections_tenant; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_hours_exceptions location_hours_exceptions_bump_location; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY queue_entry_operator_selections_tenant ON request_engine.queue_entry_operator_selections USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER location_hours_exceptions_bump_location BEFORE INSERT OR DELETE OR UPDATE ON request_engine.location_hours_exceptions FOR EACH ROW EXECUTE FUNCTION request_engine.bump_location_operational_revision_from_child();
 
 
 --
--- Name: queue_entry_recall_holds; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_hours_exceptions location_hours_exceptions_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.queue_entry_recall_holds ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER location_hours_exceptions_touch BEFORE UPDATE ON request_engine.location_hours_exceptions FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
+
 --
--- Name: queue_entry_recall_holds queue_entry_recall_holds_tenant; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_operational_hours location_operational_hours_bump_location; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY queue_entry_recall_holds_tenant ON request_engine.queue_entry_recall_holds USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER location_operational_hours_bump_location BEFORE INSERT OR DELETE OR UPDATE ON request_engine.location_operational_hours FOR EACH ROW EXECUTE FUNCTION request_engine.bump_location_operational_revision_from_child();
 
 
 --
--- Name: queue_entry_skips; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: location_public_contact_endpoints location_public_contact_endpoints_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER location_public_contact_endpoints_touch BEFORE UPDATE ON request_engine.location_public_contact_endpoints FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
-ALTER TABLE request_engine.queue_entry_skips ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: queue_entry_skips queue_entry_skips_tenant; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: locations locations_bump_recovery_source_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY queue_entry_skips_tenant ON request_engine.queue_entry_skips USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER locations_bump_recovery_source_revision AFTER UPDATE OF operational_revision ON request_engine.locations FOR EACH ROW EXECUTE FUNCTION request_engine.bump_location_revision_recovery_sources();
 
 
 --
--- Name: recovery_source_revisions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: locations locations_guard_operational_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.recovery_source_revisions ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER locations_guard_operational_revision BEFORE UPDATE ON request_engine.locations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_location_operational_revision();
 
+
 --
--- Name: recovery_source_revisions recovery_source_revisions_internal_writer_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: locations locations_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY recovery_source_revisions_internal_writer_policy ON request_engine.recovery_source_revisions TO request_engine_schema_owner USING ((pg_trigger_depth() > 0)) WITH CHECK ((pg_trigger_depth() > 0));
+CREATE TRIGGER locations_touch BEFORE UPDATE ON request_engine.locations FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: recovery_source_revisions recovery_source_revisions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_credentials native_credentials_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY recovery_source_revisions_tenant_policy ON request_engine.recovery_source_revisions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER native_credentials_guard BEFORE INSERT OR UPDATE ON request_engine.native_credentials FOR EACH ROW EXECUTE FUNCTION request_engine.guard_native_credential();
 
 
 --
--- Name: reminder_acknowledgements; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identities native_identities_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER native_identities_guard BEFORE INSERT OR UPDATE ON request_engine.native_identities FOR EACH ROW EXECUTE FUNCTION request_engine.guard_native_identity();
 
-ALTER TABLE request_engine.reminder_acknowledgements ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: reminder_acknowledgements reminder_acknowledgements_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identities native_identities_revoke_webauthn_credentials; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY reminder_acknowledgements_tenant_isolation ON request_engine.reminder_acknowledgements USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER native_identities_revoke_webauthn_credentials AFTER UPDATE ON request_engine.native_identities FOR EACH ROW EXECUTE FUNCTION request_engine.revoke_webauthn_credentials_on_disable();
 
 
 --
--- Name: reminder_plans; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identity_provision_receipts native_identity_provision_receipts_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.reminder_plans ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER native_identity_provision_receipts_immutable BEFORE DELETE OR UPDATE ON request_engine.native_identity_provision_receipts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_native_identity_provision_receipt_mutation();
 
+
 --
--- Name: reminder_plans reminder_plans_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_identity_recovery_facts native_identity_recovery_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY reminder_plans_tenant_isolation ON request_engine.reminder_plans USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER native_identity_recovery_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.native_identity_recovery_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: representations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_recovery_address_facts native_recovery_address_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER native_recovery_address_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.native_recovery_address_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
-ALTER TABLE request_engine.representations ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: representations representations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_recovery_delivery_facts native_recovery_delivery_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY representations_tenant_isolation ON request_engine.representations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER native_recovery_delivery_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.native_recovery_delivery_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: request_definition_versions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_recovery_intents native_recovery_intents_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.request_definition_versions ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER native_recovery_intents_guard BEFORE INSERT OR UPDATE ON request_engine.native_recovery_intents FOR EACH ROW EXECUTE FUNCTION request_engine.guard_native_recovery_intent();
 
+
 --
--- Name: request_definition_versions request_definition_versions_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: native_sessions native_sessions_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY request_definition_versions_tenant_isolation ON request_engine.request_definition_versions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER native_sessions_guard BEFORE INSERT OR UPDATE ON request_engine.native_sessions FOR EACH ROW EXECUTE FUNCTION request_engine.guard_native_session();
 
 
 --
--- Name: request_definitions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_resource_requirements offering_resource_requirements_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER offering_resource_requirements_immutable BEFORE DELETE OR UPDATE ON request_engine.offering_resource_requirements FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
-ALTER TABLE request_engine.request_definitions ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: request_definitions request_definitions_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_service_classifications offering_service_classifications_lifecycle; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY request_definitions_tenant_isolation ON request_engine.request_definitions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER offering_service_classifications_lifecycle BEFORE UPDATE ON request_engine.offering_service_classifications FOR EACH ROW EXECUTE FUNCTION request_engine.guard_f2_mapping_lifecycle();
 
 
 --
--- Name: request_participants; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_service_classifications offering_service_classifications_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.request_participants ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER offering_service_classifications_revision_step BEFORE UPDATE ON request_engine.offering_service_classifications FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
+
 --
--- Name: request_participants request_participants_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_service_classifications offering_service_classifications_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY request_participants_tenant_isolation ON request_engine.request_participants USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER offering_service_classifications_touch BEFORE UPDATE ON request_engine.offering_service_classifications FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: requests; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_version_booking_policies offering_version_booking_policies_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER offering_version_booking_policies_immutable BEFORE DELETE OR UPDATE ON request_engine.offering_version_booking_policies FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
-ALTER TABLE request_engine.requests ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: requests requests_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_version_booking_terms offering_version_booking_terms_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY requests_tenant_isolation ON request_engine.requests USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER offering_version_booking_terms_immutable BEFORE DELETE OR UPDATE ON request_engine.offering_version_booking_terms FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: reservation_access; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_version_booking_terms offering_version_booking_terms_lock_root; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.reservation_access ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER offering_version_booking_terms_lock_root BEFORE INSERT OR DELETE ON request_engine.offering_version_booking_terms FOR EACH ROW EXECUTE FUNCTION request_engine.lock_offering_version_booking_terms_root();
 
+
 --
--- Name: reservation_access reservation_access_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_versions offering_versions_delivery_policy_validate; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY reservation_access_tenant_isolation ON request_engine.reservation_access USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER offering_versions_delivery_policy_validate BEFORE INSERT OR UPDATE ON request_engine.offering_versions FOR EACH ROW EXECUTE FUNCTION request_engine.validate_offering_version_delivery_policy();
 
 
 --
--- Name: reservation_arrival_estimates; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offering_versions offering_versions_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER offering_versions_immutable BEFORE DELETE OR UPDATE ON request_engine.offering_versions FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
-ALTER TABLE request_engine.reservation_arrival_estimates ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: reservation_arrival_estimates reservation_arrival_estimates_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: offerings offerings_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY reservation_arrival_estimates_tenant_policy ON request_engine.reservation_arrival_estimates USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER offerings_touch BEFORE UPDATE ON request_engine.offerings FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: reservation_attendance; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_escalations operational_recovery_escalations_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.reservation_attendance ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER operational_recovery_escalations_immutable BEFORE DELETE OR UPDATE ON request_engine.operational_recovery_escalations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_operational_recovery_escalation();
 
+
 --
--- Name: reservation_attendance reservation_attendance_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_executions operational_recovery_executions_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY reservation_attendance_tenant_isolation ON request_engine.reservation_attendance USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER operational_recovery_executions_guard BEFORE DELETE OR UPDATE ON request_engine.operational_recovery_executions FOR EACH ROW EXECUTE FUNCTION request_engine.guard_operational_recovery_execution();
 
 
 --
--- Name: reservation_commercial_commitment_context_terms; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_recovery_proposals operational_recovery_proposals_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER operational_recovery_proposals_immutable BEFORE DELETE OR UPDATE ON request_engine.operational_recovery_proposals FOR EACH ROW EXECUTE FUNCTION request_engine.guard_operational_recovery_proposal();
 
-ALTER TABLE request_engine.reservation_commercial_commitment_context_terms ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: reservation_commercial_commitment_context_terms reservation_commercial_commitment_context_terms_tenant_isolatio; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: operational_workload_classifications operational_workload_classifications_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY reservation_commercial_commitment_context_terms_tenant_isolatio ON request_engine.reservation_commercial_commitment_context_terms USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER operational_workload_classifications_guard_transition BEFORE DELETE OR UPDATE ON request_engine.operational_workload_classifications FOR EACH ROW EXECUTE FUNCTION request_engine.guard_operational_workload_classification();
 
 
 --
--- Name: reservation_commercial_commitments; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_public_contact_endpoints organization_public_contact_endpoints_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.reservation_commercial_commitments ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER organization_public_contact_endpoints_touch BEFORE UPDATE ON request_engine.organization_public_contact_endpoints FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
+
 --
--- Name: reservation_commercial_commitments reservation_commercial_commitments_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts organization_root_seed_initial_policy; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY reservation_commercial_commitments_tenant_policy ON request_engine.reservation_commercial_commitments USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER organization_root_seed_initial_policy AFTER INSERT ON request_engine.organization_root_provisioning_facts FOR EACH ROW EXECUTE FUNCTION request_engine.seed_initial_controller_policy();
 
 
 --
--- Name: reservations; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts organization_root_seed_staff_membership; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.reservations ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER organization_root_seed_staff_membership AFTER INSERT ON request_engine.organization_root_provisioning_facts FOR EACH ROW EXECUTE FUNCTION request_engine.seed_root_staff_membership();
 
+
 --
--- Name: reservations reservations_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organization_root_provisioning_facts organization_root_seed_staff_read_authority; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY reservations_tenant_isolation ON request_engine.reservations USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER organization_root_seed_staff_read_authority AFTER INSERT ON request_engine.organization_root_provisioning_facts FOR EACH ROW EXECUTE FUNCTION request_engine.seed_root_staff_read_authority();
 
 
 --
--- Name: resource_activities; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: organizations organizations_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER organizations_touch BEFORE UPDATE ON request_engine.organizations FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
-ALTER TABLE request_engine.resource_activities ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: resource_activities resource_activities_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: outbox_messages outbox_messages_change_notify; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY resource_activities_tenant_policy ON request_engine.resource_activities USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER outbox_messages_change_notify AFTER INSERT ON request_engine.outbox_messages REFERENCING NEW TABLE AS new_outbox_rows FOR EACH STATEMENT EXECUTE FUNCTION request_engine.notify_outbox_change();
 
 
 --
--- Name: resource_capabilities; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: outbox_messages outbox_messages_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.resource_capabilities ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER outbox_messages_touch BEFORE UPDATE ON request_engine.outbox_messages FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
+
 --
--- Name: resource_capabilities resource_capabilities_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: parties parties_guard_kind; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY resource_capabilities_tenant_isolation ON request_engine.resource_capabilities USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER parties_guard_kind BEFORE UPDATE OF party_kind ON request_engine.parties FOR EACH ROW EXECUTE FUNCTION request_engine.guard_party_kind_immutable();
 
 
 --
--- Name: resource_capability_assignments; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: parties parties_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER parties_touch BEFORE UPDATE ON request_engine.parties FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
-ALTER TABLE request_engine.resource_capability_assignments ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: resource_capability_assignments resource_capability_assignments_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_administrative_identifiers party_administrative_identifiers_guard_facts; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY resource_capability_assignments_tenant_isolation ON request_engine.resource_capability_assignments USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER party_administrative_identifiers_guard_facts BEFORE UPDATE ON request_engine.party_administrative_identifiers FOR EACH ROW EXECUTE FUNCTION request_engine.guard_party_administrative_identifier_facts();
 
 
 --
--- Name: resource_location_assignments; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_administrative_identifiers party_administrative_identifiers_touch_updated_at; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.resource_location_assignments ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER party_administrative_identifiers_touch_updated_at BEFORE UPDATE ON request_engine.party_administrative_identifiers FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
+
 --
--- Name: resource_location_assignments resource_location_assignments_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_contact_points party_contact_points_guard_verification; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY resource_location_assignments_tenant_policy ON request_engine.resource_location_assignments USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER party_contact_points_guard_verification BEFORE UPDATE ON request_engine.party_contact_points FOR EACH ROW EXECUTE FUNCTION request_engine.guard_party_contact_point_verification();
 
 
 --
--- Name: resource_location_availability; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_contact_points party_contact_points_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER party_contact_points_touch BEFORE UPDATE ON request_engine.party_contact_points FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
-ALTER TABLE request_engine.resource_location_availability ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: resource_location_availability resource_location_availability_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_documents party_identity_documents_guard_facts; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY resource_location_availability_tenant_policy ON request_engine.resource_location_availability USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER party_identity_documents_guard_facts BEFORE INSERT OR UPDATE ON request_engine.party_identity_documents FOR EACH ROW EXECUTE FUNCTION request_engine.guard_party_identity_documents();
 
 
 --
--- Name: resource_location_schedule_exceptions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_documents party_identity_documents_touch_updated_at; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.resource_location_schedule_exceptions ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER party_identity_documents_touch_updated_at BEFORE UPDATE ON request_engine.party_identity_documents FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
+
 --
--- Name: resource_location_schedule_exceptions resource_location_schedule_exceptions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: party_identity_revisions party_identity_revisions_guard_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY resource_location_schedule_exceptions_tenant_policy ON request_engine.resource_location_schedule_exceptions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER party_identity_revisions_guard_append_only BEFORE DELETE OR UPDATE ON request_engine.party_identity_revisions FOR EACH ROW EXECUTE FUNCTION request_engine.guard_party_identity_revisions();
 
 
 --
--- Name: resource_public_profiles; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_authority_lifecycle_facts platform_authority_lifecycle_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER platform_authority_lifecycle_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.platform_authority_lifecycle_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
-ALTER TABLE request_engine.resource_public_profiles ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: resource_public_profiles resource_public_profiles_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_bootstrap_intents platform_bootstrap_intents_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY resource_public_profiles_tenant_policy ON request_engine.resource_public_profiles USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER platform_bootstrap_intents_guard BEFORE INSERT OR DELETE OR UPDATE ON request_engine.platform_bootstrap_intents FOR EACH ROW EXECUTE FUNCTION request_engine.guard_platform_bootstrap_intent();
 
 
 --
--- Name: resources; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_configuration_facts platform_configuration_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.resources ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER platform_configuration_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.platform_configuration_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
+
 --
--- Name: resources resources_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_configuration_revisions platform_configuration_managed_oidc_projection; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY resources_tenant_isolation ON request_engine.resources USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER platform_configuration_managed_oidc_projection AFTER UPDATE OF state ON request_engine.platform_configuration_revisions FOR EACH ROW EXECUTE FUNCTION request_engine.project_managed_oidc_authority();
 
 
 --
--- Name: schedule_exceptions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_configuration_revisions platform_configuration_revision_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.schedule_exceptions ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER platform_configuration_revision_guard BEFORE UPDATE ON request_engine.platform_configuration_revisions FOR EACH ROW EXECUTE FUNCTION request_engine.guard_platform_configuration_revision();
 
+
 --
--- Name: schedule_exceptions schedule_exceptions_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_identity_recovery_facts platform_identity_recovery_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY schedule_exceptions_tenant_isolation ON request_engine.schedule_exceptions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER platform_identity_recovery_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.platform_identity_recovery_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: scheduled_actions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_installation_claim_facts platform_installation_claim_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER platform_installation_claim_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.platform_installation_claim_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
-ALTER TABLE request_engine.scheduled_actions ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: scheduled_actions scheduled_actions_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_instance platform_instance_grant_owner_v2_capabilities; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY scheduled_actions_tenant_isolation ON request_engine.scheduled_actions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER platform_instance_grant_owner_v2_capabilities AFTER UPDATE OF state ON request_engine.platform_instance FOR EACH ROW WHEN ((old.state IS DISTINCT FROM new.state)) EXECUTE FUNCTION request_platform.grant_platform_owner_v2_capabilities_on_claim();
 
 
 --
--- Name: service_queue_intake_controls; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_instance platform_instance_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.service_queue_intake_controls ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER platform_instance_guard BEFORE INSERT OR DELETE OR UPDATE ON request_engine.platform_instance FOR EACH ROW EXECUTE FUNCTION request_engine.guard_platform_instance();
 
+
 --
--- Name: service_queue_intake_controls service_queue_intake_controls_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_owner_invitation_facts platform_owner_invitation_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY service_queue_intake_controls_tenant_policy ON request_engine.service_queue_intake_controls USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER platform_owner_invitation_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.platform_owner_invitation_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: service_queue_intake_controls service_queue_intake_controls_trigger_writer_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_owner_policies platform_owner_policy_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY service_queue_intake_controls_trigger_writer_policy ON request_engine.service_queue_intake_controls FOR INSERT TO request_engine_schema_owner WITH CHECK ((pg_trigger_depth() > 0));
+CREATE TRIGGER platform_owner_policy_immutable BEFORE DELETE OR UPDATE ON request_engine.platform_owner_policies FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: service_queues; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_owner_provisioning_facts platform_owner_provisioning_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER platform_owner_provisioning_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.platform_owner_provisioning_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
-ALTER TABLE request_engine.service_queues ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: service_queues service_queues_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_recovery_code_facts platform_recovery_code_facts_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY service_queues_tenant_isolation ON request_engine.service_queues USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER platform_recovery_code_facts_append_only BEFORE DELETE OR UPDATE ON request_engine.platform_recovery_code_facts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: service_session_interruptions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_secret_bindings platform_secret_binding_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.service_session_interruptions ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER platform_secret_binding_guard BEFORE UPDATE ON request_engine.platform_secret_bindings FOR EACH ROW EXECUTE FUNCTION request_engine.guard_platform_secret_binding();
 
+
 --
--- Name: service_session_interruptions service_session_interruptions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: platform_secret_bindings platform_secret_binding_runtime_notify; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY service_session_interruptions_tenant_policy ON request_engine.service_session_interruptions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER platform_secret_binding_runtime_notify AFTER UPDATE ON request_engine.platform_secret_bindings FOR EACH ROW EXECUTE FUNCTION request_engine.notify_platform_secret_runtime_change();
 
 
 --
--- Name: service_sessions; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_authority_grants principal_authority_adopt_platform_owner_v3; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER principal_authority_adopt_platform_owner_v3 AFTER INSERT ON request_engine.principal_authority_grants FOR EACH ROW EXECUTE FUNCTION request_engine.adopt_platform_owner_v3();
 
-ALTER TABLE request_engine.service_sessions ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: service_sessions service_sessions_tenant_policy; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_authority_grants principal_authority_grants_adopt_platform_owner_v4; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY service_sessions_tenant_policy ON request_engine.service_sessions USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER principal_authority_grants_adopt_platform_owner_v4 AFTER INSERT ON request_engine.principal_authority_grants FOR EACH ROW EXECUTE FUNCTION request_engine.adopt_platform_owner_v4();
 
 
 --
--- Name: shared_capacity_bindings; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_authority_grants principal_authority_grants_bump_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.shared_capacity_bindings ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER principal_authority_grants_bump_revision AFTER INSERT OR UPDATE ON request_engine.principal_authority_grants FOR EACH ROW EXECUTE FUNCTION request_engine.bump_principal_authority_from_grant();
 
+
 --
--- Name: shared_capacity_bindings shared_capacity_bindings_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_authority_grants principal_authority_grants_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY shared_capacity_bindings_tenant_isolation ON request_engine.shared_capacity_bindings USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER principal_authority_grants_guard BEFORE INSERT OR DELETE OR UPDATE ON request_engine.principal_authority_grants FOR EACH ROW EXECUTE FUNCTION request_engine.guard_principal_authority_grant();
 
 
 --
--- Name: slot_offers; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_contacts principal_contacts_guard_facts; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER principal_contacts_guard_facts BEFORE UPDATE ON request_engine.principal_contacts FOR EACH ROW EXECUTE FUNCTION request_engine.guard_principal_contacts();
 
-ALTER TABLE request_engine.slot_offers ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: slot_offers slot_offers_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principal_contacts principal_contacts_touch_updated_at; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY slot_offers_tenant_isolation ON request_engine.slot_offers USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER principal_contacts_touch_updated_at BEFORE UPDATE ON request_engine.principal_contacts FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: slot_opportunities; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principals principals_guard_security_identity; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.slot_opportunities ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER principals_guard_security_identity BEFORE UPDATE ON request_engine.principals FOR EACH ROW EXECUTE FUNCTION request_engine.guard_principal_security_identity();
 
+
 --
--- Name: slot_opportunities slot_opportunities_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: principals principals_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY slot_opportunities_tenant_isolation ON request_engine.slot_opportunities USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER principals_touch BEFORE UPDATE ON request_engine.principals FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: staff_memberships; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: provider_events provider_events_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-ALTER TABLE request_engine.staff_memberships ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER provider_events_touch BEFORE UPDATE ON request_engine.provider_events FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
+
 --
--- Name: staff_memberships staff_memberships_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entries queue_entries_bump_recovery_source_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY staff_memberships_tenant_isolation ON request_engine.staff_memberships USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER queue_entries_bump_recovery_source_revision AFTER INSERT OR DELETE OR UPDATE ON request_engine.queue_entries FOR EACH ROW EXECUTE FUNCTION request_engine.bump_direct_queue_recovery_source_revision();
 
 
 --
--- Name: waitlist_entries; Type: ROW SECURITY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entries queue_entries_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
+
+CREATE TRIGGER queue_entries_guard_transition BEFORE UPDATE ON request_engine.queue_entries FOR EACH ROW EXECUTE FUNCTION request_engine.guard_queue_entry_transition();
 
-ALTER TABLE request_engine.waitlist_entries ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: waitlist_entries waitlist_entries_tenant_isolation; Type: POLICY; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: queue_entries queue_entries_initialize_times; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE POLICY waitlist_entries_tenant_isolation ON request_engine.waitlist_entries USING ((organization_id = request_engine.current_organization_id())) WITH CHECK ((organization_id = request_engine.current_organization_id()));
+CREATE TRIGGER queue_entries_initialize_times BEFORE INSERT ON request_engine.queue_entries FOR EACH ROW EXECUTE FUNCTION request_engine.initialize_queue_entry_times();
 
 
 --
--- Name: SCHEMA request_admin; Type: ACL; Schema: -; Owner: request_engine_schema_owner
+-- Name: queue_entries queue_entries_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT USAGE ON SCHEMA request_admin TO request_engine_admin;
+CREATE TRIGGER queue_entries_revision_step BEFORE UPDATE ON request_engine.queue_entries FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: SCHEMA request_auth; Type: ACL; Schema: -; Owner: request_engine_schema_owner
+-- Name: queue_entries queue_entries_service_session_coherence; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT USAGE ON SCHEMA request_auth TO request_engine_app;
-GRANT USAGE ON SCHEMA request_auth TO request_platform_control_definer;
-GRANT USAGE ON SCHEMA request_auth TO request_platform_definer;
-GRANT USAGE ON SCHEMA request_auth TO request_engine_worker;
+CREATE CONSTRAINT TRIGGER queue_entries_service_session_coherence AFTER INSERT OR UPDATE ON request_engine.queue_entries DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.assert_service_queue_coherence();
 
 
 --
--- Name: SCHEMA request_cmd; Type: ACL; Schema: -; Owner: request_engine_schema_owner
+-- Name: queue_entries queue_entries_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT USAGE ON SCHEMA request_cmd TO request_engine_app;
-GRANT USAGE ON SCHEMA request_cmd TO request_engine_worker;
-GRANT USAGE ON SCHEMA request_cmd TO request_engine_admin;
+CREATE TRIGGER queue_entries_touch BEFORE UPDATE ON request_engine.queue_entries FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: SCHEMA request_engine; Type: ACL; Schema: -; Owner: request_engine_schema_owner
+-- Name: queue_entry_operator_selections queue_entry_operator_selections_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT USAGE ON SCHEMA request_engine TO request_engine_app;
-GRANT USAGE ON SCHEMA request_engine TO request_engine_worker;
-GRANT USAGE ON SCHEMA request_engine TO request_engine_admin;
-GRANT USAGE ON SCHEMA request_engine TO request_engine_discovery;
-GRANT USAGE ON SCHEMA request_engine TO request_engine_discovery_definer;
-GRANT USAGE ON SCHEMA request_engine TO request_platform_definer;
-GRANT USAGE ON SCHEMA request_engine TO request_bootstrap_definer;
-GRANT USAGE ON SCHEMA request_engine TO request_platform_control_definer;
+CREATE TRIGGER queue_entry_operator_selections_immutable BEFORE DELETE OR UPDATE ON request_engine.queue_entry_operator_selections FOR EACH ROW EXECUTE FUNCTION request_engine.reject_queue_entry_operator_selection_mutation();
 
 
 --
--- Name: SCHEMA request_platform; Type: ACL; Schema: -; Owner: request_engine_schema_owner
+-- Name: queue_entry_recall_holds queue_entry_recall_holds_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT USAGE ON SCHEMA request_platform TO request_platform_definer;
-GRANT USAGE ON SCHEMA request_platform TO request_bootstrap_definer;
-GRANT USAGE ON SCHEMA request_platform TO request_platform_control;
-GRANT USAGE ON SCHEMA request_platform TO request_platform_control_definer;
-GRANT USAGE ON SCHEMA request_platform TO request_engine_worker;
-GRANT USAGE ON SCHEMA request_platform TO request_engine_app;
+CREATE TRIGGER queue_entry_recall_holds_guard BEFORE DELETE OR UPDATE ON request_engine.queue_entry_recall_holds FOR EACH ROW EXECUTE FUNCTION request_engine.guard_queue_entry_recall_hold();
 
 
 --
--- Name: SCHEMA request_read; Type: ACL; Schema: -; Owner: request_engine_schema_owner
+-- Name: queue_entry_skips queue_entry_skips_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-GRANT USAGE ON SCHEMA request_read TO request_engine_app;
-GRANT USAGE ON SCHEMA request_read TO request_engine_admin;
+CREATE TRIGGER queue_entry_skips_guard BEFORE DELETE OR UPDATE ON request_engine.queue_entry_skips FOR EACH ROW EXECUTE FUNCTION request_engine.guard_queue_entry_skip();
 
 
 --
--- Name: FUNCTION activate_shared_capacity_binding(p_organization_id uuid, p_resource_id uuid, p_shared_capacity_identity_id uuid, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: reminder_acknowledgements reminder_acknowledgements_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_admin.activate_shared_capacity_binding(p_organization_id uuid, p_resource_id uuid, p_shared_capacity_identity_id uuid, p_authority_ref text, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_admin.activate_shared_capacity_binding(p_organization_id uuid, p_resource_id uuid, p_shared_capacity_identity_id uuid, p_authority_ref text, p_reason text) TO request_engine_admin;
+CREATE TRIGGER reminder_acknowledgements_append_only BEFORE DELETE OR UPDATE ON request_engine.reminder_acknowledgements FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: FUNCTION create_global_identity(p_identity_kind text, p_evidence_ref text, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: reminder_plans reminder_plans_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_admin.create_global_identity(p_identity_kind text, p_evidence_ref text, p_authority_ref text, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_admin.create_global_identity(p_identity_kind text, p_evidence_ref text, p_authority_ref text, p_reason text) TO request_engine_admin;
+CREATE TRIGGER reminder_plans_guard_transition BEFORE UPDATE ON request_engine.reminder_plans FOR EACH ROW EXECUTE FUNCTION request_engine.guard_reminder_plan_transition();
 
 
 --
--- Name: FUNCTION create_service_classification(p_classification_key text, p_canonical_name text, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: reminder_plans reminder_plans_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_admin.create_service_classification(p_classification_key text, p_canonical_name text, p_authority_ref text, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_admin.create_service_classification(p_classification_key text, p_canonical_name text, p_authority_ref text, p_reason text) TO request_engine_admin;
+CREATE TRIGGER reminder_plans_revision_step BEFORE UPDATE ON request_engine.reminder_plans FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION create_shared_capacity_identity(p_global_identity_id uuid, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: reminder_plans reminder_plans_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_admin.create_shared_capacity_identity(p_global_identity_id uuid, p_authority_ref text, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_admin.create_shared_capacity_identity(p_global_identity_id uuid, p_authority_ref text, p_reason text) TO request_engine_admin;
+CREATE TRIGGER reminder_plans_touch BEFORE UPDATE ON request_engine.reminder_plans FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION replay_dead_outbox_message(p_organization_id uuid, p_message_id uuid, p_additional_attempts integer, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: representations representations_bump_principal_authority; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_admin.replay_dead_outbox_message(p_organization_id uuid, p_message_id uuid, p_additional_attempts integer, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_admin.replay_dead_outbox_message(p_organization_id uuid, p_message_id uuid, p_additional_attempts integer, p_reason text) TO request_engine_admin;
+CREATE TRIGGER representations_bump_principal_authority AFTER INSERT OR DELETE OR UPDATE ON request_engine.representations FOR EACH ROW EXECUTE FUNCTION request_engine.bump_principal_authority_from_representation();
 
 
 --
--- Name: FUNCTION replay_dead_scheduled_action(p_organization_id uuid, p_action_id uuid, p_additional_attempts integer, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: representations representations_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_admin.replay_dead_scheduled_action(p_organization_id uuid, p_action_id uuid, p_additional_attempts integer, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_admin.replay_dead_scheduled_action(p_organization_id uuid, p_action_id uuid, p_additional_attempts integer, p_reason text) TO request_engine_admin;
+CREATE TRIGGER representations_revision_step BEFORE UPDATE ON request_engine.representations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION replay_provider_event(p_organization_id uuid, p_provider_event_row_id uuid, p_additional_attempts integer, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: representations representations_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_admin.replay_provider_event(p_organization_id uuid, p_provider_event_row_id uuid, p_additional_attempts integer, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_admin.replay_provider_event(p_organization_id uuid, p_provider_event_row_id uuid, p_additional_attempts integer, p_reason text) TO request_engine_admin;
+CREATE TRIGGER representations_touch BEFORE UPDATE ON request_engine.representations FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION retire_service_classification(p_service_classification_id uuid, p_expected_revision bigint, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: request_definition_versions request_definition_versions_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_admin.retire_service_classification(p_service_classification_id uuid, p_expected_revision bigint, p_authority_ref text, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_admin.retire_service_classification(p_service_classification_id uuid, p_expected_revision bigint, p_authority_ref text, p_reason text) TO request_engine_admin;
+CREATE TRIGGER request_definition_versions_immutable BEFORE DELETE OR UPDATE ON request_engine.request_definition_versions FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: FUNCTION revoke_shared_capacity_binding(p_binding_id uuid, p_authority_ref text, p_reason text); Type: ACL; Schema: request_admin; Owner: request_engine_schema_owner
+-- Name: request_definitions request_definitions_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_admin.revoke_shared_capacity_binding(p_binding_id uuid, p_authority_ref text, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_admin.revoke_shared_capacity_binding(p_binding_id uuid, p_authority_ref text, p_reason text) TO request_engine_admin;
+CREATE TRIGGER request_definitions_touch BEFORE UPDATE ON request_engine.request_definitions FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION activate_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_secret_reference text, p_secret_digest text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: requests requests_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.activate_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_secret_reference text, p_secret_digest text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.activate_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_secret_reference text, p_secret_digest text) TO request_engine_worker;
+CREATE TRIGGER requests_guard_transition BEFORE UPDATE ON request_engine.requests FOR EACH ROW EXECUTE FUNCTION request_engine.guard_request_transition();
 
 
 --
--- Name: FUNCTION claim_native_recovery_delivery_requests(p_limit integer, p_lease_seconds integer); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: requests requests_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.claim_native_recovery_delivery_requests(p_limit integer, p_lease_seconds integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.claim_native_recovery_delivery_requests(p_limit integer, p_lease_seconds integer) TO request_engine_worker;
+CREATE TRIGGER requests_revision_step BEFORE UPDATE ON request_engine.requests FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION complete_native_recovery(p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: requests requests_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.complete_native_recovery(p_native_identity_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.complete_native_recovery(p_native_identity_id uuid) TO request_engine_app;
+CREATE TRIGGER requests_touch BEFORE UPDATE ON request_engine.requests FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION complete_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_outcome text, p_error_class text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservation_access reservation_access_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.complete_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_outcome text, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.complete_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_outcome text, p_error_class text) TO request_engine_worker;
+CREATE TRIGGER reservation_access_touch BEFORE UPDATE ON request_engine.reservation_access FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION consume_native_recovery_intent(p_recovery_id uuid, p_token_digest bytea, p_new_credential_id uuid, p_new_verifier text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservation_arrival_estimates reservation_arrival_estimates_assert_reservation_confirmed; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.consume_native_recovery_intent(p_recovery_id uuid, p_token_digest bytea, p_new_credential_id uuid, p_new_verifier text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.consume_native_recovery_intent(p_recovery_id uuid, p_token_digest bytea, p_new_credential_id uuid, p_new_verifier text) TO request_engine_app;
+CREATE TRIGGER reservation_arrival_estimates_assert_reservation_confirmed BEFORE INSERT ON request_engine.reservation_arrival_estimates FOR EACH ROW EXECUTE FUNCTION request_engine.assert_arrival_estimate_reservation_confirmed();
 
 
 --
--- Name: FUNCTION consume_recovery_code(p_code_digest bytea); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservation_arrival_estimates reservation_arrival_estimates_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.consume_recovery_code(p_code_digest bytea) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.consume_recovery_code(p_code_digest bytea) TO request_engine_app;
+CREATE TRIGGER reservation_arrival_estimates_guard_transition BEFORE DELETE OR UPDATE ON request_engine.reservation_arrival_estimates FOR EACH ROW EXECUTE FUNCTION request_engine.guard_reservation_arrival_estimate();
 
 
 --
--- Name: FUNCTION consume_recovery_code_and_rotate_password(p_code_digest bytea, p_new_credential_id uuid, p_new_verifier text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservation_attendance reservation_attendance_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.consume_recovery_code_and_rotate_password(p_code_digest bytea, p_new_credential_id uuid, p_new_verifier text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.consume_recovery_code_and_rotate_password(p_code_digest bytea, p_new_credential_id uuid, p_new_verifier text) TO request_engine_app;
+CREATE TRIGGER reservation_attendance_revision_step BEFORE UPDATE ON request_engine.reservation_attendance FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION create_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_verifier text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservation_attendance reservation_attendance_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.create_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_verifier text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.create_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_verifier text) TO request_engine_app;
+CREATE TRIGGER reservation_attendance_touch BEFORE UPDATE ON request_engine.reservation_attendance FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION create_native_recovery_intent(p_native_identity_id uuid, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservation_commercial_commitment_context_terms reservation_commercial_commitment_context_terms_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.create_native_recovery_intent(p_native_identity_id uuid, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.create_native_recovery_intent(p_native_identity_id uuid, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) TO request_engine_app;
-GRANT ALL ON FUNCTION request_auth.create_native_recovery_intent(p_native_identity_id uuid, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) TO request_platform_control_definer;
+CREATE TRIGGER reservation_commercial_commitment_context_terms_append_only BEFORE DELETE OR UPDATE ON request_engine.reservation_commercial_commitment_context_terms FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: FUNCTION create_native_recovery_intent_for_verified_address(p_identity_authority_id uuid, p_login_handle text, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservation_commercial_commitments reservation_commercial_commitments_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.create_native_recovery_intent_for_verified_address(p_identity_authority_id uuid, p_login_handle text, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
+CREATE TRIGGER reservation_commercial_commitments_append_only BEFORE DELETE OR UPDATE ON request_engine.reservation_commercial_commitments FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: FUNCTION create_native_session(p_native_identity_id uuid, p_credential_id uuid, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservations reservations_bump_recovery_source_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.create_native_session(p_native_identity_id uuid, p_credential_id uuid, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.create_native_session(p_native_identity_id uuid, p_credential_id uuid, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) TO request_engine_app;
+CREATE TRIGGER reservations_bump_recovery_source_revision AFTER INSERT OR DELETE OR UPDATE ON request_engine.reservations FOR EACH ROW EXECUTE FUNCTION request_engine.bump_reservation_recovery_source_revision();
 
 
 --
--- Name: FUNCTION create_recovery_code_set(p_set_id uuid, p_native_identity_id uuid, p_setup_session_id uuid, p_code_digests bytea[]); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservations reservations_claim_completeness; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.create_recovery_code_set(p_set_id uuid, p_native_identity_id uuid, p_setup_session_id uuid, p_code_digests bytea[]) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.create_recovery_code_set(p_set_id uuid, p_native_identity_id uuid, p_setup_session_id uuid, p_code_digests bytea[]) TO request_engine_app;
+CREATE CONSTRAINT TRIGGER reservations_claim_completeness AFTER INSERT OR UPDATE ON request_engine.reservations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.check_capacity_owner_completeness();
 
 
 --
--- Name: FUNCTION create_webauthn_challenge(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservations reservations_guard_discovery_handoff; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.create_webauthn_challenge(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.create_webauthn_challenge(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone) TO request_engine_app;
+CREATE TRIGGER reservations_guard_discovery_handoff BEFORE INSERT ON request_engine.reservations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_discovery_handoff_reservation();
 
 
 --
--- Name: FUNCTION disable_native_identity(p_native_identity_id uuid, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservations reservations_guard_discovery_latest_version; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.disable_native_identity(p_native_identity_id uuid, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.disable_native_identity(p_native_identity_id uuid, p_reason text) TO request_engine_app;
+CREATE TRIGGER reservations_guard_discovery_latest_version BEFORE INSERT ON request_engine.reservations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_discovery_handoff_latest_version();
 
 
 --
--- Name: FUNCTION finalize_setup_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_setup_session_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservations reservations_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.finalize_setup_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_setup_session_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.finalize_setup_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_setup_session_id uuid) TO request_engine_app;
+CREATE TRIGGER reservations_guard_transition BEFORE UPDATE ON request_engine.reservations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_reservation_transition();
 
 
 --
--- Name: FUNCTION finalize_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservations reservations_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.finalize_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.finalize_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) TO request_engine_app;
+CREATE TRIGGER reservations_revision_step BEFORE UPDATE ON request_engine.reservations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION finalize_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: reservations reservations_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.finalize_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.finalize_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean) TO request_engine_app;
+CREATE TRIGGER reservations_touch BEFORE UPDATE ON request_engine.reservations FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION finalize_webauthn_step_up(p_challenge_digest bytea, p_credential_row_id uuid, p_session_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_user_verified boolean); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_activities resource_activities_bump_recovery_source_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.finalize_webauthn_step_up(p_challenge_digest bytea, p_credential_row_id uuid, p_session_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_user_verified boolean) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.finalize_webauthn_step_up(p_challenge_digest bytea, p_credential_row_id uuid, p_session_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_user_verified boolean) TO request_engine_app;
+CREATE TRIGGER resource_activities_bump_recovery_source_revision AFTER INSERT OR DELETE OR UPDATE ON request_engine.resource_activities FOR EACH ROW EXECUTE FUNCTION request_engine.bump_resource_activity_recovery_source_revision();
 
 
 --
--- Name: FUNCTION is_native_authority_ready(p_authority_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_activities resource_activities_guard_resource_occupation; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.is_native_authority_ready(p_authority_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.is_native_authority_ready(p_authority_id uuid) TO request_engine_app;
+CREATE TRIGGER resource_activities_guard_resource_occupation BEFORE INSERT OR UPDATE OF resource_id, ended_at ON request_engine.resource_activities FOR EACH ROW EXECUTE FUNCTION request_engine.guard_live_resource_occupation();
 
 
 --
--- Name: FUNCTION lock_credentialed_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_activities resource_activities_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.lock_credentialed_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.lock_credentialed_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid) TO request_platform_control_definer;
+CREATE TRIGGER resource_activities_guard_transition BEFORE UPDATE ON request_engine.resource_activities FOR EACH ROW EXECUTE FUNCTION request_engine.guard_resource_activity_transition();
 
 
 --
--- Name: FUNCTION prepare_native_recovery_address(p_address_id uuid, p_native_identity_id uuid, p_kind text, p_normalized_address text, p_verification_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_location_assignments resource_location_assignments_bump_resource; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.prepare_native_recovery_address(p_address_id uuid, p_native_identity_id uuid, p_kind text, p_normalized_address text, p_verification_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.prepare_native_recovery_address(p_address_id uuid, p_native_identity_id uuid, p_kind text, p_normalized_address text, p_verification_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) TO request_engine_app;
+CREATE TRIGGER resource_location_assignments_bump_resource BEFORE INSERT OR DELETE OR UPDATE ON request_engine.resource_location_assignments FOR EACH ROW EXECUTE FUNCTION request_engine.bump_resource_from_assignment();
 
 
 --
--- Name: FUNCTION promote_recovery_code_set(p_set_id uuid, p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_location_assignments resource_location_assignments_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.promote_recovery_code_set(p_set_id uuid, p_native_identity_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.promote_recovery_code_set(p_set_id uuid, p_native_identity_id uuid) TO request_engine_app;
+CREATE TRIGGER resource_location_assignments_guard BEFORE UPDATE ON request_engine.resource_location_assignments FOR EACH ROW EXECUTE FUNCTION request_engine.guard_resource_location_assignment();
 
 
 --
--- Name: FUNCTION queue_native_verified_recovery(p_identity_authority_id uuid, p_login_handle text, p_request_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_location_assignments resource_location_assignments_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.queue_native_verified_recovery(p_identity_authority_id uuid, p_login_handle text, p_request_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.queue_native_verified_recovery(p_identity_authority_id uuid, p_login_handle text, p_request_id uuid) TO request_engine_app;
+CREATE TRIGGER resource_location_assignments_revision_step BEFORE UPDATE ON request_engine.resource_location_assignments FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION read_active_webauthn_identity(p_identity_authority_id uuid, p_login_handle text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_location_assignments resource_location_assignments_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_active_webauthn_identity(p_identity_authority_id uuid, p_login_handle text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_active_webauthn_identity(p_identity_authority_id uuid, p_login_handle text) TO request_engine_app;
+CREATE TRIGGER resource_location_assignments_touch BEFORE UPDATE ON request_engine.resource_location_assignments FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION read_native_credential_verifier(p_credential_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_location_availability resource_location_availability_bump_resource; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_native_credential_verifier(p_credential_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_native_credential_verifier(p_credential_id uuid) TO request_engine_app;
+CREATE TRIGGER resource_location_availability_bump_resource BEFORE INSERT OR DELETE OR UPDATE ON request_engine.resource_location_availability FOR EACH ROW EXECUTE FUNCTION request_engine.bump_resource_from_assignment_child();
 
 
 --
--- Name: FUNCTION read_native_password_credential(p_identity_authority_id uuid, p_login_handle text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_location_schedule_exceptions resource_location_exceptions_bump_resource; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_native_password_credential(p_identity_authority_id uuid, p_login_handle text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_native_password_credential(p_identity_authority_id uuid, p_login_handle text) TO request_engine_app;
+CREATE TRIGGER resource_location_exceptions_bump_resource BEFORE INSERT OR DELETE OR UPDATE ON request_engine.resource_location_schedule_exceptions FOR EACH ROW EXECUTE FUNCTION request_engine.bump_resource_from_assignment_child();
 
 
 --
--- Name: FUNCTION read_native_recovery_addresses(p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_location_schedule_exceptions resource_location_exceptions_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_native_recovery_addresses(p_native_identity_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_native_recovery_addresses(p_native_identity_id uuid) TO request_engine_app;
+CREATE TRIGGER resource_location_exceptions_touch BEFORE UPDATE ON request_engine.resource_location_schedule_exceptions FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION read_native_recovery_readiness(p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_public_profiles resource_public_profiles_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_native_recovery_readiness(p_native_identity_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_native_recovery_readiness(p_native_identity_id uuid) TO request_engine_app;
+CREATE TRIGGER resource_public_profiles_revision_step BEFORE UPDATE ON request_engine.resource_public_profiles FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION read_native_session(p_session_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resource_public_profiles resource_public_profiles_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_native_session(p_session_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_native_session(p_session_id uuid) TO request_engine_app;
+CREATE TRIGGER resource_public_profiles_touch BEFORE UPDATE ON request_engine.resource_public_profiles FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION read_oidc_authorities(); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resources resources_bump_recovery_source_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_oidc_authorities() FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_oidc_authorities() TO request_engine_app;
+CREATE TRIGGER resources_bump_recovery_source_revision AFTER UPDATE OF availability_revision ON request_engine.resources FOR EACH ROW EXECUTE FUNCTION request_engine.bump_resource_revision_recovery_sources();
 
 
 --
--- Name: FUNCTION read_platform_identity_bindings(p_identity_authority_id uuid, p_subject_id text); Type: ACL; Schema: request_auth; Owner: request_platform_definer
+-- Name: resources resources_guard_commitment_sensitive_change; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_platform_identity_bindings(p_identity_authority_id uuid, p_subject_id text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_platform_identity_bindings(p_identity_authority_id uuid, p_subject_id text) TO request_engine_app;
+CREATE TRIGGER resources_guard_commitment_sensitive_change BEFORE UPDATE ON request_engine.resources FOR EACH ROW EXECUTE FUNCTION request_engine.guard_resource_commitment_sensitive_change();
 
 
 --
--- Name: FUNCTION read_recovery_code_set_summary(p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: resources resources_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_recovery_code_set_summary(p_native_identity_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_recovery_code_set_summary(p_native_identity_id uuid) TO request_engine_app;
+CREATE TRIGGER resources_touch BEFORE UPDATE ON request_engine.resources FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION read_webauthn_challenge(p_challenge_digest bytea, p_purpose text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: schedule_exceptions schedule_exceptions_bump_resource; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_webauthn_challenge(p_challenge_digest bytea, p_purpose text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_webauthn_challenge(p_challenge_digest bytea, p_purpose text) TO request_engine_app;
+CREATE TRIGGER schedule_exceptions_bump_resource BEFORE INSERT OR DELETE OR UPDATE ON request_engine.schedule_exceptions FOR EACH ROW EXECUTE FUNCTION request_engine.bump_resource_availability_revision();
 
 
 --
--- Name: FUNCTION read_webauthn_credential(p_credential_id_bytes bytea); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: scheduled_actions scheduled_actions_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_webauthn_credential(p_credential_id_bytes bytea) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_webauthn_credential(p_credential_id_bytes bytea) TO request_engine_app;
+CREATE TRIGGER scheduled_actions_touch BEFORE UPDATE ON request_engine.scheduled_actions FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION read_webauthn_credentials(p_native_identity_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_classification_authority_events service_classification_authority_events_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_webauthn_credentials(p_native_identity_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_webauthn_credentials(p_native_identity_id uuid) TO request_engine_app;
+CREATE TRIGGER service_classification_authority_events_append_only BEFORE DELETE OR UPDATE ON request_engine.service_classification_authority_events FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: FUNCTION read_workload_credential(p_credential_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_classifications service_classifications_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.read_workload_credential(p_credential_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.read_workload_credential(p_credential_id uuid) TO request_engine_app;
+CREATE TRIGGER service_classifications_revision_step BEFORE UPDATE ON request_engine.service_classifications FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION reauthenticate_native_session(p_session_id uuid, p_credential_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_classifications service_classifications_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.reauthenticate_native_session(p_session_id uuid, p_credential_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.reauthenticate_native_session(p_session_id uuid, p_credential_id uuid) TO request_engine_app;
+CREATE TRIGGER service_classifications_touch BEFORE UPDATE ON request_engine.service_classifications FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION rehash_native_password_verifier(p_credential_id uuid, p_native_identity_id uuid, p_new_verifier text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_queue_intake_controls service_queue_intake_controls_bump_recovery_source_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.rehash_native_password_verifier(p_credential_id uuid, p_native_identity_id uuid, p_new_verifier text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.rehash_native_password_verifier(p_credential_id uuid, p_native_identity_id uuid, p_new_verifier text) TO request_engine_app;
+CREATE TRIGGER service_queue_intake_controls_bump_recovery_source_revision AFTER UPDATE OF accepting, reason, effective_until ON request_engine.service_queue_intake_controls FOR EACH ROW EXECUTE FUNCTION request_engine.bump_intake_control_recovery_source_revision();
 
 
 --
--- Name: FUNCTION renew_native_recovery_delivery_request_lease(p_request_id uuid, p_claim_token uuid, p_extension_seconds integer); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_queues service_queues_initialize_intake_control; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.renew_native_recovery_delivery_request_lease(p_request_id uuid, p_claim_token uuid, p_extension_seconds integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.renew_native_recovery_delivery_request_lease(p_request_id uuid, p_claim_token uuid, p_extension_seconds integer) TO request_engine_worker;
+CREATE TRIGGER service_queues_initialize_intake_control AFTER INSERT ON request_engine.service_queues FOR EACH ROW EXECUTE FUNCTION request_engine.initialize_service_queue_intake_control();
 
 
 --
--- Name: FUNCTION retry_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_delay_seconds integer, p_error_class text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_queues service_queues_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.retry_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_delay_seconds integer, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.retry_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_delay_seconds integer, p_error_class text) TO request_engine_worker;
+CREATE TRIGGER service_queues_revision_step BEFORE UPDATE ON request_engine.service_queues FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION revoke_native_recovery_address(p_native_identity_id uuid, p_recovery_address_id uuid); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_queues service_queues_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.revoke_native_recovery_address(p_native_identity_id uuid, p_recovery_address_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.revoke_native_recovery_address(p_native_identity_id uuid, p_recovery_address_id uuid) TO request_engine_app;
+CREATE TRIGGER service_queues_touch BEFORE UPDATE ON request_engine.service_queues FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION revoke_native_session(p_native_identity_id uuid, p_session_id uuid, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_session_interruptions service_session_interruptions_bump_recovery_source_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.revoke_native_session(p_native_identity_id uuid, p_session_id uuid, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.revoke_native_session(p_native_identity_id uuid, p_session_id uuid, p_reason text) TO request_engine_app;
+CREATE TRIGGER service_session_interruptions_bump_recovery_source_revision AFTER INSERT OR DELETE OR UPDATE ON request_engine.service_session_interruptions FOR EACH ROW EXECUTE FUNCTION request_engine.bump_interruption_recovery_source_revision();
 
 
 --
--- Name: FUNCTION revoke_native_sessions(p_native_identity_id uuid, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_session_interruptions service_session_interruptions_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.revoke_native_sessions(p_native_identity_id uuid, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.revoke_native_sessions(p_native_identity_id uuid, p_reason text) TO request_engine_app;
+CREATE TRIGGER service_session_interruptions_guard_transition BEFORE DELETE OR UPDATE ON request_engine.service_session_interruptions FOR EACH ROW EXECUTE FUNCTION request_engine.guard_service_session_interruption_transition();
 
 
 --
--- Name: FUNCTION revoke_recovery_code_set(p_set_id uuid, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_sessions service_sessions_bump_recovery_source_revision; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.revoke_recovery_code_set(p_set_id uuid, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.revoke_recovery_code_set(p_set_id uuid, p_reason text) TO request_engine_app;
+CREATE TRIGGER service_sessions_bump_recovery_source_revision AFTER INSERT OR DELETE OR UPDATE ON request_engine.service_sessions FOR EACH ROW EXECUTE FUNCTION request_engine.bump_service_session_recovery_source_revision();
 
 
 --
--- Name: FUNCTION revoke_webauthn_credential(p_credential_id uuid, p_native_identity_id uuid, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_sessions service_sessions_guard_resource_occupation; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.revoke_webauthn_credential(p_credential_id uuid, p_native_identity_id uuid, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.revoke_webauthn_credential(p_credential_id uuid, p_native_identity_id uuid, p_reason text) TO request_engine_app;
+CREATE TRIGGER service_sessions_guard_resource_occupation BEFORE INSERT OR UPDATE OF resource_id, status ON request_engine.service_sessions FOR EACH ROW EXECUTE FUNCTION request_engine.guard_live_resource_occupation();
 
 
 --
--- Name: FUNCTION rotate_native_password(p_native_identity_id uuid, p_expected_credential_id uuid, p_new_credential_id uuid, p_new_verifier text, p_reason text); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_sessions service_sessions_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.rotate_native_password(p_native_identity_id uuid, p_expected_credential_id uuid, p_new_credential_id uuid, p_new_verifier text, p_reason text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.rotate_native_password(p_native_identity_id uuid, p_expected_credential_id uuid, p_new_credential_id uuid, p_new_verifier text, p_reason text) TO request_engine_app;
+CREATE TRIGGER service_sessions_guard_transition BEFORE UPDATE ON request_engine.service_sessions FOR EACH ROW EXECUTE FUNCTION request_engine.guard_service_session_transition();
 
 
 --
--- Name: FUNCTION touch_native_session(p_session_id uuid, p_min_interval_seconds integer); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_sessions service_sessions_interruption_coherence; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.touch_native_session(p_session_id uuid, p_min_interval_seconds integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.touch_native_session(p_session_id uuid, p_min_interval_seconds integer) TO request_engine_app;
+CREATE CONSTRAINT TRIGGER service_sessions_interruption_coherence AFTER INSERT OR UPDATE ON request_engine.service_sessions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.assert_session_interruption_coherence();
 
 
 --
--- Name: FUNCTION verify_native_recovery_address(p_verification_id uuid, p_token_digest bytea); Type: ACL; Schema: request_auth; Owner: request_engine_schema_owner
+-- Name: service_sessions service_sessions_queue_entry_coherence; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_auth.verify_native_recovery_address(p_verification_id uuid, p_token_digest bytea) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_auth.verify_native_recovery_address(p_verification_id uuid, p_token_digest bytea) TO request_engine_app;
+CREATE CONSTRAINT TRIGGER service_sessions_queue_entry_coherence AFTER INSERT OR UPDATE ON request_engine.service_sessions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.assert_service_queue_coherence();
 
 
 --
--- Name: FUNCTION acquire_idempotency(p_organization_id uuid, p_principal_id uuid, p_capability text, p_idempotency_key text, p_request_fingerprint text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: setup_sessions setup_sessions_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.acquire_idempotency(p_organization_id uuid, p_principal_id uuid, p_capability text, p_idempotency_key text, p_request_fingerprint text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.acquire_idempotency(p_organization_id uuid, p_principal_id uuid, p_capability text, p_idempotency_key text, p_request_fingerprint text) TO request_engine_app;
+CREATE TRIGGER setup_sessions_guard BEFORE INSERT OR DELETE OR UPDATE ON request_engine.setup_sessions FOR EACH ROW EXECUTE FUNCTION request_engine.guard_setup_session();
 
 
 --
--- Name: FUNCTION assert_integration_manager(p_capability text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: shared_capacity_authority_events shared_capacity_authority_events_00_stamp_context; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.assert_integration_manager(p_capability text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.assert_integration_manager(p_capability text) TO request_engine_app;
+CREATE TRIGGER shared_capacity_authority_events_00_stamp_context BEFORE INSERT ON request_engine.shared_capacity_authority_events FOR EACH ROW EXECUTE FUNCTION request_engine.stamp_shared_capacity_authority_event_context();
 
 
 --
--- Name: FUNCTION cancel_scheduled_action(p_organization_id uuid, p_action_id uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: shared_capacity_authority_events shared_capacity_authority_events_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.cancel_scheduled_action(p_organization_id uuid, p_action_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.cancel_scheduled_action(p_organization_id uuid, p_action_id uuid) TO request_engine_app;
-GRANT ALL ON FUNCTION request_cmd.cancel_scheduled_action(p_organization_id uuid, p_action_id uuid) TO request_engine_admin;
+CREATE TRIGGER shared_capacity_authority_events_append_only BEFORE DELETE OR UPDATE ON request_engine.shared_capacity_authority_events FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: FUNCTION claim_outbox_messages(p_limit integer, p_lease interval); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: shared_capacity_bindings shared_capacity_bindings_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.claim_outbox_messages(p_limit integer, p_lease interval) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.claim_outbox_messages(p_limit integer, p_lease interval) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.claim_outbox_messages(p_limit integer, p_lease interval) TO request_engine_admin;
+CREATE TRIGGER shared_capacity_bindings_guard BEFORE UPDATE ON request_engine.shared_capacity_bindings FOR EACH ROW EXECUTE FUNCTION request_engine.guard_shared_capacity_binding();
 
 
 --
--- Name: FUNCTION claim_provider_events(p_limit integer, p_lease interval); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: shared_capacity_bindings shared_capacity_bindings_guard_rebinding; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.claim_provider_events(p_limit integer, p_lease interval) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.claim_provider_events(p_limit integer, p_lease interval) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.claim_provider_events(p_limit integer, p_lease interval) TO request_engine_admin;
+CREATE TRIGGER shared_capacity_bindings_guard_rebinding BEFORE INSERT ON request_engine.shared_capacity_bindings FOR EACH ROW EXECUTE FUNCTION request_engine.guard_shared_capacity_rebinding();
 
 
 --
--- Name: FUNCTION claim_scheduled_actions(p_limit integer, p_lease interval); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: shared_capacity_bindings shared_capacity_bindings_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.claim_scheduled_actions(p_limit integer, p_lease interval) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.claim_scheduled_actions(p_limit integer, p_lease interval) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.claim_scheduled_actions(p_limit integer, p_lease interval) TO request_engine_admin;
+CREATE TRIGGER shared_capacity_bindings_touch BEFORE UPDATE ON request_engine.shared_capacity_bindings FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION complete_idempotency(p_idempotency_id uuid, p_result_data jsonb); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: shared_capacity_claim_links shared_capacity_claim_links_append_only; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.complete_idempotency(p_idempotency_id uuid, p_result_data jsonb) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.complete_idempotency(p_idempotency_id uuid, p_result_data jsonb) TO request_engine_app;
+CREATE TRIGGER shared_capacity_claim_links_append_only BEFORE DELETE OR UPDATE ON request_engine.shared_capacity_claim_links FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 
 
 --
--- Name: FUNCTION complete_outbox_message(p_message_id uuid, p_claim_token uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: shared_capacity_identities shared_capacity_identities_guard_person_cardinality; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.complete_outbox_message(p_message_id uuid, p_claim_token uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.complete_outbox_message(p_message_id uuid, p_claim_token uuid) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.complete_outbox_message(p_message_id uuid, p_claim_token uuid) TO request_engine_admin;
+CREATE TRIGGER shared_capacity_identities_guard_person_cardinality BEFORE INSERT OR UPDATE OF global_identity_id, status ON request_engine.shared_capacity_identities FOR EACH ROW EXECUTE FUNCTION request_engine.guard_person_shared_capacity_cardinality();
 
 
 --
--- Name: FUNCTION complete_provider_event(p_provider_event_row_id uuid, p_claim_token uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: capacity_holds slot_offer_holds_consistency_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.complete_provider_event(p_provider_event_row_id uuid, p_claim_token uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.complete_provider_event(p_provider_event_row_id uuid, p_claim_token uuid) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.complete_provider_event(p_provider_event_row_id uuid, p_claim_token uuid) TO request_engine_admin;
+CREATE CONSTRAINT TRIGGER slot_offer_holds_consistency_guard AFTER UPDATE OF status, expires_at, during, offering_version_id, subject_party_id, location_id ON request_engine.capacity_holds DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.assert_slot_offer_consistency();
 
 
 --
--- Name: FUNCTION complete_scheduled_action(p_action_id uuid, p_claim_token uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_consistency_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.complete_scheduled_action(p_action_id uuid, p_claim_token uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.complete_scheduled_action(p_action_id uuid, p_claim_token uuid) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.complete_scheduled_action(p_action_id uuid, p_claim_token uuid) TO request_engine_admin;
+CREATE CONSTRAINT TRIGGER slot_offers_consistency_guard AFTER INSERT OR UPDATE ON request_engine.slot_offers DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.assert_slot_offer_consistency();
 
 
 --
--- Name: FUNCTION dead_letter_outbox_message(p_message_id uuid, p_claim_token uuid, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_guard_live_hold; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.dead_letter_outbox_message(p_message_id uuid, p_claim_token uuid, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.dead_letter_outbox_message(p_message_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.dead_letter_outbox_message(p_message_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_admin;
+CREATE TRIGGER slot_offers_guard_live_hold BEFORE INSERT OR UPDATE OF status, capacity_hold_id, slot_opportunity_id, expires_at ON request_engine.slot_offers FOR EACH ROW EXECUTE FUNCTION request_engine.guard_slot_offer_live_hold();
 
 
 --
--- Name: FUNCTION dead_letter_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_guard_provenance; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.dead_letter_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.dead_letter_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.dead_letter_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_admin;
+CREATE TRIGGER slot_offers_guard_provenance BEFORE UPDATE ON request_engine.slot_offers FOR EACH ROW EXECUTE FUNCTION request_engine.guard_slot_offer_provenance_update();
 
 
 --
--- Name: FUNCTION dead_letter_scheduled_action(p_action_id uuid, p_claim_token uuid, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.dead_letter_scheduled_action(p_action_id uuid, p_claim_token uuid, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.dead_letter_scheduled_action(p_action_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.dead_letter_scheduled_action(p_action_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_admin;
+CREATE TRIGGER slot_offers_guard_transition BEFORE UPDATE ON request_engine.slot_offers FOR EACH ROW EXECUTE FUNCTION request_engine.guard_slot_offer_transition();
 
 
 --
--- Name: FUNCTION find_recovery_sweep_scopes(p_limit integer); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.find_recovery_sweep_scopes(p_limit integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.find_recovery_sweep_scopes(p_limit integer) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.find_recovery_sweep_scopes(p_limit integer) TO request_engine_admin;
+CREATE TRIGGER slot_offers_revision_step BEFORE UPDATE ON request_engine.slot_offers FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION lock_outbox_message_claim(p_organization_id uuid, p_message_id uuid, p_claim_token uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_source_consistency_deferred; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.lock_outbox_message_claim(p_organization_id uuid, p_message_id uuid, p_claim_token uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.lock_outbox_message_claim(p_organization_id uuid, p_message_id uuid, p_claim_token uuid) TO request_engine_app;
-GRANT ALL ON FUNCTION request_cmd.lock_outbox_message_claim(p_organization_id uuid, p_message_id uuid, p_claim_token uuid) TO request_engine_admin;
+CREATE CONSTRAINT TRIGGER slot_offers_source_consistency_deferred AFTER INSERT OR UPDATE ON request_engine.slot_offers DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.check_offered_slot_offer_source_consistency();
 
 
 --
--- Name: FUNCTION lock_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_offers slot_offers_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.lock_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.lock_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) TO request_engine_app;
-GRANT ALL ON FUNCTION request_cmd.lock_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid) TO request_engine_admin;
+CREATE TRIGGER slot_offers_touch BEFORE UPDATE ON request_engine.slot_offers FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_opportunities slot_opportunities_guard_provenance; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid) TO request_engine_app;
-GRANT ALL ON FUNCTION request_cmd.lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid) TO request_engine_worker;
+CREATE TRIGGER slot_opportunities_guard_provenance BEFORE UPDATE ON request_engine.slot_opportunities FOR EACH ROW EXECUTE FUNCTION request_engine.guard_slot_opportunity_provenance_update();
 
 
 --
--- Name: FUNCTION lock_shared_capacity_roots(p_organization_id uuid, p_resource_ids uuid[]); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_opportunities slot_opportunities_guard_transition; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.lock_shared_capacity_roots(p_organization_id uuid, p_resource_ids uuid[]) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.lock_shared_capacity_roots(p_organization_id uuid, p_resource_ids uuid[]) TO request_engine_app;
-GRANT ALL ON FUNCTION request_cmd.lock_shared_capacity_roots(p_organization_id uuid, p_resource_ids uuid[]) TO request_engine_admin;
+CREATE TRIGGER slot_opportunities_guard_transition BEFORE UPDATE ON request_engine.slot_opportunities FOR EACH ROW EXECUTE FUNCTION request_engine.guard_slot_opportunity_transition();
 
 
 --
--- Name: FUNCTION mark_queue_entry_service_completed(p_organization_id uuid, p_queue_entry_id uuid, p_completed_at timestamp with time zone); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_opportunities slot_opportunities_offer_consistency_deferred; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.mark_queue_entry_service_completed(p_organization_id uuid, p_queue_entry_id uuid, p_completed_at timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.mark_queue_entry_service_completed(p_organization_id uuid, p_queue_entry_id uuid, p_completed_at timestamp with time zone) TO request_engine_app;
+CREATE CONSTRAINT TRIGGER slot_opportunities_offer_consistency_deferred AFTER UPDATE ON request_engine.slot_opportunities DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.check_offered_slot_offer_source_consistency();
 
 
 --
--- Name: FUNCTION mark_queue_entry_service_started(p_organization_id uuid, p_queue_entry_id uuid, p_started_at timestamp with time zone); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_opportunities slot_opportunities_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.mark_queue_entry_service_started(p_organization_id uuid, p_queue_entry_id uuid, p_started_at timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.mark_queue_entry_service_started(p_organization_id uuid, p_queue_entry_id uuid, p_started_at timestamp with time zone) TO request_engine_app;
+CREATE TRIGGER slot_opportunities_revision_step BEFORE UPDATE ON request_engine.slot_opportunities FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION reject_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: slot_opportunities slot_opportunities_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.reject_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.reject_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.reject_provider_event(p_provider_event_row_id uuid, p_claim_token uuid, p_error_class text) TO request_engine_admin;
+CREATE TRIGGER slot_opportunities_touch BEFORE UPDATE ON request_engine.slot_opportunities FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION renew_outbox_message_lease(p_message_id uuid, p_claim_token uuid, p_extension interval); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: staff_memberships staff_memberships_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.renew_outbox_message_lease(p_message_id uuid, p_claim_token uuid, p_extension interval) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.renew_outbox_message_lease(p_message_id uuid, p_claim_token uuid, p_extension interval) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.renew_outbox_message_lease(p_message_id uuid, p_claim_token uuid, p_extension interval) TO request_engine_admin;
+CREATE TRIGGER staff_memberships_guard BEFORE INSERT OR DELETE OR UPDATE ON request_engine.staff_memberships FOR EACH ROW EXECUTE FUNCTION request_engine.guard_staff_membership();
 
 
 --
--- Name: FUNCTION renew_provider_event_lease(p_provider_event_row_id uuid, p_claim_token uuid, p_extension interval); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: temporary_proof_cleanup_results temporary_cleanup_results_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.renew_provider_event_lease(p_provider_event_row_id uuid, p_claim_token uuid, p_extension interval) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.renew_provider_event_lease(p_provider_event_row_id uuid, p_claim_token uuid, p_extension interval) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.renew_provider_event_lease(p_provider_event_row_id uuid, p_claim_token uuid, p_extension interval) TO request_engine_admin;
+CREATE TRIGGER temporary_cleanup_results_immutable BEFORE DELETE OR UPDATE ON request_engine.temporary_proof_cleanup_results FOR EACH ROW EXECUTE FUNCTION request_engine.reject_temporary_proof_receipt_mutation();
 
 
 --
--- Name: FUNCTION renew_scheduled_action_lease(p_action_id uuid, p_claim_token uuid, p_extension interval); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: temporary_proof_retention_receipts temporary_proof_receipts_immutable; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.renew_scheduled_action_lease(p_action_id uuid, p_claim_token uuid, p_extension interval) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.renew_scheduled_action_lease(p_action_id uuid, p_claim_token uuid, p_extension interval) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.renew_scheduled_action_lease(p_action_id uuid, p_claim_token uuid, p_extension interval) TO request_engine_admin;
+CREATE TRIGGER temporary_proof_receipts_immutable BEFORE DELETE OR UPDATE ON request_engine.temporary_proof_retention_receipts FOR EACH ROW EXECUTE FUNCTION request_engine.reject_temporary_proof_receipt_mutation();
 
 
 --
--- Name: FUNCTION retry_outbox_message(p_message_id uuid, p_claim_token uuid, p_next_attempt_at timestamp with time zone, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: waitlist_entries waitlist_entries_guard_provenance; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.retry_outbox_message(p_message_id uuid, p_claim_token uuid, p_next_attempt_at timestamp with time zone, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.retry_outbox_message(p_message_id uuid, p_claim_token uuid, p_next_attempt_at timestamp with time zone, p_error_class text) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.retry_outbox_message(p_message_id uuid, p_claim_token uuid, p_next_attempt_at timestamp with time zone, p_error_class text) TO request_engine_admin;
+CREATE TRIGGER waitlist_entries_guard_provenance BEFORE UPDATE ON request_engine.waitlist_entries FOR EACH ROW EXECUTE FUNCTION request_engine.guard_waitlist_entry_provenance_update();
 
 
 --
--- Name: FUNCTION retry_outbox_message_after(p_message_id uuid, p_claim_token uuid, p_delay interval, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: waitlist_entries waitlist_entries_revision_step; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.retry_outbox_message_after(p_message_id uuid, p_claim_token uuid, p_delay interval, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.retry_outbox_message_after(p_message_id uuid, p_claim_token uuid, p_delay interval, p_error_class text) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.retry_outbox_message_after(p_message_id uuid, p_claim_token uuid, p_delay interval, p_error_class text) TO request_engine_admin;
+CREATE TRIGGER waitlist_entries_revision_step BEFORE UPDATE ON request_engine.waitlist_entries FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
 
 --
--- Name: FUNCTION retry_provider_event_after(p_provider_event_row_id uuid, p_claim_token uuid, p_delay interval, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: waitlist_entries waitlist_entries_slot_offer_consistency_deferred; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.retry_provider_event_after(p_provider_event_row_id uuid, p_claim_token uuid, p_delay interval, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.retry_provider_event_after(p_provider_event_row_id uuid, p_claim_token uuid, p_delay interval, p_error_class text) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.retry_provider_event_after(p_provider_event_row_id uuid, p_claim_token uuid, p_delay interval, p_error_class text) TO request_engine_admin;
+CREATE CONSTRAINT TRIGGER waitlist_entries_slot_offer_consistency_deferred AFTER UPDATE ON request_engine.waitlist_entries DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION request_engine.check_offered_slot_offer_source_consistency();
 
 
 --
--- Name: FUNCTION retry_scheduled_action(p_action_id uuid, p_claim_token uuid, p_next_attempt_at timestamp with time zone, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: waitlist_entries waitlist_entries_touch; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.retry_scheduled_action(p_action_id uuid, p_claim_token uuid, p_next_attempt_at timestamp with time zone, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.retry_scheduled_action(p_action_id uuid, p_claim_token uuid, p_next_attempt_at timestamp with time zone, p_error_class text) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.retry_scheduled_action(p_action_id uuid, p_claim_token uuid, p_next_attempt_at timestamp with time zone, p_error_class text) TO request_engine_admin;
+CREATE TRIGGER waitlist_entries_touch BEFORE UPDATE ON request_engine.waitlist_entries FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
 
 --
--- Name: FUNCTION retry_scheduled_action_after(p_action_id uuid, p_claim_token uuid, p_delay interval, p_error_class text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: workload_credentials workload_credentials_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.retry_scheduled_action_after(p_action_id uuid, p_claim_token uuid, p_delay interval, p_error_class text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.retry_scheduled_action_after(p_action_id uuid, p_claim_token uuid, p_delay interval, p_error_class text) TO request_engine_worker;
-GRANT ALL ON FUNCTION request_cmd.retry_scheduled_action_after(p_action_id uuid, p_claim_token uuid, p_delay interval, p_error_class text) TO request_engine_admin;
+CREATE TRIGGER workload_credentials_guard BEFORE INSERT OR DELETE OR UPDATE ON request_engine.workload_credentials FOR EACH ROW EXECUTE FUNCTION request_engine.guard_workload_credential();
 
 
 --
--- Name: FUNCTION rotate_integration_credential(p_principal_id uuid, p_expected_revision bigint, p_credential_id uuid, p_digest bytea, p_fingerprint text, p_expires_at timestamp with time zone, p_reference text); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: workload_identities workload_identities_guard; Type: TRIGGER; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.rotate_integration_credential(p_principal_id uuid, p_expected_revision bigint, p_credential_id uuid, p_digest bytea, p_fingerprint text, p_expires_at timestamp with time zone, p_reference text) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.rotate_integration_credential(p_principal_id uuid, p_expected_revision bigint, p_credential_id uuid, p_digest bytea, p_fingerprint text, p_expires_at timestamp with time zone, p_reference text) TO request_engine_app;
+CREATE TRIGGER workload_identities_guard BEFORE INSERT OR DELETE OR UPDATE ON request_engine.workload_identities FOR EACH ROW EXECUTE FUNCTION request_engine.guard_workload_identity();
 
 
 --
--- Name: FUNCTION schedule_recovery_reassessment(p_organization_id uuid, p_service_queue_id uuid, p_revision bigint); Type: ACL; Schema: request_cmd; Owner: request_engine_schema_owner
+-- Name: agent_budget_windows agent_budget_windows_organization_id_agent_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_cmd.schedule_recovery_reassessment(p_organization_id uuid, p_service_queue_id uuid, p_revision bigint) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_cmd.schedule_recovery_reassessment(p_organization_id uuid, p_service_queue_id uuid, p_revision bigint) TO request_engine_app;
+ALTER TABLE ONLY request_engine.agent_budget_windows
+    ADD CONSTRAINT agent_budget_windows_organization_id_agent_principal_id_fkey FOREIGN KEY (organization_id, agent_principal_id) REFERENCES request_engine.agent_policies(organization_id, agent_principal_id);
 
 
 --
--- Name: FUNCTION acquire_identity_topology_exclusive(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_policies agent_policies_organization_id_agent_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.acquire_identity_topology_exclusive() FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.acquire_identity_topology_exclusive() TO request_platform_control_definer;
-GRANT ALL ON FUNCTION request_engine.acquire_identity_topology_exclusive() TO request_bootstrap_definer;
+ALTER TABLE ONLY request_engine.agent_policies
+    ADD CONSTRAINT agent_policies_organization_id_agent_principal_id_fkey FOREIGN KEY (organization_id, agent_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION acquire_identity_topology_share(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_profiles agent_profiles_organization_id_established_by_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.acquire_identity_topology_share() FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.acquire_identity_topology_share() TO request_platform_control_definer;
-GRANT ALL ON FUNCTION request_engine.acquire_identity_topology_share() TO request_bootstrap_definer;
+ALTER TABLE ONLY request_engine.agent_profiles
+    ADD CONSTRAINT agent_profiles_organization_id_established_by_principal_id_fkey FOREIGN KEY (organization_id, established_by_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION adopt_platform_owner_v3(); Type: ACL; Schema: request_engine; Owner: request_platform_control_definer
+-- Name: agent_profiles agent_profiles_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.adopt_platform_owner_v3() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.agent_profiles
+    ADD CONSTRAINT agent_profiles_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION append_integration_fact(p_principal_id uuid, p_actor_id uuid, p_operation text, p_reference text, p_capability text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_profiles agent_profiles_organization_id_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.append_integration_fact(p_principal_id uuid, p_actor_id uuid, p_operation text, p_reference text, p_capability text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.agent_profiles
+    ADD CONSTRAINT agent_profiles_organization_id_principal_id_fkey FOREIGN KEY (organization_id, principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION assert_arrival_estimate_reservation_confirmed(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_profiles agent_profiles_organization_id_sponsor_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_arrival_estimate_reservation_confirmed() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.agent_profiles
+    ADD CONSTRAINT agent_profiles_organization_id_sponsor_principal_id_fkey FOREIGN KEY (organization_id, sponsor_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION assert_hold_claim_completeness(p_org uuid, p_hold uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: agent_profiles agent_profiles_workload_identity_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_hold_claim_completeness(p_org uuid, p_hold uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.agent_profiles
+    ADD CONSTRAINT agent_profiles_workload_identity_id_fkey FOREIGN KEY (workload_identity_id) REFERENCES request_engine.workload_identities(id);
 
 
 --
--- Name: FUNCTION assert_offered_slot_offer_source_consistency(p_organization_id uuid, p_slot_offer_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: attendance_responses attendance_responses_organization_id_actor_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_offered_slot_offer_source_consistency(p_organization_id uuid, p_slot_offer_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.attendance_responses
+    ADD CONSTRAINT attendance_responses_organization_id_actor_principal_id_fkey FOREIGN KEY (organization_id, actor_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION assert_organization_has_controller(p_organization_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: attendance_responses attendance_responses_organization_id_reservation_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_organization_has_controller(p_organization_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.assert_organization_has_controller(p_organization_id uuid) TO request_platform_control_definer;
+ALTER TABLE ONLY request_engine.attendance_responses
+    ADD CONSTRAINT attendance_responses_organization_id_reservation_id_fkey FOREIGN KEY (organization_id, reservation_id) REFERENCES request_engine.reservations(organization_id, id);
 
 
 --
--- Name: FUNCTION assert_other_tenant_controller(p_excluded_principal_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: audit_records audit_records_organization_id_actor_principal_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_other_tenant_controller(p_excluded_principal_id uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.audit_records
+    ADD CONSTRAINT audit_records_organization_id_actor_principal_id_fkey FOREIGN KEY (organization_id, actor_principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION assert_reservation_claim_completeness(p_org uuid, p_reservation uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: audit_records audit_records_organization_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_reservation_claim_completeness(p_org uuid, p_reservation uuid) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.audit_records
+    ADD CONSTRAINT audit_records_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES request_engine.organizations(id);
 
 
 --
--- Name: FUNCTION assert_service_queue_coherence(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: audit_records audit_records_organization_id_idempotency_record_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_service_queue_coherence() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.audit_records
+    ADD CONSTRAINT audit_records_organization_id_idempotency_record_id_fkey FOREIGN KEY (organization_id, idempotency_record_id) REFERENCES request_engine.idempotency_records(organization_id, id);
 
 
 --
--- Name: FUNCTION assert_session_interruption_coherence(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: audit_records audit_records_organization_id_representation_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_session_interruption_coherence() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.audit_records
+    ADD CONSTRAINT audit_records_organization_id_representation_id_fkey FOREIGN KEY (organization_id, representation_id) REFERENCES request_engine.representations(organization_id, id);
 
 
 --
--- Name: FUNCTION assert_slot_offer_consistency(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: audit_records audit_records_organization_id_represented_party_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_slot_offer_consistency() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.audit_records
+    ADD CONSTRAINT audit_records_organization_id_represented_party_id_fkey FOREIGN KEY (organization_id, represented_party_id) REFERENCES request_engine.parties(organization_id, id);
 
 
 --
--- Name: FUNCTION assert_staff_manager(p_capability text); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: identity_bindings binding_principal_tenant_fk; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_staff_manager(p_capability text) FROM PUBLIC;
+ALTER TABLE ONLY request_engine.identity_bindings
+    ADD CONSTRAINT binding_principal_tenant_fk FOREIGN KEY (organization_id, principal_id) REFERENCES request_engine.principals(organization_id, id);
 
 
 --
--- Name: FUNCTION assert_tenant_has_controller(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: booking_context_terms booking_context_terms_organization_id_offering_version_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.assert_tenant_has_controller() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.booking_context_terms
+    ADD CONSTRAINT booking_context_terms_organization_id_offering_version_id_fkey FOREIGN KEY (organization_id, offering_version_id) REFERENCES request_engine.offering_versions(organization_id, id);
 
 
 --
--- Name: FUNCTION attach_shared_capacity_claim_link(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: booking_context_terms booking_context_terms_organization_id_resource_location_as_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.attach_shared_capacity_claim_link() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.booking_context_terms
+    ADD CONSTRAINT booking_context_terms_organization_id_resource_location_as_fkey FOREIGN KEY (organization_id, resource_location_assignment_id) REFERENCES request_engine.resource_location_assignments(organization_id, id);
 
 
 --
--- Name: FUNCTION bind_consumed_identity_candidate_v1(p_candidate_id uuid, p_party_id uuid, p_consent_fields text[], p_principal_id uuid); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_organization_id_hold_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bind_consumed_identity_candidate_v1(p_candidate_id uuid, p_party_id uuid, p_consent_fields text[], p_principal_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION request_engine.bind_consumed_identity_candidate_v1(p_candidate_id uuid, p_party_id uuid, p_consent_fields text[], p_principal_id uuid) TO request_engine_app;
+ALTER TABLE ONLY request_engine.capacity_claims
+    ADD CONSTRAINT capacity_claims_organization_id_hold_id_fkey FOREIGN KEY (organization_id, hold_id) REFERENCES request_engine.capacity_holds(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_capacity_claim_recovery_source_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_organization_id_replaced_by_claim_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_capacity_claim_recovery_source_revision() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.capacity_claims
+    ADD CONSTRAINT capacity_claims_organization_id_replaced_by_claim_id_fkey FOREIGN KEY (organization_id, replaced_by_claim_id) REFERENCES request_engine.capacity_claims(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_direct_queue_recovery_source_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_organization_id_requirement_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_direct_queue_recovery_source_revision() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.capacity_claims
+    ADD CONSTRAINT capacity_claims_organization_id_requirement_id_fkey FOREIGN KEY (organization_id, requirement_id) REFERENCES request_engine.offering_resource_requirements(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_estimate_policy_recovery_source_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_organization_id_reservation_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-REVOKE ALL ON FUNCTION request_engine.bump_estimate_policy_recovery_source_revision() FROM PUBLIC;
+ALTER TABLE ONLY request_engine.capacity_claims
+    ADD CONSTRAINT capacity_claims_organization_id_reservation_id_fkey FOREIGN KEY (organization_id, reservation_id) REFERENCES request_engine.reservations(organization_id, id);
 
 
 --
--- Name: FUNCTION bump_intake_control_recovery_source_revision(); Type: ACL; Schema: request_engine; Owner: request_engine_schema_owner
+-- Name: capacity_claims capacity_claims_organization_id_resource_id_fkey; Type: FK CONSTRAINT; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
+ALTER TABLE ONLY request_engine.capacity_claims

@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from psycopg import ClientCursor
+from psycopg import ClientCursor, sql
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST_PATH = ROOT / "manifest.json"
@@ -133,9 +133,31 @@ def load_role_statements() -> dict[str, str]:
     expected_roles = role_manifest["expected_roles"]
     if set(statements) != set(expected_roles):
         raise RuntimeError("baseline role statements do not match manifest role names")
-    if len(statements) != _manifest()["effective_model"]["roles"]:
+    extension_roles = role_manifest["extension_roles"]["expected_roles"]
+    if set(statements) & set(extension_roles):
+        raise RuntimeError("baseline extension roles overlap the exact bootstrap roles")
+    if len(statements) + len(extension_roles) != _manifest()["effective_model"]["roles"]:
         raise RuntimeError("baseline role bootstrap count does not match manifest")
     return statements
+
+
+def _verified_sql(entry: dict[str, Any]) -> str:
+    text = _verified_file(
+        ROOT / entry["path"], expected_bytes=entry["bytes"], expected_sha256=entry["sha256"]
+    ).decode("utf-8")
+    if any(line.startswith("\\") for line in text.splitlines()):
+        raise RuntimeError(f"{entry['path']}: contains a psql meta-command")
+    return text
+
+
+def load_extension_role_sql() -> str:
+    """Audited ensure blocks for closed-namespace extension roles (run before schema)."""
+    return _verified_sql(_manifest()["role_bootstrap"]["extension_roles"])
+
+
+def load_post_install_audit_sql() -> str:
+    """Fail-closed extension-role ACL audits that need the installed schema."""
+    return _verified_sql(_manifest()["role_bootstrap"]["post_install_audit"])
 
 
 def _actual_roles(cursor: ClientCursor[Any]) -> dict[str, dict[str, Any]]:
@@ -196,3 +218,28 @@ def ensure_exact_roles(driver_connection: Any) -> None:
         settings = cursor.execute(_SETTING_QUERY, (patterns,)).fetchall()
         if settings != role_manifest["role_settings"]:
             raise RuntimeError("Request Engine roles have unexpected role settings")
+
+
+def ensure_extension_roles(driver_connection: Any) -> None:
+    """Create/verify extension roles exactly as their historical revisions did.
+
+    Extension roles intentionally permit isolated LOGIN members (operators bind
+    runtime logins to them), so they keep their per-role audited ensure blocks
+    instead of the exact empty-membership contract of the bootstrap roles. The
+    resulting attributes are then pinned against the manifest.
+    """
+    extension = _manifest()["role_bootstrap"]["extension_roles"]
+    statements = load_extension_role_sql()
+    with ClientCursor(driver_connection) as cursor:
+        cursor.execute(sql.SQL(statements))
+        names = list(extension["expected_roles"])
+        rows = cursor.execute(_ROLE_QUERY.replace("LIKE ANY(%s)", "= ANY(%s)"), (names,)).fetchall()
+        actual = {str(row[0]): dict(zip(_ROLE_FIELDS, row[1:], strict=True)) for row in rows}
+        if actual != extension["expected_roles"]:
+            raise RuntimeError("Request Engine extension roles do not match audited topology")
+
+
+def run_post_install_audit(driver_connection: Any) -> None:
+    statements = load_post_install_audit_sql()
+    with ClientCursor(driver_connection) as cursor:
+        cursor.execute(sql.SQL(statements))

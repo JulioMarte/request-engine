@@ -68,7 +68,7 @@ cluster. For a Docker-free local PostgreSQL proof, explicitly set
 `REQUEST_ENGINE_BASELINE_PG_BIN` to a directory containing PostgreSQL 18's
 `initdb`, `pg_ctl`, `postgres` and `createdb`. Run as a user supported by those
 binaries, with the usual `PG*` installation credentials. This mode initializes
-and destroys a separate temporary cluster with SCRAM authentication and loopback
+and destroys a separate UTF-8 temporary cluster with SCRAM authentication and loopback
 TCP only, installs immutable 0001 twice, and runs the same catalog, identity and
 integrity checks. It does not fall back automatically or replace Docker/system
 acceptance. Port acquisition is fail-closed if another process takes the selected

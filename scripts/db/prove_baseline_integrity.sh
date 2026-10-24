@@ -74,7 +74,7 @@ if [[ -n "$NATIVE_BIN" ]]; then
   printf '%s\n' "$PGPASSWORD" > "$NATIVE_ROOT/password"
   chmod 600 "$NATIVE_ROOT/password"
   "$NATIVE_BIN/initdb" -D "$NATIVE_ROOT/data" --username=postgres \
-    --auth=scram-sha-256 --pwfile="$NATIVE_ROOT/password" >/dev/null
+    --encoding=UTF8 --auth=scram-sha-256 --pwfile="$NATIVE_ROOT/password" >/dev/null
   rm -- "$NATIVE_ROOT/password"
   PORT="$(python - <<'PORT_PY'
 import socket

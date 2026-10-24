@@ -63,20 +63,22 @@ interface. Today is a front-desk view, not a complete daily-service client, and 
 no bespoke editor for every typed configuration schema.
 
 Start service (`service_session_start`) needs a resource with an active assignment at
-the queue's location. Neither the staff queue read nor the day board carries a planned
-resource, so Today offers the resources that `booking_resource_list` and
-`booking_resource_assignment_list` report as assigned there now, scoped to the Party the
-person represents with `operations.manage_supply` (from `authority_read_self`). These
-three are business-configuration reads; Today only reads them and the architecture proof
-rejects any configuration command in `TODAY_OPERATION_IDS`. Someone without those reads
-is told which permission is missing instead of being shown a form. Arrival on the day
+the queue's location. Today uses Delivery's `front_desk_serving_resources`
+(`GET /v1/locations/{location_id}/serving-resources`), authorized by the same
+`service_session.start` capability. Receptionists need no supply-configuration
+capability or `operations.manage_supply` representation to choose a Resource.
+The read is advisory; service start independently revalidates the assignment and
+execution preconditions. The architecture proof rejects configuration commands in
+`TODAY_OPERATION_IDS`. A denied read is explained rather than shown as an empty list.
+Arrival on the day
 board counts the owner facts: the reservation's attendance check-in, the active queue
 entry created by queue check-in, and the served visit the day board keeps after
 completion (`served_at` from the completed ServiceSession, `visit_arrived_at` from the
 visit's queue entries). A served booking reads "Seen at HH:MM" in business time, counts
 as checked in and seen, and is offered no check-in, attendance or arrival-estimate
-action. Move and cancel stay offered because the booking owner still accepts them for a
-confirmed reservation whose visit completed.
+action. Cancellation and rescheduling also refuse served visits with
+`409 reservation_already_served`; the UI must not offer them as valid actions
+(INV-SERVED-VISIT-001).
 
 Today also projects public owner operations for the receptionist journey:
 `parties_lookup`, `parties_register`, `catalog_search_offerings`,

@@ -162,7 +162,8 @@ authority) and are not tool-projected:
 - `appointments_calendar` — `GET /v1/appointments/calendar`, at most 42 days with
   timezone-qualified bounds, optional `location_id`/`resource_id`, keyset pages ordered by
   `(start_at, reservation_id)` with an opaque cursor bound to the filters
-  (`request_read.reservation_calendar_v1`, migration `0047`). Each row carries the offering
+   (`request_read.reservation_calendar_v1`, historical migration `0047`, now in the
+   checksummed `0001` baseline). Each row carries the offering
   name and `resources`: the Reservation's current CapacityClaim set (claims not `replaced`),
   with `claim_active=false` once released by cancellation, decline or no-show. That claim set
   is the authoritative Reservation↔Resource link; a Resource assigned to the location is not.

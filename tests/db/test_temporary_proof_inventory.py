@@ -189,11 +189,12 @@ def test_app_and_recorder_cannot_read_or_write_inventory_tables(
 def test_current_retention_role_inventory_rejects_escalation(
     admin_conn: Connection[Any], unsafe_change: LiteralString
 ) -> None:
-    migration = Path(__file__).resolve().parents[2] / (
-        "migrations/versions/0020_retention_recorder_role_contract.py"
+    loader = Path(__file__).resolve().parents[2] / "migrations/baseline/loader.py"
+    # Trusted, checksummed baseline audit (historical 0020 ROLE_INVENTORY_SQL),
+    # never user-provided SQL.
+    inventory = sql.SQL(
+        cast(LiteralString, runpy.run_path(str(loader))["load_post_install_audit_sql"]())
     )
-    # Trusted repository migration text, never user-provided SQL.
-    inventory = sql.SQL(cast(LiteralString, runpy.run_path(str(migration))["ROLE_INVENTORY_SQL"]))
     admin_conn.execute(inventory)
     # Role/catalog changes are transactional, including privileges. Each defect
     # must abort and roll back; the actual canonical group is never left elevated.

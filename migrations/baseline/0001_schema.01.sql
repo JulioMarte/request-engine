@@ -80,6 +80,12 @@ CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;
 
 
 --
+-- Name: EXTENSION btree_gist; Type: COMMENT; Schema: -; Owner: 
+--
+
+
+
+--
 -- Name: activate_shared_capacity_binding(uuid, uuid, uuid, text, text); Type: FUNCTION; Schema: request_admin; Owner: request_engine_schema_owner
 --
 
@@ -345,6 +351,80 @@ $$;
 
 
 ALTER FUNCTION request_admin.create_shared_capacity_identity(p_global_identity_id uuid, p_authority_ref text, p_reason text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: read_operator_metrics(); Type: FUNCTION; Schema: request_admin; Owner: request_operator_metrics_definer
+--
+
+CREATE FUNCTION request_admin.read_operator_metrics() RETURNS TABLE(scheduled_action_backlog bigint, scheduled_action_oldest_age_seconds double precision, outbox_backlog bigint, outbox_oldest_age_seconds double precision, provider_event_backlog bigint, provider_event_oldest_age_seconds double precision, provider_event_failures_10m bigint, communication_failures_10m bigint, communication_ambiguous_10m bigint)
+    LANGUAGE sql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'request_admin', 'pg_temp'
+    SET statement_timeout TO '3s'
+    AS $$
+          SELECT
+            LEAST(1001, (SELECT count(*) FROM (
+                SELECT 1 FROM request_engine.scheduled_actions
+                 WHERE status = 'pending'
+                   AND GREATEST(execute_at, next_attempt_at) <= statement_timestamp()
+                 LIMIT 1001
+            ) pending_bounded) + (SELECT count(*) FROM (
+                SELECT 1 FROM request_engine.scheduled_actions
+                 WHERE status = 'leased' AND lease_until <= statement_timestamp()
+                 LIMIT 1001
+            ) leased_bounded))::bigint,
+            COALESCE((SELECT EXTRACT(EPOCH FROM (statement_timestamp() - oldest.due_at))
+                FROM (SELECT NULLIF(LEAST(
+                    COALESCE((SELECT GREATEST(execute_at, next_attempt_at)
+                                FROM request_engine.scheduled_actions
+                               WHERE status = 'pending'
+                                 AND GREATEST(execute_at, next_attempt_at) <= statement_timestamp()
+                               ORDER BY GREATEST(execute_at, next_attempt_at) LIMIT 1),
+                             'infinity'::timestamptz),
+                    COALESCE((SELECT lease_until FROM request_engine.scheduled_actions
+                               WHERE status = 'leased'
+                                 AND lease_until <= statement_timestamp()
+                               ORDER BY lease_until LIMIT 1), 'infinity'::timestamptz)
+                ), 'infinity'::timestamptz) AS due_at) oldest), 0)::double precision,
+            (SELECT count(*) FROM (
+                SELECT created_at FROM request_engine.outbox_messages
+                 WHERE status IN ('pending', 'leased') LIMIT 1001
+            ) bounded)::bigint,
+            COALESCE((SELECT EXTRACT(EPOCH FROM
+                (statement_timestamp() - oldest.created_at))
+                FROM (SELECT created_at FROM request_engine.outbox_messages
+                       WHERE status IN ('pending', 'leased')
+                       ORDER BY created_at LIMIT 1) oldest), 0)::double precision,
+            (SELECT count(*) FROM (
+                SELECT received_at FROM request_engine.provider_events
+                 WHERE status IN ('received', 'leased') LIMIT 1001
+            ) bounded)::bigint,
+            COALESCE((SELECT EXTRACT(EPOCH FROM
+                (statement_timestamp() - oldest.received_at))
+                FROM (SELECT received_at FROM request_engine.provider_events
+                       WHERE status IN ('received', 'leased')
+                       ORDER BY received_at LIMIT 1) oldest), 0)::double precision,
+            (SELECT count(*) FROM (
+                SELECT updated_at FROM request_engine.provider_events
+                 WHERE status = 'dead'
+                   AND updated_at >= statement_timestamp() - interval '10 minutes'
+                 LIMIT 1001
+            ) bounded)::bigint,
+            (SELECT count(*) FROM (
+                SELECT updated_at FROM request_engine.communication_deliveries
+                 WHERE status = 'failed'
+                   AND updated_at >= statement_timestamp() - interval '10 minutes'
+                 LIMIT 1001
+            ) bounded)::bigint,
+            (SELECT count(*) FROM (
+                SELECT updated_at FROM request_engine.communication_deliveries
+                 WHERE status = 'ambiguous'
+                   AND updated_at >= statement_timestamp() - interval '10 minutes'
+                 LIMIT 1001
+            ) bounded)::bigint
+        $$;
+
+
+ALTER FUNCTION request_admin.read_operator_metrics() OWNER TO request_operator_metrics_definer;
 
 --
 -- Name: replay_dead_outbox_message(uuid, uuid, integer, text); Type: FUNCTION; Schema: request_admin; Owner: request_engine_schema_owner
@@ -732,6 +812,64 @@ CREATE FUNCTION request_auth.activate_native_recovery_delivery_request(p_request
 ALTER FUNCTION request_auth.activate_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_secret_reference text, p_secret_digest text) OWNER TO request_engine_schema_owner;
 
 --
+-- Name: admit_http_authentication(integer); Type: FUNCTION; Schema: request_auth; Owner: request_http_admission_definer
+--
+
+CREATE FUNCTION request_auth.admit_http_authentication(p_limit integer) RETURNS TABLE(allowed boolean, retry_after_seconds integer)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_now timestamptz;
+            v_attempts timestamptz[];
+            v_configured_limit integer;
+            v_oldest timestamptz;
+        BEGIN
+            IF p_limit IS NULL OR p_limit < 1 OR p_limit > 10000 THEN
+                RAISE EXCEPTION 'authentication limit must be from 1 through 10000'
+                    USING ERRCODE = '22023';
+            END IF;
+            SELECT attempts, configured_limit INTO v_attempts, v_configured_limit
+              FROM request_engine.http_auth_admission_state
+             WHERE singleton FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'HTTP admission state row is missing' USING ERRCODE = '55000';
+            END IF;
+            IF v_configured_limit IS NULL THEN
+                UPDATE request_engine.http_auth_admission_state
+                   SET configured_limit = p_limit
+                 WHERE singleton;
+            ELSIF v_configured_limit <> p_limit THEN
+                RAISE EXCEPTION 'HTTP admission limit differs from the shared configured limit'
+                    USING ERRCODE = '55000';
+            END IF;
+            v_now := clock_timestamp();
+            SELECT COALESCE(array_agg(attempt ORDER BY attempt), '{}')
+              INTO v_attempts
+              FROM unnest(v_attempts) AS expanded(attempt)
+             WHERE attempt > v_now - interval '60 seconds';
+            IF cardinality(v_attempts) < p_limit THEN
+                UPDATE request_engine.http_auth_admission_state
+                   SET attempts = v_attempts || v_now
+                 WHERE singleton;
+                RETURN QUERY SELECT true, 0;
+                RETURN;
+            END IF;
+            v_oldest := v_attempts[1];
+            RETURN QUERY SELECT false,
+                GREATEST(
+                    1,
+                    CEIL(EXTRACT(EPOCH FROM (
+                        v_oldest + interval '60 seconds' - v_now
+                    )))::integer
+                );
+        END;
+        $$;
+
+
+ALTER FUNCTION request_auth.admit_http_authentication(p_limit integer) OWNER TO request_http_admission_definer;
+
+--
 -- Name: claim_native_recovery_delivery_requests(integer, integer); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
@@ -1011,6 +1149,71 @@ CREATE FUNCTION request_auth.complete_native_recovery_delivery_request(p_request
 
 
 ALTER FUNCTION request_auth.complete_native_recovery_delivery_request(p_request_id uuid, p_claim_token uuid, p_outcome text, p_error_class text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: complete_native_recovery_with_password(uuid, uuid, bigint, text); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_auth.complete_native_recovery_with_password(p_session_id uuid, p_credential_id uuid, p_expected_recovery_epoch bigint, p_expected_verifier text) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+DECLARE
+    v_identity uuid;
+    v_epoch bigint;
+    v_session request_engine.native_sessions%ROWTYPE;
+    v_recovery request_engine.native_identity_recovery_state%ROWTYPE;
+BEGIN
+    SELECT * INTO v_session FROM request_engine.native_sessions WHERE id=p_session_id;
+    v_identity := v_session.native_identity_id;
+    IF NOT FOUND OR p_credential_id IS NULL OR p_expected_recovery_epoch IS NULL
+       OR p_expected_verifier IS NULL
+      THEN RETURN false; END IF;
+    PERFORM 1 FROM request_engine.identity_authorities authority
+      JOIN request_engine.native_identities identity ON identity.identity_authority_id=authority.id
+      WHERE identity.id=v_identity AND authority.kind='native' AND authority.status='active'
+      FOR SHARE OF authority;
+    IF NOT FOUND THEN RETURN false; END IF;
+    SELECT session_epoch INTO v_epoch FROM request_engine.native_identities
+      WHERE id=v_identity AND status='active' FOR UPDATE;
+    IF NOT FOUND THEN RETURN false; END IF;
+    PERFORM 1 FROM request_engine.native_credentials
+      WHERE id=p_credential_id AND native_identity_id=v_identity
+        AND kind='password' AND status='active' AND verifier=p_expected_verifier FOR SHARE;
+    IF NOT FOUND THEN RETURN false; END IF;
+    IF v_session.password_credential_id IS NOT NULL THEN
+        PERFORM 1 FROM request_engine.native_credentials
+          WHERE id=v_session.password_credential_id AND native_identity_id=v_identity
+            AND kind='password' AND status='active' FOR SHARE;
+    ELSE
+        PERFORM 1 FROM request_engine.webauthn_credentials
+          WHERE id=v_session.webauthn_credential_id AND native_identity_id=v_identity
+            AND status='active' FOR SHARE;
+    END IF;
+    IF NOT FOUND THEN RETURN false; END IF;
+    SELECT * INTO v_recovery FROM request_engine.native_identity_recovery_state
+      WHERE native_identity_id=v_identity FOR UPDATE;
+    IF NOT FOUND OR v_recovery.state<>'recovery_restricted'
+       OR v_recovery.recovery_epoch<>p_expected_recovery_epoch THEN RETURN false; END IF;
+    SELECT * INTO v_session FROM request_engine.native_sessions
+      WHERE id=p_session_id AND native_identity_id=v_identity FOR UPDATE;
+    IF NOT FOUND OR v_session.status<>'active'
+       OR v_session.session_epoch<>v_epoch OR v_session.expires_at<=clock_timestamp()
+       THEN RETURN false; END IF;
+    UPDATE request_engine.native_identity_recovery_state
+      SET state='normal',revision=revision+1,completed_at=clock_timestamp()
+      WHERE native_identity_id=v_identity;
+    INSERT INTO request_engine.native_identity_recovery_facts(
+        native_identity_id,event_kind,recovery_epoch,recovery_method,correlation_id
+    ) VALUES(v_identity,'recovery_completed',v_recovery.recovery_epoch,
+        v_recovery.last_recovery_method,
+        NULLIF(current_setting('request_engine.correlation_id',true),'')::uuid);
+    -- Do not rewrite the recovery-derived session. A fresh login is required.
+    RETURN true;
+END $$;
+
+
+ALTER FUNCTION request_auth.complete_native_recovery_with_password(p_session_id uuid, p_credential_id uuid, p_expected_recovery_epoch bigint, p_expected_verifier text) OWNER TO request_engine_schema_owner;
 
 --
 -- Name: consume_native_recovery_intent(uuid, bytea, uuid, text); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
@@ -1852,15 +2055,15 @@ CREATE FUNCTION request_auth.create_webauthn_challenge(p_challenge_id uuid, p_pu
             IF p_challenge_id IS NULL
                OR p_challenge_digest IS NULL
                OR octet_length(p_challenge_digest) <> 32
-               OR p_purpose NOT IN ('registration', 'authentication', 'step_up')
-               OR v_scope_count <> 1
+               OR p_purpose NOT IN ('registration', 'authentication', 'step_up',
+                                    'authentication_discoverable')
                OR p_expires_at <= clock_timestamp()
+               OR (p_purpose = 'authentication_discoverable' AND v_scope_count <> 0)
+               OR (p_purpose <> 'authentication_discoverable' AND v_scope_count <> 1)
             THEN
                 RETURN false;
             END IF;
 
-            -- Serialize challenge creation per scope so two concurrent begins
-            -- cannot both leave a live challenge.
             PERFORM pg_advisory_xact_lock(
                 hashtextextended(
                     coalesce(p_purpose, '') || '|'
@@ -1871,13 +2074,17 @@ CREATE FUNCTION request_auth.create_webauthn_challenge(p_challenge_id uuid, p_pu
                 )
             );
 
-            UPDATE request_engine.webauthn_challenges
-               SET status = 'expired'
-             WHERE status = 'pending'
-               AND purpose = p_purpose
-               AND native_identity_id IS NOT DISTINCT FROM p_native_identity_id
-               AND session_id IS NOT DISTINCT FROM p_session_id
-               AND setup_session_id IS NOT DISTINCT FROM p_setup_session_id;
+            -- A discoverable challenge has no scope to serialize per identity, so
+            -- it must not expire other operators' live unbound challenges.
+            IF p_purpose <> 'authentication_discoverable' THEN
+                UPDATE request_engine.webauthn_challenges
+                   SET status = 'expired'
+                 WHERE status = 'pending'
+                   AND purpose = p_purpose
+                   AND native_identity_id IS NOT DISTINCT FROM p_native_identity_id
+                   AND session_id IS NOT DISTINCT FROM p_session_id
+                   AND setup_session_id IS NOT DISTINCT FROM p_setup_session_id;
+            END IF;
 
             INSERT INTO request_engine.webauthn_challenges (
                 id, purpose, native_identity_id, session_id, setup_session_id,
@@ -1892,6 +2099,95 @@ CREATE FUNCTION request_auth.create_webauthn_challenge(p_challenge_id uuid, p_pu
 
 
 ALTER FUNCTION request_auth.create_webauthn_challenge(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: create_webauthn_challenge_with_user_handle(uuid, text, uuid, uuid, uuid, bytea, timestamp with time zone, bytea); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_auth.create_webauthn_challenge_with_user_handle(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone, p_user_handle bytea) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        DECLARE v_scope_count integer;
+        BEGIN
+            v_scope_count := (p_native_identity_id IS NOT NULL)::int
+                + (p_session_id IS NOT NULL)::int
+                + (p_setup_session_id IS NOT NULL)::int;
+            IF p_challenge_id IS NULL OR p_challenge_digest IS NULL
+               OR octet_length(p_challenge_digest)<>32
+               OR p_purpose NOT IN ('registration','authentication','step_up',
+                                    'authentication_discoverable')
+               OR p_expires_at<=clock_timestamp()
+               OR (p_purpose='authentication_discoverable' AND v_scope_count<>0)
+               OR (p_purpose<>'authentication_discoverable' AND v_scope_count<>1)
+               OR (p_purpose='registration' AND
+                   (p_user_handle IS NULL OR octet_length(p_user_handle) NOT BETWEEN 16 AND 64))
+               OR (p_purpose<>'registration' AND p_user_handle IS NOT NULL)
+            THEN RETURN false; END IF;
+
+            PERFORM pg_advisory_xact_lock(hashtextextended(
+                coalesce(p_purpose,'')||'|'||coalesce(p_native_identity_id::text,'')||'|'
+                ||coalesce(p_session_id::text,'')||'|'||coalesce(p_setup_session_id::text,''),0));
+            IF p_purpose<>'authentication_discoverable' THEN
+                UPDATE request_engine.webauthn_challenges SET status='expired'
+                 WHERE status='pending' AND purpose=p_purpose
+                   AND native_identity_id IS NOT DISTINCT FROM p_native_identity_id
+                   AND session_id IS NOT DISTINCT FROM p_session_id
+                   AND setup_session_id IS NOT DISTINCT FROM p_setup_session_id;
+            END IF;
+            INSERT INTO request_engine.webauthn_challenges(
+                id,purpose,native_identity_id,session_id,setup_session_id,
+                challenge_digest,expires_at,user_handle)
+            VALUES(p_challenge_id,p_purpose,p_native_identity_id,p_session_id,
+                p_setup_session_id,p_challenge_digest,p_expires_at,p_user_handle);
+            RETURN true;
+        END $$;
+
+
+ALTER FUNCTION request_auth.create_webauthn_challenge_with_user_handle(p_challenge_id uuid, p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone, p_user_handle bytea) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: delete_retained_webauthn_challenges(integer, integer); Type: FUNCTION; Schema: request_auth; Owner: request_webauthn_retention_definer
+--
+
+CREATE FUNCTION request_auth.delete_retained_webauthn_challenges(p_retention_seconds integer, p_batch_size integer) RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_cutoff timestamptz;
+            v_deleted integer;
+        BEGIN
+            IF p_retention_seconds IS NULL
+                OR p_retention_seconds < 86400
+                OR p_retention_seconds > 7776000 THEN
+                RAISE EXCEPTION 'retention must be between 86400 and 7776000 seconds'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_batch_size IS NULL OR p_batch_size < 1 OR p_batch_size > 1000 THEN
+                RAISE EXCEPTION 'batch size must be between 1 and 1000'
+                    USING ERRCODE = '22023';
+            END IF;
+            v_cutoff := clock_timestamp() - make_interval(secs => p_retention_seconds);
+
+            DELETE FROM request_engine.webauthn_challenges AS challenge
+             WHERE challenge.id IN (
+                SELECT candidate.id
+                  FROM request_engine.webauthn_challenges AS candidate
+                 WHERE candidate.expires_at <= v_cutoff
+                   AND candidate.status IN ('pending', 'expired', 'consumed')
+                   AND (candidate.status <> 'consumed' OR candidate.consumed_at <= v_cutoff)
+                 ORDER BY candidate.expires_at, candidate.id
+                 FOR UPDATE SKIP LOCKED
+                 LIMIT p_batch_size
+             );
+            GET DIAGNOSTICS v_deleted = ROW_COUNT;
+            RETURN v_deleted;
+        END;
+        $$;
+
+
+ALTER FUNCTION request_auth.delete_retained_webauthn_challenges(p_retention_seconds integer, p_batch_size integer) OWNER TO request_webauthn_retention_definer;
 
 --
 -- Name: disable_native_identity(uuid, text); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
@@ -1938,6 +2234,266 @@ CREATE FUNCTION request_auth.disable_native_identity(p_native_identity_id uuid, 
 ALTER FUNCTION request_auth.disable_native_identity(p_native_identity_id uuid, p_reason text) OWNER TO request_engine_schema_owner;
 
 --
+-- Name: fill_claimed_webauthn_user_handle(); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_auth.fill_claimed_webauthn_user_handle() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+        DECLARE v_handle bytea;
+        BEGIN
+            SELECT pending.user_handle INTO v_handle
+              FROM request_engine.setup_pending_webauthn_credential pending
+             WHERE pending.credential_id=NEW.credential_id
+               AND pending.status IN ('pending','promoted')
+             ORDER BY pending.created_at DESC LIMIT 1;
+            IF FOUND THEN
+                IF NEW.user_handle IS NOT NULL AND NEW.user_handle IS DISTINCT FROM v_handle THEN
+                    RAISE EXCEPTION 'Claimed WebAuthn user handle provenance mismatch'
+                        USING ERRCODE='23514';
+                END IF;
+                NEW.user_handle:=v_handle;
+            END IF;
+            RETURN NEW;
+        END $$;
+
+
+ALTER FUNCTION request_auth.fill_claimed_webauthn_user_handle() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: finalize_discoverable_webauthn_authentication(bytea, uuid, bigint, boolean, boolean, boolean, uuid, bytea, text, timestamp with time zone); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_auth.finalize_discoverable_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) RETURNS TABLE(native_identity_id uuid)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $_$
+        DECLARE
+            v_challenge request_engine.webauthn_challenges%ROWTYPE;
+            v_identity uuid;
+            v_epoch bigint;
+            v_identity_status text;
+            v_credential_identity uuid;
+            v_credential_status text;
+        BEGIN
+            IF p_challenge_digest IS NULL
+               OR octet_length(p_challenge_digest) <> 32
+               OR p_credential_row_id IS NULL
+               OR p_sign_count < 0
+               OR p_session_id IS NULL
+               OR p_token_digest IS NULL
+               OR octet_length(p_token_digest) <> 32
+               OR p_token_fingerprint IS NULL
+               OR p_token_fingerprint !~ '^[0-9a-f]{16}$'
+               OR p_expires_at IS NULL
+            THEN
+                RETURN;
+            END IF;
+
+            SELECT challenge.* INTO v_challenge
+              FROM request_engine.webauthn_challenges AS challenge
+             WHERE challenge.challenge_digest = p_challenge_digest
+               AND challenge.purpose = 'authentication_discoverable'
+               AND challenge.status = 'pending'
+               AND challenge.expires_at > clock_timestamp()
+               AND challenge.native_identity_id IS NULL
+               AND challenge.session_id IS NULL
+               AND challenge.setup_session_id IS NULL
+             FOR UPDATE;
+            IF NOT FOUND THEN RETURN; END IF;
+
+            -- Resolve the owning identity from the presented credential. The
+            -- caller never supplies an identity; this read only selects the row.
+            SELECT credential.native_identity_id INTO v_identity
+              FROM request_engine.webauthn_credentials AS credential
+             WHERE credential.id = p_credential_row_id;
+            IF NOT FOUND OR v_identity IS NULL THEN RETURN; END IF;
+
+            -- Same lock order as finalize_webauthn_authentication:
+            -- authority -> identity -> credential.
+            PERFORM 1
+              FROM request_engine.identity_authorities AS authority
+              JOIN request_engine.native_identities AS native_identity
+                ON native_identity.identity_authority_id = authority.id
+             WHERE native_identity.id = v_identity
+               AND authority.kind = 'native' AND authority.status = 'active'
+             FOR SHARE OF authority;
+            IF NOT FOUND THEN RETURN; END IF;
+
+            SELECT session_epoch, status
+              INTO v_epoch, v_identity_status
+              FROM request_engine.native_identities
+             WHERE id = v_identity
+             FOR UPDATE;
+            IF NOT FOUND OR v_identity_status <> 'active' THEN
+                RETURN;
+            END IF;
+
+            SELECT credential.native_identity_id, credential.status
+              INTO v_credential_identity, v_credential_status
+              FROM request_engine.webauthn_credentials AS credential
+             WHERE credential.id = p_credential_row_id
+             FOR UPDATE;
+            IF NOT FOUND OR v_credential_status <> 'active'
+               OR v_credential_identity <> v_identity
+            THEN
+                RETURN;
+            END IF;
+            IF p_expires_at <= clock_timestamp() THEN
+                RETURN;
+            END IF;
+
+            UPDATE request_engine.webauthn_credentials
+               SET sign_count = GREATEST(sign_count, p_sign_count),
+                   last_used_at = clock_timestamp(),
+                   backup_state = p_backup_state,
+                   user_verified = user_verified OR p_user_verified,
+                   last_regression_at = CASE
+                       WHEN NOT p_backup_eligible
+                            AND p_sign_count > 0
+                            AND sign_count > 0
+                            AND p_sign_count < sign_count
+                       THEN clock_timestamp()
+                       ELSE last_regression_at
+                   END
+             WHERE id = p_credential_row_id;
+
+            INSERT INTO request_engine.native_sessions (
+                id, native_identity_id, password_credential_id,
+                webauthn_credential_id, token_digest, token_fingerprint,
+                session_epoch, expires_at, authentication_methods,
+                authentication_assurance, user_verified, recovery_derived
+            ) VALUES (
+                p_session_id, v_identity, NULL, p_credential_row_id,
+                p_token_digest, p_token_fingerprint, v_epoch, p_expires_at,
+                ARRAY['webauthn']::text[],
+                request_engine.derive_authentication_assurance(
+                    ARRAY['webauthn']::text[], p_user_verified, false
+                ),
+                p_user_verified, false
+            );
+
+            UPDATE request_engine.webauthn_challenges
+               SET status = 'consumed', consumed_at = clock_timestamp()
+             WHERE id = v_challenge.id;
+
+            RETURN QUERY SELECT v_identity;
+        END
+        $_$;
+
+
+ALTER FUNCTION request_auth.finalize_discoverable_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: finalize_discoverable_webauthn_authentication(bytea, uuid, bigint, boolean, boolean, boolean, uuid, bytea, text, timestamp with time zone, uuid, bytea); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_auth.finalize_discoverable_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, p_expected_authority_id uuid, p_user_handle bytea) RETURNS TABLE(native_identity_id uuid)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $_$
+        DECLARE
+            v_challenge request_engine.webauthn_challenges%ROWTYPE;
+            v_identity uuid;
+            v_epoch bigint;
+            v_identity_status text;
+            v_credential_identity uuid;
+            v_credential_status text;
+            v_credential_handle bytea;
+        BEGIN
+            IF p_challenge_digest IS NULL OR octet_length(p_challenge_digest)<>32
+               OR p_credential_row_id IS NULL OR p_sign_count<0 OR p_session_id IS NULL
+               OR p_token_digest IS NULL OR octet_length(p_token_digest)<>32
+               OR p_token_fingerprint IS NULL OR p_token_fingerprint !~ '^[0-9a-f]{16}$'
+               OR p_expires_at IS NULL OR p_expected_authority_id IS NULL
+               OR p_user_handle IS NULL OR octet_length(p_user_handle) NOT BETWEEN 16 AND 64
+            THEN RETURN; END IF;
+
+            SELECT challenge.* INTO v_challenge
+              FROM request_engine.webauthn_challenges challenge
+             WHERE challenge.challenge_digest=p_challenge_digest
+               AND challenge.purpose='authentication_discoverable'
+               AND challenge.status='pending'
+               AND challenge.expires_at>clock_timestamp()
+               AND challenge.native_identity_id IS NULL
+               AND challenge.session_id IS NULL
+               AND challenge.setup_session_id IS NULL
+             FOR UPDATE;
+            IF NOT FOUND THEN RETURN; END IF;
+
+            SELECT credential.native_identity_id INTO v_identity
+              FROM request_engine.webauthn_credentials credential
+             WHERE credential.id=p_credential_row_id;
+            IF NOT FOUND OR v_identity IS NULL THEN RETURN; END IF;
+
+            PERFORM 1
+              FROM request_engine.identity_authorities authority
+              JOIN request_engine.native_identities identity
+                ON identity.identity_authority_id=authority.id
+             WHERE identity.id=v_identity AND authority.id=p_expected_authority_id
+               AND authority.kind='native' AND authority.status='active'
+             FOR SHARE OF authority;
+            IF NOT FOUND THEN RETURN; END IF;
+
+            SELECT session_epoch,status INTO v_epoch,v_identity_status
+              FROM request_engine.native_identities WHERE id=v_identity FOR UPDATE;
+            IF NOT FOUND OR v_identity_status<>'active' THEN RETURN; END IF;
+
+            SELECT credential.native_identity_id,credential.status,credential.user_handle
+              INTO v_credential_identity,v_credential_status,v_credential_handle
+              FROM request_engine.webauthn_credentials credential
+             WHERE credential.id=p_credential_row_id FOR UPDATE;
+            IF NOT FOUND OR v_credential_status<>'active'
+               OR v_credential_identity<>v_identity
+               OR v_credential_handle IS DISTINCT FROM p_user_handle
+            THEN RETURN; END IF;
+
+            -- Expiry governs durable session creation, not merely entry into the
+            -- finalizer. The challenge row and every identity/credential lock are
+            -- held now, so this is the final admission check before any write.
+            IF v_challenge.expires_at<=clock_timestamp()
+               OR p_expires_at<=clock_timestamp() THEN RETURN; END IF;
+
+            IF v_challenge.expires_at <= clock_timestamp() OR p_expires_at <= clock_timestamp() THEN RETURN; END IF;
+
+            BEGIN
+            UPDATE request_engine.webauthn_credentials
+               SET sign_count=GREATEST(sign_count,p_sign_count),
+                   last_used_at=clock_timestamp(),backup_state=p_backup_state,
+                   user_verified=user_verified OR p_user_verified,
+                   last_regression_at=CASE
+                       WHEN NOT p_backup_eligible AND p_sign_count>0 AND sign_count>0
+                            AND p_sign_count<sign_count
+                       THEN clock_timestamp() ELSE last_regression_at END
+             WHERE id=p_credential_row_id;
+
+            INSERT INTO request_engine.native_sessions(
+                id,native_identity_id,password_credential_id,webauthn_credential_id,
+                token_digest,token_fingerprint,session_epoch,expires_at,
+                authentication_methods,authentication_assurance,user_verified,recovery_derived)
+            VALUES(p_session_id,v_identity,NULL,p_credential_row_id,p_token_digest,
+                p_token_fingerprint,v_epoch,p_expires_at,ARRAY['webauthn']::text[],
+                request_engine.derive_authentication_assurance(
+                    ARRAY['webauthn']::text[],p_user_verified,false),p_user_verified,false);
+
+            IF v_challenge.expires_at <= clock_timestamp() OR p_expires_at <= clock_timestamp() THEN
+                    RAISE EXCEPTION 'WebAuthn finalization deadline elapsed'
+                        USING ERRCODE='PWE01';
+                END IF;
+
+            UPDATE request_engine.webauthn_challenges
+               SET status='consumed',consumed_at=clock_timestamp() WHERE id=v_challenge.id;
+            RETURN QUERY SELECT v_identity;
+            EXCEPTION WHEN SQLSTATE 'PWE01' THEN
+                RETURN;
+            END;
+        END $_$;
+
+
+ALTER FUNCTION request_auth.finalize_discoverable_webauthn_authentication(p_challenge_digest bytea, p_credential_row_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, p_expected_authority_id uuid, p_user_handle bytea) OWNER TO request_engine_schema_owner;
+
+--
 -- Name: finalize_setup_webauthn_registration(bytea, uuid, bytea, bytea, bigint, text, boolean, boolean, boolean, uuid); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
@@ -1978,6 +2534,7 @@ CREATE FUNCTION request_auth.finalize_setup_webauthn_registration(p_challenge_di
             IF NOT FOUND
                OR v_challenge.setup_session_id IS NULL
                OR v_challenge.setup_session_id <> p_setup_session_id
+                OR v_challenge.user_handle IS NULL
             THEN
                 RETURN false;
             END IF;
@@ -1997,23 +2554,34 @@ CREATE FUNCTION request_auth.finalize_setup_webauthn_registration(p_challenge_di
                 RETURN false;
             END IF;
 
+            IF v_challenge.expires_at <= clock_timestamp() OR v_expires_at <= clock_timestamp() THEN RETURN false; END IF;
+
+            BEGIN
             INSERT INTO request_engine.setup_pending_webauthn_credential (
                 id, setup_session_id, credential_id, public_key, sign_count,
-                aaguid, backup_eligible, backup_state, user_verified
+                aaguid, backup_eligible, backup_state, user_verified, user_handle
             ) VALUES (
                 p_credential_row_id, v_challenge.setup_session_id, p_credential_id_bytes,
                 p_public_key, p_sign_count, p_aaguid, p_backup_eligible,
-                p_backup_state, p_user_verified
+                p_backup_state, p_user_verified, v_challenge.user_handle
             )
             ON CONFLICT (credential_id) DO NOTHING;
             IF NOT FOUND THEN
                 RETURN false;
             END IF;
 
+            IF v_challenge.expires_at <= clock_timestamp() OR v_expires_at <= clock_timestamp() THEN
+                    RAISE EXCEPTION 'WebAuthn finalization deadline elapsed'
+                        USING ERRCODE='PWE01';
+                END IF;
+
             UPDATE request_engine.webauthn_challenges
                SET status = 'consumed', consumed_at = clock_timestamp()
              WHERE id = v_challenge.id;
             RETURN true;
+            EXCEPTION WHEN SQLSTATE 'PWE01' THEN
+                RETURN false;
+            END;
         END
         $_$;
 
@@ -2092,6 +2660,9 @@ CREATE FUNCTION request_auth.finalize_webauthn_authentication(p_challenge_digest
                 RETURN false;
             END IF;
 
+            IF v_challenge.expires_at <= clock_timestamp() OR p_expires_at <= clock_timestamp() THEN RETURN false; END IF;
+
+            BEGIN
             UPDATE request_engine.webauthn_credentials
                SET sign_count = GREATEST(sign_count, p_sign_count),
                    last_used_at = clock_timestamp(),
@@ -2122,10 +2693,18 @@ CREATE FUNCTION request_auth.finalize_webauthn_authentication(p_challenge_digest
                 p_user_verified, false
             );
 
+            IF v_challenge.expires_at <= clock_timestamp() OR p_expires_at <= clock_timestamp() THEN
+                    RAISE EXCEPTION 'WebAuthn finalization deadline elapsed'
+                        USING ERRCODE='PWE01';
+                END IF;
+
             UPDATE request_engine.webauthn_challenges
                SET status = 'consumed', consumed_at = clock_timestamp()
              WHERE id = v_challenge.id;
             RETURN true;
+            EXCEPTION WHEN SQLSTATE 'PWE01' THEN
+                RETURN false;
+            END;
         END
         $_$;
 
@@ -2136,684 +2715,3 @@ ALTER FUNCTION request_auth.finalize_webauthn_authentication(p_challenge_digest 
 -- Name: finalize_webauthn_registration(bytea, uuid, bytea, bytea, bigint, text, boolean, boolean, boolean); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
 --
 
-CREATE FUNCTION request_auth.finalize_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean) RETURNS boolean
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $_$
-        DECLARE
-            v_challenge request_engine.webauthn_challenges%ROWTYPE;
-            v_identity_status text;
-        BEGIN
-            IF p_challenge_digest IS NULL
-               OR octet_length(p_challenge_digest) <> 32
-               OR p_credential_row_id IS NULL
-               OR p_credential_id_bytes IS NULL
-               OR octet_length(p_credential_id_bytes) NOT BETWEEN 16 AND 1023
-               OR p_public_key IS NULL
-               OR octet_length(p_public_key) = 0
-               OR p_sign_count < 0
-               OR p_aaguid IS NULL
-               OR p_aaguid !~ '^[0-9a-f]{32}$'
-            THEN
-                RETURN false;
-            END IF;
-
-            SELECT challenge.* INTO v_challenge
-              FROM request_engine.webauthn_challenges AS challenge
-             WHERE challenge.challenge_digest = p_challenge_digest
-               AND challenge.purpose = 'registration'
-               AND challenge.status = 'pending'
-               AND challenge.expires_at > clock_timestamp()
-             FOR UPDATE;
-            IF NOT FOUND OR v_challenge.native_identity_id IS NULL THEN
-                RETURN false;
-            END IF;
-
-            -- A suspended native authority must not accept new credentials.
-            PERFORM 1
-              FROM request_engine.identity_authorities AS authority
-              JOIN request_engine.native_identities AS native_identity
-                ON native_identity.identity_authority_id = authority.id
-             WHERE native_identity.id = v_challenge.native_identity_id
-               AND authority.kind = 'native' AND authority.status = 'active'
-             FOR SHARE OF authority;
-            IF NOT FOUND THEN RETURN false; END IF;
-
-            SELECT identity.status INTO v_identity_status
-              FROM request_engine.native_identities AS identity
-             WHERE identity.id = v_challenge.native_identity_id
-             FOR UPDATE;
-            IF NOT FOUND OR v_identity_status <> 'active' THEN
-                RETURN false;
-            END IF;
-
-            INSERT INTO request_engine.webauthn_credentials (
-                id, native_identity_id, credential_id, public_key, sign_count,
-                aaguid, backup_eligible, backup_state, user_verified
-            ) VALUES (
-                p_credential_row_id, v_challenge.native_identity_id,
-                p_credential_id_bytes, p_public_key, p_sign_count, p_aaguid,
-                p_backup_eligible, p_backup_state, p_user_verified
-            )
-            ON CONFLICT (credential_id) DO NOTHING;
-            IF NOT FOUND THEN
-                RETURN false;
-            END IF;
-
-            UPDATE request_engine.webauthn_challenges
-               SET status = 'consumed', consumed_at = clock_timestamp()
-             WHERE id = v_challenge.id;
-            RETURN true;
-        END
-        $_$;
-
-
-ALTER FUNCTION request_auth.finalize_webauthn_registration(p_challenge_digest bytea, p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean) OWNER TO request_engine_schema_owner;
-
---
--- Name: finalize_webauthn_step_up(bytea, uuid, uuid, uuid, bigint, boolean, boolean); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.finalize_webauthn_step_up(p_challenge_digest bytea, p_credential_row_id uuid, p_session_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_user_verified boolean) RETURNS boolean
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $$
-        DECLARE
-            v_challenge request_engine.webauthn_challenges%ROWTYPE;
-            v_session request_engine.native_sessions%ROWTYPE;
-            v_credential_status text;
-            v_identity_status text;
-            v_identity_epoch bigint;
-            v_methods text[];
-            v_user_verified boolean;
-        BEGIN
-            IF p_challenge_digest IS NULL
-               OR octet_length(p_challenge_digest) <> 32
-               OR p_credential_row_id IS NULL
-               OR p_session_id IS NULL
-               OR p_native_identity_id IS NULL
-               OR p_sign_count < 0
-            THEN
-                RETURN false;
-            END IF;
-
-            SELECT challenge.* INTO v_challenge
-              FROM request_engine.webauthn_challenges AS challenge
-             WHERE challenge.challenge_digest = p_challenge_digest
-               AND challenge.purpose = 'step_up'
-               AND challenge.status = 'pending'
-               AND challenge.expires_at > clock_timestamp()
-             FOR UPDATE;
-            IF NOT FOUND OR v_challenge.session_id IS DISTINCT FROM p_session_id THEN
-                RETURN false;
-            END IF;
-
-            -- Canonical lock order: authority -> identity -> credential -> session.
-            PERFORM 1
-              FROM request_engine.identity_authorities AS authority
-              JOIN request_engine.native_identities AS native_identity
-                ON native_identity.identity_authority_id = authority.id
-             WHERE native_identity.id = p_native_identity_id
-               AND authority.kind = 'native' AND authority.status = 'active'
-             FOR SHARE OF authority;
-            IF NOT FOUND THEN RETURN false; END IF;
-
-            SELECT identity.status, identity.session_epoch
-              INTO v_identity_status, v_identity_epoch
-              FROM request_engine.native_identities AS identity
-             WHERE identity.id = p_native_identity_id
-             FOR SHARE;
-            IF NOT FOUND OR v_identity_status <> 'active' THEN
-                RETURN false;
-            END IF;
-
-            SELECT status INTO v_credential_status
-              FROM request_engine.webauthn_credentials
-             WHERE id = p_credential_row_id
-               AND native_identity_id = p_native_identity_id
-             FOR UPDATE;
-            IF NOT FOUND OR v_credential_status <> 'active' THEN
-                RETURN false;
-            END IF;
-
-            SELECT session.* INTO v_session
-              FROM request_engine.native_sessions AS session
-             WHERE session.id = p_session_id
-             FOR UPDATE;
-            IF NOT FOUND
-               OR v_session.native_identity_id <> p_native_identity_id
-               OR v_session.status <> 'active'
-               OR v_session.expires_at <= clock_timestamp()
-               OR v_session.session_epoch <> v_identity_epoch
-            THEN
-                RETURN false;
-            END IF;
-
-            UPDATE request_engine.webauthn_credentials
-               SET sign_count = GREATEST(sign_count, p_sign_count),
-                   last_used_at = clock_timestamp(),
-                   user_verified = user_verified OR p_user_verified,
-                   last_regression_at = CASE
-                       WHEN NOT p_backup_eligible
-                            AND p_sign_count > 0
-                            AND sign_count > 0
-                            AND p_sign_count < sign_count
-                       THEN clock_timestamp()
-                       ELSE last_regression_at
-                   END
-             WHERE id = p_credential_row_id;
-
-            v_methods := CASE
-                WHEN 'webauthn' = ANY(v_session.authentication_methods)
-                    THEN v_session.authentication_methods
-                ELSE v_session.authentication_methods || ARRAY['webauthn']::text[]
-            END;
-            v_user_verified := v_session.user_verified OR p_user_verified;
-
-            UPDATE request_engine.native_sessions
-               SET authentication_methods = v_methods,
-                   authentication_assurance = request_engine.derive_authentication_assurance(
-                       v_methods, v_user_verified, v_session.recovery_derived
-                   ),
-                   user_verified = v_user_verified,
-                   last_authenticated_at = clock_timestamp(),
-                   last_seen_at = clock_timestamp()
-             WHERE id = p_session_id;
-
-            UPDATE request_engine.webauthn_challenges
-               SET status = 'consumed', consumed_at = clock_timestamp()
-             WHERE id = v_challenge.id;
-            RETURN true;
-        END
-        $$;
-
-
-ALTER FUNCTION request_auth.finalize_webauthn_step_up(p_challenge_digest bytea, p_credential_row_id uuid, p_session_id uuid, p_native_identity_id uuid, p_sign_count bigint, p_backup_eligible boolean, p_user_verified boolean) OWNER TO request_engine_schema_owner;
-
---
--- Name: is_native_authority_ready(uuid); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.is_native_authority_ready(p_authority_id uuid) RETURNS boolean
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $$
-            SELECT EXISTS (
-                SELECT 1 FROM request_engine.identity_authorities
-                 WHERE id = p_authority_id AND kind = 'native' AND status = 'active'
-            )
-        $$;
-
-
-ALTER FUNCTION request_auth.is_native_authority_ready(p_authority_id uuid) OWNER TO request_engine_schema_owner;
-
---
--- Name: lock_credentialed_native_identity(uuid, uuid); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.lock_credentialed_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid) RETURNS boolean
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $$
-        BEGIN
-            PERFORM 1 FROM request_engine.identity_authorities
-             WHERE id = p_identity_authority_id
-               AND kind = 'native' AND status = 'active'
-             FOR SHARE;
-            IF NOT FOUND THEN RETURN false; END IF;
-
-            PERFORM 1
-              FROM request_engine.native_identities AS native_identity
-             WHERE native_identity.id = p_native_identity_id
-               AND native_identity.identity_authority_id = p_identity_authority_id
-               AND native_identity.status = 'active'
-             FOR SHARE OF native_identity;
-            IF NOT FOUND THEN RETURN false; END IF;
-
-            PERFORM 1 FROM request_engine.native_credentials AS credential
-             WHERE credential.native_identity_id = p_native_identity_id
-               AND credential.kind = 'password' AND credential.status = 'active'
-             FOR SHARE OF credential;
-            RETURN FOUND;
-        END
-        $$;
-
-
-ALTER FUNCTION request_auth.lock_credentialed_native_identity(p_identity_authority_id uuid, p_native_identity_id uuid) OWNER TO request_engine_schema_owner;
-
---
--- Name: prepare_native_recovery_address(uuid, uuid, text, text, uuid, bytea, text, timestamp with time zone); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.prepare_native_recovery_address(p_address_id uuid, p_native_identity_id uuid, p_kind text, p_normalized_address text, p_verification_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) RETURNS TABLE(recovery_address_id uuid, address_status text, verification_created boolean)
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $_$
-        DECLARE
-            v_identity_status text;
-            v_existing record;
-            v_address_id uuid;
-        BEGIN
-            IF p_address_id IS NULL
-               OR p_native_identity_id IS NULL
-               OR p_kind <> 'email'
-               OR p_normalized_address IS NULL
-               OR length(p_normalized_address) NOT BETWEEN 3 AND 320
-               OR p_normalized_address !~ '^[^[:space:]@]+@[^[:space:]@]+$'
-               OR p_verification_id IS NULL
-               OR p_token_digest IS NULL
-               OR octet_length(p_token_digest) <> 32
-               OR p_token_fingerprint !~ '^[0-9a-f]{16}$'
-               OR p_expires_at IS NULL
-               OR p_expires_at <= clock_timestamp()
-               OR p_expires_at > clock_timestamp() + interval '30 minutes'
-            THEN
-                RETURN;
-            END IF;
-
-            SELECT identity.status
-              INTO v_identity_status
-              FROM request_engine.native_identities AS identity
-             WHERE identity.id = p_native_identity_id
-             FOR UPDATE;
-            IF NOT FOUND OR v_identity_status <> 'active' THEN
-                RETURN;
-            END IF;
-
-            SELECT address.id, address.status
-              INTO v_existing
-              FROM request_engine.native_recovery_addresses AS address
-             WHERE address.native_identity_id = p_native_identity_id
-               AND address.kind = p_kind
-               AND address.normalized_address = p_normalized_address
-               AND address.status <> 'revoked'
-             FOR UPDATE;
-
-            IF FOUND AND v_existing.status = 'verified' THEN
-                RETURN QUERY SELECT v_existing.id, 'verified'::text, false;
-                RETURN;
-            END IF;
-
-            IF FOUND THEN
-                v_address_id := v_existing.id;
-                UPDATE request_engine.native_recovery_address_verifications
-                   SET status = 'revoked',
-                       revoked_at = clock_timestamp()
-                 WHERE recovery_address_id = v_address_id
-                   AND status = 'pending';
-            ELSE
-                v_address_id := p_address_id;
-                INSERT INTO request_engine.native_recovery_addresses (
-                    id, native_identity_id, kind, normalized_address
-                ) VALUES (
-                    v_address_id,
-                    p_native_identity_id,
-                    p_kind,
-                    p_normalized_address
-                );
-            END IF;
-
-            INSERT INTO request_engine.native_recovery_address_verifications (
-                id,
-                recovery_address_id,
-                token_digest,
-                token_fingerprint,
-                expires_at
-            ) VALUES (
-                p_verification_id,
-                v_address_id,
-                p_token_digest,
-                p_token_fingerprint,
-                p_expires_at
-            );
-
-            INSERT INTO request_engine.native_recovery_address_facts (
-                native_identity_id,
-                recovery_address_id,
-                event_kind,
-                correlation_id
-            ) VALUES (
-                p_native_identity_id,
-                v_address_id,
-                'verification_requested',
-                NULLIF(current_setting('request_engine.correlation_id', true), '')::uuid
-            );
-
-            RETURN QUERY SELECT v_address_id, 'pending'::text, true;
-        END
-        $_$;
-
-
-ALTER FUNCTION request_auth.prepare_native_recovery_address(p_address_id uuid, p_native_identity_id uuid, p_kind text, p_normalized_address text, p_verification_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone) OWNER TO request_engine_schema_owner;
-
---
--- Name: promote_recovery_code_set(uuid, uuid); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.promote_recovery_code_set(p_set_id uuid, p_native_identity_id uuid) RETURNS boolean
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $$
-        DECLARE
-            v_set request_engine.recovery_code_sets%ROWTYPE;
-            v_identity_status text;
-        BEGIN
-            IF p_set_id IS NULL OR p_native_identity_id IS NULL THEN
-                RETURN false;
-            END IF;
-
-            SELECT identity.status INTO v_identity_status
-              FROM request_engine.native_identities AS identity
-             WHERE identity.id = p_native_identity_id
-             FOR UPDATE;
-            IF NOT FOUND OR v_identity_status <> 'active' THEN
-                RETURN false;
-            END IF;
-
-            SELECT code_set.* INTO v_set
-              FROM request_engine.recovery_code_sets AS code_set
-             WHERE code_set.id = p_set_id
-             FOR UPDATE;
-            IF NOT FOUND
-               OR v_set.status <> 'active'
-               OR v_set.setup_session_id IS NULL
-            THEN
-                RETURN false;
-            END IF;
-
-            UPDATE request_engine.recovery_code_sets
-               SET setup_session_id = NULL,
-                   native_identity_id = p_native_identity_id
-             WHERE id = p_set_id;
-
-            INSERT INTO request_engine.platform_recovery_code_facts (
-                event_kind, set_id, native_identity_id, setup_session_id,
-                actor_principal_id, actor_authentication_method, capability_key,
-                correlation_id
-            ) VALUES (
-                'set_promoted', p_set_id, p_native_identity_id, v_set.setup_session_id,
-                NULLIF(
-                    current_setting('request_engine.authenticated_principal_id', true), ''
-                )::uuid,
-                NULLIF(current_setting('request_engine.authentication_method', true), ''),
-                'platform.recovery_codes.manage',
-                NULLIF(current_setting('request_engine.correlation_id', true), '')::uuid
-            );
-            RETURN true;
-        END
-        $$;
-
-
-ALTER FUNCTION request_auth.promote_recovery_code_set(p_set_id uuid, p_native_identity_id uuid) OWNER TO request_engine_schema_owner;
-
---
--- Name: queue_native_verified_recovery(uuid, text, uuid); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.queue_native_verified_recovery(p_identity_authority_id uuid, p_login_handle text, p_request_id uuid) RETURNS boolean
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $$
-        DECLARE
-            v_identity_id uuid;
-            v_address record;
-        BEGIN
-            IF p_identity_authority_id IS NULL
-               OR p_login_handle IS NULL
-               OR length(p_login_handle) NOT BETWEEN 1 AND 320
-               OR p_request_id IS NULL
-            THEN
-                RETURN false;
-            END IF;
-
-            PERFORM 1
-              FROM request_engine.identity_authorities AS authority
-             WHERE authority.id = p_identity_authority_id
-               AND authority.kind = 'native'
-               AND authority.status = 'active'
-             FOR SHARE;
-            IF NOT FOUND THEN
-                RETURN false;
-            END IF;
-
-            SELECT identity.id
-              INTO v_identity_id
-              FROM request_engine.native_identities AS identity
-             WHERE identity.identity_authority_id = p_identity_authority_id
-               AND identity.login_handle = p_login_handle
-               AND identity.status = 'active'
-             FOR UPDATE;
-            IF NOT FOUND THEN
-                RETURN false;
-            END IF;
-
-            SELECT address.id, address.normalized_address
-              INTO v_address
-              FROM request_engine.native_recovery_addresses AS address
-             WHERE address.native_identity_id = v_identity_id
-               AND address.kind = 'email'
-               AND address.status = 'verified'
-             ORDER BY address.verified_at DESC, address.id
-             LIMIT 1
-             FOR SHARE;
-            IF NOT FOUND THEN
-                RETURN false;
-            END IF;
-
-            UPDATE request_engine.native_recovery_delivery_requests AS request
-               SET status = 'cancelled',
-                   updated_at = clock_timestamp(),
-                   last_error_class = 'request_expired'
-             WHERE request.native_identity_id = v_identity_id
-               AND request.status = 'pending'
-               AND request.request_expires_at <= clock_timestamp();
-
-            IF EXISTS (
-                SELECT 1
-                  FROM request_engine.native_recovery_delivery_requests AS request
-                 WHERE request.native_identity_id = v_identity_id
-                   AND request.status IN ('pending', 'sending')
-            ) THEN
-                RETURN false;
-            END IF;
-
-            IF EXISTS (
-                SELECT 1
-                  FROM request_engine.native_recovery_address_facts AS fact
-                 WHERE fact.native_identity_id = v_identity_id
-                   AND fact.recovery_address_id = v_address.id
-                   AND fact.event_kind = 'recovery_requested'
-                   AND fact.created_at > clock_timestamp() - interval '1 minute'
-            ) THEN
-                RETURN false;
-            END IF;
-
-            INSERT INTO request_engine.native_recovery_delivery_requests (
-                id,
-                native_identity_id,
-                recovery_address_id,
-                destination_reference,
-                request_expires_at
-            ) VALUES (
-                p_request_id,
-                v_identity_id,
-                v_address.id,
-                v_address.normalized_address,
-                clock_timestamp() + interval '30 minutes'
-            );
-
-            INSERT INTO request_engine.native_recovery_address_facts (
-                native_identity_id,
-                recovery_address_id,
-                event_kind,
-                correlation_id
-            ) VALUES (
-                v_identity_id,
-                v_address.id,
-                'recovery_requested',
-                NULLIF(current_setting('request_engine.correlation_id', true), '')::uuid
-            );
-            RETURN true;
-        END
-        $$;
-
-
-ALTER FUNCTION request_auth.queue_native_verified_recovery(p_identity_authority_id uuid, p_login_handle text, p_request_id uuid) OWNER TO request_engine_schema_owner;
-
---
--- Name: read_active_webauthn_identity(uuid, text); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.read_active_webauthn_identity(p_identity_authority_id uuid, p_login_handle text) RETURNS uuid
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $$
-            SELECT native_identity.id
-              FROM request_engine.native_identities AS native_identity
-              JOIN request_engine.identity_authorities AS authority
-                ON authority.id = native_identity.identity_authority_id
-             WHERE native_identity.identity_authority_id = p_identity_authority_id
-               AND native_identity.login_handle = p_login_handle
-               AND native_identity.status = 'active'
-               AND authority.kind = 'native'
-               AND authority.status = 'active'
-               AND EXISTS (
-                   SELECT 1
-                     FROM request_engine.webauthn_credentials AS credential
-                    WHERE credential.native_identity_id = native_identity.id
-                      AND credential.status = 'active'
-               )
-        $$;
-
-
-ALTER FUNCTION request_auth.read_active_webauthn_identity(p_identity_authority_id uuid, p_login_handle text) OWNER TO request_engine_schema_owner;
-
---
--- Name: read_native_credential_verifier(uuid); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.read_native_credential_verifier(p_credential_id uuid) RETURNS text
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $$
-            SELECT credential.verifier
-              FROM request_engine.native_credentials AS credential
-              JOIN request_engine.native_identities AS identity
-                ON identity.id = credential.native_identity_id
-              JOIN request_engine.identity_authorities AS authority
-                ON authority.id = identity.identity_authority_id
-             WHERE credential.id = p_credential_id
-               AND credential.kind = 'password'
-               AND credential.status = 'active'
-               AND identity.status = 'active'
-               AND authority.kind = 'native'
-               AND authority.status = 'active'
-        $$;
-
-
-ALTER FUNCTION request_auth.read_native_credential_verifier(p_credential_id uuid) OWNER TO request_engine_schema_owner;
-
---
--- Name: read_native_password_credential(uuid, text); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.read_native_password_credential(p_identity_authority_id uuid, p_login_handle text) RETURNS TABLE(native_identity_id uuid, credential_id uuid, verifier text, identity_status text, credential_status text, session_epoch bigint, identity_revision bigint, credential_revision bigint)
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $$
-            SELECT i.id,
-                   c.id,
-                   c.verifier,
-                   i.status,
-                   c.status,
-                   i.session_epoch,
-                   i.revision,
-                   c.revision
-              FROM request_engine.native_identities AS i
-              JOIN request_engine.native_credentials AS c
-                ON c.native_identity_id = i.id
-               AND c.kind = 'password'
-               AND c.status = 'active'
-              JOIN request_engine.identity_authorities AS authority
-                ON authority.id = i.identity_authority_id
-               AND authority.kind = 'native' AND authority.status = 'active'
-             WHERE i.identity_authority_id = p_identity_authority_id
-               AND i.login_handle = p_login_handle
-        $$;
-
-
-ALTER FUNCTION request_auth.read_native_password_credential(p_identity_authority_id uuid, p_login_handle text) OWNER TO request_engine_schema_owner;
-
---
--- Name: read_native_recovery_addresses(uuid); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.read_native_recovery_addresses(p_native_identity_id uuid) RETURNS TABLE(recovery_address_id uuid, kind text, normalized_address text, status text, revision bigint, verified_at timestamp with time zone, created_at timestamp with time zone)
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $$
-            SELECT address.id,
-                   address.kind,
-                   address.normalized_address,
-                   address.status,
-                   address.revision,
-                   address.verified_at,
-                   address.created_at
-              FROM request_engine.native_recovery_addresses AS address
-             WHERE address.native_identity_id = p_native_identity_id
-               AND address.status <> 'revoked'
-             ORDER BY address.created_at, address.id
-        $$;
-
-
-ALTER FUNCTION request_auth.read_native_recovery_addresses(p_native_identity_id uuid) OWNER TO request_engine_schema_owner;
-
---
--- Name: read_native_recovery_readiness(uuid); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.read_native_recovery_readiness(p_native_identity_id uuid) RETURNS TABLE(recovery_state text, recovery_epoch bigint, last_recovered_at timestamp with time zone, last_recovery_method text, completed_at timestamp with time zone, active_code_set boolean, remaining_codes bigint, active_webauthn_credentials bigint)
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine'
-    AS $$
-            SELECT coalesce(rs.state, 'normal'),
-                   coalesce(rs.recovery_epoch, 0),
-                   rs.last_recovered_at,
-                   rs.last_recovery_method,
-                   rs.completed_at,
-                   EXISTS (
-                       SELECT 1
-                         FROM request_engine.recovery_code_sets AS code_set
-                        WHERE code_set.native_identity_id = p_native_identity_id
-                          AND code_set.status = 'active'
-                   ),
-                   (
-                       SELECT count(*)
-                         FROM request_engine.recovery_codes AS code
-                         JOIN request_engine.recovery_code_sets AS code_set
-                           ON code_set.id = code.set_id
-                        WHERE code_set.native_identity_id = p_native_identity_id
-                          AND code_set.status = 'active'
-                          AND code.used_at IS NULL
-                   ),
-                   (
-                       SELECT count(*)
-                         FROM request_engine.webauthn_credentials AS credential
-                        WHERE credential.native_identity_id = p_native_identity_id
-                          AND credential.status = 'active'
-                   )
-              FROM request_engine.native_identities AS identity
-              LEFT JOIN request_engine.native_identity_recovery_state AS rs
-                ON rs.native_identity_id = identity.id
-             WHERE identity.id = p_native_identity_id
-               AND identity.status = 'active'
-        $$;
-
-
-ALTER FUNCTION request_auth.read_native_recovery_readiness(p_native_identity_id uuid) OWNER TO request_engine_schema_owner;
-
---
--- Name: read_native_session(uuid); Type: FUNCTION; Schema: request_auth; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_auth.read_native_session(p_session_id uuid) RETURNS TABLE(session_id uuid, native_identity_id uuid, identity_authority_id uuid, password_credential_id uuid, password_credential_status text, webauthn_credential_id uuid, webauthn_credential_status text, token_digest bytea, session_epoch bigint, current_session_epoch bigint, session_status text, identity_status text, authority_status text, authentication_methods text[], authentication_assurance text, user_verified boolean, recovery_derived boolean, recovery_restricted boolean, expires_at timestamp with time zone, created_at timestamp with time zone, last_seen_at timestamp with time zone, last_authenticated_at timestamp with time zone)

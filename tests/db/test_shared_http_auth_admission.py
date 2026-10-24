@@ -284,21 +284,12 @@ def test_upgrade_rejects_preexisting_admission_definer_schema_acl_transactionall
     ).render_as_string(hide_password=False)
     environment = {**os.environ, "MIGRATION_DATABASE_URL": migration_url}
     try:
-        baseline = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "0037_webauthn_retention"],
-            cwd=ROOT,
-            env=environment,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert baseline.returncode == 0, baseline.stdout + baseline.stderr
+        # The shared cluster role already carries a local ACL in the target
+        # database before the baseline installs (historically: before 0038).
         with psycopg.connect(database_conninfo, autocommit=True) as isolated:
-            isolated.execute(
-                "GRANT USAGE ON SCHEMA request_engine TO request_http_admission_definer"
-            )
+            isolated.execute("GRANT USAGE ON SCHEMA public TO request_http_admission_definer")
         failed_upgrade = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "0038_shared_http_auth_admission"],
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
             cwd=ROOT,
             env=environment,
             check=False,
@@ -308,15 +299,13 @@ def test_upgrade_rejects_preexisting_admission_definer_schema_acl_transactionall
         assert failed_upgrade.returncode != 0
         assert "unexpected object privileges" in failed_upgrade.stderr
         with psycopg.connect(database_conninfo) as isolated:
-            assert isolated.execute("SELECT version_num FROM alembic_version").fetchone() == (
-                "0037_webauthn_retention",
-            )
+            # Transactional: no Alembic state, schema or admission table survives.
             assert isolated.execute(
-                "SELECT to_regclass('request_engine.http_auth_admission_state')"
-            ).fetchone() == (None,)
+                "SELECT to_regclass('public.alembic_version'), to_regnamespace('request_engine')"
+            ).fetchone() == (None, None)
+            # Fail closed without rewriting the operator's pre-existing ACL.
             assert isolated.execute(
-                "SELECT has_schema_privilege("
-                "'request_http_admission_definer', 'request_engine', 'USAGE')"
+                "SELECT has_schema_privilege('request_http_admission_definer', 'public', 'USAGE')"
             ).fetchone() == (True,)
     finally:
         with psycopg.connect(cluster_conninfo, autocommit=True) as cluster_admin:
