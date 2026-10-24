@@ -2,9 +2,10 @@
 
 Runs the same owner operations as the console's guided setup ("Configure su
 consultorio"), through public HTTP only and against loopback URLs only:
-business profile, one location with opening hours, three priced services,
-two doctors with weekly availability and a walk-in line. Idempotent: anything
-that already exists by key is left as it is.
+business profile, one location with opening hours (Monday to Friday plus
+Saturday morning, as many Dominican clinics open), three priced services, three
+doctors with weekly availability and a walk-in line. Idempotent: anything that
+already exists by key is left as it is; the location hours are re-applied.
 
     uv run python scripts/dev/local_stack_demo_clinic.py --project request-engine-dev
 """
@@ -23,6 +24,7 @@ import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
 WEEKDAYS = range(5)  # Monday..Friday
+SATURDAY = 5
 SERVICES = (
     ("consulta-general", "Consulta general", 30, "1500"),
     ("consulta-pediatrica", "Consulta pediátrica", 30, "1800"),
@@ -31,7 +33,10 @@ SERVICES = (
 DOCTORS = (
     ("dra-ana-perez", "Dra. Ana Pérez", ("consulta-general", "control-prenatal")),
     ("dr-luis-rosario", "Dr. Luis Rosario", ("consulta-general", "consulta-pediatrica")),
+    ("dra-carmen-diaz", "Dra. Carmen Díaz", ("consulta-general",)),
 )
+# Who also works Saturday mornings (weekly availability is fixed at creation).
+SATURDAY_DOCTORS = {"dra-carmen-diaz"}
 
 
 def _loopback(url: str) -> str:
@@ -88,8 +93,11 @@ def _party(owner: Owner, scope: str) -> str:
             raise SystemExit(f"owner has no {scope} representation")
 
 
-def _windows(start: str, end: str) -> list[dict[str, Any]]:
-    return [{"weekday": day, "local_start": start, "local_end": end} for day in WEEKDAYS]
+def _windows(saturday: bool) -> list[dict[str, Any]]:
+    windows = [{"weekday": day, "local_start": "08:00", "local_end": "17:00"} for day in WEEKDAYS]
+    if saturday:
+        windows.append({"weekday": SATURDAY, "local_start": "08:00", "local_end": "12:00"})
+    return windows
 
 
 def seed(owner: Owner) -> None:
@@ -114,7 +122,7 @@ def seed(owner: Owner) -> None:
     )
     location = next((loc for loc in locations if loc.get("location_key") == "sede-gazcue"), None)
     if location is None:
-        created = owner.write(
+        location = owner.write(
             "POST",
             "/v1/operations/locations",
             {
@@ -129,19 +137,18 @@ def seed(owner: Owner) -> None:
             },
             "location",
         )
-        owner.write(
-            "PUT",
-            f"/v1/operations/locations/{created['location_id']}/hours",
-            {
-                "authority_party_id": party,
-                "expected_operational_revision": created["operational_revision"],
-                "windows": _windows("08:00", "17:00"),
-            },
-            "location-hours",
-        )
-        location_id = str(created["location_id"])
-    else:
-        location_id = str(location["location_id"])
+    location_id = str(location["location_id"])
+    revision = location["operational_revision"]
+    owner.write(
+        "PUT",
+        f"/v1/operations/locations/{location_id}/hours",
+        {
+            "authority_party_id": party,
+            "expected_operational_revision": revision,
+            "windows": _windows(saturday=True),
+        },
+        f"location-hours-{location_id}-{revision}",
+    )
 
     offerings = _items(
         owner.get("/v1/catalog/offerings/configuration", authority_party_id=party, limit=100)
@@ -201,7 +208,7 @@ def seed(owner: Owner) -> None:
                 "display_name": name,
                 "capacity_model": "exclusive",
                 "capability_ids": [capability_ids[s] for s in services],
-                "weekly_availability": _windows("08:00", "17:00"),
+                "weekly_availability": _windows(saturday=key in SATURDAY_DOCTORS),
             },
             f"resource-{key}",
         )
@@ -238,7 +245,7 @@ def main() -> int:
         credentials["organization_id"],
     )
     seed(owner)
-    print("demo clinic ready: Sede Gazcue, 3 services, 2 doctors, Fila de llegada")
+    print("demo clinic ready: Sede Gazcue, 3 services, 3 doctors, Fila de llegada")
     return 0
 
 
