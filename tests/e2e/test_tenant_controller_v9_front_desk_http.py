@@ -4,7 +4,8 @@ The organization is created through the real platform provisioning HTTP command
 (the application selects the initial controller policy; only the platform actor
 resolver is supplied by the test). Every tenant call then goes through the native
 HTTP application with password sessions. No controller grant is seeded by SQL:
-the committed ``tenant-controller-v9`` manifest alone must allow the owner to
+the committed current manifest (``tenant-controller-v10``, which retains the v9
+front-desk delta) alone must allow the owner to
 create a service queue, see it live, update the business profile and delegate a
 bounded front-desk capability set to a receptionist, but nothing beyond the
 owner's delegable ceiling.
@@ -136,12 +137,12 @@ async def test_fresh_v9_owner_runs_and_delegates_front_desk_within_ceiling(
     assert created.status_code == 201, created.text
     organization_id = UUID(created.json()["organization_id"])
     owner_id = UUID(created.json()["controller_principal_id"])
-    # Catches: the application still selecting v8 for new organizations.
+    # Catches: the application still selecting v8/v9 for new organizations.
     assert e2e_admin_conn.execute(
         "SELECT initial_controller_policy_key FROM "
         "request_engine.organization_root_provisioning_facts WHERE organization_id=%s",
         (organization_id,),
-    ).fetchone() == ("tenant-controller-v9",)
+    ).fetchone() == ("tenant-controller-v10",)
 
     app = create_native_app(
         session_factory=e2e_session_factory,

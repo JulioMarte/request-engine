@@ -1,14 +1,16 @@
-"""v8 roots reach tenant-controller-v9 only through adoption with the exact delta.
+"""v8/v9 roots reach the current controller policy only through exact-delta adoption.
 
 Adapted at the 2026-10-23 rebaseline (docs/audits/postgresql-rebaseline-0047.md):
 the former physical 0043 -> head populated-upgrade half lost its subject when the
 history collapsed (no pre-0044 database can upgrade into the new 0001). The
-authority half remains current truth: on the current head a v8 root reaches v9
-only through the platform-approved adoption primitives and gains exactly the
-reviewed front-desk delta; provisioning a v7/v8 root grants none of it; adoption
-touches no other organization and rewrites no immutable policy row. Adoption runs
-through the restricted runtime primitives; this proves database authority, not
-HTTP authentication or WebAuthn admission.
+authority half remains current truth. Since migration 0003 the adoption target is
+tenant-controller-v10 (= v9 + delegable ``appointments.annotate``): on the current
+head a v8 root gains exactly the reviewed front-desk delta plus the appointment-note
+delta, a v9 root gains exactly the appointment-note delta, a v10 root cannot adopt
+itself, provisioning a v7/v8 root grants none of it, and adoption touches no other
+organization and rewrites no immutable policy row. Adoption runs through the
+restricted runtime primitives; this proves database authority, not HTTP
+authentication or WebAuthn admission.
 """
 
 import os
@@ -56,6 +58,9 @@ _V9_DELTA = sorted(
         "organization.manage_profile",
     )
 )
+# v10 appointment-note delta (migration 0003), reviewed independently.
+_V10_DELTA = ["appointments.annotate"]
+_V8_TO_V10_DELTA = sorted((*_V9_DELTA, *_V10_DELTA))
 
 
 def _conninfo(database: str) -> str:
@@ -87,7 +92,7 @@ def _upgrade(database: str, revision: str) -> None:
     )
 
 
-def test_v8_roots_reach_v9_only_through_adoption_with_exact_delta() -> None:
+def test_v8_and_v9_roots_reach_v10_only_through_adoption_with_exact_delta() -> None:
     database = f"re_controller_v9_adoption_{uuid4().hex}"
     with psycopg.connect(_conninfo("postgres"), autocommit=True) as cluster:
         assert cluster.info.server_version >= 180000
@@ -212,28 +217,37 @@ def _active(conn: Connection[Any], root: UUID) -> set[str]:
 def _prove_adoption_at_head(conn: Connection[Any]) -> None:
     _, legacy_root, _ = _root(conn, "tenant-controller-v7")
     adopt_org, adopt_root, adopt_binding = _root(conn, "tenant-controller-v8")
+    v9_org, v9_root, v9_binding = _root(conn, "tenant-controller-v9")
+    current_org, current_root, current_binding = _root(conn, "tenant-controller-v10")
     idle_org, idle_root, _ = _root(conn, "tenant-controller-v8")
-    # Catches: provisioning an older selected policy silently granting the v9 delta.
+    # Catches: provisioning an older selected policy silently granting a newer delta.
     for root in (legacy_root, adopt_root, idle_root):
-        assert not _active(conn, root) & set(_V9_DELTA)
+        assert not _active(conn, root) & set(_V8_TO_V10_DELTA)
+    assert not _active(conn, v9_root) & set(_V10_DELTA)
+    assert set(_V8_TO_V10_DELTA) <= _active(conn, current_root)
     policies_before = conn.execute(
         "SELECT policy_key,revision,grants FROM request_engine.initial_controller_policies "
         "ORDER BY revision"
     ).fetchall()
-    assert [row[0] for row in policies_before][-1] == "tenant-controller-v9"
+    assert [row[0] for row in policies_before][-1] == "tenant-controller-v10"
+
+    # Catches: v10 self-adoption being accepted (a no-op upgrade receipt).
+    with pytest.raises(psycopg.Error) as self_adoption:
+        _consent(conn, current_org, current_root, current_binding)
+    assert self_adoption.value.sqlstate == "55000"
 
     approver = _approver(conn)
     after_approver = _snapshot(conn)
     adopt_active_before = _active(conn, adopt_root)
     adopt_revision_before = principal_revision(conn, adopt_root)
     consent = _consent(conn, adopt_org, adopt_root, adopt_binding)
-    # Catches: consent still targeting v8 (v8 roots would be stuck forever).
-    assert consent[1:3] == ("tenant-controller-v8", "tenant-controller-v9")
+    # Catches: consent still targeting v9 (roots would never gain appointment notes).
+    assert consent[1:3] == ("tenant-controller-v8", "tenant-controller-v10")
     applied = _apply(conn, approver, consent)
-    # Catches: apply rejecting v8 -> v9, or a delta wider/narrower than reviewed.
-    assert (applied[4], applied[5]) == ("tenant-controller-v8", "tenant-controller-v9")
-    assert list(applied[8]) == _V9_DELTA
-    assert _active(conn, adopt_root) == adopt_active_before | set(_V9_DELTA)
+    # Catches: apply rejecting v8 -> v10, or a delta wider/narrower than reviewed.
+    assert (applied[4], applied[5]) == ("tenant-controller-v8", "tenant-controller-v10")
+    assert list(applied[8]) == _V8_TO_V10_DELTA
+    assert _active(conn, adopt_root) == adopt_active_before | set(_V8_TO_V10_DELTA)
     assert principal_revision(conn, adopt_root) > adopt_revision_before
     new_grants = conn.execute(
         "SELECT capability_key,authority_plane,delegable,granted_by_principal_id "
@@ -241,7 +255,7 @@ def _prove_adoption_at_head(conn: Connection[Any]) -> None:
         "ORDER BY capability_key",
         (f"adoption:{consent[0]}",),
     ).fetchall()
-    assert new_grants == [(key, "operational", True, approver[0]) for key in _V9_DELTA]
+    assert new_grants == [(key, "operational", True, approver[0]) for key in _V8_TO_V10_DELTA]
 
     # Catches: adoption touching any other organization's rows or rewriting old grants.
     after = _snapshot(conn)
@@ -249,7 +263,7 @@ def _prove_adoption_at_head(conn: Connection[Any]) -> None:
         after["principal_authority_grants"] - after_approver["principal_authority_grants"]
     )
     assert after_approver["principal_authority_grants"] <= after["principal_authority_grants"]
-    assert len(added_grants) == len(_V9_DELTA)
+    assert len(added_grants) == len(_V8_TO_V10_DELTA)
     for table in ("organization_root_provisioning_facts", "staff_memberships", "representations"):
         assert after[table] == after_approver[table]
     changed_principals = after["principals"] - after_approver["principals"]
@@ -260,6 +274,15 @@ def _prove_adoption_at_head(conn: Connection[Any]) -> None:
         (adopt_org,),
     ).fetchone() == ("tenant-controller-v8",)
 
+    # Catches: a v9 root unable to adopt v10, or receiving more than the note delta.
+    v9_active_before = _active(conn, v9_root)
+    v9_consent = _consent(conn, v9_org, v9_root, v9_binding)
+    assert v9_consent[1:3] == ("tenant-controller-v9", "tenant-controller-v10")
+    v9_applied = _apply(conn, approver, v9_consent)
+    assert (v9_applied[4], v9_applied[5]) == ("tenant-controller-v9", "tenant-controller-v10")
+    assert list(v9_applied[8]) == _V10_DELTA
+    assert _active(conn, v9_root) == v9_active_before | set(_V10_DELTA)
+
     # Catches: adoption rewriting immutable policy rows or touching other roots.
     assert (
         conn.execute(
@@ -268,9 +291,9 @@ def _prove_adoption_at_head(conn: Connection[Any]) -> None:
         ).fetchall()
         == policies_before
     )
-    assert not _active(conn, legacy_root) & set(_V9_DELTA)
+    assert not _active(conn, legacy_root) & set(_V8_TO_V10_DELTA)
     # Catches: migration or provisioning upgrading an organization that never consented.
-    assert not _active(conn, idle_root) & set(_V9_DELTA)
+    assert not _active(conn, idle_root) & set(_V8_TO_V10_DELTA)
     assert conn.execute(
         "SELECT count(*) FROM request_engine.controller_policy_adoption_facts "
         "WHERE organization_id=%s",

@@ -65,7 +65,14 @@ _V9_FRONT_DESK_CAPABILITIES = (
     "appointments.record_arrival_estimate",
     "organization.manage_profile",
 )
-_POST_V6_CAPABILITIES = (*_V7_V8_CAPABILITIES, *_V9_FRONT_DESK_CAPABILITIES)
+# v10 appointment-note delta (migration 0003), reviewed independently: the only
+# capability of the Booking owner command ``appointments_note_add``.
+_V10_APPOINTMENT_NOTE_CAPABILITIES = ("appointments.annotate",)
+_POST_V6_CAPABILITIES = (
+    *_V7_V8_CAPABILITIES,
+    *_V9_FRONT_DESK_CAPABILITIES,
+    *_V10_APPOINTMENT_NOTE_CAPABILITIES,
+)
 
 
 def test_policy_manifest_matches_explicit_reviewed_authority(admin_conn: Connection[Any]) -> None:
@@ -138,6 +145,7 @@ def test_policy_catalog_is_not_runtime_table(admin_conn: Connection[Any], role: 
         "tenant-controller-v7",
         "tenant-controller-v8",
         "tenant-controller-v9",
+        "tenant-controller-v10",
     ],
 )
 def test_policy_is_immutable_and_unknown_selection_fails(
@@ -242,12 +250,12 @@ async def test_competing_creations_materialize_exactly_one_initial_policy(
     assert admin_conn.execute(
         "SELECT initial_controller_policy_key "
         "FROM request_engine.organization_root_provisioning_facts"
-    ).fetchall() == [("tenant-controller-v9",)]
+    ).fetchall() == [("tenant-controller-v10",)]
     assert admin_conn.execute(
         "SELECT count(*), count(DISTINCT capability_key) "
         "FROM request_engine.principal_authority_grants WHERE principal_id=%s AND status='active'",
         (result.controller_principal_id,),
-    ).fetchone() == (67, 67)
+    ).fetchone() == (68, 68)
     # The older staff-root trigger replaces seven non-delegable grants and
     # retains their revoked provenance; those are not duplicate active grants.
     assert admin_conn.execute(
@@ -257,10 +265,11 @@ async def test_competing_creations_materialize_exactly_one_initial_policy(
     ).fetchone() == (7,)
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.principal_authority_grants "
-        "WHERE principal_id=%s AND provenance_reference LIKE 'policy:tenant-controller-v9;root:%%' "
+        "WHERE principal_id=%s "
+        "AND provenance_reference LIKE 'policy:tenant-controller-v10;root:%%' "
         "AND granted_by_principal_id=%s AND status='active'",
         (result.controller_principal_id, creator),
-    ).fetchone() == (59,)
+    ).fetchone() == (60,)
 
 
 def test_v2_adds_only_explicit_agent_read(admin_conn: Connection[Any]) -> None:
@@ -382,10 +391,11 @@ def test_v6_adds_only_reviewed_configuration_operations(admin_conn: Connection[A
         "tenant-controller-v6",
         "tenant-controller-v7",
         "tenant-controller-v8",
+        "tenant-controller-v9",
     ],
 )
 @pytest.mark.asyncio
-async def test_http_fresh_v9_and_legacy_replay_never_upgrade_existing_authority(
+async def test_http_fresh_v10_and_legacy_replay_never_upgrade_existing_authority(
     prior_policy: str,
     admin_conn: Connection[Any],
     command_session_factory: SessionFactory,
@@ -530,7 +540,10 @@ async def test_http_fresh_v9_and_legacy_replay_never_upgrade_existing_authority(
                 "tenant-controller-v3": list(_V6_CONFIGURATION_CAPABILITIES),
                 "tenant-controller-v6": list(_POST_V6_CAPABILITIES),
                 "tenant-controller-v7": ["staff.propose_invitation"],
-                "tenant-controller-v8": list(_V9_FRONT_DESK_CAPABILITIES),
+                "tenant-controller-v8": list(
+                    (*_V9_FRONT_DESK_CAPABILITIES, *_V10_APPOINTMENT_NOTE_CAPABILITIES)
+                ),
+                "tenant-controller-v9": list(_V10_APPOINTMENT_NOTE_CAPABILITIES),
             }[prior_policy],
         ),
     ).fetchone() == (0,)
@@ -620,3 +633,31 @@ def test_v9_adds_only_reviewed_front_desk_operations(admin_conn: Connection[Any]
         assert definition is not None and definition.authority_plane.value == "operational"
         assert definition.runtime_available
     assert not any(g["authority_plane"] == "platform" for g in policies["tenant-controller-v9"])
+
+
+def test_v10_adds_only_delegable_appointment_annotation(admin_conn: Connection[Any]) -> None:
+    # Catches: a missing/extra/reordered v10 key, a non-delegable or wrong-plane
+    # grant, an edited v9 manifest, and any platform-plane capability in v10.
+    policies = dict(
+        admin_conn.execute(
+            "SELECT policy_key,grants FROM request_engine.initial_controller_policies"
+        ).fetchall()
+    )
+    assert policies["tenant-controller-v10"] == [
+        *policies["tenant-controller-v9"],
+        *[
+            {"capability_key": key, "authority_plane": "operational", "delegable": True}
+            for key in _V10_APPOINTMENT_NOTE_CAPABILITIES
+        ],
+    ]
+    assert len(policies["tenant-controller-v9"]) == 59
+    assert len(policies["tenant-controller-v10"]) == 60
+    assert admin_conn.execute(
+        "SELECT revision FROM request_engine.initial_controller_policies "
+        "WHERE policy_key='tenant-controller-v10'"
+    ).fetchone() == (10,)
+    for key in _V10_APPOINTMENT_NOTE_CAPABILITIES:
+        definition = capability_definition(key)
+        assert definition is not None and definition.authority_plane.value == "operational"
+        assert definition.runtime_available
+    assert not any(g["authority_plane"] == "platform" for g in policies["tenant-controller-v10"])

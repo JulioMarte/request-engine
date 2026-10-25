@@ -51,6 +51,8 @@ _V9_DELTA = (
     "appointments.record_arrival_estimate",
     "organization.manage_profile",
 )
+# v10 appointment-note delta (migration 0003), reviewed independently.
+_V10_DELTA = ("appointments.annotate",)
 
 
 def _uuid_row(conn: PgConnection, query: LiteralString, params: tuple[object, ...]) -> UUID:
@@ -231,6 +233,7 @@ def _actor_pair(
         "tenant-controller-v6",
         "tenant-controller-v7",
         "tenant-controller-v8",
+        "tenant-controller-v9",
     ],
 )
 @pytest.mark.asyncio
@@ -461,18 +464,20 @@ async def test_legacy_policy_adoption_http_journey_and_readiness(
         )
         assert applied.status_code == 200, applied.text
         assert applied.json()["platform_approver_principal_id"] == str(platform_id)
-        assert applied.json()["target_policy_key"] == "tenant-controller-v9"
+        assert applied.json()["target_policy_key"] == "tenant-controller-v10"
         assert applied.json()["added_capabilities"]
         if source_policy == "tenant-controller-v6":
             assert applied.json()["added_capabilities"] == sorted(
-                ["queue.read_configuration", "staff.propose_invitation", *_V9_DELTA]
+                ["queue.read_configuration", "staff.propose_invitation", *_V9_DELTA, *_V10_DELTA]
             )
         if source_policy == "tenant-controller-v7":
             assert applied.json()["added_capabilities"] == sorted(
-                ["staff.propose_invitation", *_V9_DELTA]
+                ["staff.propose_invitation", *_V9_DELTA, *_V10_DELTA]
             )
         if source_policy == "tenant-controller-v8":
-            assert applied.json()["added_capabilities"] == sorted(_V9_DELTA)
+            assert applied.json()["added_capabilities"] == sorted((*_V9_DELTA, *_V10_DELTA))
+        if source_policy == "tenant-controller-v9":
+            assert applied.json()["added_capabilities"] == sorted(_V10_DELTA)
         assert applied.json()["authority_revision_after"] > root_revision
 
         grant_rows = e2e_admin_conn.execute(
@@ -519,7 +524,7 @@ async def test_legacy_policy_adoption_http_journey_and_readiness(
                 text("SELECT request_engine.read_onboarding_identity_facts(:organization_id)"),
                 {"organization_id": organization_id},
             )
-        assert readiness["tenant_control"]["recorded_policy_key"] == "tenant-controller-v9"
+        assert readiness["tenant_control"]["recorded_policy_key"] == "tenant-controller-v10"
         assert readiness["tenant_control"]["current_policy_ready"] is True
         assert (
             readiness["controller_authority_revision"] == applied.json()["authority_revision_after"]

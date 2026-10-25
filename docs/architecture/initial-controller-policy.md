@@ -1,18 +1,21 @@
 # Native initial controller policy
 
-> **Current scope (2026-10-11):** this document governs **tenant** initial-controller
+> **Current scope (2026-10-24):** this document governs **tenant** initial-controller
 > policy only. It does not define the new platform-owner policy from ADR 0014.
-> Current application code selects `tenant-controller-v9` for new organizations
-> (migration `0044_tenant_controller_v9`: v8 plus fifteen delegable operational
-> front-desk capabilities; see "v9 front-desk authority" below). v8 (migration
+> Current application code selects `tenant-controller-v10` for new organizations
+> (Alembic migration `0003_tenant_controller_v10`: v9 plus delegable operational
+> `appointments.annotate`; see "v10 appointment notes (migration 0003)" below).
+> v9 (provenance migration `0044_tenant_controller_v9`) is v8 plus fifteen
+> delegable operational front-desk capabilities; v8 (provenance migration
 > `0043_staff_invitation_proposals`) is v7 plus delegable operational
-> `staff.propose_invitation`, ADR 0019. Existing roots reach v9 only through
-> dual-consent adoption; apply accepts v1-v5→v6, v1-v6→v7, v1-v7→v8 (already
-> recorded consent only) and v1-v8→v9.
-> Immutable v1–v6 remain historical authority manifests, not rewritten defaults.
+> `staff.propose_invitation`, ADR 0019. Existing roots reach v10 only through
+> dual-consent adoption; apply accepts v1-v5→v6, v1-v6→v7, v1-v7→v8, v1-v8→v9
+> (already recorded consent only) and v1-v9→v10.
+> Immutable v1–v9 remain historical authority manifests, not rewritten defaults.
 
 Schema authority: the immutable v1–v9 manifests are seed rows of the accepted
-`0001_initial` baseline (2026-10-23 rebaseline, `docs/audits/postgresql-rebaseline-0047.md`).
+`0001_initial` baseline (2026-10-23 rebaseline, `docs/audits/postgresql-rebaseline-0047.md`);
+v10 is appended by the current Alembic migration `0003_tenant_controller_v10`.
 Revision labels below (0021, 0039, 0040, 0043, 0044 and the older
 0036/0037/0038/0053) are provenance from collapsed migration chains, not current
 Alembic revisions or current release certification. Exact-head CI remains
@@ -56,7 +59,7 @@ HTTP/adversarial proofs pass; deployment/publication evidence remains separate.
 
 ## Decision
 
-The application selects `tenant-controller-v9` only while creating a new native
+The application selects `tenant-controller-v10` only while creating a new native
 organization. A private transaction-local policy selection primitive validates
 that exact approved policy exists before the existing atomic root command runs.
 The root provisioning fact records the selected immutable policy key on INSERT;
@@ -272,4 +275,29 @@ migration. Proof: `tests/db/test_initial_controller_policy.py`,
 `tests/db/test_tenant_controller_v9_adoption.py` (adoption delta on head; its former
 populated 0043→head half became historical at the 2026-10-23 rebaseline),
 `tests/e2e/test_tenant_controller_v9_front_desk_http.py` and the adoption HTTP
+journeys in `tests/e2e/test_controller_policy_adoption_http.py`.
+
+## v10 appointment notes (migration 0003)
+
+Booking added append-only staff notes on appointments (migration
+`0002_reservation_notes`, owner command `appointments_note_add`, capability
+`appointments.annotate`; reading notes stays under `appointments.day_board`, held
+since v1). Because staff authority replacement is capped at the actor's delegable
+ceiling, a v9 owner could neither write notes nor delegate note-taking to front-desk
+staff or agents. `tenant-controller-v10` is immutable v9 plus exactly one delegable
+operational grant, `appointments.annotate`. It carries no lifecycle, capacity or
+platform-plane authority. v10 has 60 policy grants; a fresh native root holds 68
+active grants (7 revoked staff-root replacements unchanged).
+
+Migration `0003_tenant_controller_v10` inserts one catalog row (v9 grants plus the
+one grant), widens both adoption target constraints to v6-v10 and re-creates
+`request_cmd.request_controller_policy_adoption` and
+`request_platform.apply_controller_policy_adoption` from their installed text
+through unique anchors: new consent targets v10 from v1-v9 sources, apply admits
+v1-v9→v10 while already-recorded v6/v7/v8/v9 consent keeps its target, and v10
+self-adoption is rejected (`55000`). No existing principal, grant, root fact or
+consent is changed; downgrade is refused. Proof:
+`tests/db/test_initial_controller_policy.py` (exact v10 delta against an
+independent oracle, fresh-root counts), `tests/db/test_tenant_controller_v9_adoption.py`
+(v8→v10 and v9→v10 exact deltas, self-adoption rejected) and the adoption HTTP
 journeys in `tests/e2e/test_controller_policy_adoption_http.py`.

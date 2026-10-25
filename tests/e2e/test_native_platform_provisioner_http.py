@@ -551,7 +551,7 @@ async def test_claimed_owner_provisions_native_human_and_tenant_without_sql_bind
         "SELECT initial_controller_policy_key "
         "FROM request_engine.organization_root_provisioning_facts WHERE organization_id=%s",
         (organization_id,),
-    ).fetchone() == ("tenant-controller-v9",)
+    ).fetchone() == ("tenant-controller-v10",)
     # A replay must not undo a later explicit revocation.
     e2e_admin_conn.execute(
         "UPDATE request_engine.principal_authority_grants SET status='revoked', "

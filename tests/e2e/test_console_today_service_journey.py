@@ -5,7 +5,7 @@ set up the clinic -> register a customer -> book -> check in -> call next ->
 start service with the doctor offered for the queue's location -> finish.
 
 The owner is a real native identity of an organization provisioned with the
-current fresh-organization controller policy (tenant-controller-v9), so the
+current fresh-organization controller policy (tenant-controller-v10), so the
 grants and Party representations used are the ones a real owner holds.
 
 Oracles: queue entry and service session rows read with the admin connection,
@@ -29,7 +29,7 @@ from .console_owner_support import csrf, owner_console
 from .native_provisioning_support import PgConnection
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
-_POLICY = "tenant-controller-v9"
+_POLICY = "tenant-controller-v10"
 _DAY = "2030-01-07"
 _HOURS = {f"day{day}_{part}": value for day in range(5) for part, value in (
     ("open", "on"), ("start", "08:00"), ("end", "17:00"))}  # fmt: skip

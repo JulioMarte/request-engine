@@ -174,6 +174,10 @@ delegable operational front-desk capabilities (queue setup, live queue and triag
 service start/complete, attendance/arrival estimate and `organization.manage_profile`)
 listed in `docs/architecture/initial-controller-policy.md`; existing roots adopt it
 only through platform-approved controller policy adoption.
+Current initial controller policy `tenant-controller-v10` (migration
+`0003_tenant_controller_v10`) is v9 plus delegable operational
+`appointments.annotate` (Booking appointment notes); new organizations select it and
+existing v1-v9 roots reach it only through the same platform-approved adoption.
 
 ## Staff administration reads
 
