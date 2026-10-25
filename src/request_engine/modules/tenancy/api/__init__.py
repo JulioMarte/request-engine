@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from uuid import UUID
 
 from fastapi import APIRouter, FastAPI, Request
 
@@ -67,6 +68,9 @@ from request_engine.modules.tenancy.adapters.db.self_authority_reader import (
 )
 from request_engine.modules.tenancy.adapters.db.self_organization_reader import (
     PostgresSelfOrganizationReader,
+)
+from request_engine.modules.tenancy.adapters.db.self_service_account_commands import (
+    PostgresSelfServiceAccountCommands,
 )
 from request_engine.modules.tenancy.adapters.db.staff_history_reader import (
     PostgresStaffHistoryReader,
@@ -137,6 +141,9 @@ from request_engine.modules.tenancy.api.self_authority import (
     self_authority_error_handler,
 )
 from request_engine.modules.tenancy.api.self_organizations import create_self_organization_router
+from request_engine.modules.tenancy.api.self_service_accounts import (
+    install_self_service_account_http,
+)
 from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
 from request_engine.modules.tenancy.api.staff_history_reads import add_staff_history_reads
@@ -236,6 +243,7 @@ def install_http(
     identity_exchange_fingerprint_key: bytes | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
     resource_authority_inspectors: Sequence[ResourceAuthorityInspector] = (),
+    native_identity_authority_id: UUID | None = None,
 ) -> None:
     """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
 
@@ -246,6 +254,17 @@ def install_http(
                 subject_resolver=subject_resolver,
             )
         )
+        if native_identity_authority_id is not None:
+            # ADR 0021: native deployments expose owner self-enrollment and creation.
+            self_service = PostgresSelfServiceAccountCommands(
+                session_factory, native_authority_id=native_identity_authority_id
+            )
+            install_self_service_account_http(
+                app,
+                commands=self_service,
+                enrollment=self_service,
+                subject_resolver=subject_resolver,
+            )
 
     app.add_exception_handler(BootstrapAuthorityPartyInvalid, bootstrap_authority_error_handler)
     app.add_exception_handler(AuthorityInspectionDenied, self_authority_error_handler)

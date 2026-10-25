@@ -43,6 +43,7 @@ class RecoveryDeliverySettings(BaseSettings):
     temporary_proof_recorder_database_url: SecretStr | None = None
     recovery_reset_url: str | None = None
     staff_invitation_accept_url: str | None = None
+    account_invitation_accept_url: str | None = None
     openbao_addr: str | None = None
     openbao_token: SecretStr | None = None
     openbao_namespace: str | None = None

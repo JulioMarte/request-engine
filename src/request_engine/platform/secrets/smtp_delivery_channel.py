@@ -23,7 +23,9 @@ from request_engine.platform.secrets.delivery import (
     RecoveryDeliveryRetryable,
 )
 
+DeliveryPurpose = Literal["identity_recovery", "staff_invitation", "account_invitation"]
 _SUBJECT = "Request Engine identity recovery"
+_ACCOUNT_SUBJECT = "Invitación para crear tu negocio / Invitation to create your business"
 _VERIFICATION_SUBJECT = "Verify your Request Engine recovery address"
 
 
@@ -56,7 +58,7 @@ class SmtpRecoveryDeliveryChannel:
         use_ssl: bool = False,
         timeout_seconds: float = 10.0,
         reset_url: str | None = None,
-        purpose: Literal["identity_recovery", "staff_invitation"] = "identity_recovery",
+        purpose: DeliveryPurpose = "identity_recovery",
         transport: Callable[..., smtplib.SMTP] | None = None,
     ) -> None:
         if not host.strip():
@@ -76,6 +78,8 @@ class SmtpRecoveryDeliveryChannel:
         self._reset_url = reset_url
         if purpose == "staff_invitation" and not reset_url:
             raise ValueError("staff invitation acceptance URL is required")
+        if purpose == "account_invitation" and not reset_url:
+            raise ValueError("account invitation enrollment URL is required")
         self._purpose = purpose
         self._transport: Callable[..., smtplib.SMTP] = transport or (
             smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
@@ -145,9 +149,10 @@ class SmtpRecoveryDeliveryChannel:
         message = EmailMessage()
         message["From"] = self._sender
         message["To"] = destination_reference
-        message["Subject"] = (
-            "You are invited to Request Engine" if self._purpose == "staff_invitation" else _SUBJECT
-        )
+        message["Subject"] = {
+            "staff_invitation": "You are invited to Request Engine",
+            "account_invitation": _ACCOUNT_SUBJECT,
+        }.get(self._purpose, _SUBJECT)
         message_id = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
         message["Message-ID"] = f"<{message_id}@request-engine>"
         if self._purpose == "staff_invitation":
@@ -168,6 +173,22 @@ class SmtpRecoveryDeliveryChannel:
                 f"Sign in or create your identity, then accept here:\n{link}\n\n"
                 "Acceptance creates a membership, not permission to administer the organization.\n"
                 "If you did not expect this invitation, ignore this message.\n"
+            )
+        elif self._purpose == "account_invitation":
+            assert self._reset_url is not None
+            link = f"{self._reset_url.rstrip('/')}#token={quote(secret, safe='')}"
+            body = (
+                "Te invitaron a crear y administrar tu negocio en Request Engine.
+"
+                "You are invited to create and administer your business.
+
+"
+                f"Crea tu usuario y contraseña aquí / Create your login here:
+{link}
+
+"
+                "Nadie más elige tu contraseña. If you did not expect this, ignore it.
+"
             )
         elif self._reset_url is not None:
             link = f"{self._reset_url}#token={quote(secret, safe='')}"

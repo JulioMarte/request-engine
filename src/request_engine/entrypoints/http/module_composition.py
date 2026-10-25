@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import FastAPI
 
 import request_engine.modules.booking.api as booking_api
@@ -62,6 +64,7 @@ def install_business_modules(
     appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
+    native_identity_authority_id: UUID | None = None,
 ) -> None:
     tenancy_api.install_http(
         app,
@@ -74,6 +77,7 @@ def install_business_modules(
         identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
         identity_link_verifier=identity_link_verifier,
         resource_authority_inspectors=(build_resource_authority_inspector(session_factory),),
+        native_identity_authority_id=native_identity_authority_id,
     )
     install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)

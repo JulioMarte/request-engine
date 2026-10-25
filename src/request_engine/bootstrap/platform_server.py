@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from request_engine.bootstrap.account_invitation_delivery import build_account_invitation_mailer
 from request_engine.bootstrap.appointment_signing import (
     AppointmentSigningSecretStoreSettings,
     build_appointment_signing_secret_store,
@@ -54,6 +55,7 @@ _READ = (
     "request_platform.read_platform_provisioners(uuid,uuid,integer)",
     "request_platform.read_platform_owners(uuid,uuid,integer)",
     "request_platform.read_platform_owner_invitations(uuid,uuid,integer)",
+    "request_platform.read_account_invitations(uuid,uuid,integer)",
     "request_platform.read_identity_recovery_cases(uuid,uuid,integer)",
     "request_platform.read_native_identities(uuid,uuid,integer)",
     "request_platform.read_native_identity_profiles(uuid,uuid,integer)",
@@ -93,6 +95,12 @@ _OWNER = (
     "request_platform.enroll_platform_owner_invitation(bytea,uuid,uuid,text,text)",
     "request_platform.activate_platform_owner_invitation(uuid,uuid,uuid,text,text)",
     "request_platform.revoke_platform_owner_invitation(uuid,text,text,text)",
+)
+_ACCOUNT_INVITATION = (
+    "request_platform.create_account_invitation("
+    "uuid,bytea,text,text,text,integer,timestamp with time zone,text,text,text)",
+    "request_platform.record_account_invitation_delivery(uuid,text)",
+    "request_platform.revoke_account_invitation(uuid,bigint,text,text,text)",
 )
 _SETUP = (
     "request_platform.read_platform_instance()",
@@ -188,6 +196,7 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
                 *_LIFECYCLE,
                 *_RECOVERY,
                 *_OWNER,
+                *_ACCOUNT_INVITATION,
                 *_CONTROLLER_POLICY_ADOPTION,
                 *_SETUP,
                 *_PLATFORM_CONFIGURATION,
@@ -285,6 +294,9 @@ def create_app() -> FastAPI:
         operational_metrics=operational_metrics,
     )
     native_recovery_messenger = outbound_fence.recovery(managed_native_recovery_messenger)
+    account_invitation_mailer = outbound_fence.recovery(
+        build_account_invitation_mailer(recovery_settings, resolver=managed_smtp_resolver)
+    )
     assert native_recovery_messenger is not None
     delivery = outbound_fence.secret_delivery(
         build_recovery_secret_delivery(
@@ -325,6 +337,7 @@ def create_app() -> FastAPI:
             ),
         ),
         webauthn_decoy_key=settings.webauthn_decoy_key.get_secret_value().encode(),
+        account_invitation_mailer=account_invitation_mailer,
     )
     original_lifespan = app.router.lifespan_context
 

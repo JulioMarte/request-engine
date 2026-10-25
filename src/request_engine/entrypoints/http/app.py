@@ -227,6 +227,7 @@ def create_app(
         appointment_option_codec=appointment_option_codec,
         identity_exchange_fingerprint_key=identity_key,
         identity_link_verifier=identity_link_verifier,
+        native_identity_authority_id=native_identity_authority_id,
     )
     install_operational_modules(
         app,

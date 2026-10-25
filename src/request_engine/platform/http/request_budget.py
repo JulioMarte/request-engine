@@ -19,6 +19,9 @@ from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorR
 from request_engine.platform.security.http import request_correlation_id
 
 STREAM_PATHS = frozenset({"/v1/changes/stream"})
+# Public credential-creating endpoints outside /auth/native share the authentication
+# admission budget (rate limit + bounded concurrency) before any password work.
+PUBLIC_CREDENTIAL_PATHS = frozenset({"/v1/account-invitations:enroll"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +139,7 @@ class RequestBudgetMiddleware:
             path == "/auth/native"
             or path.startswith("/auth/native/")
             or path.startswith("/v1/setup/")
+            or path in PUBLIC_CREDENTIAL_PATHS
         )
         authentication_attempt = (scope["method"] == "POST" and authentication) or (
             scope["method"] == "PUT" and path == "/auth/native/password"
