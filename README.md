@@ -181,7 +181,7 @@ uv run pytest
 
 ### Run the whole system locally (development only)
 
-One command builds the CI image (`deploy/reference/Dockerfile`), starts a fresh PostgreSQL 18, runs `alembic upgrade head`, creates least-privilege runtime logins, and starts the runtime API, control plane, admin console, a dev-only gateway and the worker (`compose.dev.yaml`):
+One command builds the CI image (`deploy/reference/Dockerfile`), starts a fresh PostgreSQL 18, runs `alembic upgrade head`, creates least-privilege runtime logins, and starts the runtime API, control plane, admin console, a dev-only gateway, a dev-mode OpenBao, a Mailpit mail inbox and the worker (`compose.dev.yaml`):
 
 ```bash
 ./scripts/dev/local_stack.sh up          # Windows: .\scripts\dev\local_stack.ps1 up
@@ -193,6 +193,7 @@ One command builds the CI image (`deploy/reference/Dockerfile`), starts a fresh 
 - `up` claims the instance over the public setup API with a throwaway software passkey, then creates a dev Organization, its owner and an activated integration principal for the worker. Generated logins/passwords and recovery codes are in `.local-stack/<project>/credentials.json` (gitignored).
 - `uv run python scripts/dev/local_stack_demo_clinic.py --project <project> --api-url http://localhost:<api-port> --control-url http://localhost:<control-port>` gives the dev business a plausible demo clinic through the same owner operations as the guided setup: profile, Sede Gazcue with opening hours, three priced services, two doctors with weekly availability and a walk-in line. Re-running it changes nothing.
 - `up --manual-claim` leaves the instance unclaimed so you run the console setup wizard yourself; the worker then waits until you run `local_stack.sh worker --principal-id <activated integration principal>`.
+- Staff invitation email works end to end: the API stages the invitation proof in a dev-mode OpenBao (memory-backed, root token generated per stack; restarting it invalidates pending invitation links) and the worker sends it over plain SMTP to [Mailpit](https://mailpit.axllent.org/), a local capture inbox. Open the inbox at `http://127.0.0.1:58191` (override with `--mailpit-port`); `status` prints it. Mail never leaves the machine, but the inbox holds live invitation links: do not expose or forward it. The worker sets `REQUEST_ENGINE_OUTBOUND_FENCED=false` because every destination in this stack is a local sink; production keeps the fenced default and needs real governed OpenBao/Vault, HTTPS acceptance URL and SMTP configuration (`docs/architecture/staff-email-invitations.md`).
 - Every secret is generated per stack into `.local-stack/<project>/dev.env` and is dev-only. The tool refuses non-local Docker endpoints. The dev gateway accepts outbox publishes (HTTP) and webhook handoffs (HTTPS with a generated dev CA) and delivers nothing; production still fails closed without a configured publisher and webhook.
 
 For repository-managed local publication and exact-head CI expectations, read `AGENTS.md`, `CONTRIBUTING.md` and `docs/engineering-quality/local-publish-certification.md`.

@@ -150,6 +150,13 @@ availability is not SMTP readiness: unavailable transport leaves a visible
 delivery failure/retry state, never a fabricated successful email outcome.
 Recovery factory overrides are not silently reused with invitation wording/links.
 
+The development-only local stack (`compose.dev.yaml`, `scripts/dev/local_stack.py`)
+wires this exact path with dev-only infrastructure: a dev-mode OpenBao as the
+governed store for API and worker, a loopback `http://localhost:<console>/staff-invitations`
+acceptance URL, and bootstrap SMTP fallback to a Mailpit capture inbox over plain
+SMTP on the internal Docker network. It adds no production configuration
+relaxation; see `README.md` § *Run the whole system locally*.
+
 SMTP links use `/staff-invitations/{id}/accept#token=...`. The console clears the
 fragment immediately, retains the proof only for the tab's login/enrollment
 roundtrip and submits it via same-origin CSRF-protected POST. Runtime acceptance
