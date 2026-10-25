@@ -21,7 +21,7 @@ SELECT reservation_id, offering_version_id, offering_display_name,
        lower(during) AS start_at, upper(during) AS end_at,
        status, revision, attendance_status, attendance_outcome,
        checked_in_at, no_show_at, visit_arrived_at,
-       served_queue_entry_id, served_at, claimed_resources
+       served_queue_entry_id, served_at, claimed_resources, note_count
   FROM request_read.reservation_calendar_v1
  WHERE organization_id = :organization_id
    AND during && tstzrange(:window_start, :window_end, '[)')
@@ -96,4 +96,5 @@ def _entry(row: RowMapping) -> AppointmentCalendarEntry:
             )
             for item in claimed
         ),
+        note_count=cast(int, row["note_count"]),
     )

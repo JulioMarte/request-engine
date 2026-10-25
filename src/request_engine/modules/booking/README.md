@@ -167,3 +167,42 @@ authority) and are not tool-projected:
   name and `resources`: the Reservation's current CapacityClaim set (claims not `replaced`),
   with `claim_active=false` once released by cancellation, decline or no-show. That claim set
   is the authoritative Reservation↔Resource link; a Resource assigned to the location is not.
+
+## Appointment notes (staff documentation)
+
+Booking owns append-only staff notes on a Reservation (`request_engine.reservation_notes`,
+migration `0002_reservation_notes`; guarantee `INV-APPOINTMENT-NOTES-001`). A note records
+what front-desk staff or a staff-directed agent wants colleagues to know ("Viene con su hijo",
+"Pidió factura con RNC", "Llamó: llega 10 min tarde").
+
+| Operation | HTTP | Capability | Kind |
+| --- | --- | --- | --- |
+| `appointments_note_add` | `POST /v1/appointments/{reservation_id}/notes` | `appointments.annotate` (operator, low-impact write) | Command, `Idempotency-Key` required, no expected revision |
+| `appointments_notes_list` | `GET /v1/appointments/{reservation_id}/notes` | `appointments.day_board` | Query, newest first, opaque cursor (`after`, `limit` 1..100, default 50) |
+
+Both are projected as operator tools. Rules:
+
+- Notes are immutable facts; a correction is a new note with `supersedes_note_id` pointing at an
+  earlier note of the **same** Reservation (composite self-FK). UPDATE/DELETE are rejected by
+  trigger; the runtime role holds only SELECT/INSERT.
+- Body: trimmed, 1..1000 characters, no control characters except tab and newline
+  (`domain/appointment_notes.py`, mirrored by a CHECK constraint).
+- Author: the acting Principal; its kind (`human`/`agent`/`integration`/...) is read from the
+  principal row, never from the caller, and checked again by trigger. `author_display_name` is the
+  staff profile or agent display name resolved at read time (`request_read.reservation_notes_v1`).
+- Any Reservation status is accepted (staff may document a cancellation). A note never advances
+  `Reservation.revision`, so it cannot invalidate a concurrent reschedule/cancel. The command locks
+  only the Reservation row `FOR KEY SHARE` (existence/tenant proof); no Resource or capacity root.
+- Notes are internal: they are served only with the staff read `appointments.day_board`. The day
+  board rows carry `note_count` and `latest_note` (`excerpt` <= 140 whitespace-collapsed chars,
+  `author_kind`, `created_at`); calendar items carry `note_count`; `appointments_read` adds
+  `note_count`/`latest_note` only when the caller also holds `appointments.day_board` (null for a
+  subject-scoped caller).
+- Each note emits audit and the PII-free outbox fact `reservation.note_added.v1`
+  (`reservation_id`, `note_id`, `author_principal_kind`, `supersedes_note_id`), routed to the
+  `day_board` change-feed topic.
+- Clinic owners hold and can delegate `appointments.annotate` from `tenant-controller-v10`
+  (migration `0003_tenant_controller_v10`); existing roots obtain it through the governed
+  controller-policy adoption.
+- Tags are deliberately **not** part of this model: notes first; a per-business tag vocabulary may
+  come later as its own owner decision.

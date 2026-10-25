@@ -5,6 +5,9 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 
+from request_engine.modules.booking.adapters.db.appointment_note_reader import (
+    summary_from_columns,
+)
 from request_engine.modules.booking.contracts.day_board import ReservationDayBoardEntry
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
@@ -42,7 +45,9 @@ class PostgresReservationDayBoardReader:
                                queue_entry_status, recall_eligible,
                                recall_hold_id, recall_hold_kind, recall_hold_until_at,
                                recall_hold_event_key, recall_hold_reason, active_skip_reason,
-                               served_queue_entry_id, served_at, visit_arrived_at
+                               served_queue_entry_id, served_at, visit_arrived_at,
+                               note_count, latest_note_excerpt,
+                               latest_note_author_kind, latest_note_created_at
                           FROM request_read.reservation_day_v1
                          WHERE organization_id = :organization_id
                            AND during && tstzrange(:window_start, :window_end, '[)')
@@ -68,6 +73,12 @@ class PostgresReservationDayBoardReader:
 
 
 def _entry_from_row(row: RowMapping) -> ReservationDayBoardEntry:
+    notes = summary_from_columns(
+        cast(int, row["note_count"]),
+        cast(str | None, row["latest_note_excerpt"]),
+        cast(str | None, row["latest_note_author_kind"]),
+        cast(datetime | None, row["latest_note_created_at"]),
+    )
     return ReservationDayBoardEntry(
         reservation_id=cast(UUID, row["reservation_id"]),
         offering_version_id=cast(UUID, row["offering_version_id"]),
@@ -101,4 +112,6 @@ def _entry_from_row(row: RowMapping) -> ReservationDayBoardEntry:
         served_queue_entry_id=cast(UUID | None, row["served_queue_entry_id"]),
         served_at=cast(datetime | None, row["served_at"]),
         visit_arrived_at=cast(datetime | None, row["visit_arrived_at"]),
+        note_count=notes.note_count,
+        latest_note=notes.latest,
     )

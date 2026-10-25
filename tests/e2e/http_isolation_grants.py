@@ -1,5 +1,6 @@
 ISOLATION_ACTOR_GRANTS = frozenset(
     {
+        "appointments.annotate",
         "appointments.day_board",
         "appointments.record_arrival_estimate",
         "booking.manage_supply",

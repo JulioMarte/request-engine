@@ -22,6 +22,7 @@ _GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("appointments.day_board", "Ver las citas del día"),
             ("appointments.confirm_attendance", "Registrar si el paciente viene"),
             ("appointments.record_arrival_estimate", "Registrar hora de llegada"),
+            ("appointments.annotate", "Agregar notas a citas"),
             ("appointments.subject_override", "Actuar por cualquier paciente en citas"),
         ),
     ),

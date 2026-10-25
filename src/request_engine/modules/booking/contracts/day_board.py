@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from request_engine.modules.booking.contracts.appointment_notes import LatestAppointmentNote
+
 
 @dataclass(frozen=True, slots=True)
 class ReservationDayBoardEntry:
@@ -40,3 +42,6 @@ class ReservationDayBoardEntry:
     served_queue_entry_id: UUID | None = None
     served_at: datetime | None = None
     visit_arrived_at: datetime | None = None
+    # Append-only staff notes: how many, and the newest one as an indicator.
+    note_count: int = 0
+    latest_note: LatestAppointmentNote | None = None

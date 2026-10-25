@@ -89,6 +89,8 @@ EXPECTED_TABLE_EXCEPTIONS = {
             "request_definition_versions",
             "reservation_commercial_commitment_context_terms",
             "reservation_commercial_commitments",
+            # 0002: append-only staff appointment notes (SELECT/INSERT only).
+            "reservation_notes",
         ),
         (True, True, False, False, False, False, False),
     ),

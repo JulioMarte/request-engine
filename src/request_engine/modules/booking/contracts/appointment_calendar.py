@@ -37,6 +37,7 @@ class AppointmentCalendarEntry:
     served_queue_entry_id: UUID | None
     served_at: datetime | None
     resources: tuple[CalendarClaimedResource, ...]
+    note_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)

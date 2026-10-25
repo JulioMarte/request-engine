@@ -6,6 +6,8 @@ from .http_surface_administrative_configuration import ADMINISTRATIVE_CONFIGURAT
 
 _OPERATION_ID_OVERRIDES = {
     "appointments.calendar": "appointments_calendar",
+    "appointments.notes.add": "appointments_note_add",
+    "appointments.notes.list": "appointments_notes_list",
     "front_desk.serving_resources": "front_desk_serving_resources",
     "staff.profile.update": "staff_profile_update",
     "staff.history.list": "staff_history_list",

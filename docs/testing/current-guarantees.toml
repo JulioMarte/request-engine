@@ -84,6 +84,13 @@ required_evidence = ["invariant", "adversarial", "concurrency"]
 risk = ["capacity"]
 
 [[guarantees]]
+id = "INV-APPOINTMENT-NOTES-001"
+statement = "Appointment notes are append-only staff facts owned by Booking: a note is written only through appointments_note_add with appointments.annotate and a required Idempotency-Key (same key + same body replays the first receipt; a different body fails 409), on a Reservation of the caller's tenant in any status, and never advances the Reservation revision. The author Principal id and kind come from the authoritative principal row (trigger backstop), the body is trimmed, 1..1000 characters and free of control characters except tab/newline, and a correction may only supersede a note of the same Reservation. Notes are read only with the staff read appointments.day_board (list, day board, calendar count, appointments_read summary); a subject-scoped appointments.read caller never receives note data. UPDATE/DELETE are rejected by a trigger and the runtime role holds only SELECT/INSERT; foreign-tenant notes are opaque (404 / no rows under RLS); the reservation.note_added.v1 change fact carries no note text."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
 id = "INV-PRIVILEGE-001"
 statement = "Runtime database roles and security-definer surfaces retain least privilege, tenant isolation and explicit callable/write authority."
 severity = "critical"

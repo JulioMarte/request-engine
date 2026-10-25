@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
+from request_engine.modules.booking.api.models import LatestAppointmentNoteView
 from request_engine.modules.booking.application.queries.get_day_board import (
     ReservationDayBoardReader,
     validate_day_board_limit,
@@ -49,10 +50,13 @@ class ReservationDayBoardEntryView(BaseModel):
     served_queue_entry_id: UUID | None = None
     served_at: datetime | None = None
     visit_arrived_at: datetime | None = None
+    note_count: int = 0
+    latest_note: LatestAppointmentNoteView | None = None
 
     @classmethod
     def from_contract(cls, item: ReservationDayBoardEntry) -> "ReservationDayBoardEntryView":
-        return cls(**{name: getattr(item, name) for name in cls.model_fields})
+        values = {name: getattr(item, name) for name in cls.model_fields if name != "latest_note"}
+        return cls(**values, latest_note=LatestAppointmentNoteView.from_contract(item.latest_note))
 
 
 def create_day_board_router(

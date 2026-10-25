@@ -48,6 +48,7 @@ class AppointmentCalendarEntryView(BaseModel):
     served_queue_entry_id: UUID | None
     served_at: datetime | None
     resources: tuple[CalendarResourceView, ...]
+    note_count: int = 0
 
     @classmethod
     def from_contract(cls, item: AppointmentCalendarEntry) -> "AppointmentCalendarEntryView":

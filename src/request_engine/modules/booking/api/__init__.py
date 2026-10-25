@@ -5,6 +5,12 @@ from request_engine.modules.booking.adapters.db import attendance_commands
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
 )
+from request_engine.modules.booking.adapters.db.appointment_note_commands import (
+    PostgresAppointmentNoteCommands,
+)
+from request_engine.modules.booking.adapters.db.appointment_note_reader import (
+    PostgresAppointmentNoteReader,
+)
 from request_engine.modules.booking.adapters.db.arrival_estimate_commands import (
     PostgresArrivalEstimateCommands,
 )
@@ -107,6 +113,8 @@ def install_http(
             reschedule_handler=commitments,
             attendance_handler=attendance_commands.PostgresAttendanceCommands(session_factory),
             arrival_estimate_handler=PostgresArrivalEstimateCommands(session_factory),
+            note_handler=PostgresAppointmentNoteCommands(session_factory),
+            note_reader=PostgresAppointmentNoteReader(session_factory),
             reservation_reader=PostgresReservationReader(session_factory),
             authority_reader=party_authority_reader,
             actor_resolver=actor_resolver,

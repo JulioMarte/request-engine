@@ -2,6 +2,26 @@ from .http_surface import PROBE_UUID, HttpProbe, PublicHttpOperation, TenantIsol
 
 DAY_BOARD_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     PublicHttpOperation(
+        "appointments.notes.add",
+        "POST",
+        "/v1/appointments/{reservation_id}/notes",
+        "appointments.annotate",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(f"/v1/appointments/{PROBE_UUID}/notes", body={"body": "Viene con su hijo"}),
+    ),
+    PublicHttpOperation(
+        "appointments.notes.list",
+        "GET",
+        "/v1/appointments/{reservation_id}/notes",
+        "appointments.day_board",
+        False,
+        False,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(f"/v1/appointments/{PROBE_UUID}/notes"),
+    ),
+    PublicHttpOperation(
         "appointments.day_board",
         "GET",
         "/v1/appointments/day-board",

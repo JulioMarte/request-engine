@@ -132,6 +132,15 @@ def foreign_request(
             {"response": "accepted", "expected_revision": objects.reservation_revision},
             404,
         )
+    if name == "appointments.notes.add":
+        return (
+            f"/v1/appointments/{objects.reservation_id}/notes",
+            {},
+            {"body": "Nota desde otra organizacion"},
+            404,
+        )
+    if name == "appointments.notes.list":
+        return f"/v1/appointments/{objects.reservation_id}/notes", {}, None, 404
     if name == "appointments.arrival_estimate":
         return (
             f"/v1/appointments/{objects.reservation_id}/arrival-estimate",

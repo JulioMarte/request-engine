@@ -71,6 +71,10 @@ trust model-supplied identity, or run a language model inside Request Engine.
    platform operations are not projected by this decision. Any later route that
    carries tool metadata (for example an owner-approved staff invitation proposal)
    is picked up automatically, still subject to the same catalog authority.
+   Later additions (2026-10-24): Booking's appointment notes,
+   `appointments_note_add` (`appointments.annotate`, low-impact write) and
+   `appointments_notes_list` (`appointments.day_board`, read), so a staff-directed
+   agent can document an appointment under the same grants as the receptionist.
 6. **Voice and conversation** belong to the MCP client. Request Engine receives
    only text tool calls; it hosts no LLM runtime or conversational state.
 

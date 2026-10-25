@@ -123,6 +123,30 @@ def _booking_error(exc: booking_errors.BookingError) -> tuple[int, ErrorBody]:
             resolution=ErrorResolution.FIX_REQUEST,
             details={"reservation_id": str(exc.reservation_id), "reason": exc.reason},
         )
+    if isinstance(exc, booking_errors.AppointmentNoteInvalid):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
+            code="appointment_note_invalid",
+            message=str(exc),
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={"reason": exc.reason},
+        )
+    if isinstance(exc, booking_errors.AppointmentNoteSupersedesUnknown):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
+            code="appointment_note_supersedes_invalid",
+            message=str(exc),
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={
+                "reservation_id": str(exc.reservation_id),
+                "supersedes_note_id": str(exc.supersedes_note_id),
+            },
+        )
+    if isinstance(exc, booking_errors.AppointmentNoteAuthorUnavailable):
+        return status.HTTP_403_FORBIDDEN, ErrorBody(
+            code="appointment_note_author_unavailable",
+            message=str(exc),
+            resolution=ErrorResolution.REQUEST_AUTHORITY,
+            details={},
+        )
     if isinstance(exc, booking_errors.InvalidResourceSelection):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
             code="invalid_resource_selection",

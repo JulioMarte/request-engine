@@ -357,6 +357,8 @@ for _destination, _reason, _ids in (
         ),
         (
             "appointments_calendar",
+            "appointments_note_add",
+            "appointments_notes_list",
             "operational_recovery_communicate_impact",
             "operational_recovery_execute",
             "operational_recovery_extend_day",

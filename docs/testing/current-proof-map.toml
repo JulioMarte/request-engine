@@ -837,6 +837,16 @@ path = "tests/unit/test_staff_invitation_proposal_http.py"
 evidence = ["contract", "security"]
 
 [[proofs]]
+guarantee = "INV-APPOINTMENT-NOTES-001"
+path = "tests/e2e/test_appointment_notes.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
+guarantee = "INV-APPOINTMENT-NOTES-001"
+path = "tests/modules/booking/test_appointment_notes_domain.py"
+evidence = ["invariant"]
+
+[[proofs]]
 guarantee = "INV-SERVED-VISIT-001"
 path = "tests/e2e/test_served_visit_guards.py"
 evidence = ["invariant", "adversarial", "concurrency"]
