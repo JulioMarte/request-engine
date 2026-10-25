@@ -50,6 +50,44 @@ These read operations require neither idempotency key nor expected revision,
 admit no subjects and do not expose QueueEntry identities. No tool projection is
 needed: curated dashboard navigation invokes these same owner HTTP operations.
 
+### Closing and reopening a ServiceQueue (2026-10-25)
+
+`POST /v1/queues/{queue_id}:set-active` (`queue_service_queue_set_active`,
+capability `queue.configure`, owner Queue, `Idempotency-Key` required) closes
+(`active=false`) or reopens (`active=true`) one queue. Body:
+`{authority_party_id, expected_revision, active}`; response:
+`{queue_id, queue_key, display_name, location_id, offering_id, active, revision}`.
+
+- Authority: exact `operations.manage_supply` Representation of
+  `authority_party_id`, checked inside the transaction **before** idempotency, so
+  a withdrawn authority cannot read an old receipt back.
+- Lock: the `service_queues` row `FOR UPDATE` — the same first lock as join,
+  check-in and call-next (queue -> intake control -> entries/reservation). A
+  concurrent admission either commits first (and is counted) or waits and then
+  receives `409 queue_inactive`.
+- Closing is refused while the queue still has `waiting`, `called` or `serving`
+  entries: `409 service_queue_has_active_entries` with
+  `details {queue_id, waiting, called, serving}`. There is no automatic drain:
+  those entries are people physically waiting or being served, and cancelling
+  them silently would be false. Staff finish, mark no-show or cancel them first.
+  Terminal entries (`completed`, `cancelled`, `no_show`) do not block.
+- Reopening requires the queue's Location to be active
+  (`409 queue_configuration_conflict` otherwise).
+- `expected_revision` mismatch: `409 service_queue_revision_conflict`
+  (`details {queue_id, expected_revision, current_revision}`); requesting the
+  current state: `409 service_queue_state_unchanged` (refresh, nothing to do).
+  Missing/foreign queue: `404 queue_not_found`. The revision steps exactly once.
+- Closing is not intake control: `service_queue_intake_controls` is untouched
+  (pausing intake keeps the queue listed and serving; closing removes it from the
+  public `queue_list`, which shows active queues only). The operator read
+  `queue_service_queue_configuration_read/list` keeps showing closed queues with
+  `active` and `revision`.
+- Emits audit plus the PII-free outbox fact `service_queue.deactivated.v1` /
+  `service_queue.activated.v1` (aggregate `ServiceQueue`; payload `queue_id`,
+  `location_id`, `active`, `revision`). The change feed (ADR 0020) does not route
+  ServiceQueue facts — its `queue.` route is QueueEntry-only — so live screens
+  re-read after their own command response or on the next refresh.
+
 F3 keeps arrival and admission as separate facts:
 
 ```text

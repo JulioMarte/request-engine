@@ -5,6 +5,7 @@ from request_engine.modules.booking.application.operational_errors import (
     BookingTermsInvalidInput,
     ContextualConfigurationConflict,
     ResourceAvailabilityRevisionConflict,
+    ResourceCapabilityHeld,
     ResourceLocationAssignmentRevisionConflict,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
@@ -33,6 +34,7 @@ BookingOperationalError = (
     ResourceAvailabilityRevisionConflict
     | ResourceLocationAssignmentRevisionConflict
     | ContextualConfigurationConflict
+    | ResourceCapabilityHeld
 )
 
 
@@ -70,6 +72,19 @@ async def booking_operational_error_handler(
                     "assignment_id": str(exc.assignment_id),
                     "expected_revision": exc.expected,
                     "current_revision": exc.actual,
+                },
+            )
+        )
+    if isinstance(exc, ResourceCapabilityHeld):
+        return _response(
+            ErrorBody(
+                code="resource_capability_held",
+                message="a live booking hold still depends on a capability being removed",
+                retryable=True,
+                resolution=ErrorResolution.REFRESH_AND_RETRY,
+                details={
+                    "resource_id": str(exc.resource_id),
+                    "capability_ids": [str(value) for value in exc.capability_ids],
                 },
             )
         )

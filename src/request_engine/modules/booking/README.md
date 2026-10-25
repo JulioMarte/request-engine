@@ -206,3 +206,39 @@ Both are projected as operator tools. Rules:
   controller-policy adoption.
 - Tags are deliberately **not** part of this model: notes first; a per-business tag vocabulary may
   come later as its own owner decision.
+
+## Resource configuration edits (2026-10-25)
+
+Guarantee `INV-RESOURCE-CONFIG-EDITS-001`, migration `0004_configuration_edits`.
+Commands require `booking.manage_supply`, an `Idempotency-Key` and exact
+`operations.manage_supply` authority (checked before idempotency); each appends
+audit and a PII-free outbox fact (`resource.updated.v1`,
+`resource.capabilities_replaced.v1`).
+
+- **Rename**: `PATCH /v1/operations/resources/{resource_id}` (`booking_resource_update`)
+  changes `resources.display_name` only (Discovery's public profile is separate).
+  `expected_resource_availability_revision` is a precondition; a label is not
+  availability-material, so the revision does not advance (concurrent renames by
+  callers holding the same revision are last-writer-wins). Inactive Resources may
+  be renamed.
+- **Replace provided services**: `PUT /v1/operations/resources/{resource_id}/capabilities`
+  (`booking_resource_capabilities_replace`). READ/PLAN/LOCK/VALIDATE/WRITE/EMIT:
+  lock the Resource `FOR UPDATE` (the capacity root `guard_capacity_claim` also
+  locks, so it serializes with Hold/Reservation claim inserts) -> revision CAS ->
+  every capability must exist and be active in the tenant -> refuse with 409
+  `resource_capability_held` while an active unexpired Hold claim on this
+  Resource requires a removed capability (Holds are minutes long; retry) ->
+  delete removed / insert added link rows (DELETE granted by 0004; the audit
+  keeps previous/new sets) -> advance `availability_revision` exactly once when
+  the set changed. Existing confirmed Reservations and their CapacityClaims are
+  never cancelled, moved or rewritten; `retained_commitment_count` reports future
+  ones still relying on a removed capability. Only future slot search and new
+  claims stop selecting the Resource for removed capabilities (the claim guard
+  still requires the link for every new or re-validated active claim); a
+  reschedule selects a currently eligible Resource.
+- **Remove a Resource-wide absence**: `booking_resource_exception_set` accepts
+  `active` (default true); `active=false` with `exception_id` deactivates the
+  saved row (kept for audit, `availability_revision` advanced). Inactive
+  exceptions no longer affect slot search, and `booking_resource_exception_list`
+  projects the real `active` value. The Resource must be active to change its
+  exceptions, as before.

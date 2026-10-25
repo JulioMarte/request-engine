@@ -91,6 +91,27 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["security", "provenance"]
 
 [[guarantees]]
+id = "INV-CATALOG-CONFIG-EDITS-001"
+statement = "Catalog configuration edits after creation are owner Commands under catalog.manage with exact Party authority checked before idempotency, a required Idempotency-Key (same key + same body replays, different body fails 409) and an explicit concurrency token: an Offering rename compares-and-sets offerings.revision and never creates a version; a duration/base-price change appends exactly one immutable OfferingVersion N+1 under the Offering row lock only when expected_current_offering_version_id is still the latest (concurrent losers get 409 offering_version_superseded), copying requirements and the effective booking policy, while existing Reservations keep their exact OfferingVersion and terms; a Location hours exception (including a declared holiday) is removed only by deactivation under the Location lock and operational_revision CAS, and holiday removal deactivates only the exact local full-day unavailable closures of the given dates. Rows stay auditable, foreign targets are opaque and change facts carry no names or reasons."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["capacity", "provenance"]
+
+[[guarantees]]
+id = "INV-RESOURCE-CONFIG-EDITS-001"
+statement = "Booking Resource configuration edits are owner Commands under booking.manage_supply with exact operations.manage_supply authority: replacing a Resource's capability set locks the Resource row (the capacity serialization root) FOR UPDATE, compares-and-sets availability_revision and advances it exactly once when the set changes, refuses with 409 resource_capability_held while a live Hold depends on a removed capability, and never cancels, moves or rewrites existing Reservations or CapacityClaims (retained ones are reported); only future slot search and new claims stop using removed capabilities. A Resource-wide schedule exception is removed by deactivation (row kept, availability_revision advanced) and inactive exceptions no longer affect availability. Rename is a label precondition that does not advance availability_revision."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["capacity", "availability"]
+
+[[guarantees]]
+id = "INV-SERVICE-QUEUE-CLOSE-001"
+statement = "A ServiceQueue is closed or reopened only through queue_service_queue_set_active under queue.configure with exact operations.manage_supply authority, a required Idempotency-Key and expected revision; the command locks the ServiceQueue row first (the same root as check-in/join/call-next), refuses to close while any entry is waiting, called or serving (409 service_queue_has_active_entries, no automatic drain), requires an active Location to reopen, advances the revision exactly once and leaves intake control untouched; admissions after a committed close fail queue_inactive."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["availability", "provenance"]
+
+[[guarantees]]
 id = "INV-PRIVILEGE-001"
 statement = "Runtime database roles and security-definer surfaces retain least privilege, tenant isolation and explicit callable/write authority."
 severity = "critical"

@@ -51,11 +51,20 @@ class ResourceExceptionBody(BaseModel):
     expected_resource_availability_revision: int = Field(gt=0)
     exception_id: UUID | None = None
     reason: str | None = Field(default=None, pattern=r"\S")
+    active: bool = Field(
+        default=True,
+        description=(
+            "false deactivates the existing exception named by exception_id; the row is kept "
+            "for audit and no longer affects slot search"
+        ),
+    )
 
     @model_validator(mode="after")
     def interval(self) -> Self:
         if self.end_at <= self.start_at:
             raise ValueError("end_at must be after start_at")
+        if not self.active and self.exception_id is None:
+            raise ValueError("deactivation requires exception_id")
         return self
 
 

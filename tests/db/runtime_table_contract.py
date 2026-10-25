@@ -65,6 +65,8 @@ EXPECTED_TABLE_EXCEPTIONS = {
     "service_classifications": (False,) * 7,
     # F4 recomputes assignment availability, legitimately deleting stale rows.
     "resource_location_availability": (True, True, True, True, False, False, False),
+    # 0004: capability replacement deletes configuration link rows (audited).
+    "resource_capability_assignments": (True, True, True, True, False, False, False),
     # S0b2 (§9.3): the party identity revision ledger is append-only for the
     # app role; UPDATE/DELETE are denied by grants and by the 0025 guard.
     "party_identity_revisions": (True, True, False, False, False, False, False),

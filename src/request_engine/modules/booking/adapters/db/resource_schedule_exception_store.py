@@ -62,6 +62,7 @@ async def upsert_exception(
     end_at: datetime,
     exception_kind: str,
     reason: str | None,
+    active: bool = True,
 ) -> UUID:
     params = {
         "organization_id": organization_id,
@@ -71,14 +72,15 @@ async def upsert_exception(
         "end_at": end_at,
         "exception_kind": exception_kind,
         "reason": reason,
+        "active": active,
     }
     if exception_id is None:
         statement = """
             INSERT INTO request_engine.schedule_exceptions (
-                organization_id, resource_id, during, exception_kind, reason
+                organization_id, resource_id, during, exception_kind, reason, active
             ) VALUES (
                 :organization_id, :resource_id,
-                tstzrange(:start_at, :end_at, '[)'), :exception_kind, :reason
+                tstzrange(:start_at, :end_at, '[)'), :exception_kind, :reason, :active
             ) RETURNING id
         """
     else:
@@ -86,7 +88,8 @@ async def upsert_exception(
             UPDATE request_engine.schedule_exceptions
                SET during = tstzrange(:start_at, :end_at, '[)'),
                    exception_kind = :exception_kind,
-                   reason = :reason
+                   reason = :reason,
+                   active = :active
              WHERE organization_id = :organization_id
                AND id = :exception_id
                AND resource_id = :resource_id

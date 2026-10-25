@@ -32,6 +32,7 @@ async def load_resource_exceptions(
                     FROM request_engine.schedule_exceptions
                     WHERE organization_id = :organization_id
                       AND resource_id = ANY(CAST(:resource_ids AS uuid[]))
+                      AND active
                       AND during && tstzrange(:window_start, :window_end, '[)')
                     ORDER BY resource_id, lower(during), id
                     """

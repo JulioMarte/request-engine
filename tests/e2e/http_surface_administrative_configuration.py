@@ -18,6 +18,13 @@ _READS = (
         True,
     ),
     (
+        "catalog_location_hours_exception_list",
+        "/v1/catalog/locations/{location_id}/hours-exceptions",
+        "catalog.read_configuration",
+        True,
+        True,
+    ),
+    (
         "catalog_offering_configuration_list",
         "/v1/catalog/offerings/configuration",
         "catalog.read_configuration",
@@ -160,6 +167,19 @@ ADMINISTRATIVE_CONFIGURATION_HTTP_OPERATIONS = tuple(_read(*row) for row in _REA
                 "credential_expires_at": "2099-01-01T00:00:00Z",
                 "provenance_reference": "classification-proof",
             },
+        ),
+    ),
+    PublicHttpOperation(
+        "queue_service_queue_set_active",
+        "POST",
+        "/v1/queues/{queue_id}:set-active",
+        "queue.configure",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/queues/{PROBE_UUID}:set-active",
+            body={"authority_party_id": PROBE_UUID, "expected_revision": 1, "active": False},
         ),
     ),
     PublicHttpOperation(

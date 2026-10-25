@@ -22,6 +22,7 @@ def command_payload(
         "end_at": end_at,
         "exception_kind": command.exception_kind,
         "reason": command.reason,
+        "active": command.active,
         "expected_resource_availability_revision": (
             command.expected_resource_availability_revision
         ),
@@ -44,6 +45,7 @@ def make_state(
         exception_kind=command.exception_kind,
         reason=command.reason,
         resource_availability_revision=resource_availability_revision,
+        active=command.active,
     )
 
 
@@ -56,6 +58,7 @@ def to_json(state: ResourceScheduleExceptionState) -> dict[str, object]:
         "exception_kind": state.exception_kind,
         "reason": state.reason,
         "resource_availability_revision": state.resource_availability_revision,
+        "active": state.active,
     }
 
 
@@ -71,4 +74,6 @@ def from_json(value: dict[str, object]) -> ResourceScheduleExceptionState:
         exception_kind=kind,
         reason=cast(str | None, value.get("reason")),
         resource_availability_revision=cast(int, value["resource_availability_revision"]),
+        # Receipts written before migration 0004 carried no ``active`` field.
+        active=cast(bool, value.get("active", True)),
     )

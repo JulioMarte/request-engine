@@ -28,6 +28,7 @@ from request_engine.modules.catalog.application.commands.set_location_public_con
 from request_engine.modules.catalog.application.commands.update_location_operational_info import (
     LocationOperationalInfoState,
     UpdateLocationOperationalInfoCommand,
+    validate_display_name,
 )
 from request_engine.modules.catalog.application.errors import (
     CatalogConfigurationConflict,
@@ -57,6 +58,11 @@ class PostgresOperationalProfileCommands:
     ) -> LocationOperationalInfoState:
         _validate_timezone(command.timezone)
         geocoded_at = _aware_utc(command.geocoded_at, "geocoded_at")
+        display_name = (
+            validate_display_name(command.display_name)
+            if command.display_name is not None
+            else None
+        )
         fingerprint = command_fingerprint(
             "catalog.update_location_operational_info",
             {
@@ -75,6 +81,7 @@ class PostgresOperationalProfileCommands:
                 "geocoding_source": command.geocoding_source,
                 "geocoded_at": geocoded_at,
                 "expected_operational_revision": command.expected_operational_revision,
+                "display_name": display_name,
             },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
@@ -137,6 +144,7 @@ class PostgresOperationalProfileCommands:
                             UPDATE request_engine.locations
                                SET timezone = :timezone,
                                    active = :active,
+                                   display_name = COALESCE(:display_name, display_name),
                                    address_line1 = :address_line1,
                                    address_line2 = :address_line2,
                                    locality = :locality,
@@ -150,7 +158,7 @@ class PostgresOperationalProfileCommands:
                                    updated_at = clock_timestamp()
                              WHERE organization_id = :organization_id
                                AND id = :location_id
-                            RETURNING id, timezone, active,
+                            RETURNING id, display_name, timezone, active,
                                       address_line1, address_line2, locality,
                                       administrative_area, postal_code, country_code,
                                       latitude, longitude, geocoding_source, geocoded_at,
@@ -162,6 +170,7 @@ class PostgresOperationalProfileCommands:
                             "location_id": command.location_id,
                             "timezone": command.timezone,
                             "active": command.active,
+                            "display_name": display_name,
                             "address_line1": _clean_optional(command.address_line1),
                             "address_line2": _clean_optional(command.address_line2),
                             "locality": _clean_optional(command.locality),
@@ -192,6 +201,7 @@ class PostgresOperationalProfileCommands:
                     "previous_operational_revision": current_revision,
                     "new_operational_revision": state.operational_revision,
                     "booking_material_change": (state.operational_revision != current_revision),
+                    "display_name_provided": display_name is not None,
                 },
             )
             await complete_idempotency(
@@ -719,6 +729,7 @@ def _location_state_from_row(row: RowMapping) -> LocationOperationalInfoState:
         geocoding_source=cast(str | None, row["geocoding_source"]),
         geocoded_at=cast(datetime | None, row["geocoded_at"]),
         operational_revision=cast(int, row["operational_revision"]),
+        display_name=cast(str, row["display_name"]),
     )
 
 
@@ -738,6 +749,7 @@ def _location_state_to_json(state: LocationOperationalInfoState) -> dict[str, ob
         "geocoding_source": state.geocoding_source,
         "geocoded_at": state.geocoded_at.isoformat() if state.geocoded_at else None,
         "operational_revision": state.operational_revision,
+        "display_name": state.display_name,
     }
 
 
@@ -760,6 +772,7 @@ def _location_state_from_json(value: dict[str, object]) -> LocationOperationalIn
         geocoding_source=cast(str | None, value.get("geocoding_source")),
         geocoded_at=datetime.fromisoformat(geocoded_at) if geocoded_at else None,
         operational_revision=cast(int, value["operational_revision"]),
+        display_name=cast(str | None, value.get("display_name")),
     )
 
 
