@@ -20,7 +20,10 @@ from request_engine.bootstrap.recovery_delivery import (
     build_native_recovery_messenger,
 )
 from request_engine.bootstrap.settings import HttpSettings
-from request_engine.bootstrap.staff_invitation_delivery import build_staff_invitation_staging
+from request_engine.bootstrap.staff_invitation_delivery import (
+    build_staff_invitation_staging,
+    staff_invitation_acceptance_url,
+)
 from request_engine.entrypoints.http.app import create_native_app
 from request_engine.entrypoints.http.native_runtime import build_identity_link_verifier
 from request_engine.modules.booking.adapters.appointment_options import (
@@ -105,6 +108,7 @@ def create_app() -> FastAPI:
         session_factory=sessions,
         native_identity_authority_id=settings.native_identity_authority_id,
         staff_invitation_delivery=staff_invitation_delivery,
+        staff_invitation_accept_url=staff_invitation_acceptance_url(RecoveryDeliverySettings()),
         appointment_option_codec=signing_codec,
         identity_exchange_fingerprint_key=(
             settings.identity_exchange_fingerprint_key.get_secret_value().encode()

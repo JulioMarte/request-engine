@@ -3,7 +3,9 @@
 import hashlib
 import secrets
 from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import text
@@ -49,9 +51,27 @@ _PROJECTION = """
     SELECT i.id AS invitation_id,i.organization_id,i.email,
         CASE WHEN i.status = 'pending' AND i.expires_at <= clock_timestamp()
             THEN 'expired' ELSE i.status END AS status,
-        i.generation,i.revision,i.expires_at,i.created_at,i.membership_id,i.principal_id,i.binding_id
+        i.generation,i.revision,i.expires_at,i.created_at,i.membership_id,i.principal_id,i.binding_id,
+        i.delivery_channel
     FROM request_engine.staff_invitations i
 """
+
+
+@dataclass(frozen=True, slots=True)
+class _ShareableProof:
+    """Link-delivery proof held only in memory until returned once to the inviter."""
+
+    secret: str
+    digest: str
+    expires_at: datetime
+
+
+def _shareable_proof(invitation_id: UUID, expires_at: datetime) -> _ShareableProof:
+    # Same proof shape and digest as the governed email path; never persisted raw.
+    secret = f"{invitation_id}.{secrets.token_urlsafe(32)}"
+    return _ShareableProof(
+        secret=secret, digest=hashlib.sha256(secret.encode()).hexdigest(), expires_at=expires_at
+    )
 
 
 def _require_actor(actor: ActorContext, capability: str) -> None:
@@ -106,10 +126,40 @@ class PostgresStaffInvitationCommands:
         *,
         secret_delivery: RecoverySecretStaging | None,
         delivery_recorder: InvitationDeliveryIntent | None,
+        acceptance_url: str | None = None,
     ) -> None:
         self._sessions = session_factory
         self._secrets = secret_delivery
         self._recorder = delivery_recorder
+        # Deployment-validated console URL (bootstrap); never caller supplied.
+        self._acceptance_url = acceptance_url
+
+    def _issued(self, invitation: StaffInvitation, proof: _ShareableProof) -> StaffInvitation:
+        url = (
+            None
+            if self._acceptance_url is None
+            else f"{self._acceptance_url.rstrip('/')}/{invitation.invitation_id}/accept"
+            f"#token={quote(proof.secret, safe='')}"
+        )
+        return replace(invitation, acceptance_token=proof.secret, acceptance_url=url)
+
+    async def _cancel_deliveries(
+        self, session: AsyncSession, organization_id: UUID, invitation_id: UUID, channel: str
+    ) -> None:
+        """Fence queued email generations; a link-only invitation has none to fence.
+
+        An email generation is only ever recorded through the recorder, and a later
+        switch to ``link`` cancels it in that same transaction, so a ``link``
+        current channel without a recorder cannot leave a deliverable email behind.
+        """
+
+        if self._recorder is None:
+            if channel != "link":
+                raise RecoveryDeliveryUnavailable("Invitation delivery recorder unavailable")
+            return
+        await self._recorder.cancel(
+            session, organization_id=organization_id, invitation_id=invitation_id
+        )
 
     async def list(
         self,
@@ -262,14 +312,25 @@ class PostgresStaffInvitationCommands:
             NAMESPACE_URL,
             f"staff-invitation:{actor.organization_id}:{actor.principal_id}:{command.idempotency_key}",
         )
-        fingerprint = command_fingerprint(
-            "staff.invitation.create",
-            {"email": email, "hours": command.expires_in_hours, "provenance": provenance},
-        )
+        intent: dict[str, object] = {
+            "email": email,
+            "hours": command.expires_in_hours,
+            "provenance": provenance,
+        }
+        if command.delivery == "link":
+            intent["delivery"] = "link"
+        fingerprint = command_fingerprint("staff.invitation.create", intent)
         replay = await self._completed_replay(actor, command.idempotency_key, fingerprint)
         if replay is not None:
             return replay
-        staged = await self.stage_invitation_secret(invitation_id, command.expires_in_hours)
+        staged: StagedRecoverySecret | None = None
+        proof: _ShareableProof | None = None
+        if command.delivery == "link":
+            proof = _shareable_proof(
+                invitation_id, datetime.now(UTC) + timedelta(hours=command.expires_in_hours)
+            )
+        else:
+            staged = await self.stage_invitation_secret(invitation_id, command.expires_in_hours)
         try:
             async with actor_transaction(self._sessions, actor) as session:
                 await session.execute(text("SELECT request_cmd.lock_staff_invitation_admin(NULL)"))
@@ -291,9 +352,11 @@ class PostgresStaffInvitationCommands:
                     provenance=provenance,
                     staged=staged,
                     idempotency_id=idem,
+                    shareable=proof,
                 )
                 await complete_idempotency(session, idem, {"invitation_id": str(invitation_id)})
-                return await self.view(session, invitation_id)
+                created = await self.view(session, invitation_id)
+                return created if proof is None else self._issued(created, proof)
         except DBAPIError as exc:
             _db_error(exc)
             raise
@@ -315,8 +378,9 @@ class PostgresStaffInvitationCommands:
         invitation_id: UUID,
         email: str,
         provenance: str,
-        staged: StagedRecoverySecret,
+        staged: StagedRecoverySecret | None,
         idempotency_id: UUID,
+        shareable: _ShareableProof | None = None,
     ) -> None:
         """The single pending-invitation write path, inside the caller's transaction.
 
@@ -335,47 +399,48 @@ class PostgresStaffInvitationCommands:
             ),
             {"email": email},
         )
+        proof = staged if shareable is None else shareable
+        if proof is None:
+            raise RecoveryDeliveryUnavailable("Staff invitation delivery is not configured")
+        channel = "email" if shareable is None else "link"
         await session.execute(
             text("""INSERT INTO request_engine.staff_invitations
-            (id,organization_id,email,invited_by_principal_id,provenance_reference,token_digest,expires_at)
-            VALUES(:id,:org,:email,:actor,:provenance,:digest,:expiry)"""),
+            (id,organization_id,email,invited_by_principal_id,provenance_reference,token_digest,
+             expires_at,delivery_channel)
+            VALUES(:id,:org,:email,:actor,:provenance,:digest,:expiry,:channel)"""),
             {
                 "id": invitation_id,
                 "org": actor.organization_id,
                 "email": email,
                 "actor": actor.principal_id,
                 "provenance": provenance,
-                "digest": staged.digest,
-                "expiry": staged.expires_at,
+                "digest": proof.digest,
+                "expiry": proof.expires_at,
+                "channel": channel,
             },
         )
-        if self._recorder is None:
-            raise RecoveryDeliveryUnavailable("Invitation delivery recorder unavailable")
-        await self._recorder.record(
-            session,
-            organization_id=actor.organization_id,
-            invitation_id=invitation_id,
-            generation=1,
-            destination_address=email,
-            secret_reference=staged.reference,
-            secret_digest=staged.digest,
-            expires_at=staged.expires_at,
+        if staged is not None:
+            if self._recorder is None:
+                raise RecoveryDeliveryUnavailable("Invitation delivery recorder unavailable")
+            await self._recorder.record(
+                session,
+                organization_id=actor.organization_id,
+                invitation_id=invitation_id,
+                generation=1,
+                destination_address=email,
+                secret_reference=staged.reference,
+                secret_digest=staged.digest,
+                expires_at=staged.expires_at,
+            )
+        await self._audit(
+            session, actor, invitation_id, idempotency_id, "create", 0, 1, provenance, channel
         )
-        await self._audit(session, actor, invitation_id, idempotency_id, "create", 0, 1, provenance)
 
     async def resend(
         self, actor: ActorContext, command: ChangeStaffInvitationCommand
     ) -> StaffInvitation:
         _require_actor(actor, "staff.invite")
-        provenance = _provenance(command.provenance_reference)
-        fingerprint = command_fingerprint(
-            "staff.invitation.resend",
-            {
-                "id": command.invitation_id,
-                "revision": command.expected_revision,
-                "provenance": provenance,
-            },
-        )
+        fingerprint = command_fingerprint("staff.invitation.resend", _change_intent(command))
         replay = await self._completed_replay(actor, command.idempotency_key, fingerprint)
         if replay is not None:
             return replay
@@ -390,33 +455,31 @@ class PostgresStaffInvitationCommands:
             raise StaffMembershipRevisionConflict("Invitation changed")
         if current.status != "pending":
             raise StaffMembershipConflict("Only unexpired pending invitations can be resent")
-        staged = await self._stage(
-            command.invitation_id, current.generation + 1, datetime.now(UTC) + timedelta(hours=72)
-        )
+        expires_at = datetime.now(UTC) + timedelta(hours=72)
+        if command.delivery == "link":
+            proof = _shareable_proof(command.invitation_id, expires_at)
+            return self._issued(await self._change(actor, command, None, proof), proof)
+        staged = await self._stage(command.invitation_id, current.generation + 1, expires_at)
         return await self._change(actor, command, staged)
 
     async def revoke(
         self, actor: ActorContext, command: ChangeStaffInvitationCommand
     ) -> StaffInvitation:
         _require_actor(actor, "staff.invite")
-        return await self._change(actor, command, None)
+        return await self._change(actor, replace(command, delivery="email"), None)
 
     async def _change(
         self,
         actor: ActorContext,
         command: ChangeStaffInvitationCommand,
         staged: StagedRecoverySecret | None,
+        shareable: _ShareableProof | None = None,
     ) -> StaffInvitation:
         provenance = _provenance(command.provenance_reference)
-        action = "resend" if staged is not None else "revoke"
-        fingerprint = command_fingerprint(
-            f"staff.invitation.{action}",
-            {
-                "id": command.invitation_id,
-                "revision": command.expected_revision,
-                "provenance": provenance,
-            },
-        )
+        proof = staged if shareable is None else shareable
+        action = "resend" if proof is not None else "revoke"
+        channel = None if proof is None else ("email" if shareable is None else "link")
+        fingerprint = command_fingerprint(f"staff.invitation.{action}", _change_intent(command))
         try:
             async with actor_transaction(self._sessions, actor) as session:
                 row = (
@@ -445,14 +508,13 @@ class PostgresStaffInvitationCommands:
                     raise StaffMembershipRevisionConflict("Invitation changed")
                 if row["status"] != "pending" or row["expires_at"] <= datetime.now(UTC):
                     raise StaffMembershipConflict("Only unexpired pending invitations can change")
-                if self._recorder is None:
-                    raise RecoveryDeliveryUnavailable("Invitation delivery recorder unavailable")
-                await self._recorder.cancel(
+                await self._cancel_deliveries(
                     session,
-                    organization_id=actor.organization_id,
-                    invitation_id=command.invitation_id,
+                    actor.organization_id,
+                    command.invitation_id,
+                    str(row["delivery_channel"]),
                 )
-                if staged is None:
+                if proof is None:
                     await session.execute(
                         text(
                             "UPDATE request_engine.staff_invitations SET status='revoked',"
@@ -465,24 +527,30 @@ class PostgresStaffInvitationCommands:
                         text(
                             "UPDATE request_engine.staff_invitations SET generation=generation+1,"
                             "token_digest=:digest,expires_at=:expiry,revision=revision+1,"
-                            "updated_at=clock_timestamp() WHERE id=:id"
+                            "delivery_channel=:channel,updated_at=clock_timestamp() WHERE id=:id"
                         ),
                         {
                             "id": command.invitation_id,
-                            "digest": staged.digest,
-                            "expiry": staged.expires_at,
+                            "digest": proof.digest,
+                            "expiry": proof.expires_at,
+                            "channel": channel,
                         },
                     )
-                    await self._recorder.record(
-                        session,
-                        organization_id=actor.organization_id,
-                        invitation_id=command.invitation_id,
-                        generation=int(row["generation"]) + 1,
-                        destination_address=str(row["email"]),
-                        secret_reference=staged.reference,
-                        secret_digest=staged.digest,
-                        expires_at=staged.expires_at,
-                    )
+                    if staged is not None:
+                        if self._recorder is None:
+                            raise RecoveryDeliveryUnavailable(
+                                "Invitation delivery recorder unavailable"
+                            )
+                        await self._recorder.record(
+                            session,
+                            organization_id=actor.organization_id,
+                            invitation_id=command.invitation_id,
+                            generation=int(row["generation"]) + 1,
+                            destination_address=str(row["email"]),
+                            secret_reference=staged.reference,
+                            secret_digest=staged.digest,
+                            expires_at=staged.expires_at,
+                        )
                 await self._audit(
                     session,
                     actor,
@@ -492,6 +560,7 @@ class PostgresStaffInvitationCommands:
                     command.expected_revision,
                     command.expected_revision + 1,
                     provenance,
+                    channel,
                 )
                 await complete_idempotency(
                     session, idem, {"invitation_id": str(command.invitation_id)}
@@ -558,10 +627,8 @@ class PostgresStaffInvitationCommands:
                         "session": UUID(authenticated.credential_id),
                     },
                 )
-                if self._recorder is None:
-                    raise RecoveryDeliveryUnavailable("Invitation delivery recorder unavailable")
-                await self._recorder.cancel(
-                    session, organization_id=row["organization_id"], invitation_id=invitation_id
+                await self._cancel_deliveries(
+                    session, row["organization_id"], invitation_id, str(row["delivery_channel"])
                 )
                 return await self.view(session, invitation_id)
         except DBAPIError as exc:
@@ -636,7 +703,19 @@ class PostgresStaffInvitationCommands:
         before: int,
         after: int,
         provenance: str,
+        channel: str | None = None,
     ) -> None:
+        details: dict[str, object] = {
+            "action": action,
+            "reason_code": f"staff_invitation_{action}",
+            "revision_before": before,
+            "revision_after": after,
+            "provenance_reference": provenance,
+        }
+        if channel is not None:
+            # Records that a shareable link was issued; never the proof itself.
+            details["delivery_channel"] = channel
+            details["shareable_link_issued"] = channel == "link"
         await append_audit(
             session,
             organization_id=actor.organization_id,
@@ -645,11 +724,16 @@ class PostgresStaffInvitationCommands:
             aggregate_kind="StaffInvitation",
             aggregate_id=invitation_id,
             idempotency_id=idem,
-            details={
-                "action": action,
-                "reason_code": f"staff_invitation_{action}",
-                "revision_before": before,
-                "revision_after": after,
-                "provenance_reference": provenance,
-            },
+            details=details,
         )
+
+
+def _change_intent(command: ChangeStaffInvitationCommand) -> dict[str, object]:
+    intent: dict[str, object] = {
+        "id": command.invitation_id,
+        "revision": command.expected_revision,
+        "provenance": _provenance(command.provenance_reference),
+    }
+    if command.delivery == "link":
+        intent["delivery"] = "link"
+    return intent

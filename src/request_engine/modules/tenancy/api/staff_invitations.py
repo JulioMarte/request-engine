@@ -15,6 +15,7 @@ from request_engine.modules.tenancy.api.party_registry_dependencies import Idemp
 from request_engine.modules.tenancy.application.commands.staff_invitations import (
     ChangeStaffInvitationCommand,
     CreateStaffInvitationCommand,
+    InvitationDeliveryChannel,
     StaffInvitation,
     normalize_invitation_email,
 )
@@ -63,6 +64,15 @@ class StaffInvitationCreateBody(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     provenance_reference: str = Field(min_length=1, max_length=500)
     expires_in_hours: int = Field(default=72, ge=1, le=168)
+    delivery: InvitationDeliveryChannel = Field(
+        default="email",
+        description=(
+            "email: Request Engine emails the acceptance link (asynchronous). "
+            "link: the response returns acceptance_token/acceptance_url exactly once so the "
+            "inviter can share it through any channel (for example WhatsApp); it is never "
+            "shown again and only its digest is stored."
+        ),
+    )
 
     @field_validator("email")
     @classmethod
@@ -74,6 +84,13 @@ class StaffInvitationChangeBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_revision: int = Field(ge=1)
     provenance_reference: str = Field(min_length=1, max_length=500)
+
+
+class StaffInvitationResendBody(StaffInvitationChangeBody):
+    delivery: InvitationDeliveryChannel = Field(
+        default="email",
+        description="Channel of the new proof generation; link returns it once in this response.",
+    )
 
 
 class StaffInvitationAcceptBody(BaseModel):
@@ -94,6 +111,15 @@ class StaffInvitationView(BaseModel):
     principal_id: UUID | None
     binding_id: UUID | None
     delivery_status: str | None
+    delivery_channel: InvitationDeliveryChannel = "email"
+    acceptance_token: str | None = Field(
+        default=None,
+        description="One-time shareable proof; only in the issuing create/resend response.",
+    )
+    acceptance_url: str | None = Field(
+        default=None,
+        description="Console acceptance link carrying the proof in its fragment; issued once.",
+    )
 
 
 class StaffInvitationPreviewView(BaseModel):
@@ -141,6 +167,18 @@ def delivery_failure_response(
     )
 
 
+def _issued_view(result: StaffInvitation, status_code: int) -> StaffInvitationView | JSONResponse:
+    view = StaffInvitationView(**asdict(result))
+    if result.acceptance_token is None:
+        return view
+    # The one-time proof must not be cached by any intermediary.
+    return JSONResponse(
+        status_code=status_code,
+        content=view.model_dump(mode="json"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 def create_staff_invitation_router(
     *,
     commands: StaffInvitationCommands,
@@ -162,7 +200,7 @@ def create_staff_invitation_router(
             )
         except RecoveryDeliveryError as exc:
             return delivery_failure_response(exc, allow_same_request_retry=True)
-        return StaffInvitationView(**asdict(result))
+        return _issued_view(result, 201)
 
     async def list_invitations(
         params: Annotated[StaffInvitationParams, Query()],
@@ -189,7 +227,7 @@ def create_staff_invitation_router(
 
     async def resend(
         invitation_id: UUID,
-        body: StaffInvitationChangeBody,
+        body: StaffInvitationResendBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> StaffInvitationView | JSONResponse:
@@ -205,7 +243,7 @@ def create_staff_invitation_router(
             )
         except RecoveryDeliveryError as exc:
             return delivery_failure_response(exc, allow_same_request_retry=True)
-        return StaffInvitationView(**asdict(result))
+        return _issued_view(result, 200)
 
     async def revoke(
         invitation_id: UUID,
@@ -283,7 +321,9 @@ def create_staff_invitation_router(
         summary="Create an expiring staff email invitation",
         description="Creates no membership or permissions. Staging failures return typed 503; "
         "retry temporary failures with the same body and Idempotency-Key. "
-        "Email delivery is asynchronous.",
+        "Email delivery is asynchronous. delivery=link returns acceptance_token and "
+        "acceptance_url once (no-store) instead of email; an idempotent replay never returns "
+        "them again, so use resend to issue a new link.",
         responses=staging_errors,
     )
     add_capability_route(
@@ -316,7 +356,8 @@ def create_staff_invitation_router(
         response_model=StaffInvitationView,
         summary="Rotate the pending invitation proof and queue a new generation",
         description="Requires current revision and Idempotency-Key. On temporary staging 503, "
-        "retry this same request/key/revision; do not create another resend generation.",
+        "retry this same request/key/revision; do not create another resend generation. "
+        "delivery=link returns the new proof once and invalidates the previous one.",
         responses=staging_errors,
     )
     add_capability_route(
