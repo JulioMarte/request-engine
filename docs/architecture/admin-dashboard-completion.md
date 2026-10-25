@@ -52,8 +52,10 @@ checks these IDs and every operator operation, and rejects an unclassified new o
 operation. Visibility and grouping do not grant execution permission.
 
 `TENANT_RUNTIME_EXTERNAL_DESTINATIONS` explicitly accounts for the other runtime
-operator operations: 14 staff/invitation operations already have dedicated tenant
-workspaces; readiness is read by the configuration overview; 11 daily-service operations
+operator operations: the staff/invitation operations (including staff Representation
+delegation, `staff_representations_list` and `staff_manage_representations`) belong to
+the tenant staff workspace (the console does not yet render a Representation editor;
+apps call the owner operations directly); readiness is read by the configuration overview; 11 daily-service operations
 (day board, live queue, check-in, call next, call now, set aside, back in line, no-show,
 skip, start service, finish service) are projected by the Today workspace; the remaining 16
 daily-service execution operations (service pause/resume/read, staff history,

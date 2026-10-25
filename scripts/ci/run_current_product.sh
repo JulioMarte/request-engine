@@ -156,6 +156,8 @@ uv run pytest \
   tests/db/test_staff_email_invitations.py \
   tests/db/test_staff_invitation_delivery.py \
   tests/db/test_staff_invitation_proposals.py \
+  tests/db/test_staff_invitation_links.py \
+  tests/db/test_staff_representation_delegation.py \
   tests/db/test_identity_governance_audit.py \
   tests/db/test_controller_policy_upgrade.py \
   tests/db/test_controller_policy_adoption_provenance.py \

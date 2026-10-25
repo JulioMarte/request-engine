@@ -135,17 +135,19 @@ CREATE FUNCTION request_engine.replace_staff_representations(
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
     AS $$
         DECLARE
-            v_org_id uuid := request_engine.current_organization_id();
+            v_org_id uuid;
             v_actor_id uuid;
             v_target_id uuid;
             v_target_kind text;
             v_current_revision bigint;
             v_scope text;
-            v_desired text[] := COALESCE(p_desired_scopes, ARRAY[]::text[]);
+            v_desired text[];
         BEGIN
             PERFORM request_engine.acquire_identity_topology_share();
             PERFORM request_engine.lock_tenant_staff_root();
             v_actor_id := request_engine.assert_staff_manager('staff.manage_authority');
+            v_org_id := request_engine.current_organization_id();
+            v_desired := COALESCE(p_desired_scopes, ARRAY[]::text[]);
 
             IF p_provenance_reference IS NULL
                OR length(btrim(p_provenance_reference)) NOT BETWEEN 1 AND 500

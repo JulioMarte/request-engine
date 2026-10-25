@@ -38,6 +38,28 @@ projected: these are human identity and secret-possession operations. Input sche
 reject extra trusted identity fields. Admin DTOs expose lifecycle, revision,
 expiry, generation and delivery state, never plaintext proof or secret reference.
 
+### Shareable link delivery (INV-STAFF-INVITATION-LINK-001)
+
+Create and resend take `delivery: "email" | "link"` (default `email`); the
+current generation's channel is stored in `staff_invitations.delivery_channel`
+(migration `0005_staff_representations`) and returned as `delivery_channel`.
+With `link`, Python generates the same `<invitation UUID>.<random>` proof in
+memory (no secret store, no Communications delivery intent, no SMTP), PostgreSQL
+stores only its SHA256 digest, and the issuing command response alone carries
+`acceptance_token` plus `acceptance_url`
+(`<REQUEST_ENGINE_STAFF_INVITATION_ACCEPT_URL>/{id}/accept#token=...`, null when
+no URL is configured) with `Cache-Control: no-store`. This is the only exception
+to "never plaintext proof in administrative responses": the inviter is the
+delivery channel. Reads, lists and idempotent replays return null for both
+fields; the channel is part of the idempotency fingerprint. A lost link is
+re-issued with `:resend` (`delivery: "link"`), which rotates the digest so the
+earlier proof cannot activate membership and cancels any queued email
+generation in the same transaction. Expiry, revocation, acceptance (native HUMAN
+session + proof, zero grants) and recipient-bound replay are unchanged. The audit
+row records `delivery_channel` and `shareable_link_issued`, never the proof.
+Whoever holds the link can accept it with their own native account, exactly as
+with an emailed link; inviters should share it only with the intended person.
+
 Transport hardening (2026-10-03): recipient preview and acceptance reject every
 query parameter in the shared native-subject dependency, before owner execution.
 Proof remains JSON-body-only; no query/tenant selector manufactures authority.
