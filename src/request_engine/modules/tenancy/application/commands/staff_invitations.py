@@ -4,8 +4,16 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
+
+InvitationDeliveryChannel = Literal["email", "link"]
+"""How the acceptance proof of one generation reaches the invitee.
+
+``email``: Communications delivers it asynchronously (governed secret store).
+``link``: the inviter receives it exactly once in the create/resend response to
+share through any channel; only its digest is persisted.
+"""
 
 _MAILBOX = re.compile(
     r"[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@"
@@ -71,6 +79,7 @@ class CreateStaffInvitationCommand:
     provenance_reference: str
     idempotency_key: str
     expires_in_hours: int = 72
+    delivery: InvitationDeliveryChannel = "email"
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +88,8 @@ class ChangeStaffInvitationCommand:
     expected_revision: int
     provenance_reference: str
     idempotency_key: str
+    # Resend only: the channel of the new proof generation. Revoke ignores it.
+    delivery: InvitationDeliveryChannel = "email"
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,3 +106,8 @@ class StaffInvitation:
     principal_id: UUID | None
     binding_id: UUID | None
     delivery_status: str | None
+    delivery_channel: str = "email"
+    # One-time shareable proof: present only in the response of the command that
+    # issued a fresh ``link`` generation, never in reads or idempotent replays.
+    acceptance_token: str | None = None
+    acceptance_url: str | None = None

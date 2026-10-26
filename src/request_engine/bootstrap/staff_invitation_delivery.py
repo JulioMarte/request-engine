@@ -40,6 +40,15 @@ def _acceptance_url(settings: RecoveryDeliverySettings) -> str | None:
     return url
 
 
+def staff_invitation_acceptance_url(settings: RecoveryDeliverySettings) -> str | None:
+    """Validated console acceptance URL used to build one-time shareable links.
+
+    Link delivery needs no secret store or SMTP; without a configured URL the
+    response still carries the one-time token and ``acceptance_url`` stays null.
+    """
+    return _acceptance_url(settings)
+
+
 def build_staff_invitation_staging(
     settings: RecoveryDeliverySettings,
 ) -> RecoverySecretStaging | None:

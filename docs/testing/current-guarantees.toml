@@ -364,6 +364,20 @@ required_evidence = ["invariant", "adversarial", "concurrency", "contract"]
 risk = ["security"]
 
 [[guarantees]]
+id = "INV-STAFF-REPRESENTATION-001"
+statement = "A current HUMAN staff.manage_authority manager (not recovery-restricted) may delegate to another active HUMAN staff member of the same tenant only the exact operations.manage_profile/manage_supply/manage_terms/manage_discovery Representation scopes of an active organization Party that the manager itself holds through an active, currently valid, delegable Representation; delegated rows are never delegable (no re-delegation chain), record grantor and provenance immutably, and the replace operation never revokes a delegable (root or self-bootstrap) Representation, never targets the actor itself, rejects a stale target authority revision with exactly one concurrent winner, is idempotent with replay revalidating current manager authority, appends one audit row, and a revocation denies the delegate's very next configuration command or Query; AGENT actors are denied by the AUTHORITY_CHANGE risk ban and the PostgreSQL manager gate."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-STAFF-INVITATION-LINK-001"
+statement = "A staff invitation created or resent with delivery=link returns its acceptance proof (and console acceptance URL with the proof in the fragment) exactly once, in that command's no-store response; PostgreSQL stores only the proof's SHA256 digest and the current delivery channel, never the raw proof in invitation, audit, idempotency or delivery rows; reads and idempotent replays never return the proof again; the delivery channel is part of the command intent; a link resend rotates the digest so the previous proof cannot activate membership and fences any queued email generation; acceptance keeps the same native HUMAN session, expiry, revocation and zero-grant semantics as email; and the audit records that a shareable link was issued."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
 id = "INV-IDENTITY-TOPOLOGY-GATE-001"
 statement = "Every command that can alter identity bindings, control grants, staff memberships or the reachability they express acquires the transaction-scoped identity-topology advisory gate as its first statement, before any row lock; global disable or global authority modification takes it exclusively, ordinary reads and native login never acquire it, and any unclassified topology writer fails a deterministic inventory proof."
 severity = "critical"

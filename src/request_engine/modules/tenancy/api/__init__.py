@@ -83,6 +83,9 @@ from request_engine.modules.tenancy.adapters.db.staff_membership_commands import
 from request_engine.modules.tenancy.adapters.db.staff_membership_reader import (
     PostgresStaffMembershipReader,
 )
+from request_engine.modules.tenancy.adapters.db.staff_representations import (
+    PostgresStaffRepresentations,
+)
 from request_engine.modules.tenancy.api.agent_governance_errors import (
     add_agent_governance_error_handlers,
 )
@@ -146,6 +149,9 @@ from request_engine.modules.tenancy.api.staff_membership_errors import (
 )
 from request_engine.modules.tenancy.api.staff_membership_reads import add_staff_membership_reads
 from request_engine.modules.tenancy.api.staff_membership_routes import add_staff_membership_routes
+from request_engine.modules.tenancy.api.staff_representation_routes import (
+    add_staff_representation_routes,
+)
 from request_engine.modules.tenancy.application.commands.native_platform_provisioning import (
     NATIVE_INITIAL_CONTROLLER_POLICY as NATIVE_INITIAL_CONTROLLER_POLICY,
 )
@@ -226,6 +232,7 @@ def install_http(
     subject_resolver: HttpSubjectResolver | None = None,
     invitation_secret_delivery: RecoverySecretStaging | None = None,
     invitation_delivery_recorder: InvitationDeliveryIntent | None = None,
+    invitation_acceptance_url: str | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
     resource_authority_inspectors: Sequence[ResourceAuthorityInspector] = (),
@@ -282,6 +289,7 @@ def install_http(
         session_factory,
         secret_delivery=invitation_secret_delivery,
         delivery_recorder=invitation_delivery_recorder,
+        acceptance_url=invitation_acceptance_url,
     )
     app.include_router(
         create_staff_invitation_router(
@@ -321,6 +329,11 @@ def install_http(
     add_staff_membership_routes(
         staff_router,
         commands=PostgresStaffMembershipCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    add_staff_representation_routes(
+        staff_router,
+        commands=PostgresStaffRepresentations(session_factory),
         authenticated_actor=authenticated_actor,
     )
     app.include_router(staff_router)

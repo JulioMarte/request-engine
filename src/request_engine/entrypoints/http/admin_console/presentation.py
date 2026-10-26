@@ -325,8 +325,10 @@ for _destination, _reason, _ids in (
             "staff_list",
             "staff_manage_authority",
             "staff_manage_membership",
+            "staff_manage_representations",
             "staff_overview_get",
             "staff_profile_update",
+            "staff_representations_list",
         ),
     ),
     (

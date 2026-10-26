@@ -837,6 +837,21 @@ path = "tests/unit/test_staff_invitation_proposal_http.py"
 evidence = ["contract", "security"]
 
 [[proofs]]
+guarantee = "INV-STAFF-REPRESENTATION-001"
+path = "tests/db/test_staff_representation_delegation.py"
+evidence = ["invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-STAFF-REPRESENTATION-001"
+path = "tests/e2e/test_staff_representation_delegation_http.py"
+evidence = ["contract", "adversarial", "invariant"]
+
+[[proofs]]
+guarantee = "INV-STAFF-INVITATION-LINK-001"
+path = "tests/db/test_staff_invitation_links.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
 guarantee = "INV-APPOINTMENT-NOTES-001"
 path = "tests/e2e/test_appointment_notes.py"
 evidence = ["invariant", "adversarial", "contract"]

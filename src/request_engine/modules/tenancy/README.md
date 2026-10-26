@@ -106,6 +106,28 @@ the tenant's root operational authority through
 Representation administration) and exposes the owner-backed
 `has_active_organization_party` fact consumed by `GET /v1/onboarding/readiness`.
 
+## Staff Representation delegation
+
+Configuration owners require both the published capability (for example
+`catalog.manage`) and an exact active `operations.manage_*` Representation of the
+business Party. A current HUMAN `staff.manage_authority` manager delegates those
+scopes to another active HUMAN staff member through
+`PUT /v1/staff/members/{membership_id}/representations/{authority_party_id}`
+(`staff_manage_representations`; body `expected_authority_revision`,
+`desired_scopes`, `provenance_reference`; `Idempotency-Key`). It is a replace:
+omitted staff-delegated scopes are revoked, `[]` revokes all. The manager may only
+add scopes it holds through a delegable Representation (root provisioning or
+self-bootstrap); delegated rows are never delegable, root rows are never revoked
+and the actor cannot target itself. `GET /v1/staff/members/{membership_id}/representations`
+(`staff_representations_list`, `staff.read`) shows active rows with `delegable` and
+grantor. The PostgreSQL backstop is `request_engine.replace_staff_representations`
+(migration `0005_staff_representations`): identity-topology gate, tenant staff root,
+manager gate, target Principal FOR UPDATE (exact authority revision), Party FOR
+SHARE, actor ceiling FOR SHARE, then writes. Representation writes bump the target
+Principal's authority revision, so revocation denies the delegate's next
+configuration request (INV-STAFF-REPRESENTATION-001). Agents are excluded by the
+AUTHORITY_CHANGE ban and the HUMAN manager gate.
+
 ## Identity-aware onboarding facts (E2)
 
 Tenancy also publishes `contracts/onboarding_readiness.py`:
@@ -146,6 +168,16 @@ closed-purpose delivery intent through an injected typed outbound port in the
 same transaction. No patient Party/contact or second authentication path is
 created. See `docs/architecture/staff-email-invitations.md` for lifecycle,
 replay, delivery ambiguity, lock and deployment contracts.
+
+Create and resend accept `delivery: "email" | "link"` (default `email`). With
+`link` the inviter receives `acceptance_token` and `acceptance_url` (console
+`/staff-invitations/{id}/accept#token=...` when the deployment URL is configured)
+exactly once, in the command's no-store response, to share through any channel
+(for example WhatsApp). Only the SHA256 digest and `delivery_channel` are stored;
+reads and idempotent replays never return the proof again, so a lost link is
+re-issued with `:resend` (which invalidates the previous proof and fences any queued
+email). Link delivery needs neither the email secret store nor SMTP. The audit
+records `delivery_channel` and `shareable_link_issued` (INV-STAFF-INVITATION-LINK-001).
 
 `POST /v1/staff/invitations/{invitation_id}:preview` lets the authenticated native
 recipient review the organization display name and invitation expiry using the
