@@ -59,6 +59,10 @@ session + proof, zero grants) and recipient-bound replay are unchanged. The audi
 row records `delivery_channel` and `shareable_link_issued`, never the proof.
 Whoever holds the link can accept it with their own native account, exactly as
 with an emailed link; inviters should share it only with the intended person.
+Limitation: the private admin console's invitation form still redirects after
+create and does not render the one-time link, so it should keep the `email`
+default; link delivery is meant for API clients (the business app) that display
+the returned `acceptance_url` immediately.
 
 Transport hardening (2026-10-03): recipient preview and acceptance reject every
 query parameter in the shared native-subject dependency, before owner execution.

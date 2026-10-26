@@ -376,6 +376,8 @@ async def test_create_requires_csrf_before_any_owner_mutation() -> None:
         "email": "recipient@example.org",
         "provenance_reference": "test",
         "expires_in_hours": 72,
+        # The owner schema's explicit default channel; identical to the old behavior.
+        "delivery": "email",
     }
     assert calls[0][2]["extra_headers"]["idempotency-key"] == "create-once"
 
