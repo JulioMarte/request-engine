@@ -14,6 +14,9 @@ from request_engine.modules.queue.application.errors import (
     QueueInactive,
     QueueNotFound,
     ReservationAlreadyServed,
+    ServiceQueueHasActiveEntries,
+    ServiceQueueRevisionConflict,
+    ServiceQueueStateUnchanged,
     SubjectAuthorityRequired,
     TenantReferenceNotUsable,
 )
@@ -90,6 +93,9 @@ def _queue_error(exc: QueueError) -> tuple[int, ErrorBody]:
                 "current_revision": exc.actual,
             },
         )
+    mapped_configuration = _service_queue_configuration_error(exc)
+    if mapped_configuration is not None:
+        return mapped_configuration
     if isinstance(exc, QueueInactive):
         return status.HTTP_409_CONFLICT, ErrorBody(
             code="queue_inactive",
@@ -137,3 +143,38 @@ def _queue_error(exc: QueueError) -> tuple[int, ErrorBody]:
         message="the queue command failed",
         resolution=ErrorResolution.OPERATOR_INTERVENTION,
     )
+
+
+def _service_queue_configuration_error(exc: QueueError) -> tuple[int, ErrorBody] | None:
+    if isinstance(exc, ServiceQueueRevisionConflict):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="service_queue_revision_conflict",
+            message="the ServiceQueue changed since it was read",
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
+            details={
+                "queue_id": str(exc.queue_id),
+                "expected_revision": exc.expected,
+                "current_revision": exc.actual,
+            },
+        )
+    if isinstance(exc, ServiceQueueStateUnchanged):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="service_queue_state_unchanged",
+            message=str(exc),
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
+            details={"queue_id": str(exc.queue_id), "active": exc.active},
+        )
+    if isinstance(exc, ServiceQueueHasActiveEntries):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="service_queue_has_active_entries",
+            message="finish, mark no-show or cancel the waiting, called and serving "
+            "entries before closing the queue",
+            resolution=ErrorResolution.OPERATOR_INTERVENTION,
+            details={
+                "queue_id": str(exc.queue_id),
+                "waiting": exc.waiting,
+                "called": exc.called,
+                "serving": exc.serving,
+            },
+        )
+    return None

@@ -177,3 +177,49 @@ these children. Existing `catalog.read_configuration` plus exact Party profile
 authority, restricted application SELECT and tenant RLS remain unchanged.
 See `docs/architecture/administrative-configuration-readback.md` for the guided
 replacement and PostgreSQL proof contract.
+
+## Configuration edits after creation (2026-10-25)
+
+Guarantee `INV-CATALOG-CONFIG-EDITS-001`, migration `0004_configuration_edits`.
+All commands require `catalog.manage`, an `Idempotency-Key`, and exact Party
+authority checked inside the owner transaction before idempotency (profile scope
+for Locations, terms scope for Offerings). Each new command appends audit plus a PII-free
+outbox fact (ids/revisions/counts only). The change feed (ADR 0020) has no
+configuration topic, so these facts are not streamed; clients re-read owner
+reads after their own command response.
+
+- **Location rename**: `catalog_location_update` accepts optional `display_name`
+  (null keeps the current label). A label is not booking-material and does not
+  advance `operational_revision`; the existing command keeps its audit-only effect (no outbox fact).
+- **Offering rename**: `PATCH /v1/operations/offerings/{offering_id}`
+  (`catalog_offering_update`). Compare-and-set on the new `offerings.revision`
+  (exposed by `catalog_offering_configuration_list/read`); stale -> 409
+  `offering_revision_conflict`. No OfferingVersion is created; Reservations are
+  untouched.
+- **Duration / base price change**: `POST /v1/operations/offerings/{offering_id}/versions`
+  (`catalog_offering_version_supersede`). OfferingVersions and their base terms
+  stay immutable, so a change appends version N+1 under the Offering row lock
+  (the same root as base-terms insertion and contextual booking) only when
+  `expected_current_offering_version_id` is still the latest; otherwise 409
+  `offering_version_superseded`. Requirements, bookable/requestable flags,
+  delivery policy and the *effective* booking policy (latest ledger revision or
+  bootstrap) are copied; the base price is copied unless `booking_terms` is given.
+  A no-op change is 422. Existing Reservations, Holds, waitlist entries and slot
+  opportunities keep their exact old version. Known limits: Booking-owned
+  per-assignment `booking_context_terms` are bound to the exact version and are
+  not carried over (configure them for the new version); a superseded version is
+  still bookable by explicit id on staff paths (catalog search, admin reads and
+  discovery expose only the latest version, so clients must use
+  `latest_version.id`).
+- **Hours exceptions and holidays**: `GET /v1/catalog/locations/{location_id}/hours-exceptions`
+  (`catalog_location_hours_exception_list`, `catalog.read_configuration` +
+  exact profile authority, `include_inactive`, UUID keyset) returns ids and the
+  current `operational_revision`. Removal is soft:
+  `POST /v1/operations/locations/{location_id}/hours-exceptions/{exception_id}:deactivate`
+  (`catalog_location_hours_exception_deactivate`) under the Location lock and
+  `expected_operational_revision` CAS (the child trigger advances the revision);
+  already-inactive -> 409. `POST /v1/operations/organization/holidays:remove`
+  (`catalog_organization_holidays_remove`) locks every Location of the tenant in
+  id order and deactivates only active `unavailable` exceptions that exactly
+  cover each given local day; unmatched dates are reported in `dates_not_found`.
+  Rows are never deleted.

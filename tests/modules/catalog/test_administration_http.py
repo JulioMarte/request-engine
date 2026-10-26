@@ -78,7 +78,7 @@ async def test_administrative_inventory_admits_only_trusted_actor_and_bounded_fi
                 return ()
             return (
                 AdministrativeOffering(
-                    offering_id, "exam", "Exam", None, False, version_id, 2, 30, True, True, 4
+                    offering_id, "exam", "Exam", None, False, version_id, 2, 30, True, True, 4, 3
                 ),
             )
 

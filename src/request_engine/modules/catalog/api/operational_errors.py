@@ -6,6 +6,8 @@ from request_engine.modules.catalog.application.errors import (
     CatalogInvalidInput,
     LocationOperationalRevisionConflict,
     OfferingBookingPolicyRevisionConflict,
+    OfferingRevisionConflict,
+    OfferingVersionSuperseded,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 
@@ -64,6 +66,32 @@ async def catalog_operational_error_handler(
                     "offering_version_id": str(exc.offering_version_id),
                     "expected_revision": exc.expected,
                     "current_revision": exc.actual,
+                },
+            )
+        )
+    if isinstance(exc, OfferingRevisionConflict):
+        return _response(
+            ErrorBody(
+                code="offering_revision_conflict",
+                message="the Offering changed",
+                resolution=ErrorResolution.REFRESH_AND_RETRY,
+                details={
+                    "offering_id": str(exc.offering_id),
+                    "expected_revision": exc.expected,
+                    "current_revision": exc.actual,
+                },
+            )
+        )
+    if isinstance(exc, OfferingVersionSuperseded):
+        return _response(
+            ErrorBody(
+                code="offering_version_superseded",
+                message="the Offering already has a newer OfferingVersion",
+                resolution=ErrorResolution.REFRESH_AND_RETRY,
+                details={
+                    "offering_id": str(exc.offering_id),
+                    "expected_offering_version_id": str(exc.expected),
+                    "current_offering_version_id": str(exc.actual),
                 },
             )
         )

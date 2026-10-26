@@ -27,6 +27,9 @@ _LABELS = {
     "catalog_location_hours_replace": "Cambiar el horario",
     "catalog_location_hours_exception_upsert": "Poner un horario especial para una fecha",
     "catalog_organization_holidays_replace": "Definir días feriados",
+    "catalog_location_hours_exception_list": "Ver horarios especiales y feriados de una sede",
+    "catalog_location_hours_exception_deactivate": "Quitar un horario especial de una sede",
+    "catalog_organization_holidays_remove": "Quitar días feriados",
     # Services and booking policies
     "catalog_offering_configuration_list": "Ver todos los servicios",
     "catalog_offering_configuration_read": "Ver un servicio",
@@ -38,9 +41,13 @@ _LABELS = {
         "Cambiar las reglas de reserva de un servicio"
     ),
     "catalog_offering_booking_terms_configure": "Poner el precio de un servicio",
+    "catalog_offering_update": "Cambiar el nombre de un servicio",
+    "catalog_offering_version_supersede": "Cambiar la duración o el precio de un servicio",
     # Resources and supply
     "booking_resource_list": "Ver médicos, consultorios y equipos",
     "booking_resource_create": "Agregar un médico, consultorio o equipo",
+    "booking_resource_update": "Cambiar el nombre de un médico, consultorio o equipo",
+    "booking_resource_capabilities_replace": "Cambiar los servicios que ofrece un médico o equipo",
     "booking_resource_assignment_list": "Ver quién trabaja en cada sede",
     "booking_resource_assignment_create": "Asignar a una sede",
     "booking_resource_assignment_retire": "Terminar una asignación",
@@ -57,6 +64,7 @@ _LABELS = {
     "queue_service_queue_configuration_list": "Ver todas las filas de espera",
     "queue_service_queue_configuration_read": "Ver una fila de espera",
     "queue_service_queue_create": "Agregar una fila de espera",
+    "queue_service_queue_set_active": "Cerrar o reabrir una fila de espera",
     # Requests and definitions
     "request_definitions_list": "Ver tipos de solicitud",
     "request_definition_read": "Ver un tipo de solicitud",

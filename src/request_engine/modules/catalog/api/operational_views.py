@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LocationOperationalInfoView(BaseModel):
@@ -22,6 +22,13 @@ class LocationOperationalInfoView(BaseModel):
     geocoding_source: str | None
     geocoded_at: datetime | None
     operational_revision: int
+
+
+class UpdatedLocationView(LocationOperationalInfoView):
+    display_name: str | None = Field(
+        description="Current Location label; null only in receipts recorded before rename "
+        "support existed"
+    )
 
 
 class CreatedLocationView(LocationOperationalInfoView):

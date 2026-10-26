@@ -75,6 +75,9 @@ class OfferingAdministrationView(BaseModel):
     bookable: bool
     requestable: bool
     booking_policy_revision: int
+    revision: int = Field(
+        description="Offering revision; expected_revision for catalog_offering_update"
+    )
 
 
 class LocationAdministrationPageView(BaseModel):

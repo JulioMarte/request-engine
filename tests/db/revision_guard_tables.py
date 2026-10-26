@@ -15,6 +15,8 @@ REVISION_GUARD_TABLES = {
     "resource_public_profiles",
     "resource_location_assignments",
     "service_queues",
+    # 0004: Offering label compare-and-set (catalog_offering_update).
+    "offerings",
     "queue_entries",
     "waitlist_entries",
     "slot_opportunities",

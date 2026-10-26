@@ -143,6 +143,9 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "catalog_location_hours_replace",
             "catalog_location_hours_exception_upsert",
             "catalog_organization_holidays_replace",
+            "catalog_location_hours_exception_list",
+            "catalog_location_hours_exception_deactivate",
+            "catalog_organization_holidays_remove",
         ),
     ),
     (
@@ -156,6 +159,8 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "catalog_offering_version_configuration_read",
             "catalog_manage_offering_version_booking_policy",
             "catalog_offering_booking_terms_configure",
+            "catalog_offering_update",
+            "catalog_offering_version_supersede",
         ),
     ),
     (
@@ -163,6 +168,8 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "booking_resource_list",
             "booking_resource_create",
+            "booking_resource_update",
+            "booking_resource_capabilities_replace",
             "booking_resource_assignment_list",
             "booking_resource_assignment_create",
             "booking_resource_assignment_retire",
@@ -183,6 +190,7 @@ TENANT_CONFIGURATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "queue_service_queue_configuration_list",
             "queue_service_queue_configuration_read",
             "queue_service_queue_create",
+            "queue_service_queue_set_active",
         ),
     ),
     (

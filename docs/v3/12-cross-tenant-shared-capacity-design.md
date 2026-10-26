@@ -278,3 +278,12 @@ Historical V3 release matrices may remain as provenance, but their matrix status
 - Request-context GUCs recorded on authority events supplement database session provenance; they are not independently trusted against arbitrary SQL under a compromised session.
 - Global/shared identity retirement and merge/split are intentionally unsupported workflows in this capability.
 - There is no arbitrary maximum Resource count in `lock_shared_capacity_roots()` because the current product contract permits `0..N` resource requirements. A future cardinality limit must be introduced normatively.
+
+## Owner configuration edits (2026-10-25)
+
+`booking/api/__init__.py` also mounts the Resource configuration edits
+(`booking_resource_update`, `booking_resource_capabilities_replace`). They do not
+change shared-capacity semantics: capability replacement locks only the
+tenant-local Resource `FOR UPDATE` (the same first lock `guard_capacity_claim`
+takes), never touches CapacityClaims or `shared_capacity_claim_links`, and never
+locks a `SharedCapacityIdentity` root. Rename is a label precondition only.

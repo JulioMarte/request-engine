@@ -847,6 +847,26 @@ path = "tests/modules/booking/test_appointment_notes_domain.py"
 evidence = ["invariant"]
 
 [[proofs]]
+guarantee = "INV-CATALOG-CONFIG-EDITS-001"
+path = "tests/e2e/test_configuration_edits_catalog.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
+guarantee = "INV-RESOURCE-CONFIG-EDITS-001"
+path = "tests/e2e/test_configuration_edits_booking.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
+guarantee = "INV-SERVICE-QUEUE-CLOSE-001"
+path = "tests/e2e/test_configuration_edits_queue.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
+guarantee = "INV-SERVICE-QUEUE-CLOSE-001"
+path = "tests/modules/queue/test_service_queue_set_active.py"
+evidence = ["contract"]
+
+[[proofs]]
 guarantee = "INV-SERVED-VISIT-001"
 path = "tests/e2e/test_served_visit_guards.py"
 evidence = ["invariant", "adversarial", "concurrency"]

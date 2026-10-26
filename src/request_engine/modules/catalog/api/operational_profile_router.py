@@ -10,8 +10,8 @@ from request_engine.modules.catalog.api.operational_profile_models import (
 )
 from request_engine.modules.catalog.api.operational_views import (
     CreatedLocationView,
-    LocationOperationalInfoView,
     LocationPublicContactsView,
+    UpdatedLocationView,
 )
 from request_engine.modules.catalog.application.commands.create_location import (
     CreateLocationCommand,
@@ -73,7 +73,7 @@ def create_operational_profile_router(
         body: LocationUpdateBody,
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> LocationOperationalInfoView:
+    ) -> UpdatedLocationView:
         require_capability(current, "catalog.manage")
         result = await update_location_operational_info(
             update_handler,
@@ -85,7 +85,7 @@ def create_operational_profile_router(
                 **body.model_dump(),
             ),
         )
-        return LocationOperationalInfoView.model_validate(result)
+        return UpdatedLocationView.model_validate(result)
 
     async def contacts(
         location_id: UUID,
@@ -127,7 +127,7 @@ def create_operational_profile_router(
         capability="catalog.manage",
         methods=["PATCH"],
         operation_id="catalog_location_update",
-        response_model=LocationOperationalInfoView,
+        response_model=UpdatedLocationView,
     )
     add_capability_route(
         router,

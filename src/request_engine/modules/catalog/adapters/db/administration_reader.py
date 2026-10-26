@@ -150,7 +150,8 @@ class PostgresCatalogAdministrationReader:
                             SELECT o.id AS offering_id, o.offering_key, o.display_name,
                                    o.description, o.active, v.id AS offering_version_id,
                                    v.version, v.duration_minutes, v.bookable, v.requestable,
-                                   COALESCE(p.revision,0) AS booking_policy_revision
+                                   COALESCE(p.revision,0) AS booking_policy_revision,
+                                   o.revision
                             FROM request_engine.offerings o
                             JOIN LATERAL (
                                 SELECT id,version,duration_minutes,bookable,requestable

@@ -61,6 +61,9 @@ from request_engine.modules.booking.api.operational_terms_router import (
 from request_engine.modules.booking.api.resource_bootstrap_router import (
     create_resource_bootstrap_router,
 )
+from request_engine.modules.booking.api.resource_configuration_install import (
+    install_resource_configuration_http,
+)
 from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.api.supply_configuration_router import (
     create_supply_configuration_router,
@@ -158,6 +161,9 @@ def install_operational_http(
             resource_handler=PostgresResourceScheduleExceptionCommands(session_factory),
             actor_resolver=actor_resolver,
         )
+    )
+    install_resource_configuration_http(
+        app, session_factory=session_factory, actor_resolver=actor_resolver
     )
     app.include_router(
         create_operational_terms_router(

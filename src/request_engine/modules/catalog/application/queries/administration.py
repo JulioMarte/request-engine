@@ -72,6 +72,7 @@ class AdministrativeOffering:
     bookable: bool
     requestable: bool
     booking_policy_revision: int
+    revision: int
 
 
 class CatalogAdministrationReader(Protocol):

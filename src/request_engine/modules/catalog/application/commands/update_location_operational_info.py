@@ -23,6 +23,7 @@ class LocationOperationalInfoState:
     geocoding_source: str | None
     geocoded_at: datetime | None
     operational_revision: int
+    display_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +46,7 @@ class UpdateLocationOperationalInfoCommand:
     longitude: Decimal | None = None
     geocoding_source: str | None = None
     geocoded_at: datetime | None = None
+    display_name: str | None = None
 
 
 class UpdateLocationOperationalInfoHandler(Protocol):
@@ -63,6 +65,8 @@ async def update_location_operational_info(
         raise CatalogInvalidInput("expected_operational_revision must be positive")
     if not command.timezone.strip():
         raise CatalogInvalidInput("timezone is required")
+    if command.display_name is not None:
+        validate_display_name(command.display_name)
     if (command.latitude is None) != (command.longitude is None):
         raise CatalogInvalidInput("latitude and longitude must be present together")
     if command.latitude is not None and not Decimal("-90") <= command.latitude <= Decimal("90"):
@@ -74,3 +78,16 @@ async def update_location_operational_info(
     ):
         raise CatalogInvalidInput("country_code must be a two-letter uppercase code")
     return await handler.update_location_operational_info(command)
+
+
+def validate_display_name(value: str) -> str:
+    """Admit an owner-facing label: trimmed, 1..200 characters, no control characters."""
+
+    cleaned = value.strip()
+    if not cleaned:
+        raise CatalogInvalidInput("display_name cannot be blank")
+    if len(cleaned) > 200:
+        raise CatalogInvalidInput("display_name cannot exceed 200 characters")
+    if any(ord(character) < 32 or ord(character) == 127 for character in cleaned):
+        raise CatalogInvalidInput("display_name cannot contain control characters")
+    return cleaned

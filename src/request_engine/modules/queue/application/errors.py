@@ -171,3 +171,35 @@ class SlotOfferExpired(QueueError):
     def __init__(self, slot_offer_id: UUID) -> None:
         super().__init__(f"SlotOffer {slot_offer_id} has expired")
         self.slot_offer_id = slot_offer_id
+
+
+class ServiceQueueRevisionConflict(QueueError):
+    def __init__(self, queue_id: UUID, expected: int, actual: int) -> None:
+        super().__init__(
+            f"ServiceQueue {queue_id} revision conflict: expected {expected}, current {actual}"
+        )
+        self.queue_id = queue_id
+        self.expected = expected
+        self.actual = actual
+
+
+class ServiceQueueStateUnchanged(QueueError):
+    def __init__(self, queue_id: UUID, active: bool) -> None:
+        state = "active" if active else "inactive"
+        super().__init__(f"ServiceQueue {queue_id} is already {state}")
+        self.queue_id = queue_id
+        self.active = active
+
+
+class ServiceQueueHasActiveEntries(QueueError):
+    """Closing is refused while subjects are still waiting, called or being served."""
+
+    def __init__(self, queue_id: UUID, waiting: int, called: int, serving: int) -> None:
+        super().__init__(
+            f"ServiceQueue {queue_id} still has active entries "
+            f"(waiting={waiting}, called={called}, serving={serving})"
+        )
+        self.queue_id = queue_id
+        self.waiting = waiting
+        self.called = called
+        self.serving = serving
