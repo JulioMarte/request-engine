@@ -59,7 +59,7 @@ Schema-change checklist (migrations/AGENTS.md):
 from alembic import op
 
 revision: str = "0005_staff_representations"
-down_revision: str | None = "0003_tenant_controller_v10"
+down_revision: str | None = "0004_configuration_edits"
 branch_labels: str | None = None
 depends_on: str | None = None
 
