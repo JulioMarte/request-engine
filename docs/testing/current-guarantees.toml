@@ -112,6 +112,13 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["availability", "provenance"]
 
 [[guarantees]]
+id = "INV-SELF-SERVICE-ACCOUNT-001"
+statement = "Business owner self-service (ADR 0021): only a current HUMAN platform Principal holding organization.provision issues an account invitation (revisioned, idempotent, append-only audited, revocable while pending); PostgreSQL stores only a SHA-256 digest of the 256-bit code, which is returned once for shared_code delivery and never for email delivery. Public enrollment with the code is rate-limited as an authentication attempt, single-use, rejects expired, revoked and used codes and codes whose issuer no longer holds organization.provision indistinguishably, lets the invitee choose their own login and password under the native policy and atomically creates exactly one account.organization.create entitlement for that native identity. The entitlement is neither tenant nor platform authority and never appears in ActorContext. POST /v1/me/organizations requires a normal native session revalidated in PostgreSQL and an active entitlement, locks the entitlement row as the serialization root so concurrent creations never exceed max_organizations (CHECK and UNIQUE(entitlement, sequence) backstops), is idempotent per (entitlement, Idempotency-Key) with 409 on changed intent, and atomically creates the organization (default timezone, locale and currency), its Party and the creating human as root controller with the newest initial controller policy; the root fact keeps the issuing platform Principal as provenance, which gains no tenant grant or membership. The four account tables have FORCE RLS without policies and no runtime table privileges; the runtime role executes exactly the three reviewed request_auth functions."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
 id = "INV-PRIVILEGE-001"
 statement = "Runtime database roles and security-definer surfaces retain least privilege, tenant isolation and explicit callable/write authority."
 severity = "critical"

@@ -321,9 +321,9 @@ async def test_concurrent_creations_never_exceed_the_entitlement_limit(
     winners = [o for o in outcomes if isinstance(o, SelfServiceOrganizationCreated)]
     losers = [o for o in outcomes if isinstance(o, SelfServiceOrganizationLimitReached)]
     assert (len(winners), len(losers)) == (2, 1), outcomes
-    assert admin_conn.execute(
-        "SELECT count(*) FROM request_engine.organizations"
-    ).fetchone() == (2,)
+    assert admin_conn.execute("SELECT count(*) FROM request_engine.organizations").fetchone() == (
+        2,
+    )
     assert admin_conn.execute(
         "SELECT organizations_created, revision FROM request_engine.account_entitlements"
     ).fetchone() == (2, 3)
@@ -523,8 +523,7 @@ def test_private_account_tables_and_functions_keep_least_privilege(
     )
     for table in tables:
         assert admin_conn.execute(
-            "SELECT relrowsecurity, relforcerowsecurity FROM pg_class "
-            "WHERE oid = %s::regclass",
+            "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = %s::regclass",
             (f"request_engine.{table}",),
         ).fetchone() == (True, True)
         for role in ("request_engine_app", "request_platform_control", "request_engine_worker"):

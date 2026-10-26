@@ -178,17 +178,10 @@ class SmtpRecoveryDeliveryChannel:
             assert self._reset_url is not None
             link = f"{self._reset_url.rstrip('/')}#token={quote(secret, safe='')}"
             body = (
-                "Te invitaron a crear y administrar tu negocio en Request Engine.
-"
-                "You are invited to create and administer your business.
-
-"
-                f"Crea tu usuario y contraseña aquí / Create your login here:
-{link}
-
-"
-                "Nadie más elige tu contraseña. If you did not expect this, ignore it.
-"
+                "Te invitaron a crear y administrar tu negocio en Request Engine.\n"
+                "You are invited to create and administer your business.\n\n"
+                f"Crea tu usuario y contraseña aquí / Create your login here:\n{link}\n\n"
+                "Nadie más elige tu contraseña. If you did not expect this, ignore it.\n"
             )
         elif self._reset_url is not None:
             link = f"{self._reset_url}#token={quote(secret, safe='')}"

@@ -211,6 +211,27 @@ Current initial controller policy `tenant-controller-v10` (migration
 `appointments.annotate` (Booking appointment notes); new organizations select it and
 existing v1-v9 roots reach it only through the same platform-approved adoption.
 
+## Self-service business owner accounts (ADR 0021)
+
+A HUMAN platform Principal holding `organization.provision` invites a future
+business owner through the private control plane
+(`platform_account_invitation_create|list|get|revoke` under
+`/v1/platform/account-invitations`; reads use `platform.organization.read`). The
+code is shown once (`delivery=shared_code`, for WhatsApp) or emailed after commit
+(`delivery=email`, typed 503 when no mailer is composed); PostgreSQL keeps only its
+digest. The invitee calls the public, rate-limited `account_invitation_enroll`
+(`POST /v1/account-invitations:enroll`) with the code and the login and password
+they choose, which creates their native identity and one
+`account.organization.create` entitlement (default limit 1, at most 10). That
+entitlement is not tenant or platform authority and is never part of
+`ActorContext`. With a native session the owner reads it through
+`self_account_get` (`GET /v1/me/account`) and creates organizations they control
+through `self_organization_create` (`POST /v1/me/organizations`, Idempotency-Key,
+entitlement row lock, current initial controller policy, defaults
+`America/Santo_Domingo` / `es-DO` / `DOP`). The issuing platform Principal stays
+root provenance only. Schema: migration `0006_self_service_accounts`; guarantee
+`INV-SELF-SERVICE-ACCOUNT-001`.
+
 ## Staff administration reads
 
 `GET /v1/staff/members/{membership_id}/history` (`staff_history_list`) exposes

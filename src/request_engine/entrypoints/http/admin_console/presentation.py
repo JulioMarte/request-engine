@@ -61,7 +61,17 @@ _OVERVIEW_OPERATIONS = frozenset({"platform_readiness_get", "platform_observabil
 # Deliberate exceptions live here. The generic renderer still provides a safe
 # runtime fallback, but CI requires a conscious decision before a new operator
 # operation may remain Advanced-only.
-ADVANCED_ONLY_OPERATION_IDS: frozenset[str] = frozenset()
+ADVANCED_ONLY_OPERATION_IDS: frozenset[str] = frozenset(
+    {
+        # ADR 0021 owner account invitations: the external request-engine-app
+        # (ADR 0020) owns this UX; the retiring Jinja console keeps only the generic
+        # Advanced renderer, which never displays a stored code (none is stored).
+        "platform_account_invitation_create",
+        "platform_account_invitation_list",
+        "platform_account_invitation_get",
+        "platform_account_invitation_revoke",
+    }
+)
 
 
 def classify_operation(operation: AdminOperation) -> SurfaceCoverage:
