@@ -5,6 +5,25 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0006 (ADR 0021): single-use invitation-code enrollment, own-entitlement read and
+    # session-revalidated self-service organization creation under the entitlement lock.
+    (
+        "request_auth.enroll_account_invitation(p_identity_authority_id uuid, "
+        "p_token_digest bytea, p_native_identity_id uuid, p_credential_id uuid, "
+        "p_entitlement_id uuid, p_login_handle text, p_password_verifier text)"
+    ),
+    (
+        "request_auth.read_account_entitlement(p_identity_authority_id uuid, "
+        "p_native_identity_id uuid)"
+    ),
+    (
+        "request_auth.create_self_service_organization(p_identity_authority_id uuid, "
+        "p_native_identity_id uuid, p_session_id uuid, p_idempotency_key_digest text, "
+        "p_intent_digest text, p_organization_id uuid, p_organization_party_id uuid, "
+        "p_controller_principal_id uuid, p_organization_key text, p_display_name text, "
+        "p_timezone text, p_locale text, p_currency text, p_policy_key text, "
+        "p_correlation_id uuid)"
+    ),
     # 0043: trusted-context proposer gate (active HUMAN staff or active AGENT holding
     # staff.propose_invitation); returns the actor id, performs no business write.
     "request_cmd.assert_staff_invitation_proposer()",

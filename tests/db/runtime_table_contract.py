@@ -48,6 +48,11 @@ PRIVATE_GLOBAL_TABLES = {
     "shared_capacity_bindings",
     "shared_capacity_claim_links",
     "shared_capacity_identities",
+    # 0006 (ADR 0021): platform/account-plane facts, control-definer functions only.
+    "account_invitations",
+    "account_invitation_facts",
+    "account_entitlements",
+    "account_organization_creations",
 }
 
 # F2 taxonomy/discovery tables follow reviewed narrower shapes: taxonomy is

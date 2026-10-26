@@ -56,6 +56,31 @@ _EXACT_DEFINER_OWNERS = {
         "read_platform_organizations",
         "p_organization_id uuid, p_after uuid, p_limit integer",
     ): "request_platform_definer",
+    # 0006 (ADR 0021) account invitations: exact control-definer signatures only.
+    (
+        "request_platform",
+        "create_account_invitation",
+        "p_invitation_id uuid, p_token_digest bytea, p_token_fingerprint text, "
+        "p_delivery_channel text, p_destination_email text, p_max_organizations integer, "
+        "p_expires_at timestamp with time zone, p_provenance_reference text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "record_account_invitation_delivery",
+        "p_invitation_id uuid, p_delivery_status text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "revoke_account_invitation",
+        "p_invitation_id uuid, p_expected_revision bigint, p_reason_code text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_account_invitations",
+        "p_invitation_id uuid, p_after uuid, p_limit integer",
+    ): "request_platform_control_definer",
     # 0027 dual-consent adoption uses only these exact reviewed definer owners.
     (
         "request_platform",
