@@ -810,6 +810,7 @@ CREATE FUNCTION request_auth.create_self_service_organization(
             v_provenance text;
             v_current_policy text;
         BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
             IF p_idempotency_key_digest IS NULL
                OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
                OR p_intent_digest IS NULL OR p_intent_digest !~ '^[0-9a-f]{64}$'
@@ -830,7 +831,6 @@ CREATE FUNCTION request_auth.create_self_service_organization(
                 RAISE EXCEPTION 'Self-service organization input is invalid'
                     USING ERRCODE = '22023';
             END IF;
-            PERFORM request_engine.acquire_identity_topology_share();
             IF NOT request_auth.lock_active_native_session(
                 p_identity_authority_id, p_native_identity_id, p_session_id
             ) THEN
