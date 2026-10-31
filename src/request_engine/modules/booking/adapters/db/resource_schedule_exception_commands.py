@@ -83,6 +83,7 @@ class PostgresResourceScheduleExceptionCommands:
                     end_at=end_at,
                     exception_kind=command.exception_kind,
                     reason=command.reason,
+                    active=command.active,
                 )
                 final_revision = await store.availability_revision(
                     session,
@@ -103,6 +104,7 @@ class PostgresResourceScheduleExceptionCommands:
                     exception_id=exception_id,
                     resource_id=command.resource_id,
                     exception_kind=command.exception_kind,
+                    active=command.active,
                     idempotency_id=idempotency_id,
                     authority=authority,
                     previous_revision=current_revision,

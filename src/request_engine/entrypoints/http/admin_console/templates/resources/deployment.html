@@ -1,26 +1,29 @@
 {% extends "base.html" %}
 {% import "partials/action_form.html" as action_form %}
-{% block title %}Deployment recovery &middot; Request Engine admin{% endblock %}
+{% block title %}Recuperación del despliegue &middot; Administración de Request Engine{% endblock %}
 {% block content %}
-<header class="page-heading"><div><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/resources">Workspaces</a><span aria-hidden="true">/</span><span aria-current="page">Deployment recovery</span></nav><h1>Deployment recovery</h1><p>Inspect and reconcile the active Coolify deployment binding.</p></div></header>
+<header class="page-heading"><div><nav class="breadcrumb" aria-label="Ruta de navegación"><a href="/resources">Espacios de trabajo</a><span aria-hidden="true">/</span><span aria-current="page">Recuperación del despliegue</span></nav><h1>Recuperación del despliegue</h1><p>Inspeccione y concilie el vínculo de despliegue activo en Coolify.</p></div></header>
 <section class="health-banner {% if item.state != 'in_sync' %}attention{% endif %}">
   <span class="health-icon" aria-hidden="true">{% if item.state == 'in_sync' %}✓{% else %}!{% endif %}</span>
-  <div><h2>{% if item.state == 'in_sync' %}Deployment binding is in sync{% else %}Deployment binding needs review{% endif %}</h2><p>Reported state: {{ item.state | default('unavailable') | replace('_', ' ') }}.</p></div>
+  <div><h2>{% if item.state == 'in_sync' %}El vínculo de despliegue está sincronizado{% else %}El vínculo de despliegue requiere revisión{% endif %}</h2><p>Estado reportado: {{ item.state | default('no disponible') | replace('_', ' ') }}.</p></div>
 </section>
 <section class="card">
   {% if item_error %}<div class="alert error">{{ item_error }}</div>{% endif %}
-  {% if item.binding %}<h2>Active binding</h2><dl class="detail">{% for key, value in item.binding.items() %}<dt>{{ key | replace('_', ' ') | title }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
-  <h2>Plan and reconcile</h2>
+  {% if item.binding %}<h2>Vínculo activo</h2><dl class="detail">{% for key, value in item.binding.items() %}<dt>{{ key | replace('_', ' ') | title }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
+  {% if can_act %}<h2>Planificar y conciliar</h2>
   <ol class="task-steps">
-    <li class="done"><span>1</span><div><strong>Review binding</strong><small>Inspect the current recovery target and identifiers.</small></div></li>
-    <li class="{% if item.state == 'in_sync' %}done{% else %}current{% endif %}"><span>2</span><div><strong>Compare with provider</strong><small>{% if item.changes %}{{ item.changes | length }} change(s) reported.{% else %}No changes reported.{% endif %}</small></div></li>
-    <li class="{% if item.state == 'in_sync' %}done{% endif %}"><span>3</span><div><strong>Reconcile</strong><small>{% if item.state == 'in_sync' %}No reconciliation is required.{% else %}Apply the reviewed recovery plan.{% endif %}</small></div></li>
+    <li class="done"><span>1</span><div><strong>Revisar el vínculo</strong><small>Inspeccione el destino de recuperación y los identificadores actuales.</small></div></li>
+    <li class="{% if item.state == 'in_sync' %}done{% else %}current{% endif %}"><span>2</span><div><strong>Comparar con el proveedor</strong><small>{% if item.changes %}{{ item.changes | length }} cambio(s) reportado(s).{% else %}No se reportaron cambios.{% endif %}</small></div></li>
+    <li class="{% if item.state == 'in_sync' %}done{% endif %}"><span>3</span><div><strong>Conciliar</strong><small>{% if item.state == 'in_sync' %}No hace falta conciliar.{% else %}Aplique el plan de recuperación revisado.{% endif %}</small></div></li>
   </ol>
-  {% if item.changes %}<div class="change-list"><strong>Proposed changes</strong><ul>{% for change in item.changes %}<li>{{ change }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if item.changes %}<div class="change-list"><strong>Cambios propuestos</strong><ul>{% for change in item.changes %}<li>{{ change }}</li>{% endfor %}</ul></div>{% endif %}
+  {% else %}<p>No hay una comparación válida con el proveedor. Vuelva a cargar el plan de recuperación antes de conciliar.</p>
+  {% if initial_setup_available %}<a class="button primary" href="/resources/deployment-recovery/new">Configurar un vínculo inicial</a>{% endif %}
+  {% endif %}
 </section>
 {% if can_act %}<section class="card">
   <div id="result"></div>
-  {% if item.state != 'in_sync' %}<h2>Apply reviewed plan</h2>{{ action_form.render(reconcile) }}{% endif %}
-  <details class="action-disclosure"><summary>Change binding configuration</summary>{{ action_form.render(configure) }}</details>
-</section>{% elif item_error %}<section class="card error-state"><h2>Actions unavailable</h2><p>Reload the recovery plan before changing or reconciling the binding.</p><a class="button secondary" href="/resources/deployment-recovery">Try again</a></section>{% endif %}
+  {% if item.state != 'in_sync' %}<h2>Aplicar el plan revisado</h2>{{ action_form.render(reconcile) }}{% endif %}
+  <details class="action-disclosure"><summary>Cambiar la configuración del vínculo</summary>{{ action_form.render(configure) }}</details>
+</section>{% elif item_error %}<section class="card error-state"><h2>Acciones no disponibles</h2><p>Vuelva a cargar el plan de recuperación antes de cambiar o conciliar el vínculo.</p><a class="button secondary" href="/resources/deployment-recovery">Intentar de nuevo</a></section>{% endif %}
 {% endblock %}

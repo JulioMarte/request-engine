@@ -10,6 +10,7 @@ form. Execution is delegated to the shared ``execution.execute_operation`` path.
 from __future__ import annotations
 
 from asyncio import gather
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -22,13 +23,59 @@ from request_engine.entrypoints.http.admin_console.execution import (
     local_error,
 )
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs, summarize_payload
-from request_engine.entrypoints.http.admin_console.json_types import as_mapping
+from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.resources import RESOURCE_SPECS, WORKSPACE_SPECS
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
 
 _FORM_ID = "operation-form"
 
 _GOOD_STATES = frozenset({"active", "available", "configured", "healthy", "ok", "ready"})
+_READINESS_CHECKS = (
+    ("secret_store", "Almacén de secretos", "/resources/secrets", {"configured"}),
+    (
+        "recovery_delivery_source",
+        "Entrega de recuperación",
+        "/resources/configurations",
+        {"managed", "bootstrap"},
+    ),
+    (
+        "backup_evidence",
+        "Evidencia de respaldo",
+        "/resources/deployment-recovery",
+        {"verified"},
+    ),
+    (
+        "restore_drill",
+        "Prueba de restauración",
+        "/resources/deployment-recovery",
+        {"verified"},
+    ),
+    ("clone_fence", "Aislamiento de copias", "/resources/deployment-recovery", {"fenced"}),
+)
+# Presentation-only Spanish labels for reported states; unknown states are shown raw.
+_STATE_LABELS = {
+    "active": "Activo",
+    "available": "Disponible",
+    "configured": "Configurado",
+    "healthy": "En buen estado",
+    "ok": "Bien",
+    "ready": "Listo",
+    "in_sync": "Sincronizado",
+    "degraded": "Degradado",
+    "unhealthy": "Con problemas",
+    "not_ready": "No listo",
+}
+
+
+def _valid_alerts(payload: dict[str, Any]) -> bool:
+    alerts = payload.get("alerts")
+    return isinstance(alerts, list) and all(
+        isinstance(alert, dict)
+        and isinstance(as_mapping(alert).get("code"), str)
+        and isinstance(as_mapping(alert).get("metric"), str)
+        for alert in as_list(alerts)
+    )
 
 
 def _probe_view(
@@ -47,24 +94,24 @@ def _probe_view(
         else healthy_override
     )
     if status == 0:
-        label = "Unavailable"
+        label = "No disponible"
     elif not 200 <= status < 300:
         label = f"HTTP {status}"
     elif state:
-        label = state.replace("_", " ").title()
+        label = _STATE_LABELS.get(state, state.replace("_", " "))
     else:
-        label = "Available"
+        label = "Disponible" if healthy else "Incompleto"
     return {
         "title": title,
         "label": label,
         "tone": "ok" if healthy else ("neutral" if 200 <= status < 300 else "warn"),
         "detail": error
         or (
-            "Responding normally"
+            "Responde con normalidad"
             if healthy
-            else "Data available"
+            else "Datos disponibles"
             if status == 200
-            else "Review current state"
+            else "Revise el estado actual"
         ),
         "href": href,
     }
@@ -83,12 +130,12 @@ def _attention_items(
 ) -> list[dict[str, str]]:
     items: list[dict[str, str]] = []
     dependencies = (
-        (readiness_status, readiness_error, "Platform readiness", "/diagnostics"),
-        (observability_status, observability_error, "Operational telemetry", "/diagnostics"),
+        (readiness_status, readiness_error, "Preparación de la plataforma", "/diagnostics"),
+        (observability_status, observability_error, "Telemetría operativa", "/diagnostics"),
         (
             deployment_status,
             deployment_error,
-            "Deployment recovery",
+            "Recuperación del despliegue",
             "/resources/deployment-recovery",
         ),
     )
@@ -97,54 +144,49 @@ def _attention_items(
             items.append(
                 {
                     "title": title,
-                    "detail": error or f"The control plane returned HTTP {status}.",
+                    "detail": error or f"El plano de control respondió HTTP {status}.",
                     "href": href,
-                    "action": "Review",
+                    "action": "Revisar",
                 }
             )
-    for alert in observability.get("alerts", []):
+    for alert in as_list(observability.get("alerts")) if _valid_alerts(observability) else []:
         alert_body = as_mapping(alert)
-        code = str(alert_body.get("code") or "Operational alert")
-        metric = str(alert_body.get("metric") or "A monitored threshold was crossed")
+        code = str(alert_body.get("code") or "Alerta operativa")
+        metric = str(alert_body.get("metric") or "Se superó un límite vigilado")
         items.append(
             {
-                "title": code.replace("_", " ").title(),
+                "title": code.replace("_", " "),
                 "detail": metric.replace("_", " "),
                 "href": "/diagnostics",
-                "action": "Inspect diagnostics",
+                "action": "Revisar diagnóstico",
             }
         )
-    readiness_checks = (
-        ("secret_store", "Secret store", "/resources/secrets"),
-        ("recovery_delivery_source", "Recovery delivery", "/resources/configurations"),
-        ("restore_drill", "Restore drill", "/resources/deployment-recovery"),
-    )
-    for field, title, href in readiness_checks:
+    for field, title, href, good_states in _READINESS_CHECKS:
         value = readiness.get(field)
         if value is None:
             continue
         normalized = str(value).lower()
-        if normalized in _GOOD_STATES or normalized in {"managed", "bootstrap", "current"}:
+        if normalized in good_states:
             continue
         items.append(
             {
                 "title": title,
-                "detail": f"Current reported state: {str(value).replace('_', ' ')}.",
+                "detail": f"Estado reportado actualmente: {str(value).replace('_', ' ')}.",
                 "href": href,
-                "action": "Review",
+                "action": "Revisar",
             }
         )
     deployment_state = str(deployment.get("state", "")).lower()
     if 200 <= deployment_status < 300 and deployment_state not in {"", "in_sync"}:
         items.append(
             {
-                "title": "Deployment binding",
+                "title": "Vínculo de despliegue",
                 "detail": (
-                    "The recovery binding is "
-                    f"{deployment_state.replace('_', ' ')} and needs review."
+                    "El vínculo de recuperación está en estado "
+                    f"{deployment_state.replace('_', ' ')} y requiere revisión."
                 ),
                 "href": "/resources/deployment-recovery",
-                "action": "Review binding",
+                "action": "Revisar vínculo",
             }
         )
     return items
@@ -164,7 +206,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
         try:
             response = await state.control_request(method, path, bearer=session.access_token)
         except httpx.HTTPError:
-            return 0, {}, "control plane unreachable"
+            return 0, {}, "no se pudo conectar con el plano de control"
 
         payload = response.payload
         if isinstance(payload, dict):
@@ -176,18 +218,18 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
 
         error = ""
         if response.status_code >= 500:
-            error = f"control plane returned HTTP {response.status_code}"
+            error = f"el plano de control respondió HTTP {response.status_code}"
         return response.status_code, detail, error
 
     async def dashboard(request: Request) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog_error: str | None = None
         try:
             await state.catalog()
         except Exception:
-            catalog_error = "control plane unreachable"
+            catalog_error = "no se pudo conectar con el plano de control"
         (
             (readiness_status, readiness, readiness_error),
             (observability_status, observability, observability_error),
@@ -195,6 +237,17 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             _probe(session, "GET", "/v1/platform/readiness"),
             _probe(session, "GET", "/v1/platform/observability"),
         )
+        if readiness_status == 401 or observability_status == 401:
+            response = login_redirect(request)
+            state.clear_session(response, request)
+            return response
+        if readiness_status == 403 and observability_status == 403:
+            # Not a platform operator: the platform overview has nothing to show.
+            # Send business staff to their businesses; authority stays upstream.
+            state.viewer.record_platform_access(session, False)
+            return RedirectResponse("/my-organizations?home=1", status_code=303)
+        if readiness_status in range(200, 300):
+            state.viewer.record_platform_access(session, True)
         deployment_status = readiness_status
         deployment = {
             key: readiness[key]
@@ -219,26 +272,32 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
             deployment,
             deployment_error,
         )
-        readiness_fields = ("secret_store", "recovery_delivery_source", "restore_drill")
-        readiness_good = readiness_status in range(200, 300) and (
-            str(readiness.get("status", "")).lower() in _GOOD_STATES
-            or all(
-                field in readiness
-                and str(readiness[field]).lower()
-                in (_GOOD_STATES | {"managed", "bootstrap", "current"})
-                for field in readiness_fields
+        readiness_good = readiness_status in range(200, 300) and all(
+            isinstance(readiness.get(field), str) and readiness[field] in good_states
+            for field, _, _, good_states in _READINESS_CHECKS
+        )
+        counter_fields = (
+            "validation_success_total",
+            "validation_failure_total",
+            "provider_test_failures_total",
+            "secret_backend_failures_total",
+        )
+        observability_good = (
+            observability_status in range(200, 300)
+            and _valid_alerts(observability)
+            and not observability["alerts"]
+            and all(
+                type(observability.get(field)) is int and observability[field] >= 0
+                for field in counter_fields
             )
         )
-        observability_good = observability_status in range(200, 300) and not observability.get(
-            "alerts", []
-        )
         deployment_good = deployment_status in range(200, 300) and all(
-            str(deployment.get(field, "")).lower() in (_GOOD_STATES | {"current"})
-            for field in ("backup_evidence", "restore_drill", "clone_fence")
+            isinstance(deployment.get(field), str) and deployment[field] in good_states
+            for field, _, _, good_states in _READINESS_CHECKS[2:]
         )
         services = (
             _probe_view(
-                "Control plane",
+                "Plano de control",
                 readiness_status,
                 readiness,
                 readiness_error,
@@ -246,7 +305,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 readiness_good,
             ),
             _probe_view(
-                "Observability",
+                "Observabilidad",
                 observability_status,
                 observability,
                 observability_error,
@@ -254,7 +313,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 observability_good,
             ),
             _probe_view(
-                "Recovery readiness",
+                "Preparación para recuperación",
                 deployment_status,
                 deployment,
                 deployment_error,
@@ -271,10 +330,10 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
         )
         configuration_counters: list[dict[str, str | int]] = []
         for field, label in (
-            ("validation_success_total", "Successful validations"),
-            ("validation_failure_total", "Failed validations"),
-            ("provider_test_failures_total", "Failed provider tests"),
-            ("secret_backend_failures_total", "Secret backend failures"),
+            ("validation_success_total", "Validaciones exitosas"),
+            ("validation_failure_total", "Validaciones fallidas"),
+            ("provider_test_failures_total", "Pruebas de proveedor fallidas"),
+            ("secret_backend_failures_total", "Fallas del almacén de secretos"),
         ):
             value = observability.get(field) if 200 <= observability_status < 300 else None
             configuration_counters.append(
@@ -294,6 +353,11 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 services=services,
                 attention=attention,
                 overall_state=overall_state,
+                checked_at=datetime.now(UTC).isoformat(timespec="seconds"),
+                readiness_checks=[
+                    {"title": title, "value": readiness.get(field, "No reportado"), "href": href}
+                    for field, title, href, _ in _READINESS_CHECKS
+                ],
                 configuration_counters=configuration_counters,
                 readiness_status=readiness_status,
                 readiness_detail=summarize_payload(readiness) if readiness else ([], []),
@@ -314,7 +378,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
     ) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         try:
             catalog = await state.catalog()
         except Exception:
@@ -326,7 +390,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     groups={},
                     selected_group=None,
                     visible_operations=(),
-                    catalog_error="control plane unreachable",
+                    catalog_error="no se pudo conectar con el plano de control",
                 ),
             )
         groups = catalog.groups()
@@ -374,7 +438,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def operation_detail(request: Request, operation_id: str) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await state.catalog()
         operation = catalog.by_id().get(operation_id)
         if operation is None:
@@ -393,7 +457,7 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
     async def run_operation(request: Request, operation_id: str) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         catalog = await state.catalog()
         operation = catalog.by_id().get(operation_id)
         if operation is None:
@@ -407,7 +471,10 @@ def install_operation_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 state.context(
                     request,
                     result=local_error(
-                        403, "csrf_failed", "CSRF token missing or invalid"
+                        403,
+                        "csrf_failed",
+                        "La verificación de seguridad del formulario falta o no es válida. "
+                        "Recargue la página e intente de nuevo.",
                     ).to_view(),
                     form_id=_FORM_ID,
                 ),

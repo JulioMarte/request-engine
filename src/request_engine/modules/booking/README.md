@@ -132,8 +132,113 @@ A no-show is **not** a cancellation. It does not release capacity retroactively 
 
 Lifecycle automation reads only the Reservation's policy snapshot. It does not reinterpret the current mutable Offering policy after booking.
 
+Cancellation and reschedule (including operational-recovery reschedule) refuse a
+Reservation whose visit was already served (a `completed` QueueEntry of the
+Reservation) with `409 reservation_already_served` (INV-SERVED-VISIT-001): the
+commitment was consumed, so releasing or moving its capacity would be false.
+The guard runs after the Reservation `FOR UPDATE` lock and locks the
+Reservation's serving/completed QueueEntries `FOR SHARE` before any Resource lock;
+service completion locks queue -> entry -> resource and never a Reservation, so a
+cancel racing an in-flight completion waits for it and then refuses. Booking reads
+that Queue fact in SQL inside its own transaction because the module dependency
+direction is queue -> booking. Known limit: Queue/Delivery lifecycle commands do
+not re-check the Reservation, so a Reservation cancelled while its entry is still
+waiting/called/serving can still be served afterwards.
+
 Cancellation and reschedule may expose future capacity for recovery. That recovery begins only after the Booking transaction commits and then enters Queue through its public contract and the Phase 2B `SlotOpportunity -> SlotOffer` state machine.
 
 Provider/network I/O never occurs while booking locks are held. Confirmation/reminder communications and waitlist recovery begin after booking commit through outbox/contracts — but only where the reservation lifecycle outbox handler is actually composed (the reference worker factory passes `reservation_lifecycle_factory`; a `build_worker_process` composition that omits it persists lifecycle events without processing them).
 
 The authoritative transaction/race contract is `docs/v3/02-pre-sql-contract.md`. The cross-tenant extension design and privacy rationale are documented in `docs/v3/12-cross-tenant-shared-capacity-design.md` and ADR 0011.
+
+## Operator reservation reads (day board and calendar)
+
+Both reads are Queries gated by `appointments.day_board` (operator exposure, no per-subject
+authority) and are not tool-projected:
+
+- `appointments_day_board` — `GET /v1/appointments/day-board`, at most 36 hours, the same-day
+  front-desk projection (`request_read.reservation_day_v1`: attendance, queue, recall and
+  served-visit columns).
+- `appointments_calendar` — `GET /v1/appointments/calendar`, at most 42 days with
+  timezone-qualified bounds, optional `location_id`/`resource_id`, keyset pages ordered by
+  `(start_at, reservation_id)` with an opaque cursor bound to the filters
+   (`request_read.reservation_calendar_v1`, historical migration `0047`, now in the
+   checksummed `0001` baseline). Each row carries the offering
+  name and `resources`: the Reservation's current CapacityClaim set (claims not `replaced`),
+  with `claim_active=false` once released by cancellation, decline or no-show. That claim set
+  is the authoritative Reservation↔Resource link; a Resource assigned to the location is not.
+
+## Appointment notes (staff documentation)
+
+Booking owns append-only staff notes on a Reservation (`request_engine.reservation_notes`,
+migration `0002_reservation_notes`; guarantee `INV-APPOINTMENT-NOTES-001`). A note records
+what front-desk staff or a staff-directed agent wants colleagues to know ("Viene con su hijo",
+"Pidió factura con RNC", "Llamó: llega 10 min tarde").
+
+| Operation | HTTP | Capability | Kind |
+| --- | --- | --- | --- |
+| `appointments_note_add` | `POST /v1/appointments/{reservation_id}/notes` | `appointments.annotate` (operator, low-impact write) | Command, `Idempotency-Key` required, no expected revision |
+| `appointments_notes_list` | `GET /v1/appointments/{reservation_id}/notes` | `appointments.day_board` | Query, newest first, opaque cursor (`after`, `limit` 1..100, default 50) |
+
+Both are projected as operator tools. Rules:
+
+- Notes are immutable facts; a correction is a new note with `supersedes_note_id` pointing at an
+  earlier note of the **same** Reservation (composite self-FK). UPDATE/DELETE are rejected by
+  trigger; the runtime role holds only SELECT/INSERT.
+- Body: trimmed, 1..1000 characters, no control characters except tab and newline
+  (`domain/appointment_notes.py`, mirrored by a CHECK constraint).
+- Author: the acting Principal; its kind (`human`/`agent`/`integration`/...) is read from the
+  principal row, never from the caller, and checked again by trigger. `author_display_name` is the
+  staff profile or agent display name resolved at read time (`request_read.reservation_notes_v1`).
+- Any Reservation status is accepted (staff may document a cancellation). A note never advances
+  `Reservation.revision`, so it cannot invalidate a concurrent reschedule/cancel. The command locks
+  only the Reservation row `FOR KEY SHARE` (existence/tenant proof); no Resource or capacity root.
+- Notes are internal: they are served only with the staff read `appointments.day_board`. The day
+  board rows carry `note_count` and `latest_note` (`excerpt` <= 140 whitespace-collapsed chars,
+  `author_kind`, `created_at`); calendar items carry `note_count`; `appointments_read` adds
+  `note_count`/`latest_note` only when the caller also holds `appointments.day_board` (null for a
+  subject-scoped caller).
+- Each note emits audit and the PII-free outbox fact `reservation.note_added.v1`
+  (`reservation_id`, `note_id`, `author_principal_kind`, `supersedes_note_id`), routed to the
+  `day_board` change-feed topic.
+- Clinic owners hold and can delegate `appointments.annotate` from `tenant-controller-v10`
+  (migration `0003_tenant_controller_v10`); existing roots obtain it through the governed
+  controller-policy adoption.
+- Tags are deliberately **not** part of this model: notes first; a per-business tag vocabulary may
+  come later as its own owner decision.
+
+## Resource configuration edits (2026-10-25)
+
+Guarantee `INV-RESOURCE-CONFIG-EDITS-001`, migration `0004_configuration_edits`.
+Commands require `booking.manage_supply`, an `Idempotency-Key` and exact
+`operations.manage_supply` authority (checked before idempotency); each appends
+audit and a PII-free outbox fact (`resource.updated.v1`,
+`resource.capabilities_replaced.v1`).
+
+- **Rename**: `PATCH /v1/operations/resources/{resource_id}` (`booking_resource_update`)
+  changes `resources.display_name` only (Discovery's public profile is separate).
+  `expected_resource_availability_revision` is a precondition; a label is not
+  availability-material, so the revision does not advance (concurrent renames by
+  callers holding the same revision are last-writer-wins). Inactive Resources may
+  be renamed.
+- **Replace provided services**: `PUT /v1/operations/resources/{resource_id}/capabilities`
+  (`booking_resource_capabilities_replace`). READ/PLAN/LOCK/VALIDATE/WRITE/EMIT:
+  lock the Resource `FOR UPDATE` (the capacity root `guard_capacity_claim` also
+  locks, so it serializes with Hold/Reservation claim inserts) -> revision CAS ->
+  every capability must exist and be active in the tenant -> refuse with 409
+  `resource_capability_held` while an active unexpired Hold claim on this
+  Resource requires a removed capability (Holds are minutes long; retry) ->
+  delete removed / insert added link rows (DELETE granted by 0004; the audit
+  keeps previous/new sets) -> advance `availability_revision` exactly once when
+  the set changed. Existing confirmed Reservations and their CapacityClaims are
+  never cancelled, moved or rewritten; `retained_commitment_count` reports future
+  ones still relying on a removed capability. Only future slot search and new
+  claims stop selecting the Resource for removed capabilities (the claim guard
+  still requires the link for every new or re-validated active claim); a
+  reschedule selects a currently eligible Resource.
+- **Remove a Resource-wide absence**: `booking_resource_exception_set` accepts
+  `active` (default true); `active=false` with `exception_id` deactivates the
+  saved row (kept for audit, `availability_revision` advanced). Inactive
+  exceptions no longer affect slot search, and `booking_resource_exception_list`
+  projects the real `active` value. The Resource must be active to change its
+  exceptions, as before.

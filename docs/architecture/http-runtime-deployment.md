@@ -509,6 +509,7 @@ secret manager; do not put real passwords in shell history or committed examples
   `read_principal_authority(uuid)`, `read_platform_provisioners(uuid, uuid, integer)`,
   `read_identity_recovery_cases(uuid, uuid, integer)`,
   `read_native_identities(uuid, uuid, integer)`,
+  `read_native_identity_profiles(uuid, uuid, integer)`,
   `list_controller_policy_adoptions(uuid, integer, uuid)`,
   `read_platform_configuration_revisions(text)`,
   `read_platform_secret_binding(uuid)` and `read_platform_readiness()`.

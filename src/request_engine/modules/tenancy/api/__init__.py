@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from uuid import UUID
 
 from fastapi import APIRouter, FastAPI, Request
 
@@ -68,17 +69,26 @@ from request_engine.modules.tenancy.adapters.db.self_authority_reader import (
 from request_engine.modules.tenancy.adapters.db.self_organization_reader import (
     PostgresSelfOrganizationReader,
 )
+from request_engine.modules.tenancy.adapters.db.self_service_account_commands import (
+    PostgresSelfServiceAccountCommands,
+)
 from request_engine.modules.tenancy.adapters.db.staff_history_reader import (
     PostgresStaffHistoryReader,
 )
 from request_engine.modules.tenancy.adapters.db.staff_invitation_commands import (
     PostgresStaffInvitationCommands,
 )
+from request_engine.modules.tenancy.adapters.db.staff_invitation_proposal_commands import (
+    PostgresStaffInvitationProposalCommands,
+)
 from request_engine.modules.tenancy.adapters.db.staff_membership_commands import (
     PostgresStaffMembershipCommands,
 )
 from request_engine.modules.tenancy.adapters.db.staff_membership_reader import (
     PostgresStaffMembershipReader,
+)
+from request_engine.modules.tenancy.adapters.db.staff_representations import (
+    PostgresStaffRepresentations,
 )
 from request_engine.modules.tenancy.api.agent_governance_errors import (
     add_agent_governance_error_handlers,
@@ -131,15 +141,24 @@ from request_engine.modules.tenancy.api.self_authority import (
     self_authority_error_handler,
 )
 from request_engine.modules.tenancy.api.self_organizations import create_self_organization_router
+from request_engine.modules.tenancy.api.self_service_accounts import (
+    install_self_service_account_http,
+)
 from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
 from request_engine.modules.tenancy.api.staff_history_reads import add_staff_history_reads
+from request_engine.modules.tenancy.api.staff_invitation_proposals import (
+    create_staff_invitation_proposal_router,
+)
 from request_engine.modules.tenancy.api.staff_invitations import create_staff_invitation_router
 from request_engine.modules.tenancy.api.staff_membership_errors import (
     add_staff_membership_error_handlers,
 )
 from request_engine.modules.tenancy.api.staff_membership_reads import add_staff_membership_reads
 from request_engine.modules.tenancy.api.staff_membership_routes import add_staff_membership_routes
+from request_engine.modules.tenancy.api.staff_representation_routes import (
+    add_staff_representation_routes,
+)
 from request_engine.modules.tenancy.application.commands.native_platform_provisioning import (
     NATIVE_INITIAL_CONTROLLER_POLICY as NATIVE_INITIAL_CONTROLLER_POLICY,
 )
@@ -220,9 +239,11 @@ def install_http(
     subject_resolver: HttpSubjectResolver | None = None,
     invitation_secret_delivery: RecoverySecretStaging | None = None,
     invitation_delivery_recorder: InvitationDeliveryIntent | None = None,
+    invitation_acceptance_url: str | None = None,
     identity_exchange_fingerprint_key: bytes | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
     resource_authority_inspectors: Sequence[ResourceAuthorityInspector] = (),
+    native_identity_authority_id: UUID | None = None,
 ) -> None:
     """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
 
@@ -233,6 +254,17 @@ def install_http(
                 subject_resolver=subject_resolver,
             )
         )
+        if native_identity_authority_id is not None:
+            # ADR 0021: native deployments expose owner self-enrollment and creation.
+            self_service = PostgresSelfServiceAccountCommands(
+                session_factory, native_authority_id=native_identity_authority_id
+            )
+            install_self_service_account_http(
+                app,
+                commands=self_service,
+                enrollment=self_service,
+                subject_resolver=subject_resolver,
+            )
 
     app.add_exception_handler(BootstrapAuthorityPartyInvalid, bootstrap_authority_error_handler)
     app.add_exception_handler(AuthorityInspectionDenied, self_authority_error_handler)
@@ -272,15 +304,25 @@ def install_http(
     async def authenticated_actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
+    invitation_commands = PostgresStaffInvitationCommands(
+        session_factory,
+        secret_delivery=invitation_secret_delivery,
+        delivery_recorder=invitation_delivery_recorder,
+        acceptance_url=invitation_acceptance_url,
+    )
     app.include_router(
         create_staff_invitation_router(
-            commands=PostgresStaffInvitationCommands(
-                session_factory,
-                secret_delivery=invitation_secret_delivery,
-                delivery_recorder=invitation_delivery_recorder,
-            ),
+            commands=invitation_commands,
             authenticated_actor=authenticated_actor,
             subject_resolver=subject_resolver,
+        )
+    )
+    app.include_router(
+        create_staff_invitation_proposal_router(
+            commands=PostgresStaffInvitationProposalCommands(
+                session_factory, invitations=invitation_commands
+            ),
+            authenticated_actor=authenticated_actor,
         )
     )
 
@@ -306,6 +348,11 @@ def install_http(
     add_staff_membership_routes(
         staff_router,
         commands=PostgresStaffMembershipCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    add_staff_representation_routes(
+        staff_router,
+        commands=PostgresStaffRepresentations(session_factory),
         authenticated_actor=authenticated_actor,
     )
     app.include_router(staff_router)

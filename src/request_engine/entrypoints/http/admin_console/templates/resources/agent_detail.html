@@ -1,0 +1,78 @@
+{% extends "base.html" %}{% import "partials/agent_connect.html" as connect %}{% import "partials/capabilities.html" as capabilities %}
+{% block title %}{{ agent.display_name if agent else "Asistente" }} · Request Engine{% endblock %}
+{% block content %}{% set status_names = {'active': 'Activo', 'suspended': 'En pausa', 'revoked': 'Revocado'} %}
+<header class="page-heading">
+  <div>
+    <p class="breadcrumb"><a href="/tenants/{{ organization_id }}/agents">Asistentes y API</a></p>
+    <h1>{{ agent.display_name if agent else "Asistente no disponible" }}</h1>
+    {% if agent %}<p>{{ agent.purpose }}</p>{% endif %}
+  </div>
+  {% if agent %}<div class="page-actions"><span class="badge {{ agent.status }}">{{ status_names.get(agent.status, agent.status) }}</span></div>{% endif %}
+</header>
+{% if request.query_params.get("done") %}<div class="alert notice" role="status">{{ {"pause": "Asistente pausado", "resume": "Asistente activado de nuevo", "revoke": "Asistente revocado"}.get(request.query_params.get("done"), "Asistente actualizado") }}.</div>{% endif %}
+
+{% if not agent %}
+<div class="panel"><div class="error-state"><span aria-hidden="true">!</span><div><strong>No se pudo cargar este asistente</strong><p>{% if agent_status == 403 %}Sus permisos no incluyen ver asistentes.{% elif agent_status == 404 %}No existe o usted ya no tiene acceso a él.{% else %}Vuelva a cargar la página para intentarlo de nuevo.{% endif %}</p></div></div></div>
+{% else %}
+<div class="home-grid">
+  <div>
+    <section class="panel">
+      <div class="panel-heading"><h2>Lo que puede hacer</h2></div>
+      <div class="panel-body">{{ capabilities.groups(agent.standing_capabilities, "Todavía no tiene permisos.") }}</div>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><h2>Límites de seguridad</h2></div>
+      <div class="panel-body">
+        {% if policy %}
+        <dl class="detail">
+          <dt>Hasta dónde puede llegar</dt><dd>{{ {"read": "Solo consultar", "low_impact_write": "Cambios pequeños", "reversible_write": "Cambios que se pueden deshacer", "external_commitment": "Compromisos con pacientes"}.get(policy.risk_ceiling, policy.risk_ceiling) }}</dd>
+          <dt>Cambios por minuto</dt><dd>{{ policy.max_mutations_per_minute }}</dd>
+          <dt>Cómo trabaja</dt><dd>{{ "Actúa en nombre de alguien" if agent.operating_mode == "assisted" else "Trabaja por su cuenta" }}</dd>
+        </dl>
+        {% elif policy_status == 404 %}<p class="alert warning">No hay límites de seguridad, así que el asistente todavía no puede actuar.</p>
+        {% else %}<p class="muted">No se pudieron cargar los límites de seguridad.</p>{% endif %}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><h2>Conectar</h2></div>
+      <div class="panel-body">{{ connect.render(connection, "La clave solo se muestra cuando se crea o se reemplaza. Si se perdió, reemplácela abajo.") }}</div>
+    </section>
+  </div>
+  <div>
+    <section class="panel">
+      <div class="panel-heading"><h2>Clave</h2></div>
+      <div class="panel-body">
+        {% for credential in agent.credentials %}
+        <p><span class="badge {{ 'active' if credential.status == 'active' else 'revoked' }}">{{ {'active': 'Activa', 'revoked': 'Revocada', 'expired': 'Vencida'}.get(credential.status, credential.status) }}</span> vence el <time datetime="{{ credential.expires_at }}">{{ credential.expires_at[:10] }}</time></p>
+        {% else %}<p class="muted">No tiene clave.</p>{% endfor %}
+        {% if agent.status != "revoked" %}
+        <form id="agent-rotate" method="post" action="/tenants/{{ organization_id }}/agents/{{ agent.principal_id }}/rotate" class="stack" data-plain-action data-confirm="¿Reemplazar la clave? La clave actual deja de funcionar de inmediato.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="intent" value="{{ intent }}" />
+          <input type="hidden" name="expected_authority_revision" value="{{ agent.authority_revision }}" />
+          <label>La clave nueva vence en<select name="expires_days">{% for days in expiry_choices %}<option value="{{ days }}" {% if days == 90 %}selected{% endif %}>{{ days }} días</option>{% endfor %}</select></label>
+          <button type="submit" class="secondary">Reemplazar clave</button>
+        </form>
+        {% endif %}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><h2>Estado</h2></div>
+      <div class="panel-body stack">
+        {% for action, label, target, style, confirm in [("pause", "Pausar asistente", "active", "secondary", "¿Pausar este asistente? Dejará de trabajar hasta que usted lo active de nuevo."), ("resume", "Activar de nuevo", "suspended", "", ""), ("revoke", "Revocar asistente", "any", "danger", "¿Revocar este asistente para siempre? Su clave deja de funcionar y no se podrá activar de nuevo.")] %}
+        {% if (target == "any" and agent.status != "revoked") or agent.status == target %}
+        <form id="agent-{{ action }}" method="post" action="/tenants/{{ organization_id }}/agents/{{ agent.principal_id }}/status/{{ action }}" data-plain-action {% if confirm %}data-confirm="{{ confirm }}"{% endif %}>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="intent" value="{{ intent }}" />
+          <input type="hidden" name="expected_revision" value="{{ agent.profile_revision }}" />
+          <button type="submit" class="{{ style }}">{{ label }}</button>
+        </form>
+        {% endif %}
+        {% endfor %}
+        {% if agent.status == "revoked" %}<p class="muted">Este asistente quedó revocado para siempre.</p>{% endif %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

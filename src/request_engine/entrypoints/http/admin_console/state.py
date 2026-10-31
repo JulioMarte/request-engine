@@ -29,6 +29,10 @@ from request_engine.entrypoints.http.admin_console.session import (
     new_csrf_token,
 )
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
+from request_engine.entrypoints.http.admin_console.viewer import (
+    ViewerHintCache,
+    navigation_context,
+)
 
 _SameSite = Literal["lax", "strict", "none"]
 
@@ -66,6 +70,7 @@ class AdminConsoleState:
         self._catalog_at = 0.0
         self._runtime_catalog: AdminCatalog | None = None
         self._runtime_catalog_at = 0.0
+        self.viewer = ViewerHintCache()
 
     @property
     def secret(self) -> bytes:
@@ -98,6 +103,7 @@ class AdminConsoleState:
         )
 
     def clear_session(self, response: Response, request: Request) -> None:
+        self.viewer.forget(self.session(request))
         self._sessions.revoke(request.cookies.get(self.settings.session_cookie_name, ""), "login")
         response.delete_cookie(self.settings.session_cookie_name, path="/")
 
@@ -269,6 +275,7 @@ class AdminConsoleState:
             "current_path": request.url.path,
             "current_year": datetime.now(UTC).year,
         }
+        base.update(navigation_context(request.url.path, self.viewer.get(session)))
         base.update(extra)
         return base
 

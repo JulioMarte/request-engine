@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% import "partials/agent_connect.html" as connect %}
+{% block title %}Clave del asistente · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div>
+    <p class="breadcrumb"><a href="/tenants/{{ organization_id }}/agents/{{ principal_id }}">Volver al asistente</a></p>
+    <h1>{% if ok and action == "rotate" %}Clave nueva creada{% elif ok %}Asistente actualizado{% else %}No se completó la acción{% endif %}</h1>
+  </div>
+</header>
+{% if ok and token %}
+<section class="secret-reveal" aria-labelledby="key-title">
+  <strong id="key-title">Clave nueva del asistente, se muestra una sola vez</strong>
+  <p class="small">La clave anterior ya no funciona. Cámbiela en todos los lugares donde el asistente esté conectado.</p>
+  <div class="secret-value"><input id="agent-key" readonly value="{{ token }}" aria-label="Clave del asistente" autocomplete="off" spellcheck="false" /><button type="button" data-copy-target="agent-key">Copiar clave</button></div>
+</section>
+<section class="panel"><div class="panel-heading"><h2>Conectar de nuevo</h2></div><div class="panel-body">{{ connect.render(connection, "") }}</div></section>
+{% elif ok %}
+<p class="alert warning">Esta misma solicitud ya había reemplazado la clave, así que no se muestra otra vez. Si no la guardó, reemplácela una vez más.</p>
+{% else %}
+<div class="result fail" role="alert"><div class="result-summary"><span aria-hidden="true">!</span><div><strong>{{ message or "El sistema del negocio no aceptó este cambio." }}</strong><p>Estado {{ status }}{% if error_code %} · <code>{{ error_code }}</code>{% endif %}</p></div></div></div>
+<form id="agent-action-retry" method="post" action="/tenants/{{ organization_id }}/agents/{{ principal_id }}/{% if action == 'rotate' %}rotate{% else %}status/{{ action }}{% endif %}" data-plain-action>
+  {% for key, value in retry_values.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}" />{% endfor %}
+  {% if not step_up %}<button type="submit" class="secondary">Reintentar</button>{% endif %}
+</form>
+{% if step_up %}{% import "partials/reauthentication.html" as authentication %}{{ authentication.render("agent-action-retry", false) }}{% endif %}
+{% endif %}
+{% endblock %}

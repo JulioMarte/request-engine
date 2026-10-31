@@ -33,11 +33,18 @@ tenant runtime API  -->  PostgreSQL / OpenBao / providers
 - The browser talks only to the console origin, so no CORS and no ambient
   cross-site credential are introduced.
 - Mutating forms get an intent-scoped `Idempotency-Key` automatically. The key
-  survives passkey step-up and resubmission of the same browser intent.
-- `phishing_resistant_auth_required` / `recent_authentication_required`
-  responses surface a passkey step-up action and retry.
+  survives current-session confirmation and resubmission of the same browser intent.
+- `recent_authentication_required` offers password confirmation of the existing
+  owner session or an enrolled passkey, then retries the unchanged intent and
+  loaded revision. Password confirmation forwards `/auth/native/sessions:reauth`;
+  it neither replaces the session nor invents stronger assurance. A remaining
+  `phishing_resistant_auth_required` response offers only the required passkey proof.
+- Recovery completion projects `/auth/native/sessions/current/recovery:complete`.
+  After password completion the user must sign out and sign in with the password
+  to start a normal session; the recovery session never becomes an admin session.
 - Security headers: `Cache-Control: no-store`, `X-Frame-Options: DENY`,
-  `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` (pages carrying one-time invitation
+  material keep `no-referrer`) and a
   restrictive `Content-Security-Policy` (`script-src 'self'` only).
 - FastAPI's `/docs`, `/redoc` and `/openapi.json` are disabled on the console.
 - Every unsafe browser request (`POST`, `PUT`, `PATCH`, `DELETE`), including
@@ -84,12 +91,14 @@ against local PostgreSQL 18 with three least-privilege runtime logins — the te
 runtime API (`server:create_app`), and the console, all detached:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/dev/run_local_panel.ps1
+pwsh -ExecutionPolicy Bypass -File scripts/dev/run_local_panel.ps1
 ```
 
 Open `http://localhost:8002` (use `localhost`, not `127.0.0.1`, so the WebAuthn
 RP id `localhost` is a valid secure context) and complete `/setup` -> `/login`.
-While the instance is unclaimed, `/setup` drives the full first-run ceremony;
+Use PowerShell 7.4 or later (`pwsh`). While the instance is unclaimed, `/setup`
+collects the owner password, offers optional passkey registration, issues required
+offline recovery codes, and finalizes the first claim through the same owner APIs;
 afterwards `/login` and `/operations` expose the real platform surface.
 
 Prerequisites: the local PostgreSQL container is up and the selected database is migrated
@@ -134,8 +143,8 @@ the control plane runs a discoverable, usernameless ceremony (empty allow-list,
 unbound challenge, identity resolved from the presented credential), so the
 console signs in with a passkey and no username or password. When a handle is
 supplied the original handle-first flow with the anti-enumeration decoy is
-preserved. The console uses the usernameless flow; the password form remains as a
-fallback.
+preserved. The console offers this usernameless passkey flow as an optional
+alternative to the visible password form.
 
 ## Resource workspaces
 
@@ -155,9 +164,14 @@ operation, capability, idempotency and step-up rules as the API.
 - **Deployment recovery** — inspect the active binding, configure and reconcile.
 - **Organizations** — list and detail views from the platform control plane,
   plus the canonical organization-provisioning command.
-- **Platform owners** and **recovery operators** — no read/list operation is
-  mounted, so these pages state that explicitly and expose only the available
-  commands rather than fabricating an empty table.
+- **Platform owners** — owners and invitations list, detail and revision-bound
+  lifecycle actions. An invited recipient enrolls at `/owner-invitations/enroll`,
+  then prepares recovery codes and may add a passkey at `/account/security`;
+  enrollment does not activate ownership.
+- **Recovery operators** — no read/list operation is mounted, so this page states
+  that explicitly and exposes only the available commands.
+- **Controller policy adoption** — list, review and apply a governed adoption
+  using the exact reviewed consent revision and intent.
 
 **People & permissions** uses `/my-organizations` for self-authorized organization
 selection, then `/tenants/{organization_id}/staff` for members, counts, permission
@@ -168,10 +182,27 @@ the runtime API must materialize and revalidate the tenant actor independently.
 Selecting a tenant or holding platform-owner authority never grants tenant access.
 Permission assignment remains separate from invitation acceptance.
 
+**Clinic setup** (`/tenants/{organization_id}/setup`) is the plain-language
+guided path for owners: clinic profile, location and hours, services and prices,
+doctors and rooms, an optional walk-in line, then readiness and a preview of the
+first free times. It projects only the owner operations in
+`CLINIC_SETUP_OPERATION_IDS` (`routes_clinic_setup.py`), resolves the business
+Party from `authority_read_self`, and converges on resubmission instead of
+duplicating. See `docs/architecture/admin-dashboard-completion.md`.
+
+**Business configuration** (`/tenants/{organization_id}/configuration`) projects
+99 current organization, catalog, booking supply, queue, communications, Requests,
+Discovery, agent, integration, authority, identity and operational-policy owner operations through the runtime API. Inventory reads and current revisions
+come from owner Queries. Explicit Party authority remains required and checked
+upstream. Complex configuration uses typed JSON fields where the owner schema
+requires them; the console does not invent configuration defaults.
+
 Both the workspaces and the generic `/operations` browser execute through a
 single `execution.execute_operation` path, so there is no second execution path.
-A `phishing_resistant_auth_required` response surfaces a passkey step-up that
-retries the exact form that was submitted. Mutating actions with a
+A `recent_authentication_required` response offers current-session password or
+passkey confirmation; a remaining `phishing_resistant_auth_required` response
+requires the passkey proof. Confirmation retries the same form without changing
+its intent or loaded revision. Mutating actions with a
 `data-confirm` prompt are confirmed before the request is issued.
 
 ## Coverage
@@ -203,6 +234,38 @@ silently unreachable while diagnostics are being performed.
   and the bounded recent-error ring; `/diagnostics/errors.json` returns the same as
   JSON. With `debug=true` the error page and diagnostics include the traceback.
 - Config: `log_level` (default `INFO`), `debug` (default `false`).
+
+## Business workspace (owners, administrators and employees)
+
+The same console serves platform owners and the people of each business. It
+never decides who someone is: navigation hints come only from reads it already
+makes. A platform readiness read that returns `403` for both readiness and
+observability sends the person to `/my-organizations?home=1`, which opens their
+business directly when they belong to exactly one. Hints live in process memory
+(digest of the upstream session, bounded, 15 minutes) and only show or hide
+navigation; every page and action is still authorized by the owner API.
+
+| Page | Owner operations | Notes |
+| --- | --- | --- |
+| `/tenants/{org}` Home | `business_get_info`, `onboarding_read`, `staff_overview_get`, `agent_list`, `staff_invitation_proposal_list` | Setup progress, team counts, chief of staff and pending suggestions; failed reads are shown as unavailable, never as ready or empty |
+| `/tenants/{org}/today` | `business_get_info`, `queue_list`, `queue_staff_read`, `appointments_day_board`, `queue_call_next`, `queue_operator_select`, `queue_recall_hold`, `queue_release_recall_hold`, `queue_mark_no_show`, `queue_skip`, `service_session_start`, `service_session_complete`, `front_desk_serving_resources` (read only, gated by `service_session.start`, to offer who can start service at the queue's location), `queue_check_in`, `appointments_confirm_attendance`, `appointments_record_arrival_estimate`, `appointments_cancel` | Business clock = default timezone, else first location, else UTC. Actions are post/redirect/get with the form intent as `Idempotency-Key`; revisions come from the owner reads and a `revision_conflict` is explained, never retried |
+| `/tenants/{org}/today/visit`, `/today/appointments/{id}/reschedule` | `parties_lookup`, `parties_register`, `catalog_search_offerings`, `appointments_find_slots`, `appointments_book`, `appointments_reschedule`, `queue_check_in` | Customer search is a POST so names, phones and cédulas stay out of URLs. Booking for a customer relies only on the owner's Party scope or `appointments.subject_override`; public exposure metadata is unchanged |
+| `/tenants/{org}/agents` | `agent_list/get/provision/suspend/manage_authority/policy_read/policy_replace/credential_rotate`, `authority_read_self`, `staff_overview_get` | Creation runs provision → activate → authority → policy, each with `{intent}:{step}` keys so a retry replays finished steps. Only operational, risk-classified capabilities in the caller's delegable ceiling are offered. The one-time key is rendered once with `no-referrer`/`no-store` and never stored |
+| `/tenants/{org}/approvals` | `staff_invitation_proposal_list/approve/reject` | Agent suggestions decided by a person (ADR 0019); approval carries the exact proposal revision |
+
+The chief of staff is an ordinary AGENT principal in `assisted` mode sponsored by
+the person who creates it; its purpose text starts with `Chief of staff`, which
+the console uses only to label it. It receives no authority change capability;
+adding people goes through proposals.
+
+Settings used by the business workspace:
+
+```text
+REQUEST_ENGINE_ADMIN_CONSOLE_PUBLIC_RUNTIME_API_BASE_URL  address shown to agents/MCP clients (defaults to the runtime URL)
+REQUEST_ENGINE_ADMIN_CONSOLE_WORKLOAD_AUTHORITY_ID        built-in workload authority from the instance claim receipt
+```
+
+Without the workload authority the agent form asks for it explicitly.
 
 ## UI-only mode (mock control plane)
 
@@ -239,12 +302,23 @@ profile revisions are independent of membership and authority revisions. Invitat
 recipients can review the organization and expiry through `staff_invitation_preview`
 before submitting acceptance; the preview itself never grants authority.
 
-The console is not complete against every dashboard reference: broader/contact
-and cross-tenant search, activity projections, permission descriptions and real-browser/provider
-evidence remain tracked in
-[`admin-completion-checkpoint-2026-10-02.md`](../../../../../docs/testing/admin-completion-checkpoint-2026-10-02.md).
+The current acceptance scope and evidence boundaries are defined in
+[`admin-dashboard-completion.md`](../../../../../docs/architecture/admin-dashboard-completion.md).
+Overview health requires complete canonical readiness and observability data;
+incomplete responses cannot appear healthy. Browser checks exercise navigation,
+focus, narrow screens and confirmation against a simulated upstream. They do not
+prove real provider delivery, production installation or authenticator enrollment.
+Private invitation redemption and recovery-code issuance require JavaScript to
+avoid browser POST history retaining secrets. Navigation remains usable without it.
 
 ## Tests
+
+The Workspaces page links to `/resources/business-setup`: a named-account
+administrator picker and guided first-business creation. Tenant configuration
+offers ordered setup tasks and owner-backed resource choices. Known nested
+schemas render visual fields and add/remove rows; open documents remain advanced.
+Loaded revisions are retained internally and checked by the owner. The interface
+does not invent missing Party authority or implicit platform-to-tenant access.
 
 ```powershell
 uv run pytest tests/unit/admin_console -q
@@ -254,3 +328,8 @@ They cover opaque server sessions, the OpenAPI catalog and `$ref` resolution,
 schema-driven form parsing, cookie/session flow, security headers, disabled
 operator docs, request-id propagation, redaction, the bounded error tracker and
 the diagnostics surface.
+
+Optional, reproducible Chromium UI proof and its explicit simulated-upstream
+boundary are documented in
+[`tests/browser/admin_console/README.md`](../../../../../tests/browser/admin_console/README.md).
+This proof is not a mandatory CI lane or production installation acceptance.

@@ -72,6 +72,9 @@ little authority it gets).
 **IN (gateway → RE): provider events.**
 - Callbacks are persisted BEFORE interpretation (`docs/v3/10` "ProviderEvent"; dedupe
   identity `organization + provider_key + connection_key + provider_event_id`).
+- The HTTP entry is `POST /v1/provider-events/webhook/primary`, HMAC-signed per
+  organization + connection (`docs/v3/10` "Authenticated HTTP callback surface"); the
+  outbound handoff carries `organization_id` so the gateway can select its key.
 - The reference registration is exactly one handler under `(provider_key="webhook",
   connection_key="primary")` (`bootstrap/communication_providers.py:38-52`).
 - The outcome-report payload contract is in `docs/v3/10` lines 144-152: `dedupe_key`
@@ -131,9 +134,10 @@ outcome report → RE durable terminal state — is idempotent when any componen
 
 ## 7. Honest risks
 
-- **Weak transport authentication.** The webhook transport is HTTPS with one static
-  header (`webhook_delivery_provider.py:53-56`); no mTLS, no OAuth, no signature
-  verification today. Acceptable for a single-clinic pilot on a private network; it is
+- **Weak transport authentication.** The outbound webhook transport is HTTPS with one
+  static header (`webhook_delivery_provider.py`); no mTLS, no OAuth, no signature on the
+  RE -> gateway direction today. The gateway -> RE callback is now an HMAC-signed,
+  per-organization/connection route (`docs/v3/10` "Authenticated HTTP callback surface"). Acceptable for a single-clinic pilot on a private network; it is
   NOT acceptable as-is for anything exposed publicly or multi-tenant. Upgrading the
   callback adapter's credential validation is a deployment decision that must precede any
   real traffic (see handoff 07, deployment checklist).

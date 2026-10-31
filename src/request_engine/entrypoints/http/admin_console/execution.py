@@ -24,30 +24,109 @@ from request_engine.entrypoints.http.admin_console.forms import (
     parse_submission,
     render_path,
 )
-from request_engine.entrypoints.http.admin_console.json_types import as_mapping
 
 _STEP_UP_CODES = frozenset({"phishing_resistant_auth_required", "recent_authentication_required"})
 _INTENT_FIELD = "_intent_id"
 _MAX_INTENT_LENGTH = 128
+# Upstream APIs answer in English. The console shows Spanish copy chosen by
+# error code; the original upstream message stays in the technical details.
 _HUMAN_ERRORS = {
     "platform_configuration_changed": (
-        "The configuration changed while you were editing it. Reload the current state and "
-        "review the latest revision before trying again."
+        "La configuración cambió mientras usted la editaba. Recargue la página y revise "
+        "la versión más reciente antes de intentarlo de nuevo."
     ),
     "phishing_resistant_auth_required": (
-        "Confirm your identity with a passkey to continue. Your entries will be preserved."
+        "Confirme su identidad con una llave de acceso (passkey) para continuar. "
+        "Lo que escribió se conserva."
     ),
     "recent_authentication_required": (
-        "Confirm your identity with a passkey to continue. Your entries will be preserved."
+        "Confirme su sesión con su contraseña o una llave de acceso para continuar. "
+        "Lo que escribió se conserva."
     ),
-    "forbidden": "You do not have permission to perform this action.",
-    "not_found": "This item is unavailable or you no longer have access to it.",
-    "control_unreachable": "The control plane could not be reached.",
+    "reauthentication_required": (
+        "Confirme su sesión con su contraseña o una llave de acceso para continuar."
+    ),
+    "authentication_required": "Su sesión terminó. Inicie sesión de nuevo para continuar.",
+    "setup_authentication_required": (
+        "La sesión de configuración inicial terminó. Inicie una nueva sesión de configuración."
+    ),
+    "credential_invalid": "El correo, el usuario o la contraseña no son correctos. Revíselos.",
+    "recovery_completion_required": (
+        "Complete la recuperación de su cuenta en Seguridad de la cuenta antes de continuar."
+    ),
+    "password_work_capacity_exceeded": (
+        "El servidor está ocupado verificando contraseñas. Espere un momento e intente de nuevo."
+    ),
+    "forbidden": "Usted no tiene permiso para hacer esta acción.",
+    "not_found": "Este elemento no está disponible o usted ya no tiene acceso a él.",
+    "revision_conflict": (
+        "Alguien cambió esta información mientras usted la editaba. Recargue la página, "
+        "revise los datos actuales e intente de nuevo."
+    ),
+    "validation_failed": "Algunos datos no son válidos. Revise el formulario e intente de nuevo.",
+    "validation_error": "Algunos datos no son válidos. Revise el formulario e intente de nuevo.",
+    "idempotency_conflict": (
+        "Esta acción ya se envió con otros datos. Recargue la página e inicie la acción de nuevo."
+    ),
+    "reservation_already_served": (
+        "Esta cita ya fue atendida. No se puede volver a registrar su llegada, "
+        "cancelar ni cambiar de fecha."
+    ),
+    "rate_limited": "Se hicieron demasiados intentos. Espere un momento e intente de nuevo.",
+    "control_unreachable": (
+        "No se pudo conectar con el servidor. No se hizo ningún cambio. "
+        "Revise su conexión e intente de nuevo."
+    ),
+    "tenant_context_missing": (
+        "No se sabe a qué negocio pertenece esta acción. Abra el negocio desde Mis negocios "
+        "e intente de nuevo."
+    ),
     "outcome_unknown": (
-        "The connection was lost before the result was confirmed. The action may have completed. "
-        "Retry this unchanged action to safely reconcile the result."
+        "La conexión se perdió antes de confirmar el resultado. Es posible que la acción "
+        "se haya completado. Repita la misma acción sin cambios para confirmar el resultado "
+        "de forma segura."
     ),
 }
+# Families of upstream codes, matched by suffix, for codes without their own copy.
+_HUMAN_ERROR_SUFFIXES = (
+    ("_not_found", "No se encontró lo que busca, o usted ya no tiene acceso. Recargue la página."),
+    (
+        "_revision_conflict",
+        "Alguien cambió esta información mientras usted la editaba. Recargue la página, "
+        "revise los datos actuales e intente de nuevo.",
+    ),
+    (
+        "_conflict",
+        "La acción choca con el estado actual. Recargue la página, revise los datos "
+        "actuales e intente de nuevo.",
+    ),
+    ("_forbidden", "Usted no tiene permiso para hacer esta acción."),
+    ("_invalid", "Algunos datos no son válidos. Revise el formulario e intente de nuevo."),
+)
+_GENERIC_FAILURE = (
+    "No se pudo completar la acción. Revise los datos e intente de nuevo; "
+    "los detalles técnicos muestran la respuesta del servidor."
+)
+_SUCCESS_MESSAGE = "La acción se completó correctamente."
+
+
+def human_error(code: str, status: int | None = None) -> str:
+    """Return Spanish copy for an upstream error code, never the raw English message."""
+
+    if code in _HUMAN_ERRORS:
+        return _HUMAN_ERRORS[code]
+    for suffix, message in _HUMAN_ERROR_SUFFIXES:
+        if code.endswith(suffix):
+            return message
+    if status == 401:
+        return _HUMAN_ERRORS["authentication_required"]
+    if status == 403:
+        return _HUMAN_ERRORS["forbidden"]
+    if status == 404:
+        return _HUMAN_ERRORS["not_found"]
+    if status == 429:
+        return _HUMAN_ERRORS["rate_limited"]
+    return _GENERIC_FAILURE
 
 
 @dataclass(frozen=True)
@@ -109,15 +188,12 @@ def local_error(
 
 
 def _from_response(response: Any, idempotency_key: str | None) -> ExecutionOutcome:
-    error_body = as_mapping(response.error_body)
-    raw_message = error_body.get("message")
+    # The raw upstream message is English; it stays only in payload_json
+    # (rendered under "Detalles técnicos"), never as the human message.
     message = (
-        "The action completed successfully."
+        _SUCCESS_MESSAGE
         if response.ok
-        else _HUMAN_ERRORS.get(
-            response.error_code or "",
-            raw_message if isinstance(raw_message, str) else "The action could not be completed.",
-        )
+        else human_error(response.error_code or "", response.status_code)
     )
     return ExecutionOutcome(
         status=response.status_code,
@@ -153,7 +229,7 @@ async def execute_operation(
         character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
         for character in intent_id
     ):
-        return form_error("invalid form intent")
+        return form_error("El formulario no es válido. Recargue la página e intente de nuevo.")
     idempotency_key = intent_id or token_urlsafe(24) if operation.requires_idempotency_key else None
     extra_headers = {"idempotency-key": idempotency_key} if idempotency_key else None
     try:

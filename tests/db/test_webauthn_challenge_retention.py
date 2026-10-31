@@ -284,8 +284,8 @@ def test_challenge_table_has_no_dependent_foreign_keys(admin_conn: PgConnection)
 @pytest.mark.parametrize(
     ("grantee", "object_name"),
     [
-        (_CALLER_ROLE, "request_engine.native_sessions"),
-        (_DEFINER_ROLE, "request_engine.webauthn_challenges"),
+        (_CALLER_ROLE, "public.native_sessions_acl_probe"),
+        (_DEFINER_ROLE, "public.webauthn_challenges_acl_probe"),
     ],
 )
 def test_upgrade_rejects_unexpected_shared_role_acl_without_rewriting_it(
@@ -312,16 +312,12 @@ def test_upgrade_rejects_unexpected_shared_role_acl_without_rewriting_it(
             database=database,
         ).render_as_string(hide_password=False)
         environment = {**os.environ, "MIGRATION_DATABASE_URL": migration_url}
-        baseline_upgrade = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "0036_webauthn_deadline"],
-            cwd=_ROOT,
-            env=environment,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert baseline_upgrade.returncode == 0, baseline_upgrade.stdout + baseline_upgrade.stderr
+        # The shared cluster role already holds an unreviewed local ACL in the
+        # target database before the baseline installs (historically: before 0037).
         with psycopg.connect(database_conninfo, autocommit=True) as isolated:
+            isolated.execute(
+                sql.SQL("CREATE TABLE {} (id uuid)").format(sql.Identifier(*object_name.split(".")))
+            )
             isolated.execute(
                 sql.SQL("GRANT SELECT ON {} TO {}").format(
                     sql.Identifier(*object_name.split(".")), sql.Identifier(grantee)
@@ -338,17 +334,12 @@ def test_upgrade_rejects_unexpected_shared_role_acl_without_rewriting_it(
         assert failed_upgrade.returncode != 0
         assert "unexpected direct ACLs" in failed_upgrade.stderr
         with psycopg.connect(database_conninfo) as isolated:
-            assert isolated.execute("SELECT version_num FROM alembic_version").fetchone() == (
-                "0036_webauthn_deadline",
-            )
+            assert isolated.execute(
+                "SELECT to_regclass('public.alembic_version'), to_regnamespace('request_engine')"
+            ).fetchone() == (None, None)
             assert isolated.execute(
                 "SELECT has_table_privilege(%s,%s,'SELECT')", (grantee, object_name)
             ).fetchone() == (True,)
-            assert isolated.execute(
-                "SELECT to_regclass('request_engine.webauthn_challenges_retention_scan_idx'), "
-                "to_regprocedure(%s)",
-                (_FUNCTION,),
-            ).fetchone() == (None, None)
     finally:
         with psycopg.connect(config, autocommit=True) as cluster_admin:
             cluster_admin.execute(

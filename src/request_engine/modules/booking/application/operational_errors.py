@@ -31,3 +31,12 @@ class ContextualConfigurationConflict(RuntimeError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+class ResourceCapabilityHeld(RuntimeError):
+    """A live CapacityHold still depends on a capability the caller removes."""
+
+    def __init__(self, resource_id: UUID, capability_ids: tuple[UUID, ...]) -> None:
+        super().__init__(f"Resource {resource_id} has live Holds depending on removed capabilities")
+        self.resource_id = resource_id
+        self.capability_ids = capability_ids

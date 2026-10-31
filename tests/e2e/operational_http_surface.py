@@ -67,6 +67,20 @@ _BASE_ROUTES = (
         "/v1/operations/resource-assignments/{assignment_id}/exceptions",
     ),
     ("resources.exception", "PUT", "/v1/operations/resources/{resource_id}/exceptions"),
+    ("resources.update", "PATCH", "/v1/operations/resources/{resource_id}"),
+    (
+        "resources.capabilities",
+        "PUT",
+        "/v1/operations/resources/{resource_id}/capabilities",
+    ),
+    (
+        "locations.hours_exception_deactivate",
+        "POST",
+        "/v1/operations/locations/{location_id}/hours-exceptions/{exception_id}:deactivate",
+    ),
+    ("organization.holidays_remove", "POST", "/v1/operations/organization/holidays:remove"),
+    ("offerings.update", "PATCH", "/v1/operations/offerings/{offering_id}"),
+    ("offerings.supersede_version", "POST", "/v1/operations/offerings/{offering_id}/versions"),
     ("context_terms.create", "POST", "/v1/operations/context-terms"),
     (
         "context_terms.supersede",
@@ -84,6 +98,11 @@ _REVISION_OWNERS = {
     "resource_assignments.availability": "Resource.availability_revision",
     "resource_assignments.exception": "Resource.availability_revision",
     "resources.exception": "Resource.availability_revision",
+    "resources.update": "Resource.availability_revision",
+    "resources.capabilities": "Resource.availability_revision",
+    "locations.hours_exception_deactivate": "Location.operational_revision",
+    "offerings.update": "Offering.revision",
+    "offerings.supersede_version": "Offering.latest_offering_version_id",
     "context_terms.supersede": "BookingContextTerms.revision",
     **DISCOVERY_REVISION_OWNERS,
 }

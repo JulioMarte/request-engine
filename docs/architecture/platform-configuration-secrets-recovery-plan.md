@@ -298,6 +298,16 @@ offline Request Engine recovery code
 
 This path is independent of OpenBao.
 
+ADR 0017 amendment: WebAuthn registration/repair after recovery is optional.
+A recovery-restricted identity may complete recovery with its active password
+credential (`request_auth.complete_native_recovery_with_password`, 0042). The
+completion is bound to the exact active recovery session and session epoch, the
+identity's current recovery epoch and the password verifier read for that
+session; any concurrent recovery, credential change or session rotation makes
+it return false instead of completing. It does not upgrade the recovery-derived
+session: a fresh login is required, and a password session remains
+`SINGLE_FACTOR`.
+
 Secret-store disaster:
 
 ```text

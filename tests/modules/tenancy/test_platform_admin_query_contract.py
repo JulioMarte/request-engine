@@ -103,3 +103,8 @@ def test_private_admin_queries_publish_security_and_secret_free_owner_views() ->
     fields = schema["components"]["schemas"]["OwnerInvitationView"]["properties"]
     assert {"status", "revision", "expires_at", "expired", "native_identity_id"} <= set(fields)
     assert not {"invitation_token", "token_digest", "token_fingerprint", "verifier"} & set(fields)
+    identity = schema["components"]["schemas"]["NativeIdentityView"]
+    assert "login_handle" in identity["required"]
+    assert not {"password", "verifier", "token_digest", "recovery_codes"} & set(
+        identity["properties"]
+    )

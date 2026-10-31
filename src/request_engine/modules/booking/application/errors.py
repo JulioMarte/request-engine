@@ -1,6 +1,9 @@
 from uuid import UUID
 
 from request_engine.modules.booking.domain.errors import (
+    AppointmentNoteInvalid as AppointmentNoteInvalid,
+)
+from request_engine.modules.booking.domain.errors import (
     BookingConfigurationError as BookingConfigurationError,
 )
 from request_engine.modules.booking.domain.errors import BookingError
@@ -136,6 +139,26 @@ class ReservationNotReschedulable(BookingError):
         self.status = status
 
 
+class ReservationAlreadyServed(BookingError):
+    """The reservation's visit already completed, so its commitment is consumed."""
+
+    def __init__(self, reservation_id: UUID) -> None:
+        super().__init__(f"Reservation {reservation_id} visit was already served")
+        self.reservation_id = reservation_id
+
+
 ReservationStateConflict = (
     ReservationNotConfirmed | ReservationNotCancellable | ReservationNotReschedulable
 )
+
+
+class AppointmentNoteSupersedesUnknown(BookingError):
+    def __init__(self, reservation_id: UUID, supersedes_note_id: UUID) -> None:
+        super().__init__(f"note {supersedes_note_id} is not a note of Reservation {reservation_id}")
+        self.reservation_id = reservation_id
+        self.supersedes_note_id = supersedes_note_id
+
+
+class AppointmentNoteAuthorUnavailable(BookingError):
+    def __init__(self) -> None:
+        super().__init__("the acting Principal cannot author notes in this organization")

@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% import "partials/agent_connect.html" as connect %}
+{% block title %}{{ display_name }} · Asistentes · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div>
+    <p class="breadcrumb"><a href="/tenants/{{ organization_id }}/agents">Asistentes y API</a></p>
+    <h1>{% if complete %}{{ display_name }} está listo{% else %}{{ display_name }} todavía no está listo{% endif %}</h1>
+    <p>{% if complete %}Copie la clave ahora y conéctela a Claude. No volverá a ver esta clave; si la pierde, cree una nueva desde la página del asistente.{% else %}Algunos pasos no terminaron. No se dio nada más allá de los pasos terminados. Reintente para seguir desde donde se detuvo.{% endif %}</p>
+  </div>
+</header>
+
+{% if token %}
+<section class="secret-reveal" aria-labelledby="key-title">
+  <strong id="key-title">Clave del asistente, se muestra una sola vez</strong>
+  <p class="small">Trátela como una contraseña. Cualquiera que la tenga puede actuar como este asistente, dentro de sus permisos.</p>
+  <div class="secret-value"><input id="agent-key" readonly value="{{ token }}" aria-label="Clave del asistente" autocomplete="off" spellcheck="false" /><button type="button" data-copy-target="agent-key">Copiar clave</button></div>
+</section>
+{% elif principal_id %}
+<p class="alert warning">Este intento retomó un asistente que ya se había creado, así que su clave no se muestra otra vez. Si no la guardó, cree una clave nueva desde la página del asistente cuando termine la configuración.</p>
+{% endif %}
+
+<section class="panel" aria-labelledby="steps-title">
+  <div class="panel-heading"><h2 id="steps-title">Pasos de configuración</h2></div>
+  <div class="panel-body">
+    <ol class="task-steps">
+      {% for step in steps %}
+      <li class="{% if step.status == 'done' %}done{% elif step.status == 'failed' %}current{% endif %}"><span>{% if step.status == 'done' %}✓{% elif step.status == 'failed' %}!{% else %}{{ loop.index }}{% endif %}</span><div><strong>{{ step.label }}</strong>{% if step.message %}<small>{{ step.message }}</small>{% endif %}</div></li>
+      {% endfor %}
+    </ol>
+  </div>
+</section>
+
+{% if not complete %}
+<section class="card">
+  <h2>Terminar la configuración</h2>
+  <form id="agent-retry" method="post" action="/tenants/{{ organization_id }}/agents" data-plain-action>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    {% for key, value in retry_values.items() %}{% if key not in ("csrf_token", "capabilities") %}<input type="hidden" name="{{ key }}" value="{{ value }}" />{% endif %}{% endfor %}
+    {% for key in retry_values.capabilities %}<input type="hidden" name="capabilities" value="{{ key }}" />{% endfor %}
+    {% if not step_up %}<button type="submit">Reintentar los pasos pendientes</button>{% endif %}
+  </form>
+  {% if step_up %}
+  <p class="alert error">Confirme su sesión actual para continuar. Sus opciones se conservan y los pasos terminados no se repiten.</p>
+  {% import "partials/reauthentication.html" as authentication %}
+  {{ authentication.render("agent-retry", false) }}
+  {% endif %}
+</section>
+{% endif %}
+
+{% if principal_id %}
+<section class="panel" aria-labelledby="connect-title">
+  <div class="panel-heading"><h2 id="connect-title">Conecte {% if is_chief %}a su asistente del negocio{% else %}el asistente{% endif %} con Claude</h2></div>
+  <div class="panel-body">{{ connect.render(connection, "Háblele con naturalidad, por ejemplo: “Resérvale a María una consulta mañana a las 10” o “Agrega a Pedro Gómez, pedro@example.com, al equipo”. Las personas que sugiera para el equipo le llegan a Aprobaciones para que usted confirme.") }}</div>
+</section>
+<p><a class="button secondary" href="/tenants/{{ organization_id }}/agents/{{ principal_id }}">Abrir asistente</a></p>
+{% endif %}
+{% endblock %}

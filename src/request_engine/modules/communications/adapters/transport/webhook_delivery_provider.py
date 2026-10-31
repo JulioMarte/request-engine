@@ -115,6 +115,10 @@ def _handoff_payload(request: ProviderSendRequest) -> dict[str, object]:
         },
         "expires_at": (request.expires_at.isoformat() if request.expires_at is not None else None),
         "reconcile_after_seconds": request.reconcile_after_seconds,
+        # Selects the per-organization key for the signed outcome callback.
+        "organization_id": (
+            str(request.organization_id) if request.organization_id is not None else None
+        ),
     }
 
 

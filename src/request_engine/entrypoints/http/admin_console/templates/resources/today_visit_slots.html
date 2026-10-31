@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Reservar o agregar a la fila · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div><p class="eyebrow">Nueva visita</p><h1>Reservar o agregar a la fila de espera</h1><p>Para el paciente que eligió. El sistema comprueba si usted puede actuar por él.</p></div>
+  <div class="page-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/today/visit">Elegir otro paciente</a><a class="button secondary" href="/tenants/{{ organization_id }}/today">Volver a hoy</a></div>
+</header>
+{% if registered %}<p class="alert notice" role="status">Paciente registrado.</p>{% endif %}
+<div class="split-layout">
+  <section class="card" aria-labelledby="book-title">
+    <h2 id="book-title">Reservar una cita</h2>
+    {% set finder_action = "/tenants/" ~ organization_id ~ "/today/visit/" ~ party_id %}
+    {% set finder_hidden = {} %}
+    {% set choose_action = finder_action ~ "/book" %}
+    {% set choose_hidden = {} %}
+    {% set choose_label = "¿Reservar" %}
+    {% include "partials/slot_finder.html" %}
+  </section>
+  <section class="card" aria-labelledby="walkin-title">
+    <h2 id="walkin-title">Sin cita, ahora</h2>
+    {% if queues %}
+    <p>Agregue al paciente a una fila de espera sin cita.</p>
+    {% for queue in queues %}
+    <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/visit/{{ party_id }}/walk-in">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="_intent_id" value="{{ intent_id }}-w-{{ queue.id }}" data-form-intent />
+      <input type="hidden" name="queue_id" value="{{ queue.id }}" />
+      <button type="submit" class="secondary">Agregar a {{ queue.name }}</button>
+    </form>
+    {% endfor %}
+    {% else %}
+    <p class="muted">Usted no tiene ninguna fila de espera activa disponible.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

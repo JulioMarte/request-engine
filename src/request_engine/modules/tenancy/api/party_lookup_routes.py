@@ -56,6 +56,10 @@ def add_party_lookup_routes(
         lookup_route,
         capability="parties.lookup",
         methods=["GET"],
+        operation_id="parties_lookup",
+        tool_name="parties_lookup",
+        tool_audiences=("operator",),
+        summary="Look up Parties",
         response_model=tuple[RegisteredPartyView, ...],
         response_model_exclude_none=True,
         description=(

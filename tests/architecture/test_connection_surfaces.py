@@ -15,6 +15,11 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "__init__.py",
     "app.py",
     "capabilities.py",
+    # Invalidation-only change feed (ADR 0020): per-topic authorization with
+    # existing owner read capabilities and the single fact->topic routing table.
+    # It carries no owner data; clients re-read through module-owned reads.
+    "change_topics.py",
+    "changes_stream.py",
     "discovery_app.py",
     "discovery_availability_app.py",
     "errors.py",
@@ -26,11 +31,19 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "native_auth.py",
     "native_auth_errors.py",
     "native_runtime.py",
+    # MCP transport projection of the authorized operation catalog (ADR 0018). It
+    # owns no business transport: tools re-enter the owner operations over HTTP.
+    "mcp_gateway.py",
+    "mcp_tools.py",
     "operation_catalog.py",
     "operational_app.py",
     "operational_composition.py",
     "operational_errors.py",
     "operator_resolution.py",
+    # Provider-event callback trust boundary: authenticates a provider
+    # connection and persists before interpretation; it owns no business
+    # transport (interpretation runs in the fenced ProviderEvent worker).
+    "provider_callbacks.py",
     # Private platform-plane composition only; Tenancy owns its DTOs and commands.
     "platform_control_app.py",
     "security.py",

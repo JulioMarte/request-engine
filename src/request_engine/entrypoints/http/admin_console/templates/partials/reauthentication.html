@@ -1,0 +1,15 @@
+{% macro render(retry_form='', passkey_only=false, recovery=false) -%}
+<section data-reauthentication>
+  {% if not passkey_only %}
+  <form method="post" action="{{ '/account/security/recovery-complete' if recovery else '/step-up/password' }}" class="stack" {% if recovery %}data-password-recovery-complete{% else %}data-password-step-up{% endif %} data-retry-form="{{ retry_form }}">
+    <label>Confirme su contraseña actual
+      <input type="password" name="password" autocomplete="current-password" required />
+    </label>
+    <button type="submit" disabled>{{ 'Terminar la recuperación con la contraseña' if recovery else 'Confirmar con contraseña' }}{% if retry_form %} y repetir{% endif %}</button>
+  </form>
+  <noscript><p class="muted">Active JavaScript para confirmar su contraseña sin que quede guardada en el historial del navegador.</p></noscript>
+  {% endif %}
+  {% if not recovery %}<button type="button" class="secondary step-up-btn" data-retry-form="{{ retry_form }}">Confirmar con llave de acceso{% if retry_form %} y repetir{% endif %}</button>{% endif %}
+  <p class="step-up-status muted" role="status" aria-live="polite"></p>
+</section>
+{%- endmacro %}

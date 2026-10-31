@@ -1,5 +1,7 @@
 # 0016 — Explicit adoption of a newer policy by an existing tenant controller
 
+
+Current authentication policy amendment: [ADR 0017](0017-optional-passkeys-administrative-authentication.md) accepts recent normal password or verified WebAuthn proof for administrative admission. Earlier exclusive phishing-resistant requirements below retain decision provenance. Capability, consent, continuity, recovery and transactional authority remain binding.
 Status: Accepted — implementation present; exact-head production verification in progress
 Date: 2026-10-04
 Owner: Tenancy
@@ -231,3 +233,16 @@ cannot claim real two-person control merely by creating two identities.
   multi-database compatibility; current-product and exact-head CI evidence.
 - Manual administrator journey shows old policy, requested delta, both consent
   states, blockers and the actual resulting rights without false readiness.
+
+
+## Additive v7 evolution (2026-10-11)
+
+The admin configuration inventory introduces an explicit operational Query,
+`queue.read_configuration`. Migration `0040_tenant_controller_v7` appends immutable
+v7 as v6 plus only that delegable capability. Future organizations select v7.
+Existing v1-v6 roots may request the v7 transition through the same dual-consent
+journey, with the same independent actors, revision/recovery checks and rejection
+of revoked-grant restoration. Existing pending v1-v5 to v6 consent remains v6
+and is still accepted; migration and replay never retarget it. Apply approves
+only those two explicit transition sets, without a wildcard or v7 self-upgrade.
+No original policy, grant, root fact or consent is rewritten or backfilled.

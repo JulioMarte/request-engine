@@ -1,3 +1,4 @@
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -64,10 +65,15 @@ class FakeTenantAuthorityReader:
 
 
 class FakePlatformAuthorityReader:
+    def __init__(self, snapshot: PrincipalAuthoritySnapshot | None = None) -> None:
+        self.snapshot = snapshot
+
     async def read_platform_principal_authority(
         self, *, principal_id: UUID
     ) -> PrincipalAuthoritySnapshot | None:
-        return None
+        return (
+            self.snapshot if self.snapshot and self.snapshot.principal_id == principal_id else None
+        )
 
 
 def _subject(authority_id: UUID, subject_id: str = "native-user") -> AuthenticatedSubject:
@@ -105,6 +111,52 @@ def _authority(principal_id: UUID, revision: int = 7) -> PrincipalAuthoritySnaps
         capabilities=frozenset({"booking.read", "booking.create"}),
         delegable_capabilities=frozenset(),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("plane", [IdentityBindingPlane.TENANT, IdentityBindingPlane.PLATFORM])
+@pytest.mark.parametrize("recovery_derived", [False, True])
+async def test_completed_recovery_still_fences_old_session_authority(
+    plane: IdentityBindingPlane,
+    recovery_derived: bool,
+) -> None:
+    authority_id, organization_id, principal_id = uuid4(), uuid4(), uuid4()
+    platform = plane is IdentityBindingPlane.PLATFORM
+    read = "platform.owner.read" if platform else "booking.read"
+    change = "platform.owner.provision" if platform else "staff.invite"
+    binding = replace(
+        _binding(
+            authority_id=authority_id, organization_id=organization_id, principal_id=principal_id
+        ),
+        principal_plane=plane,
+        organization_id=None if platform else organization_id,
+    )
+    snapshot = replace(_authority(principal_id), capabilities=frozenset({read, change}))
+    subject = replace(
+        _subject(authority_id),
+        metadata={
+            "recovery_restricted": "false",
+            "recovery_derived": str(recovery_derived).lower(),
+        },
+    )
+    resolver = IdentityPrincipalResolver(
+        binding_reader=FakeBindingReader((binding,)),
+        tenant_authority_reader=FakeTenantAuthorityReader({principal_id: snapshot}),
+        platform_authority_reader=FakePlatformAuthorityReader(snapshot),
+    )
+    if platform:
+        actor = await resolver.resolve_platform_actor(
+            subject=subject, authentication_method="native_session"
+        )
+    else:
+        actor = await resolver.resolve_tenant_actor(
+            subject=subject, organization_id=organization_id, authentication_method="native_session"
+        )
+    assert actor.recovery_restricted is False
+    assert actor.recovery_derived is recovery_derived
+    assert read in actor.capabilities
+    assert (change in actor.capabilities) is (not recovery_derived)
+    assert snapshot.capabilities == frozenset({read, change})
 
 
 @pytest.mark.asyncio

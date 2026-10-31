@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LocationBody(BaseModel):
@@ -29,6 +29,12 @@ class LocationUpdateBody(BaseModel):
     timezone: str
     active: bool
     expected_operational_revision: int
+    display_name: str | None = Field(
+        default=None,
+        max_length=200,
+        description="New Location label; omitted or null keeps the current name. "
+        "Not booking-material: it does not advance operational_revision.",
+    )
     address_line1: str | None = None
     address_line2: str | None = None
     locality: str | None = None

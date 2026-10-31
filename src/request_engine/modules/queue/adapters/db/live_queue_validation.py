@@ -4,7 +4,10 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.queue.application.errors import TenantReferenceNotUsable
+from request_engine.modules.queue.application.errors import (
+    ReservationAlreadyServed,
+    TenantReferenceNotUsable,
+)
 
 
 async def require_active_subject(
@@ -73,7 +76,7 @@ async def require_reservation_match(
                     "JOIN request_engine.offering_versions ov "
                     "ON ov.organization_id=r.organization_id AND ov.id=r.offering_version_id "
                     "WHERE r.organization_id=:organization_id AND r.id=:reservation_id "
-                    "AND r.status='confirmed'"
+                    "AND r.status='confirmed' FOR SHARE OF r"
                 ),
                 {"organization_id": organization_id, "reservation_id": reservation_id},
             )
@@ -89,3 +92,28 @@ async def require_reservation_match(
     if queue_offering_id is not None and offering_id != queue_offering_id:
         raise TenantReferenceNotUsable("reservation_id", reservation_id)
     return offering_id
+
+
+async def ensure_reservation_not_served(
+    session: AsyncSession, organization_id: UUID, reservation_id: UUID
+) -> None:
+    """Refuse admission of a reservation whose visit already completed in any queue.
+
+    A QueueEntry reaches ``completed`` only through the delivery-owned
+    serving -> completed transition that also completes its ServiceSession, so
+    a completed entry is the served-visit fact. Concurrent entries of the same
+    reservation in different queues stay allowed (Day Board multi-queue
+    ambiguity contract); only re-admission after the visit was served is not.
+    """
+    row = (
+        await session.execute(
+            text(
+                "SELECT 1 FROM request_engine.queue_entries "
+                "WHERE organization_id=:organization_id AND reservation_id=:reservation_id "
+                "AND status='completed' LIMIT 1"
+            ),
+            {"organization_id": organization_id, "reservation_id": reservation_id},
+        )
+    ).first()
+    if row is not None:
+        raise ReservationAlreadyServed(reservation_id)

@@ -62,6 +62,7 @@ async def test_send_posts_handoff_payload_with_explicit_attempt_no() -> None:
         },
         "expires_at": "2026-09-01T12:00:00+00:00",
         "reconcile_after_seconds": 300,
+        "organization_id": "6f1c2d7e-0a4b-4c8e-9d3f-2b5a7e9c1d40",
     }
 
 

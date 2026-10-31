@@ -106,6 +106,28 @@ the tenant's root operational authority through
 Representation administration) and exposes the owner-backed
 `has_active_organization_party` fact consumed by `GET /v1/onboarding/readiness`.
 
+## Staff Representation delegation
+
+Configuration owners require both the published capability (for example
+`catalog.manage`) and an exact active `operations.manage_*` Representation of the
+business Party. A current HUMAN `staff.manage_authority` manager delegates those
+scopes to another active HUMAN staff member through
+`PUT /v1/staff/members/{membership_id}/representations/{authority_party_id}`
+(`staff_manage_representations`; body `expected_authority_revision`,
+`desired_scopes`, `provenance_reference`; `Idempotency-Key`). It is a replace:
+omitted staff-delegated scopes are revoked, `[]` revokes all. The manager may only
+add scopes it holds through a delegable Representation (root provisioning or
+self-bootstrap); delegated rows are never delegable, root rows are never revoked
+and the actor cannot target itself. `GET /v1/staff/members/{membership_id}/representations`
+(`staff_representations_list`, `staff.read`) shows active rows with `delegable` and
+grantor. The PostgreSQL backstop is `request_engine.replace_staff_representations`
+(migration `0005_staff_representations`): identity-topology gate, tenant staff root,
+manager gate, target Principal FOR UPDATE (exact authority revision), Party FOR
+SHARE, actor ceiling FOR SHARE, then writes. Representation writes bump the target
+Principal's authority revision, so revocation denies the delegate's next
+configuration request (INV-STAFF-REPRESENTATION-001). Agents are excluded by the
+AUTHORITY_CHANGE ban and the HUMAN manager gate.
+
 ## Identity-aware onboarding facts (E2)
 
 Tenancy also publishes `contracts/onboarding_readiness.py`:
@@ -147,11 +169,68 @@ same transaction. No patient Party/contact or second authentication path is
 created. See `docs/architecture/staff-email-invitations.md` for lifecycle,
 replay, delivery ambiguity, lock and deployment contracts.
 
+Create and resend accept `delivery: "email" | "link"` (default `email`). With
+`link` the inviter receives `acceptance_token` and `acceptance_url` (console
+`/staff-invitations/{id}/accept#token=...` when the deployment URL is configured)
+exactly once, in the command's no-store response, to share through any channel
+(for example WhatsApp). Only the SHA256 digest and `delivery_channel` are stored;
+reads and idempotent replays never return the proof again, so a lost link is
+re-issued with `:resend` (which invalidates the previous proof and fences any queued
+email). Link delivery needs neither the email secret store nor SMTP. The audit
+records `delivery_channel` and `shareable_link_issued` (INV-STAFF-INVITATION-LINK-001).
+
 `POST /v1/staff/invitations/{invitation_id}:preview` lets the authenticated native
 recipient review the organization display name and invitation expiry using the
 same proof, without creating membership or grants. It rejects tenant/query
 selectors and returns an advisory, no-store projection; acceptance independently
 revalidates current proof and authority.
+
+## Staff invitation proposals (ADR 0019)
+
+`POST /v1/staff/invitation-proposals` (`staff_invitation_proposal_create`, tool
+`staff_invitation_propose`, audience `operator`) lets an AGENT or HUMAN holding the
+operational `staff.propose_invitation` capability record an inert pending proposal
+(email, optional display name/note, provenance). It grants, stages and sends nothing.
+`GET /v1/staff/invitation-proposals?status=pending` (`staff_invitation_proposal_list`)
+is the owner's approvals inbox under HUMAN `staff.read`; it projects the proposer's
+kind and agent display name. `GET .../{proposal_id}` serves `staff.read` holders and
+a proposer reading its own proposal (others get 404). `:approve` / `:reject` require
+current HUMAN `staff.invite`, recent administrative authentication, `expected_revision`
+and `Idempotency-Key`; approval creates the invitation through the same write path as
+`staff_invitation_create` in one transaction. PostgreSQL enforces tenant RLS, one
+pending proposal per email, the proposer gate and a HUMAN-manager decision guard.
+Initial controller policy `tenant-controller-v8` adds delegable
+`staff.propose_invitation` so controllers can grant it to agents.
+Initial controller policy `tenant-controller-v9` (migration `0044`) adds the fifteen
+delegable operational front-desk capabilities (queue setup, live queue and triage,
+service start/complete, attendance/arrival estimate and `organization.manage_profile`)
+listed in `docs/architecture/initial-controller-policy.md`; existing roots adopt it
+only through platform-approved controller policy adoption.
+Current initial controller policy `tenant-controller-v10` (migration
+`0003_tenant_controller_v10`) is v9 plus delegable operational
+`appointments.annotate` (Booking appointment notes); new organizations select it and
+existing v1-v9 roots reach it only through the same platform-approved adoption.
+
+## Self-service business owner accounts (ADR 0021)
+
+A HUMAN platform Principal holding `organization.provision` invites a future
+business owner through the private control plane
+(`platform_account_invitation_create|list|get|revoke` under
+`/v1/platform/account-invitations`; reads use `platform.organization.read`). The
+code is shown once (`delivery=shared_code`, for WhatsApp) or emailed after commit
+(`delivery=email`, typed 503 when no mailer is composed); PostgreSQL keeps only its
+digest. The invitee calls the public, rate-limited `account_invitation_enroll`
+(`POST /v1/account-invitations:enroll`) with the code and the login and password
+they choose, which creates their native identity and one
+`account.organization.create` entitlement (default limit 1, at most 10). That
+entitlement is not tenant or platform authority and is never part of
+`ActorContext`. With a native session the owner reads it through
+`self_account_get` (`GET /v1/me/account`) and creates organizations they control
+through `self_organization_create` (`POST /v1/me/organizations`, Idempotency-Key,
+entitlement row lock, current initial controller policy, defaults
+`America/Santo_Domingo` / `es-DO` / `DOP`). The issuing platform Principal stays
+root provenance only. Schema: migration `0006_self_service_accounts`; guarantee
+`INV-SELF-SERVICE-ACCOUNT-001`.
 
 ## Staff administration reads
 

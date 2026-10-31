@@ -118,7 +118,7 @@ An empty catalog is not a general service-health verdict: it can mean the curren
 grants, tenant policy or agent policy/risk ceiling admit no mounted operations.
 An agent without a policy is rejected rather than receiving an empty success.
 
-## 5. This is not yet MCP tools/list
+## 5. Relationship to MCP tools/list
 
 `/v1/operation-catalog` lists authorized canonical operations. It does not automatically turn every operation into an AI tool.
 
@@ -129,7 +129,12 @@ x-request-engine-tool-name
 x-request-engine-tool-audiences
 ```
 
-and future tool discovery must intersect that projection metadata with the same authority rules.
+and tool discovery intersects that projection metadata with the same authority rules.
+The MCP gateway ([ADR 0018](../adr/0018-mcp-tool-gateway.md)) does exactly this: its
+`tools/list` is the caller's own catalog filtered to entries with a tool name and the
+`operator` audience, and `tools/call` re-reads the catalog and re-enters the same
+HTTP operation. The catalog remains the only discovery authority; the gateway adds
+no filter that could widen it.
 
 Therefore:
 
@@ -177,12 +182,15 @@ to discover which concrete operations the current actor can use to address the b
 
 This naturally supports the case where one capability authorizes several possible operations and prevents Onboarding from depending on another module's HTTP API shape.
 
-## 8. Current limitations before tool/MCP projection
+## 8. Current limitations of tool/MCP projection
 
 - catalog visibility does not resolve object-specific Party/Representation/resource authority;
 - older controller-policy upgrades and identity recovery remain acceptance gaps;
-- tool projection metadata has not yet been applied systematically to owner operations;
-- no MCP adapter exists;
+- tool projection metadata is applied only to the curated operator set recorded in
+  ADR 0018 (Parties, business info, catalog offerings, appointments, queues,
+  Requests); staff, agent, identity, delegation and platform operations are not projected;
+- the MCP adapter advertises input schemas only (no `outputSchema`), does not paginate
+  `tools/list`, and expects an existing bearer rather than MCP OAuth discovery;
 - no claim is made that every authorized operation is suitable for an LLM.
 
 These limitations are intentional blockers against prematurely declaring the tool surface complete.

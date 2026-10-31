@@ -25,8 +25,20 @@ class TrustedProviderCallbackContext:
     connection_key: str
 
 
+class ProviderCallbackAuthenticationFailed(Exception):
+    """The callback is not authenticated; the reason stays server-side only."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class ProviderCallbackAuthenticator(Protocol):
-    """Authenticate one inbound provider callback and bind its trusted connection."""
+    """Authenticate one inbound provider callback and bind its trusted connection.
+
+    Implementations raise ProviderCallbackAuthenticationFailed for any
+    credential failure so the HTTP surface answers one uniform 401.
+    """
 
     async def authenticate_callback(self, request: Request) -> TrustedProviderCallbackContext: ...
 
@@ -49,6 +61,27 @@ async def ingest_provider_callback(
     """
 
     trusted = await authenticator.authenticate_callback(request)
+    return await record_authenticated_provider_callback(
+        session_factory,
+        trusted,
+        provider_event_id=provider_event_id,
+        payload=payload,
+    )
+
+
+async def record_authenticated_provider_callback(
+    session_factory: SessionFactory,
+    trusted: TrustedProviderCallbackContext,
+    *,
+    provider_event_id: str,
+    payload: dict[str, object],
+) -> ProviderEventReceipt:
+    """Persist one callback whose connection authority was already derived.
+
+    Lets an HTTP surface authenticate over the raw body before it parses the
+    body for the event identity, without a second persistence path.
+    """
+
     if not trusted.provider_key or not trusted.connection_key:
         raise ValueError(
             "authenticated provider callback context must name provider and connection"

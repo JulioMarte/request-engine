@@ -42,6 +42,8 @@ _GATE_EXCLUSIVE = "request_engine.acquire_identity_topology_exclusive()"
 # topology tables, plus the public integration wrappers that lock a Principal
 # before delegating to their gated ``*_state`` implementation.
 _GATED_DML_WRITERS: dict[tuple[str, str], str] = {
+    # 0006 (ADR 0021): self-service organization root, same share gate as the platform root.
+    ("request_auth", "create_self_service_organization"): _GATE_SHARE,
     ("request_cmd", "materialize_invited_staff"): _GATE_SHARE,
     ("request_engine", "confirm_identity_link_intent"): _GATE_SHARE,
     ("request_engine", "confirm_identity_link_subject"): _GATE_SHARE,
@@ -51,6 +53,7 @@ _GATED_DML_WRITERS: dict[tuple[str, str], str] = {
     ("request_engine", "replace_agent_authority"): _GATE_SHARE,
     ("request_engine", "replace_integration_authority_state"): _GATE_SHARE,
     ("request_engine", "replace_staff_authority"): _GATE_SHARE,
+    ("request_engine", "replace_staff_representations"): _GATE_SHARE,
     ("request_engine", "set_integration_status_state"): _GATE_SHARE,
     ("request_engine", "transition_agent_profile"): _GATE_SHARE,
     ("request_engine", "transition_identity_binding"): _GATE_SHARE,
@@ -109,6 +112,7 @@ _DIRECT_DML = re.compile(
 _BEGIN_LINE = re.compile(r"^[ \t]*BEGIN[ \t]*$", re.MULTILINE)
 
 _WRITER_CALLS: tuple[tuple[str, int], ...] = (
+    ("request_auth.create_self_service_organization", 15),
     ("request_cmd.materialize_invited_staff", 8),
     ("request_engine.confirm_identity_link_intent", 5),
     ("request_engine.confirm_identity_link_subject", 5),
@@ -120,6 +124,7 @@ _WRITER_CALLS: tuple[tuple[str, int], ...] = (
     ("request_engine.replace_integration_authority", 4),
     ("request_engine.replace_integration_authority_state", 4),
     ("request_engine.replace_staff_authority", 4),
+    ("request_engine.replace_staff_representations", 5),
     ("request_engine.set_integration_status", 4),
     ("request_engine.set_integration_status_state", 4),
     ("request_engine.transition_agent_profile", 4),

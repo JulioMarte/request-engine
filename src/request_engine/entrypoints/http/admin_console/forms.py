@@ -1,24 +1,26 @@
 """Schema-driven form fields and submission parsing for generic operations.
 
-This is intentionally small: it flattens OpenAPI parameters and one level of
-request-body properties into HTML fields, and coerces submitted strings back into
-the typed JSON the control plane expects. Nested objects/arrays are submitted as
-JSON text so no per-operation screen is required.
+Canonical schemas describe both scalar controls and nested visual editors.
+Submitted controls are coerced into the owner payload; owner validation remains
+authoritative. Unstructured schemas retain an explicit advanced JSON input.
 """
 
 from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation
+from request_engine.entrypoints.http.admin_console.field_labels import field_label
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
 
 _JSON_KINDS = frozenset({"object", "array"})
+_KIND_NAMES = {"object": "un objeto JSON", "array": "una lista JSON"}
 
 
 class FormSubmissionError(ValueError):
@@ -37,6 +39,9 @@ class FormField:
     description: str
     multiline: bool
     nullable: bool = False
+    children: tuple[FormField, ...] = ()
+    item: FormField | None = None
+    format: str = ""
 
 
 def _field_from_schema(
@@ -59,14 +64,42 @@ def _field_from_schema(
     if not isinstance(kind, str):
         kind = "object" if "properties" in schema else "string"
     enum = tuple(
-        str(item) for item in as_list(schema.get("enum")) if not isinstance(item, (dict, list))
+        str(item) for item in as_list(effective.get("enum")) if not isinstance(item, (dict, list))
     )
+    if (
+        name == "weekday"
+        and kind == "integer"
+        and effective.get("minimum") == 0
+        and effective.get("maximum") == 6
+    ):
+        enum = tuple(str(day) for day in range(7))
     default_raw = schema.get("default")
-    default = "" if default_raw is None else str(default_raw)
+    default = (
+        ""
+        if default_raw is None
+        else json.dumps(default_raw)
+        if isinstance(default_raw, (dict, list, bool))
+        else str(default_raw)
+    )
+    properties = as_mapping(effective.get("properties"))
+    required_children = frozenset(as_list(effective.get("required")))
+    children = tuple(
+        _field_from_schema(
+            name=key, location=location, schema=as_mapping(value), required=key in required_children
+        )
+        for key, value in properties.items()
+        if effective.get("additionalProperties") in (None, False)
+    )
+    item_schema = as_mapping(effective.get("items"))
+    item = (
+        _field_from_schema(name="item", location=location, schema=item_schema, required=True)
+        if kind == "array" and item_schema
+        else None
+    )
     return FormField(
         name=name,
         location=location,
-        label=name.replace("_", " ").strip().title() or name,
+        label=field_label(name),
         kind=kind,
         required=required,
         enum=enum,
@@ -74,6 +107,9 @@ def _field_from_schema(
         description=description or _schema_description(schema),
         multiline=kind in _JSON_KINDS or default.startswith("{") or default.startswith("["),
         nullable=nullable,
+        children=children,
+        item=item,
+        format=str(effective.get("format", "")),
     )
 
 
@@ -118,20 +154,20 @@ def _coerce(field: FormField, raw: str) -> Any:
     if field.kind == "boolean":
         normalized = raw.strip().lower()
         if normalized not in {"1", "true", "on", "yes", "0", "false", "off", "no"}:
-            raise FormSubmissionError(f"{field.label} must be a boolean")
+            raise FormSubmissionError(f"{field.label}: elija sí o no.")
         return normalized in {"1", "true", "on", "yes"}
     if field.kind == "integer":
         try:
             return int(raw)
         except ValueError as exc:
-            raise FormSubmissionError(f"{field.label} must be an integer") from exc
+            raise FormSubmissionError(f"{field.label}: escriba un número entero.") from exc
     if field.kind == "number":
         try:
             number = float(raw)
         except ValueError as exc:
-            raise FormSubmissionError(f"{field.label} must be a number") from exc
+            raise FormSubmissionError(f"{field.label}: escriba un número.") from exc
         if not math.isfinite(number):
-            raise FormSubmissionError(f"{field.label} must be a finite number")
+            raise FormSubmissionError(f"{field.label}: escriba un número válido.")
         return number
     if field.kind in _JSON_KINDS:
         try:
@@ -141,7 +177,9 @@ def _coerce(field: FormField, raw: str) -> Any:
             json.dumps(value, allow_nan=False)
             return value
         except ValueError as exc:
-            raise FormSubmissionError(f"{field.label} must be valid JSON") from exc
+            raise FormSubmissionError(
+                f"{field.label}: el JSON no es válido. Revise comillas, comas y llaves."
+            ) from exc
     return raw
 
 
@@ -150,6 +188,62 @@ class Submission:
     path_params: dict[str, str]
     query_params: dict[str, str]
     body: dict[str, Any] | None
+
+
+_OMITTED = object()
+_MAX_ARRAY_ITEMS = 100
+
+
+def _read_value(field: FormField, name: str, form: Mapping[str, str]) -> Any:
+    structured = form.get("__structured__" + name) == "true"
+    if structured:
+        if not field.required and form.get("__include__" + name) != "true":
+            return _OMITTED
+        if field.nullable and form.get("__mode__" + name) == "null":
+            return None
+        if field.kind == "object" and field.children:
+            result: dict[str, Any] = {}
+            for child in field.children:
+                value = _read_value(child, name + "." + child.name, form)
+                if value is not _OMITTED:
+                    result[child.name] = value
+            return result
+        if field.kind == "array" and field.item is not None:
+            prefix = name + "["
+            indices: set[int] = set()
+            for key in form:
+                candidate = key.removeprefix("__structured__").removeprefix("__include__")
+                if candidate.startswith(prefix):
+                    match = re.match(r"(\d+)\]", candidate[len(prefix) :])
+                    if match:
+                        indices.add(int(match.group(1)))
+            if len(indices) > _MAX_ARRAY_ITEMS:
+                raise FormSubmissionError(
+                    f"{field.label}: hay demasiadas entradas. Quite algunas e intente de nuevo."
+                )
+            return [_read_value(field.item, f"{name}[{index}]", form) for index in sorted(indices)]
+        raise FormSubmissionError(
+            f"{field.label}: este campo no acepta entradas estructuradas. Recargue la página."
+        )
+    raw = form.get(name, field.default).strip()
+    if raw == "" and field.nullable and form.get("__null__" + name) == "true":
+        return None
+    if raw == "" and field.required and field.nullable and name in form:
+        return None
+    if raw == "" and not field.required:
+        return _OMITTED
+    if raw == "":
+        raise FormSubmissionError(f"{field.label}: este campo es obligatorio.")
+    value = _coerce(field, raw)
+    if value is None and field.nullable:
+        return None
+    if field.kind in _JSON_KINDS and not isinstance(
+        value, dict if field.kind == "object" else list
+    ):
+        raise FormSubmissionError(
+            f"{field.label}: el valor debe ser {_KIND_NAMES.get(field.kind, field.kind)}."
+        )
+    return cast(Any, value)
 
 
 def parse_submission(
@@ -161,26 +255,18 @@ def parse_submission(
     body: dict[str, Any] = {}
     has_body_field = False
     for field in fields:
-        raw = form.get(field.name)
-        if raw is None:
-            raw = field.default
-        raw = raw.strip()
         if field.location in {"path", "query"}:
+            raw = form.get(field.name, field.default).strip()
             if raw != "":
                 target = path_params if field.location == "path" else query_params
                 target[field.name] = raw
             elif field.required:
-                raise FormSubmissionError(f"{field.label} is required")
+                raise FormSubmissionError(f"{field.label}: este campo es obligatorio.")
             continue
         has_body_field = True
-        if raw == "" and field.required and field.nullable and field.name in form:
-            body[field.name] = None
-            continue
-        if raw == "" and not field.required:
-            continue
-        if raw == "" and field.required:
-            raise FormSubmissionError(f"{field.label} is required")
-        body[field.name] = _coerce(field, raw)
+        value = _read_value(field, field.name, form)
+        if value is not _OMITTED:
+            body[field.name] = value
     return Submission(
         path_params=path_params,
         query_params=query_params,
@@ -192,7 +278,9 @@ def render_path(path_template: str, path_params: Mapping[str, str]) -> str:
     rendered = path_template
     for name, value in path_params.items():
         if value in {".", ".."} or "/" in value or "\\" in value:
-            raise FormSubmissionError("Path parameters must identify a single resource segment")
+            raise FormSubmissionError(
+                "Un identificador no es válido: no puede contener barras ni ser «.» o «..»."
+            )
         rendered = rendered.replace("{" + name + "}", quote(value, safe=""))
     return rendered
 

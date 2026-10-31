@@ -3,11 +3,8 @@ name: P7 platform configuration contract
 on:
   pull_request:
     paths:
-      - "migrations/versions/0080_platform_configuration_governance.py"
-      - "migrations/versions/0081_platform_configuration_read_boundary.py"
-      - "migrations/versions/0090_platform_readiness_projection.py"
-      - "migrations/versions/0093_managed_oidc_authority_projection.py"
-      - "migrations/versions/0094_managed_oidc_readiness.py"
+      - "migrations/versions/0001_initial.py"
+      - "migrations/baseline/**"
       - "src/request_engine/modules/platform_configuration/**"
       - "src/request_engine/bootstrap/platform_server.py"
       - "src/request_engine/bootstrap/reference_worker_factory.py"
@@ -16,7 +13,6 @@ on:
       - "src/request_engine/platform/observability/**"
       - "src/request_engine/platform/worker/runtime.py"
       - "src/request_engine/bootstrap/worker.py"
-      - "migrations/versions/0039_operator_metrics_projection.py"
       - "deploy/observability/**"
       - "scripts/observability/**"
       - "scripts/ci/operator_alerts_smoke.sh"

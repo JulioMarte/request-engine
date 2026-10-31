@@ -14,6 +14,11 @@ LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "List active service queues.",
         legacy_aliases=frozenset({"queue.read"}),
     ),
+    query_capability(
+        "queue.read_configuration",
+        CapabilityExposure.OPERATOR,
+        "Read bounded service queue configuration and revisions.",
+    ),
     command_capability(
         "queue.join",
         CapabilityExposure.PUBLIC,

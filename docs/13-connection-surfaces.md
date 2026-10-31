@@ -253,7 +253,36 @@ business scheduling intent
   -> owner command
 ```
 
+The current inbound provider callback surface is
+`POST /v1/provider-events/{provider_key}/{connection_key}`: a trust boundary composed in
+`entrypoints/http/provider_callbacks.py` whose authenticator derives organization,
+provider and connection from a verified credential, persists before interpretation and
+leaves semantic interpretation to the fenced ProviderEvent worker (contract:
+`docs/v3/10-worker-runtime-hardening.md`, "Authenticated HTTP callback surface").
+
 Each asynchronous surface defines dedupe identity, retry schedule, lease/fence behavior where applicable, terminal/dead-letter semantics and reconciliation for ambiguous outcomes.
+
+The change feed is an outbound, invalidation-only async surface (ADR 0020):
+
+```text
+owner transaction appends outbox fact
+  -> AFTER INSERT trigger: pg_notify(organization_id, xid8)   (delivered on commit)
+  -> one LISTEN connection per runtime process (wake-up only)
+  -> tenant-scoped snapshot-delta read of request_read.change_feed_v1
+  -> per-topic fan-out -> GET /v1/changes/stream (SSE)
+  -> client re-reads owner reads
+```
+
+Owner: none; mechanics are `platform/changes/`, the HTTP surface and the single
+fact-to-topic routing table are composition in `entrypoints/http/`. Authorization is
+per topic with existing owner read capabilities and re-checked at most every 60 s.
+Dedupe identity is the outbox fact; duplicates after reconnect are allowed, loss is
+not: the cursor is a `pg_snapshot`, so replay returns every fact not visible in it,
+and a missed notification only delays delivery. No lock is held and no network I/O
+happens inside the producing transaction; the feed reads only committed facts.
+Slow consumers are cut to a `reset`; an unknown or too-old cursor yields `reset`;
+an unavailable LISTEN yields `503` and clients poll. Facts that append no outbox
+event do not signal.
 
 ## 11. Capability locality rule
 

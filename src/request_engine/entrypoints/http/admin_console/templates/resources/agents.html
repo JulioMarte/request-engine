@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Asistentes y API · Request Engine{% endblock %}
+{% block content %}{% set status_names = {'active': 'Activo', 'suspended': 'En pausa', 'revoked': 'Revocado'} %}
+<header class="page-heading">
+  <div>
+    <p class="eyebrow">{{ nav_organization_name or "Su negocio" }}</p>
+    <h1>Asistentes y API</h1>
+    <p>Dé a un asistente u otro programa su propia clave para trabajar con este negocio. Cada asistente solo hace lo que usted permite, dentro de los límites de seguridad que usted fija, y puede pausarlo en cualquier momento.</p>
+  </div>
+  <div class="page-actions">
+    {% if not has_chief %}<a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Configurar asistente del negocio</a>{% endif %}
+    <a class="button {% if not has_chief %}secondary{% endif %}" href="/tenants/{{ organization_id }}/agents/new">Crear asistente</a>
+  </div>
+</header>
+
+<section class="panel" aria-labelledby="agents-title">
+  <div class="panel-heading"><h2 id="agents-title">Asistentes</h2></div>
+  {% if agents is none %}
+    {% if agents_status == 403 %}
+    <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Usted no tiene acceso a los asistentes</strong><p>Sus permisos actuales no incluyen "Ver asistentes".</p></div></div>
+    {% else %}
+    <div class="error-state"><span aria-hidden="true">!</span><div><strong>No se pudieron cargar los asistentes</strong><p>Vuelva a cargar la página para intentarlo de nuevo.</p></div></div>
+    {% endif %}
+  {% elif not agents %}
+  <div class="empty-state neutral"><span aria-hidden="true">✦</span><div><strong>Todavía no hay asistentes</strong><p>Empiece con un asistente del negocio: un asistente con el que usted habla desde Claude y que hace lo que usted le pide.</p></div><a class="button" href="/tenants/{{ organization_id }}/agents/new?template=chief-of-staff">Configurar asistente del negocio</a></div>
+  {% else %}
+  <ul class="agent-list">
+    {% for agent in agents %}
+    <li>
+      <span class="agent-mark {% if agent.chief %}cos{% endif %}" aria-hidden="true">{{ agent.display_name[:2] | upper }}</span>
+      <div>
+        <strong>{{ agent.display_name }}</strong>{% if agent.chief %} <span class="badge pending">Asistente del negocio</span>{% endif %}
+        <p class="muted small">{{ agent.standing_capabilities | length }} permiso{% if agent.standing_capabilities | length != 1 %}s{% endif %} · {{ "actúa en su nombre" if agent.operating_mode == "assisted" else "trabaja por su cuenta" }}</p>
+      </div>
+      <div class="entry-actions"><span class="badge {{ agent.status }}">{{ status_names.get(agent.status, agent.status) }}</span><a class="button secondary" href="/tenants/{{ organization_id }}/agents/{{ agent.principal_id }}">Abrir</a></div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<section class="panel" aria-labelledby="connect-title">
+  <div class="panel-heading"><h2 id="connect-title">Cómo se conectan los asistentes</h2></div>
+  <div class="panel-body">
+    <p>Los asistentes usan el mismo sistema del negocio que esta consola. Claude y otros clientes MCP se conectan a la dirección de abajo con la clave del asistente; otros programas pueden llamar directamente a la API HTTP.</p>
+    <dl class="detail"><dt>Dirección MCP</dt><dd><code>{{ connection.mcp_url }}</code></dd><dt>API HTTP</dt><dd><code>{{ connection.api_base }}</code></dd></dl>
+    <p class="muted small">La voz funciona a través de Claude: usted habla, Claude lo convierte en solicitudes y el sistema del negocio verifica cada una con los permisos del asistente.</p>
+  </div>
+</section>
+{% endblock %}

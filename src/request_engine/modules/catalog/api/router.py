@@ -137,6 +137,11 @@ def create_router(
         business_info,
         capability="business.get_info",
         methods=["GET"],
+        operation_id="business_get_info",
+        tool_name="business_get_info",
+        tool_audiences=("operator",),
+        summary="Get business information",
+        description="Read this business's current profile information.",
         response_model=BusinessInfoView,
     )
     add_capability_route(
@@ -145,6 +150,14 @@ def create_router(
         offerings,
         capability="catalog.search_offerings",
         methods=["GET"],
+        operation_id="catalog_search_offerings",
+        tool_name="catalog_search_offerings",
+        tool_audiences=("operator",),
+        summary="Search catalog offerings",
+        description=(
+            "Search the services/products this business offers, optionally filtered by "
+            "text, location and whether they can be booked or requested."
+        ),
         response_model=OfferingPageView,
     )
     add_capability_route(
@@ -153,6 +166,11 @@ def create_router(
         offering_details,
         capability="catalog.get_offering_details",
         methods=["GET"],
+        operation_id="catalog_get_offering_details",
+        tool_name="catalog_get_offering_details",
+        tool_audiences=("operator",),
+        summary="Get offering details",
+        description="Read one catalog offering, including its current bookable version.",
         response_model=OfferingView,
         response_model_exclude_none=True,
     )

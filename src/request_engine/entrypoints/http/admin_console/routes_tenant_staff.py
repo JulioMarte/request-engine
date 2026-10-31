@@ -9,23 +9,77 @@ from uuid import UUID
 import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import RedirectResponse, Response
+from pydantic import AwareDatetime, BaseModel, Field, StrictBool, StrictStr, ValidationError
 
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
+
+
+class _StaffGrant(BaseModel):
+    capability: StrictStr
+    delegable: StrictBool
+
+
+class _StaffMember(BaseModel):
+    membership_id: UUID
+    principal_id: UUID
+    status: Literal["invited", "active", "suspended", "revoked"]
+    membership_revision: int = Field(strict=True, ge=1)
+    authority_revision: int = Field(strict=True, ge=1)
+    principal_active: StrictBool
+    authority_anchor_party_id: UUID | None
+    standing_grants: list[_StaffGrant] = Field(strict=True)
+    display_name: StrictStr | None = None
+    profile_revision: int = Field(strict=True, ge=0)
+
+
+class _StaffPage(BaseModel):
+    items: list[_StaffMember] = Field(strict=True, max_length=100)
+    next_cursor: UUID | None
+
+
+class _StaffOverview(BaseModel):
+    total: int = Field(strict=True, ge=0)
+    active: int = Field(strict=True, ge=0)
+    invited: int = Field(strict=True, ge=0)
+    suspended: int = Field(strict=True, ge=0)
+    revoked: int = Field(strict=True, ge=0)
+    effective_capabilities: list[StrictStr] = Field(strict=True)
+    delegable_ceiling: list[StrictStr] = Field(strict=True)
+
+
+class _StaffHistoryEntry(BaseModel):
+    event_id: UUID
+    actor_principal_id: UUID | None
+    occurred_at: AwareDatetime
+    command_name: Literal[
+        "staff.invite", "staff.manage_authority", "staff.manage_membership", "staff.profile.update"
+    ]
+    revision_kind: Literal["membership", "authority", "profile"]
+    revision_before: int | None = Field(strict=True, ge=0)
+    revision_after: int | None = Field(strict=True, ge=0)
+
+
+class _StaffHistoryPage(BaseModel):
+    items: list[_StaffHistoryEntry] = Field(strict=True, max_length=100)
+    next_cursor: UUID | None
 
 
 def _read_error(status_code: int) -> str:
     if status_code == 401:
-        return "Your session is no longer authorized. Sign in again."
+        return "Su sesión ya no está autorizada. Inicie sesión de nuevo."
     if status_code == 403:
-        return "You do not have permission to view this staff resource."
+        return "Usted no tiene permiso para ver esta información del equipo."
     if status_code == 404:
-        return "The requested staff resource was not found."
+        return "No se encontró este miembro del equipo."
     if status_code == 503:
-        return "The staff service is temporarily unavailable."
-    return "Staff data is unavailable."
+        return (
+            "La información del equipo no está disponible ahora. Intente de nuevo en unos minutos."
+        )
+    return "La información del equipo no está disponible."
 
 
 _OPS = {
@@ -44,7 +98,7 @@ _OPS = {
 def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
     def session_or_redirect(request: Request):  # noqa: ANN202
         session = state.session(request)
-        return session if session is not None else RedirectResponse("/login", status_code=303)
+        return session if session is not None else login_redirect(request)
 
     async def workspace(
         request: Request,
@@ -66,29 +120,37 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 "unavailable.html",
                 state.context(
                     request,
-                    title="People workspace unavailable",
-                    message="Configure the runtime API URL to manage this organization's staff.",
+                    title="Equipo no disponible",
+                    message=(
+                        "El administrador de la plataforma tiene que configurar la dirección "
+                        "del sistema del negocio para manejar el equipo."
+                    ),
                 ),
                 status_code=503,
             )
         try:
             catalog = await state.runtime_catalog()
         except Exception:
-            return Response("Staff operation catalog unavailable", status_code=503)
+            return Response("Las acciones del equipo no están disponibles.", status_code=503)
         overview_op = catalog.by_id().get(_OPS["overview"])
         list_op = catalog.by_id().get(_OPS["list"])
         invite_op = catalog.by_id().get(_OPS["invite"])
         if overview_op is None or list_op is None or invite_op is None:
-            return Response("Staff operation catalog incomplete", status_code=503)
+            return Response("Faltan acciones del equipo en esta instalación.", status_code=503)
         trail_parts = [part for part in trail.split(",") if part]
         if len(trail_parts) > 100:
-            return Response("Pagination trail is too long", status_code=422)
+            return Response(
+                "El enlace de páginas es demasiado largo. Vuelva a la primera página.",
+                status_code=422,
+            )
         try:
             for part in trail_parts:
                 if part != "root":
                     UUID(part)
         except ValueError:
-            return Response("Pagination trail is invalid", status_code=422)
+            return Response(
+                "El enlace de páginas no es válido. Vuelva a la primera página.", status_code=422
+            )
         previous_url = ""
         if after is not None and trail_parts:
             previous = trail_parts[-1]
@@ -125,10 +187,26 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 params=params,
             )
         except httpx.HTTPError:
-            return Response("Staff service temporarily unavailable", status_code=503)
+            return Response(
+                "El equipo no está disponible por el momento. Intente de nuevo.", status_code=503
+            )
         reads_ok = overview_response.ok and list_response.ok
-        body = as_mapping(list_response.payload) if list_response.ok else {}
-        items = [as_mapping(item) for item in as_list(body.get("items"))] if reads_ok else []
+        body: dict[str, Any] = {}
+        items: list[dict[str, Any]] = []
+        overview_view: dict[str, Any] = {}
+        if reads_ok:
+            try:
+                page = _StaffPage.model_validate(list_response.payload)
+                overview_view = _StaffOverview.model_validate(
+                    overview_response.payload
+                ).model_dump()
+                body = page.model_dump(mode="json")
+                items = body["items"]
+            except ValidationError:
+                return Response(
+                    "Respuesta inesperada del sistema. Vuelva a cargar antes de hacer cambios.",
+                    status_code=502,
+                )
         failed_status = (
             overview_response.status_code if not overview_response.ok else list_response.status_code
         )
@@ -138,7 +216,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             state.context(
                 request,
                 organization_id=str(organization_id),
-                overview=as_mapping(overview_response.payload),
+                overview=overview_view,
                 members=items,
                 next_cursor=body.get("next_cursor"),
                 page_limit=str(limit),
@@ -159,14 +237,14 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         if isinstance(session, RedirectResponse):
             return session
         if state.runtime is None:
-            return Response("Runtime API unavailable", status_code=503)
+            return Response("El sistema del negocio no está disponible.", status_code=503)
         try:
             catalog = await state.runtime_catalog()
         except Exception:
-            return Response("Staff operation catalog unavailable", status_code=503)
+            return Response("Las acciones del equipo no están disponibles.", status_code=503)
         get_op = catalog.by_id().get(_OPS["get"])
         if get_op is None:
-            return Response("Staff operation unavailable", status_code=503)
+            return Response("Esta acción del equipo no está disponible.", status_code=503)
         try:
             response = await state.runtime_request(
                 get_op.method,
@@ -175,15 +253,28 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 bearer=session.access_token,
             )
         except httpx.HTTPError:
-            return Response("Staff service temporarily unavailable", status_code=503)
+            return Response(
+                "El equipo no está disponible por el momento. Intente de nuevo.", status_code=503
+            )
         item = as_mapping(response.payload)
         operations: dict[str, Any] = {}
         permission_choices: list[str] = []
         selected_permissions: list[str] = []
         if response.ok:
+            # Identity and concurrency tokens come from a complete owner read.
+            try:
+                member_view = _StaffMember.model_validate(response.payload)
+                if member_view.membership_id != membership_id:
+                    raise ValueError("membership mismatch")
+                item = member_view.model_dump(mode="json")
+            except (ValidationError, ValueError):
+                return Response(
+                    "Respuesta inesperada del sistema. Vuelva a cargar antes de hacer cambios.",
+                    status_code=502,
+                )
             overview_op = catalog.by_id().get(_OPS["overview"])
             if overview_op is None:
-                return Response("Staff operation catalog incomplete", status_code=503)
+                return Response("Faltan acciones del equipo en esta instalación.", status_code=503)
             try:
                 overview = await state.runtime_request(
                     overview_op.method,
@@ -192,13 +283,20 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                     bearer=session.access_token,
                 )
             except httpx.HTTPError:
-                return Response("Staff service temporarily unavailable", status_code=503)
+                return Response(
+                    "El equipo no está disponible por el momento. Intente de nuevo.",
+                    status_code=503,
+                )
             if not overview.ok:
                 return Response(_read_error(overview.status_code), status_code=overview.status_code)
-            permission_choices = sorted(
-                str(value)
-                for value in as_list(as_mapping(overview.payload).get("delegable_ceiling"))
-            )
+            try:
+                authority_context = _StaffOverview.model_validate(overview.payload)
+            except ValidationError:
+                return Response(
+                    "Respuesta inesperada del sistema. Vuelva a cargar antes de hacer cambios.",
+                    status_code=502,
+                )
+            permission_choices = sorted(authority_context.delegable_ceiling)
             visible_capabilities = [
                 str(grant.get("capability"))
                 for grant in (as_mapping(value) for value in as_list(item.get("standing_grants")))
@@ -209,7 +307,9 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
             for key in ("plan", "authority", "status"):
                 operation = catalog.by_id().get(_OPS[key])
                 if operation is None:
-                    return Response("Staff operation catalog incomplete", status_code=503)
+                    return Response(
+                        "Faltan acciones del equipo en esta instalación.", status_code=503
+                    )
                 operations[key] = {
                     "operation": operation,
                     "inputs": build_inputs(
@@ -222,6 +322,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                             "expected_revision": str(item.get("membership_revision", "")),
                             "desired_capabilities": authority_draft,
                         },
+                        loaded_revisions=("expected_authority_revision", "expected_revision"),
                     ),
                     "url": f"/tenants/{organization_id}/staff/{membership_id}/{key}",
                     "intent_id": token_urlsafe(24),
@@ -236,10 +337,13 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                             "expected_profile_revision": str(item.get("profile_revision", 0)),
                             "display_name": str(item.get("display_name") or ""),
                         },
+                        loaded_revisions=("expected_profile_revision",),
                     ),
                     "url": f"/tenants/{organization_id}/staff/{membership_id}/profile",
                     "intent_id": token_urlsafe(24),
                 }
+        for entry in operations.values():
+            _label_reason_fields(entry["inputs"])
         return state.templates.TemplateResponse(
             request,
             "resources/staff_detail.html",
@@ -267,14 +371,14 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         if isinstance(session, RedirectResponse):
             return session
         if state.runtime is None:
-            return Response("Runtime API unavailable", status_code=503)
+            return Response("El sistema del negocio no está disponible.", status_code=503)
         try:
             catalog = await state.runtime_catalog()
         except Exception:
-            return Response("Staff operation catalog unavailable", status_code=503)
+            return Response("Las acciones del equipo no están disponibles.", status_code=503)
         operation = catalog.by_id().get(_OPS["history"])
         if operation is None:
-            return Response("Staff history operation unavailable", status_code=503)
+            return Response("El historial del equipo no está disponible.", status_code=503)
         params = {"limit": str(limit)}
         if after is not None:
             params["after"] = str(after)
@@ -287,8 +391,21 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 params=params,
             )
         except httpx.HTTPError:
-            return Response("Staff service temporarily unavailable", status_code=503)
-        body = as_mapping(response.payload) if response.ok else {}
+            return Response(
+                "El equipo no está disponible por el momento. Intente de nuevo.", status_code=503
+            )
+        body: dict[str, Any] = {}
+        if response.ok:
+            try:
+                page = _StaffHistoryPage.model_validate(response.payload)
+                if len(page.items) > limit:
+                    raise ValueError("history page exceeds requested limit")
+                body = page.model_dump(mode="json")
+            except (ValidationError, ValueError):
+                return Response(
+                    "Respuesta inesperada del historial. Vuelva a cargar antes de leerlo.",
+                    status_code=502,
+                )
         return state.templates.TemplateResponse(
             request,
             "resources/staff_history.html",
@@ -301,7 +418,7 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 page_limit=limit,
                 after=after,
                 error=(
-                    "History cursor is invalid. Return to the newest events."
+                    "El enlace de esta página no es válido. Vuelva a los cambios más recientes."
                     if response.status_code == 422
                     else ""
                     if response.ok
@@ -321,12 +438,12 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
         if isinstance(session, RedirectResponse):
             return session
         if state.runtime is None:
-            return Response("Runtime API unavailable", status_code=503)
+            return Response("El sistema del negocio no está disponible.", status_code=503)
         allowed_actions = (
             {"invite"} if membership_id is None else {"plan", "authority", "status", "profile"}
         )
         if action not in allowed_actions:
-            return Response("Unknown staff action", status_code=404)
+            return Response("Acción del equipo desconocida.", status_code=404)
         submitted = await request.form()
         form = {key: str(value) for key, value in submitted.items()}
         if action == "plan" and form.get("_permission_picker") == "1":
@@ -334,14 +451,17 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
                 sorted({str(value) for value in submitted.getlist("selected_capabilities")})
             )
         if not state.csrf_matches(form.get("csrf_token"), session.csrf_token):
-            return Response("CSRF token missing or invalid", status_code=403)
+            return Response(
+                "El formulario venció. Vuelva a cargar la página e intente de nuevo.",
+                status_code=403,
+            )
         try:
             catalog = await state.runtime_catalog()
         except Exception:
-            return Response("Staff operation catalog unavailable", status_code=503)
+            return Response("Las acciones del equipo no están disponibles.", status_code=503)
         operation = catalog.by_id().get(_OPS[action])
         if operation is None:
-            return Response("Staff operation unavailable", status_code=503)
+            return Response("Esta acción del equipo no está disponible.", status_code=503)
         if membership_id:
             form["membership_id"] = str(membership_id)
         outcome = await execute_operation(
@@ -396,3 +516,14 @@ def install_tenant_staff_routes(app: FastAPI, state: AdminConsoleState) -> None:
     app.add_api_route(
         "/tenants/{organization_id}/staff/{membership_id}/{action}", run, methods=["POST"]
     )
+
+
+def _label_reason_fields(inputs: list[dict[str, Any]]) -> None:
+    """Name owner fields by what the person chooses or writes in them."""
+
+    for view in inputs:
+        if view.get("name") == "target_status":
+            view["label"] = "Nuevo estado"
+        if view.get("name") == "provenance_reference":
+            view["label"] = "Motivo del cambio"
+            view["help"] = "Queda en el historial del equipo para que otros sepan por qué cambió."

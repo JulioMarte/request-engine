@@ -211,14 +211,17 @@ async def test_verified_recovery_address_is_self_service_anti_enumerating_and_re
         )
         assert weak_login.status_code == 201
         weak_headers = {"Authorization": f"Bearer {weak_login.json()['access_token']}"}
-        weak_add = await client.post(
+        # ADR 0017: a recent password proof is normal administrative evidence, so a
+        # password-only HUMAN can add a recovery email without owning a passkey.
+        # The session keeps reporting its real single-factor assurance.
+        weak_current = await client.get("/auth/native/sessions/current", headers=weak_headers)
+        assert weak_current.json()["authentication_assurance"] == "single_factor"
+        prepared = await client.post(
             "/auth/native/sessions/current/recovery-addresses",
             headers=weak_headers,
             json={"email": recovery_email},
         )
-        assert weak_add.status_code == 403
-        assert weak_add.json()["error"]["code"] == "phishing_resistant_auth_required"
-
+        assert prepared.status_code == 202, prepared.text
         strong_token, _authenticator = await _strong_session(
             client,
             login_handle=login_handle,
@@ -226,12 +229,6 @@ async def test_verified_recovery_address_is_self_service_anti_enumerating_and_re
             origin=origin,
         )
         strong_headers = {"Authorization": f"Bearer {strong_token}"}
-        prepared = await client.post(
-            "/auth/native/sessions/current/recovery-addresses",
-            headers=strong_headers,
-            json={"email": recovery_email},
-        )
-        assert prepared.status_code == 202, prepared.text
         assert prepared.json()["status"] == "pending"
         assert prepared.json()["verification_created"] is True
         assert len(messenger.verifications) == 1

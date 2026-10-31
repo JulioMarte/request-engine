@@ -56,6 +56,10 @@ Current tenant configuration Query contracts:
 Admin organization/staff journey review and prioritized remediation are tracked in
 [`testing/admin-api-adversarial-handoff-2026-09-29.md`](testing/admin-api-adversarial-handoff-2026-09-29.md).
 
+Current dashboard task coverage, interface acceptance and evidence boundaries:
+[`architecture/admin-dashboard-completion.md`](architecture/admin-dashboard-completion.md).
+- [Admin dashboard validation checkpoint](testing/admin-dashboard-completion-2026-10-11.md) — executed local proof and its boundaries.
+
 Earlier verification checkpoint and explicitly unfinished admin journeys:
 [`testing/admin-api-verification-2026-09-30.md`](testing/admin-api-verification-2026-09-30.md).
 Latest additive implementation checkpoint:
@@ -143,6 +147,8 @@ Do not create a second business implementation for agents. `CapabilityDefinition
 
 The historical `operational_copilot` package is not a separate source of business truth. Its structured tools are migration input toward the generic authorized operation/tool gateway described by doc 16.
 
+The product user interface is the external `request-engine-app` client (browser app plus a BFF that holds bearer tokens server-side; the API exposes no browser CORS). The Jinja admin console remains until that client reaches parity and receives no new product surface. `GET /v1/changes/stream` is the invalidation-only change feed those clients use to know when to re-read owner reads; it carries no personal or business payload. Decision and rationale: `adr/0020-external-ui-client-and-change-feed.md`; connection surface: doc 13 §10.
+
 Identity/authentication and deployment references:
 
 - `architecture/instance-claim-platform-owner-plan.md` — **current accepted first-run trust-root implementation plan**: Instance state, SetupSession, Platform Owner policy, WebAuthn/assurance, recovery separation and HTTP/TCP acceptance;
@@ -226,6 +232,12 @@ migrations/sql/design_chain/  retained historical V2 evidence still exercised by
 ```
 
 `0001_initial` is immutable migration history, **not the maximum schema Request Engine is allowed to have**. Ordinary product evolution appends `0002+` from the single current Alembic head.
+
+The explicit 2026-10-23 pre-production replacement collapses the former
+`0001 + 0002..0047` chain. See `audits/postgresql-rebaseline-0047.md` and
+`testing/rebaseline-0047-validation-2026-10-23.md` for object disposition,
+executed evidence and the parallel-install procedure that preserves existing
+development volumes. This is not an in-place migration of those databases.
 
 Never copy a current migration number into general documentation as a timeless head. CI discovers the actual graph, requires one current head and proves clean `alembic upgrade head`.
 

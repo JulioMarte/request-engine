@@ -1,0 +1,23 @@
+{% macro render(connection, token_hint) -%}
+<ol class="connect-steps">
+  <li>
+    <strong>Claude Code (terminal)</strong>
+    <p class="muted small">Guarde la clave como <code>REQUEST_ENGINE_AGENT_KEY</code> en su terminal y luego ejecute:</p>
+    <pre class="snippet" id="snippet-claude-code">{{ connection.claude_code }}</pre>
+    <button type="button" class="secondary" data-copy-target="snippet-claude-code">Copiar comando</button>
+  </li>
+  <li>
+    <strong>Claude Desktop (computadora, con dictado por voz)</strong>
+    <p class="muted small">En Claude Desktop abra Settings, luego Developer y luego Edit Config; agregue este servidor, cambie pegue-aqui-la-clave-del-asistente por la clave y reinicie Claude.</p>
+    <pre class="snippet" id="snippet-claude-desktop">{{ connection.claude_desktop }}</pre>
+    <button type="button" class="secondary" data-copy-target="snippet-claude-desktop">Copiar configuración</button>
+  </li>
+  <li>
+    <strong>Cualquier programa, por HTTP</strong>
+    <p class="muted small">Cada solicitud envía la clave y el identificador del negocio. Esta muestra lo que el asistente puede hacer:</p>
+    <pre class="snippet" id="snippet-curl">{{ connection.curl }}</pre>
+    <button type="button" class="secondary" data-copy-target="snippet-curl">Copiar solicitud</button>
+  </li>
+</ol>
+<p class="muted small">{{ token_hint }}</p>
+{%- endmacro %}

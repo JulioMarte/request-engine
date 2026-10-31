@@ -5,6 +5,9 @@ from fastapi import FastAPI
 from request_engine.modules.booking.contracts.slot_offer_capacity import (
     SlotOfferCapacityPort,
 )
+from request_engine.modules.queue.adapters.db.configuration_reader import (
+    PostgresServiceQueueConfigurationReader,
+)
 from request_engine.modules.queue.adapters.db.leave_queue_commands import (
     PostgresLeaveQueueCommands,
 )
@@ -12,6 +15,9 @@ from request_engine.modules.queue.adapters.db.live_queue_commands import (
     PostgresLiveQueueCommands,
 )
 from request_engine.modules.queue.adapters.db.live_queue_reader import PostgresLiveQueueReader
+from request_engine.modules.queue.adapters.db.service_queue_activation_commands import (
+    PostgresServiceQueueActivationCommands,
+)
 from request_engine.modules.queue.adapters.db.service_queue_catalog_reader import (
     PostgresServiceQueueCatalogReader,
 )
@@ -28,10 +34,14 @@ from request_engine.modules.queue.adapters.db.slot_offer_commands import Postgre
 from request_engine.modules.queue.adapters.db.triage_commands import PostgresQueueTriageCommands
 from request_engine.modules.queue.adapters.db.waitlist_commands import PostgresWaitlistCommands
 from request_engine.modules.queue.adapters.db.waitlist_reader import PostgresWaitlistEntryReader
+from request_engine.modules.queue.api.configuration_router import create_configuration_router
 from request_engine.modules.queue.api.errors import queue_error_handler
 from request_engine.modules.queue.api.intake_errors import queue_intake_stopped_handler
 from request_engine.modules.queue.api.live_router import create_live_router
 from request_engine.modules.queue.api.router import create_router
+from request_engine.modules.queue.api.service_queue_activation_router import (
+    create_service_queue_activation_router,
+)
 from request_engine.modules.queue.api.service_queue_bootstrap_router import (
     create_service_queue_bootstrap_router,
 )
@@ -79,6 +89,17 @@ def install_http(
         create_service_queue_bootstrap_router(
             handler=PostgresServiceQueueCreationCommands(session_factory),
             actor_resolver=actor_resolver,
+        )
+    )
+    app.include_router(
+        create_service_queue_activation_router(
+            handler=PostgresServiceQueueActivationCommands(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
+    app.include_router(
+        create_configuration_router(
+            PostgresServiceQueueConfigurationReader(session_factory), actor_resolver
         )
     )
     app.include_router(

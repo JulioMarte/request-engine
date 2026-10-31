@@ -50,6 +50,7 @@ src/request_engine/
 ├── platform/        # technical cross-cutting mechanics
 └── modules/
     ├── tenancy/
+    ├── platform_configuration/
     ├── catalog/
     ├── requests/
     ├── booking/
@@ -60,11 +61,10 @@ src/request_engine/
     ├── live_capacity/
     ├── operational_recovery/
     ├── operational_copilot/
-    ├── payments/             # deferred/incubating
-    └── dispatch/             # deferred/incubating
+    └── onboarding/
 ```
 
-`operational_copilot` is a historical module name for the bounded typed operational-tool/admission boundary; it is not an embedded conversational/LLM runtime. `payments` and `dispatch` remain deferred/incubating until a concrete accepted capability establishes ownership.
+`operational_copilot` is a historical module name for the bounded typed operational-tool/admission boundary; it is not an embedded conversational/LLM runtime. `payments` and `dispatch` are future product areas, not current Python modules; they need a concrete accepted capability before establishing ownership.
 
 See `docs/09-python-module-architecture.md`, `docs/10-module-ownership-map.md`, `docs/13-connection-surfaces.md` and `docs/14-architecture-fitness-functions.md` for normative architecture.
 
@@ -136,15 +136,18 @@ Executable schema evolution lives in:
 migrations/versions/       current Alembic line
 ```
 
-Historical/provenance surfaces currently include:
+Current baseline and retained historical evidence:
 
 ```text
-migrations/sql/design_chain/   V2 design history
-migrations/sql/v3_candidate/   V3 release-candidate provenance
-migrations/f2_steps/           preserved feature-development SQL provenance/support
+migrations/baseline/           checksummed current 0001 payload
+migrations/sql/design_chain/   retained V2 design-history proof
 ```
 
-Those historical paths are not current schema authority merely because they remain in the working tree.
+The retired V3 candidate/feature-step payloads and collapsed revision chains remain
+in Git history, not as a second executable schema authority. The 2026-10-23
+pre-production rebaseline and parallel-install procedure are documented in
+`docs/audits/postgresql-rebaseline-0047.md`. Existing development data is not
+migrated or discarded by replacing the code.
 
 Current CI requires exactly one repository Alembic head and upgrades a clean PostgreSQL 18 database to that head. Do not hardcode one old revision in documentation as timeless current truth.
 
@@ -175,6 +178,23 @@ uv run ruff format --check .
 uv run pyright
 uv run pytest
 ```
+
+### Run the whole system locally (development only)
+
+One command builds the CI image (`deploy/reference/Dockerfile`), starts a fresh PostgreSQL 18, runs `alembic upgrade head`, creates least-privilege runtime logins, and starts the runtime API, control plane, admin console, a dev-only gateway, a dev-mode OpenBao, a Mailpit mail inbox and the worker (`compose.dev.yaml`):
+
+```bash
+./scripts/dev/local_stack.sh up          # Windows: .\scripts\dev\local_stack.ps1 up
+./scripts/dev/local_stack.sh status      # health of every service
+./scripts/dev/local_stack.sh down        # add --volumes to delete data and generated secrets
+```
+
+- Console: `http://localhost:58102` (use `localhost`, not `127.0.0.1`, for passkeys). API `:58100`, control plane `:58101`, dev gateway inspection `:58190/status`. Ports bind to `127.0.0.1`; override with `--api-port`, `--control-port`, `--console-port`, `--gateway-port`, and use `--project` for a second stack.
+- `up` claims the instance over the public setup API with a throwaway software passkey, then creates a dev Organization, its owner and an activated integration principal for the worker. Generated logins/passwords and recovery codes are in `.local-stack/<project>/credentials.json` (gitignored).
+- `uv run python scripts/dev/local_stack_demo_clinic.py --project <project> --api-url http://localhost:<api-port> --control-url http://localhost:<control-port>` gives the dev business a plausible demo clinic through the same owner operations as the guided setup: profile, Sede Gazcue with opening hours, three priced services, two doctors with weekly availability and a walk-in line. Re-running it changes nothing.
+- `up --manual-claim` leaves the instance unclaimed so you run the console setup wizard yourself; the worker then waits until you run `local_stack.sh worker --principal-id <activated integration principal>`.
+- Staff invitation email works end to end: the API stages the invitation proof in a dev-mode OpenBao (memory-backed, root token generated per stack; restarting it invalidates pending invitation links) and the worker sends it over plain SMTP to [Mailpit](https://mailpit.axllent.org/), a local capture inbox. Open the inbox at `http://127.0.0.1:58191` (override with `--mailpit-port`); `status` prints it. Mail never leaves the machine, but the inbox holds live invitation links: do not expose or forward it. The worker sets `REQUEST_ENGINE_OUTBOUND_FENCED=false` because every destination in this stack is a local sink; production keeps the fenced default and needs real governed OpenBao/Vault, HTTPS acceptance URL and SMTP configuration (`docs/architecture/staff-email-invitations.md`).
+- Every secret is generated per stack into `.local-stack/<project>/dev.env` and is dev-only. The tool refuses non-local Docker endpoints. The dev gateway accepts outbox publishes (HTTP) and webhook handoffs (HTTPS with a generated dev CA) and delivers nothing; production still fails closed without a configured publisher and webhook.
 
 For repository-managed local publication and exact-head CI expectations, read `AGENTS.md`, `CONTRIBUTING.md` and `docs/engineering-quality/local-publish-certification.md`.
 

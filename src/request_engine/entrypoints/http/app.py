@@ -1,12 +1,18 @@
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from uuid import UUID
 
 from fastapi import FastAPI, Request, Response
 
 import request_engine.modules.booking.api as booking_api
 from request_engine.entrypoints.http.capabilities import create_capability_router
+from request_engine.entrypoints.http.changes_stream import (
+    build_change_feed,
+    create_change_stream_router,
+)
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
+from request_engine.entrypoints.http.mcp_gateway import create_mcp_router
 from request_engine.entrypoints.http.module_composition import install_business_modules
 from request_engine.entrypoints.http.native_auth import create_native_auth_router
 from request_engine.entrypoints.http.native_runtime import (
@@ -19,9 +25,11 @@ from request_engine.entrypoints.http.operator_resolution import (
     DeploymentOperatorActorResolver,
     OperatorCapabilitySource,
 )
+from request_engine.entrypoints.http.provider_callbacks import create_provider_callback_router
 from request_engine.entrypoints.http.security import build_identity_principal_resolver
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.tenancy.api import build_principal_authority_reader
+from request_engine.platform.changes.feed import ChangeFeedSettings
 from request_engine.platform.db.agent_budget_enforcer import PostgresAgentBudgetEnforcer
 from request_engine.platform.db.agent_policy_reader import PostgresAgentPolicyReader
 from request_engine.platform.db.delegation_reader import PostgresDelegationReader
@@ -31,6 +39,7 @@ from request_engine.platform.db.native_recovery_address_store import (
 from request_engine.platform.db.recovery_code_store import PostgresRecoveryCodeStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.webauthn_store import PostgresWebAuthnStore
+from request_engine.platform.events.callbacks import ProviderCallbackAuthenticator
 from request_engine.platform.http.authentication_schema import install_authentication_schema
 from request_engine.platform.http.request_budget import install_request_budget
 from request_engine.platform.secrets.delivery import RecoverySecretStaging
@@ -92,6 +101,7 @@ def create_app(
     actor_resolver: ActorResolver,
     subject_resolver: HttpSubjectResolver | None = None,
     staff_invitation_delivery: RecoverySecretStaging | None = None,
+    staff_invitation_accept_url: str | None = None,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
     appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
@@ -107,6 +117,8 @@ def create_app(
     native_webauthn_login: NativeWebAuthnLoginService | None = None,
     native_webauthn_auth: NativeWebAuthnAuthService | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
+    provider_callback_authenticator: ProviderCallbackAuthenticator | None = None,
+    change_feed_settings: ChangeFeedSettings | None = None,
 ) -> FastAPI:
     """Compose the full single-app HTTP surface (business + operational configuration).
 
@@ -160,7 +172,17 @@ def create_app(
     relay_actor_resolver = ActingOperatorActorResolver(actor_resolver, operator_actors)
     request_actor_resolver = RequestExecutionActorResolver(relay_actor_resolver)
     execution_actor_resolver = TenantCapabilityActorResolver(request_actor_resolver, policy)
+    change_feed = build_change_feed(session_factory, change_feed_settings)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+        try:
+            yield
+        finally:
+            await change_feed.aclose()
+
     app = FastAPI(
+        lifespan=lifespan,
         title="Request Engine",
         version="0.1.0",
         description=(
@@ -199,11 +221,13 @@ def create_app(
         actor_resolver=execution_actor_resolver,
         subject_resolver=subject_resolver,
         staff_invitation_delivery=staff_invitation_delivery,
+        staff_invitation_accept_url=staff_invitation_accept_url,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=signing_key,
         appointment_option_codec=appointment_option_codec,
         identity_exchange_fingerprint_key=identity_key,
         identity_link_verifier=identity_link_verifier,
+        native_identity_authority_id=native_identity_authority_id,
     )
     install_operational_modules(
         app,
@@ -211,6 +235,22 @@ def create_app(
         actor_resolver=execution_actor_resolver,
     )
     app.include_router(create_operation_catalog_router(actor_resolver=execution_actor_resolver))
+    # Invalidation-only change feed (ADR 0020): per-topic owner read capabilities.
+    app.state.change_feed = change_feed
+    app.include_router(
+        create_change_stream_router(feed=change_feed, actor_resolver=execution_actor_resolver)
+    )
+    if provider_callback_authenticator is not None:
+        # Fail closed: without a configured callback authenticator the
+        # provider-event surface is not mounted at all.
+        app.include_router(
+            create_provider_callback_router(
+                session_factory=session_factory,
+                authenticator=provider_callback_authenticator,
+            )
+        )
+    # MCP transport projection (ADR 0018): grants nothing and re-enters this same app.
+    app.include_router(create_mcp_router())
     install_authentication_schema(
         app,
         scheme_name="SubjectBearer",
@@ -230,6 +270,7 @@ def create_authenticated_app(
     session_factory: SessionFactory,
     subject_resolver: HttpSubjectResolver,
     staff_invitation_delivery: RecoverySecretStaging | None = None,
+    staff_invitation_accept_url: str | None = None,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
     appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
@@ -249,6 +290,7 @@ def create_authenticated_app(
         actor_resolver=actor_resolver,
         subject_resolver=subject_resolver,
         staff_invitation_delivery=staff_invitation_delivery,
+        staff_invitation_accept_url=staff_invitation_accept_url,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=appointment_option_signing_key,
         appointment_option_codec=appointment_option_codec,
@@ -264,6 +306,7 @@ def create_native_app(
     session_factory: SessionFactory,
     native_identity_authority_id: UUID,
     staff_invitation_delivery: RecoverySecretStaging | None = None,
+    staff_invitation_accept_url: str | None = None,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
     appointment_option_codec: booking_api.AppointmentOptionCodec | None = None,
@@ -276,6 +319,7 @@ def create_native_app(
     webauthn_policy: WebAuthnPolicy | None = None,
     webauthn_decoy_key: bytes | None = None,
     native_recovery_messenger: NativeRecoveryMessenger | None = None,
+    provider_callback_authenticator: ProviderCallbackAuthenticator | None = None,
 ) -> FastAPI:
     """Compose a providerless deployment whose protected routes trust Native evidence.
 
@@ -320,6 +364,7 @@ def create_native_app(
         session_factory=session_factory,
         subject_resolver=runtime.subject_resolver,
         staff_invitation_delivery=staff_invitation_delivery,
+        staff_invitation_accept_url=staff_invitation_accept_url,
         actor_resolver=AgentPolicyActorResolver(
             DelegatedAgentActorResolver(
                 runtime.actor_resolver,
@@ -348,4 +393,5 @@ def create_native_app(
         native_webauthn_login=webauthn_login,
         native_webauthn_auth=webauthn_auth,
         identity_link_verifier=identity_link_verifier,
+        provider_callback_authenticator=provider_callback_authenticator,
     )

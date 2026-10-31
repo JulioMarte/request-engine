@@ -1,14 +1,25 @@
 # Native initial controller policy
 
-> **Current scope (2026-10-04):** this document governs **tenant** initial-controller
+> **Current scope (2026-10-24):** this document governs **tenant** initial-controller
 > policy only. It does not define the new platform-owner policy from ADR 0014.
-> Current application code selects `tenant-controller-v6` for new organizations.
-> Immutable v1–v5 remain historical authority manifests, not rewritten defaults.
+> Current application code selects `tenant-controller-v10` for new organizations
+> (Alembic migration `0003_tenant_controller_v10`: v9 plus delegable operational
+> `appointments.annotate`; see "v10 appointment notes (migration 0003)" below).
+> v9 (provenance migration `0044_tenant_controller_v9`) is v8 plus fifteen
+> delegable operational front-desk capabilities; v8 (provenance migration
+> `0043_staff_invitation_proposals`) is v7 plus delegable operational
+> `staff.propose_invitation`, ADR 0019. Existing roots reach v10 only through
+> dual-consent adoption; apply accepts v1-v5→v6, v1-v6→v7, v1-v7→v8, v1-v8→v9
+> (already recorded consent only) and v1-v9→v10.
+> Immutable v1–v9 remain historical authority manifests, not rewritten defaults.
 
-Current migration: `0021_tenant_controller_v6` appends v6 after
-`0020_retention_recorder_role`. Historical 0036/0037/0038/0053 labels below are
-provenance from the pre-rebaseline design chain, not current Alembic revisions
-or current release certification. Exact-head CI remains authoritative.
+Schema authority: the immutable v1–v9 manifests are seed rows of the accepted
+`0001_initial` baseline (2026-10-23 rebaseline, `docs/audits/postgresql-rebaseline-0047.md`);
+v10 is appended by the current Alembic migration `0003_tenant_controller_v10`.
+Revision labels below (0021, 0039, 0040, 0043, 0044 and the older
+0036/0037/0038/0053) are provenance from collapsed migration chains, not current
+Alembic revisions or current release certification. Exact-head CI remains
+authoritative.
 Owner: Tenancy. Scope: new native organizations created by the private owner command.
 This does not define a core administrator role or make platform authority tenant authority.
 
@@ -16,7 +27,7 @@ This does not define a core administrator role or make platform authority tenant
 
 The accepted [ADR 0016](../adr/0016-existing-controller-policy-adoption.md)
 adds a separate dual-consent journey for organizations whose immutable initial
-policy is v1 through v5. The original active HUMAN root requests adoption through
+policy is v1 through v6. The original active HUMAN root requests adoption through
 `POST /v1/controller-policy-adoptions`; a current HUMAN platform operator with
 the dedicated `platform.organization.adopt_initial_controller_policy` grant may
 apply only that durable, unexpired consent through
@@ -25,7 +36,9 @@ withdraw consent and inspect only its own request. A separately authorized
 platform reader can list bounded pending requests, exposing only organization,
 controller and policy/revision metadata needed to complete the handoff.
 
-The command adds only missing tenant grants from the approved v1-v5 to v6 delta.
+The command adds only missing tenant grants from the approved v1-v6 to v7 delta. Previously committed pending v1-v5 to v6
+consent remains target-bound and can still be applied to v6; migration never
+retargets consent.
 It never backfills existing roots, restores a revoked grant, rewrites the original
 root fact, grants platform authority to a tenant, or turns a platform operator
 into tenant staff. Root consent requires the immutable root relationship, current
@@ -46,7 +59,7 @@ HTTP/adversarial proofs pass; deployment/publication evidence remains separate.
 
 ## Decision
 
-The application selects `tenant-controller-v6` only while creating a new native
+The application selects `tenant-controller-v10` only while creating a new native
 organization. A private transaction-local policy selection primitive validates
 that exact approved policy exists before the existing atomic root command runs.
 The root provisioning fact records the selected immutable policy key on INSERT;
@@ -64,7 +77,14 @@ Five already-existing capabilities complete these selected public journeys:
 and `requests.party_override`. The last is an explicit tenant-bound operator
 authority override, not requester impersonation or a capacity/lifecycle bypass.
 No registry wildcard or all-operator grant is used. v6 has 42 policy grants;
-the existing root control grants produce 50 active grants on a fresh native root.
+under that historical default, existing root control grants produced 50 active
+grants on a fresh native root.
+
+v7 is the immutable v6 manifest plus exactly one delegable operational Query:
+`queue.read_configuration`. It permits bounded service-queue configuration
+inventory under current Party `operations.manage_supply` scope; it grants no
+queue mutation or platform authority. v7 contains 43 policy grants; together
+with eight existing root-control grants a fresh root has 51 active grants.
 
 This is a pre-production ADAPT of the creation default, not an authority backfill.
 No existing principal receives these grants from migration or provisioning replay.
@@ -129,7 +149,7 @@ staff Principal now has a separate governed command
 (`POST /v1/controller-policy-upgrades`, revision 0053) that adds only the target
 policy's missing capabilities within the actor's current delegable ceiling; it is
 never a silent authorization and it never restores a revoked grant. A root with no
-recorded policy selection remains outside the v1-v5 transition contract and needs
+recorded policy selection remains outside the v1-v6 transition contract and needs
 a separately accepted governance operation. Deploy the
 additive migration before the new application. The
 private process must check the selection function is callable and the owner-selected
@@ -199,3 +219,85 @@ not retry stale revisions blindly or treat creation replay as a refresh.
 
 This contract does not certify completion of all required validation or production
 acceptance. Track executed evidence in `auth-implementation-status.md`.
+
+
+## v7 additive transition and local proof
+
+Migration `0040_tenant_controller_v7` appends one private manifest row and expands
+the two adoption target constraints to accept v6/v7. It preserves historical
+functions' identity/recovery checks, authority revisions, lock ordering, revoked
+grant rejection, receipt replay and existing ACLs. Function edits require unique
+anchors and abort the transactional migration if the installed definition differs.
+No principal, grant, root fact, pending request or adoption fact is backfilled.
+Normal new consent targets v7; exact replay returns its previously recorded target.
+Apply accepts only v1-v5 to v6 or v1-v6 to v7. V7 self-adoption is rejected.
+
+Local PostgreSQL 18.6 evidence covers immutable v6/v7 manifests, fresh v7
+provisioning, revocation-safe replay, all six legacy source policies, existing
+native-auth adoption and (until the 2026-10-23 rebaseline removed its subject)
+a physical populated 0039-to-head transition preserving old authority and
+applying an original v6 consent. That populated-upgrade proof is historical: no
+pre-rebaseline database can upgrade into the current baseline. Exact-head CI and
+deployed schema/application compatibility remain separate.
+
+
+## v9 front-desk authority (migration 0044)
+
+Browser review showed a v8 clinic owner could not create a walk-in queue, run the
+Today console's live queue or edit the business profile/contacts, and because
+staff authority replacement forbids self-replacement and is capped at the actor's
+delegable ceiling, nobody in the clinic could ever obtain that authority.
+`tenant-controller-v9` is immutable v8 plus exactly these delegable operational
+grants, each the capability of a current owner HTTP operation used by the Today
+console, queue setup or the business profile:
+
+| Capability | Owner operation(s) |
+| --- | --- |
+| `queue.configure` | `queue_service_queue_create` |
+| `queue.list`, `queue.staff_read` | `queue_list`, `queue_staff_read` |
+| `queue.check_in` | `queue_check_in` (reservation check-in and walk-in admission) |
+| `queue.call_next`, `queue.skip`, `queue.mark_no_show` | live queue commands |
+| `queue.operator_select`, `queue.recall_hold`, `queue.release_recall_hold` | triage commands |
+| `service_session.start`, `service_session.complete` | start creates the ServiceSession the Today console completes |
+| `appointments.confirm_attendance`, `appointments.record_arrival_estimate` | Today appointment actions |
+| `organization.manage_profile` | `tenancy_organization_profile_update`, `tenancy_organization_contacts_replace` |
+
+Deliberately excluded: `queue.join`/`queue.leave`/`queue.status` (subject-scoped
+public operations; staff walk-ins use `queue.check_in`), `queue.manage_intake`
+(no HTTP operation currently exposes it), `queue.subject_override` (not runtime
+available), queue history/workload classification, service pause/resume/read,
+resource activity and every platform-plane capability. v9 has 59 policy grants; a
+fresh native root holds 67 active grants. Migration `0044` inserts one catalog row,
+widens both adoption target constraints to v6-v9 and re-creates the consent/apply
+definer functions through unique anchors; pending consent keeps its recorded
+target. No existing principal, grant, root fact or consent is changed by the
+migration. Proof: `tests/db/test_initial_controller_policy.py`,
+`tests/db/test_tenant_controller_v9_adoption.py` (adoption delta on head; its former
+populated 0043→head half became historical at the 2026-10-23 rebaseline),
+`tests/e2e/test_tenant_controller_v9_front_desk_http.py` and the adoption HTTP
+journeys in `tests/e2e/test_controller_policy_adoption_http.py`.
+
+## v10 appointment notes (migration 0003)
+
+Booking added append-only staff notes on appointments (migration
+`0002_reservation_notes`, owner command `appointments_note_add`, capability
+`appointments.annotate`; reading notes stays under `appointments.day_board`, held
+since v1). Because staff authority replacement is capped at the actor's delegable
+ceiling, a v9 owner could neither write notes nor delegate note-taking to front-desk
+staff or agents. `tenant-controller-v10` is immutable v9 plus exactly one delegable
+operational grant, `appointments.annotate`. It carries no lifecycle, capacity or
+platform-plane authority. v10 has 60 policy grants; a fresh native root holds 68
+active grants (7 revoked staff-root replacements unchanged).
+
+Migration `0003_tenant_controller_v10` inserts one catalog row (v9 grants plus the
+one grant), widens both adoption target constraints to v6-v10 and re-creates
+`request_cmd.request_controller_policy_adoption` and
+`request_platform.apply_controller_policy_adoption` from their installed text
+through unique anchors: new consent targets v10 from v1-v9 sources, apply admits
+v1-v9→v10 while already-recorded v6/v7/v8/v9 consent keeps its target, and v10
+self-adoption is rejected (`55000`). No existing principal, grant, root fact or
+consent is changed; downgrade is refused. Proof:
+`tests/db/test_initial_controller_policy.py` (exact v10 delta against an
+independent oracle, fresh-root counts), `tests/db/test_tenant_controller_v9_adoption.py`
+(v8→v10 and v9→v10 exact deltas, self-adoption rejected) and the adoption HTTP
+journeys in `tests/e2e/test_controller_policy_adoption_http.py`.

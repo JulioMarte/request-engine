@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% import "partials/action_form.html" as action_form %}
-{% block title %}{{ kind }} rev {{ revision }} &middot; Request Engine admin{% endblock %}
+{% block title %}{{ kind }} rev. {{ revision }} &middot; Administración de Request Engine{% endblock %}
 {% block content %}
 <section class="card">
   <p><a href="/resources/configurations/{{ kind | urlencode }}">&larr; {{ kind }}</a></p>
-  <h1>{{ kind }} <code class="small">revision {{ revision }}</code></h1>
+  <h1>{{ kind }} <code class="small">revisión {{ revision }}</code></h1>
   {% if item_error %}<div class="alert error">{{ item_error }}</div>{% endif %}
   {% if detail[0] %}
   <dl class="detail">
@@ -16,7 +16,7 @@
   {% endfor %}
 </section>
 <section class="card">
-  <h2>Actions</h2>
+  <h2>Acciones</h2>
   <div id="result"></div>
   {% for action in actions %}{{ action_form.render(action) }}{% endfor %}
 </section>

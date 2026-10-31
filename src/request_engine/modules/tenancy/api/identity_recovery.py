@@ -41,7 +41,7 @@ from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 from request_engine.platform.secrets.delivery import RecoverySecretDelivery
-from request_engine.platform.security.freshness import require_phishing_resistant_authentication
+from request_engine.platform.security.freshness import require_recent_admin_authentication
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.platform_http import PlatformActorResolver
 
@@ -187,7 +187,7 @@ def install_identity_recovery_http(
 
     async def strong_recovery_actor(request: Request) -> PlatformActorContext:
         actor = await authenticated_actor(request)
-        require_phishing_resistant_authentication(actor, now=datetime.now(UTC))
+        require_recent_admin_authentication(actor, now=datetime.now(UTC))
         return actor
 
     async def create_case(

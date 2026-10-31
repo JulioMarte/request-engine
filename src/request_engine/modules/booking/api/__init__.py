@@ -5,6 +5,12 @@ from request_engine.modules.booking.adapters.db import attendance_commands
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
 )
+from request_engine.modules.booking.adapters.db.appointment_note_commands import (
+    PostgresAppointmentNoteCommands,
+)
+from request_engine.modules.booking.adapters.db.appointment_note_reader import (
+    PostgresAppointmentNoteReader,
+)
 from request_engine.modules.booking.adapters.db.arrival_estimate_commands import (
     PostgresArrivalEstimateCommands,
 )
@@ -54,6 +60,9 @@ from request_engine.modules.booking.api.operational_terms_router import (
 )
 from request_engine.modules.booking.api.resource_bootstrap_router import (
     create_resource_bootstrap_router,
+)
+from request_engine.modules.booking.api.resource_configuration_install import (
+    install_resource_configuration_http,
 )
 from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.api.supply_configuration_router import (
@@ -107,6 +116,8 @@ def install_http(
             reschedule_handler=commitments,
             attendance_handler=attendance_commands.PostgresAttendanceCommands(session_factory),
             arrival_estimate_handler=PostgresArrivalEstimateCommands(session_factory),
+            note_handler=PostgresAppointmentNoteCommands(session_factory),
+            note_reader=PostgresAppointmentNoteReader(session_factory),
             reservation_reader=PostgresReservationReader(session_factory),
             authority_reader=party_authority_reader,
             actor_resolver=actor_resolver,
@@ -150,6 +161,9 @@ def install_operational_http(
             resource_handler=PostgresResourceScheduleExceptionCommands(session_factory),
             actor_resolver=actor_resolver,
         )
+    )
+    install_resource_configuration_http(
+        app, session_factory=session_factory, actor_resolver=actor_resolver
     )
     app.include_router(
         create_operational_terms_router(

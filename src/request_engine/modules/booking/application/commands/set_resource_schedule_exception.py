@@ -15,6 +15,7 @@ class ResourceScheduleExceptionState:
     exception_kind: ResourceScheduleExceptionKind
     reason: str | None
     resource_availability_revision: int
+    active: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +31,7 @@ class SetResourceScheduleExceptionCommand:
     idempotency_key: str
     exception_id: UUID | None = None
     reason: str | None = None
+    active: bool = True
 
 
 class SetResourceScheduleExceptionHandler(Protocol):

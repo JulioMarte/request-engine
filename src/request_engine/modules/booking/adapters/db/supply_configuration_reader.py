@@ -251,7 +251,7 @@ class PostgresSupplyConfigurationReader:
                 UNION ALL
                 SELECT e.id, e.resource_id, NULL::uuid AS assignment_id,
                        lower(e.during) AS start_at, upper(e.during) AS end_at,
-                       e.exception_kind, e.reason, true AS active, r.availability_revision
+                       e.exception_kind, e.reason, e.active, r.availability_revision
                 FROM request_engine.schedule_exceptions e
                 JOIN request_engine.resources r
                   ON r.organization_id = e.organization_id AND r.id = e.resource_id

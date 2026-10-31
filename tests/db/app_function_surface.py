@@ -5,6 +5,35 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0006 (ADR 0021): single-use invitation-code enrollment, own-entitlement read and
+    # session-revalidated self-service organization creation under the entitlement lock.
+    (
+        "request_auth.enroll_account_invitation(p_identity_authority_id uuid, "
+        "p_token_digest bytea, p_native_identity_id uuid, p_credential_id uuid, "
+        "p_entitlement_id uuid, p_login_handle text, p_password_verifier text)"
+    ),
+    (
+        "request_auth.read_account_entitlement(p_identity_authority_id uuid, "
+        "p_native_identity_id uuid)"
+    ),
+    (
+        "request_auth.create_self_service_organization(p_identity_authority_id uuid, "
+        "p_native_identity_id uuid, p_session_id uuid, p_idempotency_key_digest text, "
+        "p_intent_digest text, p_organization_id uuid, p_organization_party_id uuid, "
+        "p_controller_principal_id uuid, p_organization_key text, p_display_name text, "
+        "p_timezone text, p_locale text, p_currency text, p_policy_key text, "
+        "p_correlation_id uuid)"
+    ),
+    # 0043: trusted-context proposer gate (active HUMAN staff or active AGENT holding
+    # staff.propose_invitation); returns the actor id, performs no business write.
+    "request_cmd.assert_staff_invitation_proposer()",
+    # 0042: current-password proof bound to one trusted session; no identity selector.
+    "request_auth.read_native_session_password_credential(p_session_id uuid)",
+    "request_auth.read_native_recovery_session_password_credential(p_session_id uuid)",
+    (
+        "request_auth.complete_native_recovery_with_password(p_session_id uuid, "
+        "p_credential_id uuid, p_expected_recovery_epoch bigint, p_expected_verifier text)"
+    ),
     # 0038: bounded transport-only shared authentication admission; no direct state-table ACL.
     "request_auth.admit_http_authentication(p_limit integer)",
     # 0025: current HUMAN manager, tenant-local target and delegable ceiling;
@@ -38,6 +67,12 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
     (
         "request_cmd.write_staff_member_profile(p_membership uuid, p_expected bigint, "
         "p_name text, p_provenance text)"
+    ),
+    # 0005: exact business-Party Representation delegation to staff (manager-gated).
+    (
+        "request_engine.replace_staff_representations(p_membership_id uuid, "
+        "p_authority_party_id uuid, p_expected_authority_revision bigint, "
+        "p_desired_scopes text[], p_provenance_reference text)"
     ),
     # 0009: current manager gate and subject-proof-bound staff materialization.
     "request_cmd.assert_staff_invitation_manager()",
@@ -208,4 +243,134 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "p_provenance_reference text)"
     ),
     ("request_read.recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid)"),
+    # Auth callables from accepted migration history, now explicitly inventoried.
+    "request_auth.complete_native_recovery(p_native_identity_id uuid)",
+    (
+        "request_auth.consume_native_recovery_intent(p_recovery_id uuid, p_token_digest "
+        "bytea, p_new_credential_id uuid, p_new_verifier text)"
+    ),
+    "request_auth.consume_recovery_code(p_code_digest bytea)",
+    (
+        "request_auth.consume_recovery_code_and_rotate_password(p_code_digest bytea, "
+        "p_new_credential_id uuid, p_new_verifier text)"
+    ),
+    (
+        "request_auth.create_native_identity(p_identity_authority_id uuid, "
+        "p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_verifier "
+        "text)"
+    ),
+    (
+        "request_auth.create_native_recovery_intent(p_native_identity_id uuid, p_recovery_id "
+        "uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with "
+        "time zone)"
+    ),
+    (
+        "request_auth.create_native_session(p_native_identity_id uuid, p_credential_id uuid, "
+        "p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at "
+        "timestamp with time zone)"
+    ),
+    (
+        "request_auth.create_recovery_code_set(p_set_id uuid, p_native_identity_id uuid, "
+        "p_setup_session_id uuid, p_code_digests bytea[])"
+    ),
+    (
+        "request_auth.create_webauthn_challenge_with_user_handle(p_challenge_id uuid, "
+        "p_purpose text, p_native_identity_id uuid, p_session_id uuid, p_setup_session_id "
+        "uuid, p_challenge_digest bytea, p_expires_at timestamp with time zone, p_user_handle "
+        "bytea)"
+    ),
+    "request_auth.disable_native_identity(p_native_identity_id uuid, p_reason text)",
+    (
+        "request_auth.finalize_discoverable_webauthn_authentication(p_challenge_digest bytea, "
+        "p_credential_row_id uuid, p_sign_count bigint, p_backup_eligible boolean, "
+        "p_backup_state boolean, p_user_verified boolean, p_session_id uuid, p_token_digest "
+        "bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, "
+        "p_expected_authority_id uuid, p_user_handle bytea)"
+    ),
+    (
+        "request_auth.finalize_setup_webauthn_registration(p_challenge_digest bytea, "
+        "p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, "
+        "p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state "
+        "boolean, p_user_verified boolean, p_setup_session_id uuid)"
+    ),
+    (
+        "request_auth.finalize_webauthn_authentication(p_challenge_digest bytea, "
+        "p_credential_row_id uuid, p_native_identity_id uuid, p_sign_count bigint, "
+        "p_backup_eligible boolean, p_backup_state boolean, p_user_verified boolean, "
+        "p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at "
+        "timestamp with time zone)"
+    ),
+    (
+        "request_auth.finalize_webauthn_registration(p_challenge_digest bytea, "
+        "p_credential_row_id uuid, p_credential_id_bytes bytea, p_public_key bytea, "
+        "p_sign_count bigint, p_aaguid text, p_backup_eligible boolean, p_backup_state "
+        "boolean, p_user_verified boolean)"
+    ),
+    (
+        "request_auth.finalize_webauthn_step_up(p_challenge_digest bytea, p_credential_row_id "
+        "uuid, p_session_id uuid, p_native_identity_id uuid, p_sign_count bigint, "
+        "p_backup_eligible boolean, p_user_verified boolean)"
+    ),
+    "request_auth.is_native_authority_ready(p_authority_id uuid)",
+    (
+        "request_auth.prepare_native_recovery_address(p_address_id uuid, p_native_identity_id "
+        "uuid, p_kind text, p_normalized_address text, p_verification_id uuid, p_token_digest "
+        "bytea, p_token_fingerprint text, p_expires_at timestamp with time zone)"
+    ),
+    "request_auth.promote_recovery_code_set(p_set_id uuid, p_native_identity_id uuid)",
+    (
+        "request_auth.queue_native_verified_recovery(p_identity_authority_id uuid, "
+        "p_login_handle text, p_request_id uuid)"
+    ),
+    "request_auth.read_active_webauthn_identity(p_identity_authority_id uuid, p_login_handle text)",
+    "request_auth.read_native_credential_verifier(p_credential_id uuid)",
+    (
+        "request_auth.read_native_password_credential(p_identity_authority_id uuid, "
+        "p_login_handle text)"
+    ),
+    "request_auth.read_native_recovery_addresses(p_native_identity_id uuid)",
+    "request_auth.read_native_recovery_readiness(p_native_identity_id uuid)",
+    "request_auth.read_native_session(p_session_id uuid)",
+    "request_auth.read_oidc_authorities()",
+    "request_auth.read_platform_identity_bindings(p_identity_authority_id uuid, p_subject_id text)",
+    "request_auth.read_recovery_code_set_summary(p_native_identity_id uuid)",
+    (
+        "request_auth.read_self_organizations(p_identity_authority_id uuid, p_subject_id "
+        "text, p_after uuid, p_limit integer)"
+    ),
+    "request_auth.read_webauthn_challenge(p_challenge_digest bytea, p_purpose text)",
+    "request_auth.read_webauthn_credential(p_credential_id_bytes bytea)",
+    "request_auth.read_webauthn_credential_for_assertion(p_credential_id_bytes bytea)",
+    "request_auth.read_webauthn_credentials(p_native_identity_id uuid)",
+    "request_auth.read_workload_credential(p_credential_id uuid)",
+    (
+        "request_auth.reauthenticate_native_session(p_session_id uuid, p_credential_id uuid, "
+        "p_expected_verifier text)"
+    ),
+    (
+        "request_auth.rehash_native_password_verifier(p_credential_id uuid, "
+        "p_native_identity_id uuid, p_new_verifier text)"
+    ),
+    (
+        "request_auth.revoke_native_recovery_address(p_native_identity_id uuid, "
+        "p_recovery_address_id uuid)"
+    ),
+    (
+        "request_auth.revoke_native_session(p_native_identity_id uuid, p_session_id uuid, "
+        "p_reason text)"
+    ),
+    "request_auth.revoke_native_sessions(p_native_identity_id uuid, p_reason text)",
+    "request_auth.revoke_recovery_code_set(p_set_id uuid, p_reason text)",
+    (
+        "request_auth.revoke_webauthn_credential(p_credential_id uuid, p_native_identity_id "
+        "uuid, p_reason text)"
+    ),
+    (
+        "request_auth.rotate_native_password(p_native_identity_id uuid, "
+        "p_expected_credential_id uuid, p_new_credential_id uuid, p_new_verifier text, "
+        "p_reason text)"
+    ),
+    "request_auth.staff_invitation_target(p_id uuid, p_digest text)",
+    "request_auth.touch_native_session(p_session_id uuid, p_min_interval_seconds integer)",
+    "request_auth.verify_native_recovery_address(p_verification_id uuid, p_token_digest bytea)",
 }

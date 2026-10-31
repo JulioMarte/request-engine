@@ -59,6 +59,8 @@ def _client(
         "/logout",
         "/step-up/options",
         "/step-up/complete",
+        "/step-up/password",
+        "/account/security/recovery-complete",
         "/setup/recovery-codes",
     ],
 )

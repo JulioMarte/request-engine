@@ -5,6 +5,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from request_engine.modules.booking.contracts.appointment_notes import (
+    AppointmentNoteSummary,
+    LatestAppointmentNote,
+)
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, Reservation
 from request_engine.modules.booking.contracts.arrival_estimates import ReservationArrivalEstimate
 from request_engine.modules.booking.contracts.attendance import ReservationAttendanceState
@@ -137,4 +141,48 @@ class ReservationView(BaseModel):
             revision=reservation.revision,
             attendance_status=reservation.attendance_status.value,
             estimated_arrival_at=reservation.estimated_arrival_at,
+        )
+
+
+class LatestAppointmentNoteView(BaseModel):
+    excerpt: str
+    author_kind: str
+    created_at: datetime
+
+    @classmethod
+    def from_contract(
+        cls, latest: LatestAppointmentNote | None
+    ) -> "LatestAppointmentNoteView | None":
+        if latest is None:
+            return None
+        return cls(
+            excerpt=latest.excerpt,
+            author_kind=latest.author_principal_kind,
+            created_at=latest.created_at,
+        )
+
+
+class ReservationReadView(ReservationView):
+    """``appointments_read`` result. Note fields are staff-only.
+
+    ``note_count``/``latest_note`` are projected only when the caller also holds
+    the staff appointment read ``appointments.day_board``; for a subject-scoped
+    caller (a customer reading their own appointment) they are null, because
+    notes are internal staff documentation.
+    """
+
+    note_count: int | None = None
+    latest_note: LatestAppointmentNoteView | None = None
+
+    @classmethod
+    def from_read(
+        cls, reservation: Reservation, notes: AppointmentNoteSummary | None
+    ) -> "ReservationReadView":
+        base = ReservationView.from_contract(reservation).model_dump()
+        if notes is None:
+            return cls(**base)
+        return cls(
+            **base,
+            note_count=notes.note_count,
+            latest_note=LatestAppointmentNoteView.from_contract(notes.latest),
         )

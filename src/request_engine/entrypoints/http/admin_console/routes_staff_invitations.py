@@ -9,11 +9,33 @@ from uuid import UUID
 import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from pydantic import AwareDatetime, BaseModel, Field, StrictStr, ValidationError
 
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
 from request_engine.entrypoints.http.admin_console.inputs import build_inputs
 from request_engine.entrypoints.http.admin_console.json_types import as_list, as_mapping
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
+
+
+class _InvitationView(BaseModel):
+    invitation_id: UUID
+    organization_id: UUID
+    email: StrictStr = Field(min_length=1)
+    status: StrictStr = Field(min_length=1)
+    generation: int = Field(strict=True, ge=1)
+    revision: int = Field(strict=True, ge=1)
+    expires_at: AwareDatetime
+    created_at: AwareDatetime
+    membership_id: UUID | None
+    principal_id: UUID | None
+    binding_id: UUID | None
+    delivery_status: StrictStr | None
+
+
+class _InvitationPage(BaseModel):
+    items: list[_InvitationView] = Field(strict=True, max_length=100)
+    next_after: UUID | None
 
 
 def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> None:
@@ -49,9 +71,11 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
         if not state.csrf_matches(submitted, cookie) or not hmac.compare_digest(
             signature, expected
         ):
-            return Response("CSRF token missing or invalid", status_code=403)
+            return Response(
+                "El formulario venció. Recargue la página e inténtelo de nuevo.", status_code=403
+            )
         if state.runtime is None:
-            return Response("Native enrollment unavailable", status_code=503)
+            return Response("La creación de cuentas no está disponible", status_code=503)
         try:
             # Credentials are forwarded only to the canonical native auth owner.
             # Never echo them, attach organization context or create local identity.
@@ -65,7 +89,8 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
             )
         except httpx.HTTPError:
             return Response(
-                "Enrollment result not confirmed. Try signing in before enrolling again.",
+                "No se confirmó si se creó la cuenta. "
+                "Intente iniciar sesión antes de crearla otra vez.",
                 status_code=503,
             )
         if not result.ok:
@@ -75,7 +100,10 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
                 state.context(
                     request,
                     enrollment_csrf=cookie,
-                    error="Account could not be created. Check details or sign in if it exists.",
+                    error=(
+                        "No se pudo crear la cuenta. "
+                        "Revise los datos o inicie sesión si ya la tiene."
+                    ),
                 ),
                 status_code=result.status_code,
             )
@@ -91,13 +119,13 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
     ) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         try:
             catalog = (await state.runtime_catalog()).by_id()
             operation = catalog.get("staff_invitation_list")
             create = catalog.get("staff_invitation_create")
             if operation is None or create is None:
-                return Response("Invitation API unavailable", status_code=503)
+                return Response("El servicio de invitaciones no está disponible", status_code=503)
             params = {"limit": str(limit)}
             if after:
                 params["after"] = str(after)
@@ -109,43 +137,41 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
                 params=params,
             )
         except (httpx.HTTPError, RuntimeError, ValueError):
-            return Response("Invitation service unavailable", status_code=503)
+            return Response("El servicio de invitaciones no está disponible", status_code=503)
         body = as_mapping(result.payload)
         rows: list[dict[str, Any]] = []
         if result.ok:
-            for value in as_list(body.get("items")):
-                item = as_mapping(value)
-                try:
-                    invitation_id = str(UUID(str(item["invitation_id"])))
-                    revision = int(item["revision"])
-                except (KeyError, ValueError, TypeError):
-                    return Response("Invalid invitation API response", status_code=502)
-                if revision < 1:
-                    return Response("Invalid invitation API revision", status_code=502)
-                if item.get("membership_id") is not None:
-                    try:
-                        item["membership_id"] = str(UUID(str(item["membership_id"])))
-                    except ValueError:
-                        return Response("Invalid invitation membership", status_code=502)
+            try:
+                page = _InvitationPage.model_validate(result.payload)
+                if len(page.items) > limit or any(
+                    item.organization_id != organization_id for item in page.items
+                ):
+                    raise ValueError("invitation page scope or size mismatch")
+                body = page.model_dump(mode="json")
+            except (ValidationError, ValueError):
+                return Response(
+                    "El servicio de invitaciones devolvió una respuesta no válida", status_code=502
+                )
+            for item in (as_mapping(value) for value in as_list(body["items"])):
                 delivery_labels = {
-                    "delivered": "Accepted by mail server (inbox not confirmed)",
-                    "pending": "Queued for email delivery",
-                    "attempting": "Email submission in progress",
-                    "retryable_failure": "Delivery retry pending",
-                    "unknown": "Delivery outcome unknown — do not assume receipt",
-                    "terminal_failure": "Email delivery failed",
-                    "failed": "Email delivery failed",
-                    "cancelled": "Delivery cancelled",
-                    "expired": "Delivery expired before confirmation",
+                    "delivered": (
+                        "Aceptado por el servidor de correo (no se confirmó que llegó a la bandeja)"
+                    ),
+                    "pending": "En cola para enviarse por correo",
+                    "attempting": "Enviando el correo",
+                    "retryable_failure": "Reintento de envío pendiente",
+                    "unknown": "Resultado del envío desconocido; no dé por hecho que llegó",
+                    "terminal_failure": "No se pudo enviar el correo",
+                    "failed": "No se pudo enviar el correo",
+                    "cancelled": "Envío cancelado",
+                    "expired": "El envío venció antes de confirmarse",
                 }
                 item["delivery_label"] = delivery_labels.get(
-                    str(item.get("delivery_status")), "Delivery not confirmed"
+                    str(item.get("delivery_status")), "Envío sin confirmar"
                 )
                 rows.append(
                     {
                         **item,
-                        "invitation_id": invitation_id,
-                        "revision": revision,
                         "intent_id": token_urlsafe(24),
                     }
                 )
@@ -154,7 +180,7 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
             try:
                 next_after = str(UUID(str(next_after)))
             except ValueError:
-                return Response("Invalid invitation pagination", status_code=502)
+                return Response("La paginación de invitaciones no es válida", status_code=502)
         return state.templates.TemplateResponse(
             request,
             "resources/staff_invitations.html",
@@ -164,10 +190,14 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
                 invitations=rows,
                 next_after=next_after,
                 page_limit=limit,
+                after=after,
                 loaded=result.ok,
                 error=""
                 if result.ok
-                else "Invitations unavailable. Check your session and permissions, then reload.",
+                else (
+                    "Las invitaciones no están disponibles. "
+                    "Revise su sesión y sus permisos, y luego recargue."
+                ),
                 create_inputs=build_inputs(create) if result.ok else [],
                 create_intent=token_urlsafe(24),
             ),
@@ -182,18 +212,20 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
     ) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         if action not in ({"create"} if invitation_id is None else {"resend", "revoke"}):
-            return Response("Unknown invitation action", status_code=404)
+            return Response("Acción de invitación desconocida", status_code=404)
         form = {key: str(value) for key, value in (await request.form()).items()}
         if not state.csrf_matches(form.get("csrf_token"), session.csrf_token):
-            return Response("CSRF token missing or invalid", status_code=403)
+            return Response(
+                "El formulario venció. Recargue la página e inténtelo de nuevo.", status_code=403
+            )
         try:
             operation = (await state.runtime_catalog()).by_id().get(f"staff_invitation_{action}")
         except (httpx.HTTPError, RuntimeError, ValueError):
-            return Response("Invitation API unavailable", status_code=503)
+            return Response("El servicio de invitaciones no está disponible", status_code=503)
         if operation is None:
-            return Response("Invitation operation unavailable", status_code=503)
+            return Response("La operación de invitación no está disponible", status_code=503)
         if invitation_id:
             form["invitation_id"] = str(invitation_id)
         outcome = await execute_operation(
@@ -234,21 +266,26 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
     async def accept(request: Request) -> Response:
         session = state.session(request)
         if session is None:
-            return JSONResponse({"error": "Sign in before accepting."}, status_code=401)
+            return JSONResponse({"error": "Inicie sesión antes de aceptar."}, status_code=401)
         form = await request.form()
         if not state.csrf_matches(str(form.get("csrf_token", "")), session.csrf_token):
-            return JSONResponse({"error": "CSRF token missing or invalid"}, status_code=403)
+            return JSONResponse(
+                {"error": "El formulario venció. Recargue la página e inténtelo de nuevo."},
+                status_code=403,
+            )
         token = str(form.get("token", ""))
         try:
             invitation_id = str(UUID(token.split(".", 1)[0]))
         except ValueError:
-            return JSONResponse({"error": "Invalid invitation link."}, status_code=422)
+            return JSONResponse({"error": "El enlace de invitación no es válido."}, status_code=422)
         if not 40 <= len(token) <= 200 or "." not in token:
-            return JSONResponse({"error": "Invalid invitation link."}, status_code=422)
+            return JSONResponse({"error": "El enlace de invitación no es válido."}, status_code=422)
         try:
             operation = (await state.runtime_catalog()).by_id().get("staff_invitation_accept")
             if state.runtime is None or operation is None or operation.method.upper() != "POST":
-                return JSONResponse({"error": "Invitation service unavailable."}, status_code=503)
+                return JSONResponse(
+                    {"error": "El servicio de invitaciones no está disponible."}, status_code=503
+                )
             # Acceptance precedes tenant membership. Deliberately bypass the
             # tenant-forwarding helper; neither actor nor tenant comes from form.
             result = await state.runtime.request(
@@ -259,7 +296,12 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
             )
         except (httpx.HTTPError, RuntimeError, ValueError):
             return JSONResponse(
-                {"error": "Result not confirmed. Retry this same link."}, status_code=503
+                {
+                    "error": (
+                        "No se confirmó el resultado. Vuelva a intentarlo con este mismo enlace."
+                    )
+                },
+                status_code=503,
             )
         if result.ok:
             return JSONResponse({"ok": True, "next": "/my-organizations"})
@@ -270,41 +312,49 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
         ):
             return JSONResponse(
                 {
-                    "error": "This account already has an organization link. Ask an administrator "
-                    "to review your existing membership and permissions; another invitation "
-                    "will not restore access."
+                    "error": "Esta cuenta ya está vinculada a un negocio. Pida a un administrador "
+                    "que revise su membresía y sus permisos actuales; otra invitación no le "
+                    "devolverá el acceso."
                 },
                 status_code=409,
             )
         messages = {
-            401: "Sign in again, then reopen this page.",
-            403: "This account cannot accept this invitation.",
-            404: "This invitation link is invalid or unavailable.",
-            409: "This invitation changed, expired or was revoked. Ask for a new invitation.",
+            401: "Inicie sesión de nuevo y vuelva a abrir esta página.",
+            403: "Esta cuenta no puede aceptar esta invitación.",
+            404: "Este enlace de invitación no es válido o ya no está disponible.",
+            409: "Esta invitación cambió, venció o fue revocada. Pida una invitación nueva.",
         }
         return JSONResponse(
-            {"error": messages.get(result.status_code, "Invitation could not be accepted.")},
+            {"error": messages.get(result.status_code, "No se pudo aceptar la invitación.")},
             status_code=result.status_code,
         )
 
     async def preview(request: Request) -> Response:
         session = state.session(request)
         if session is None:
-            return JSONResponse({"error": "Sign in to review this invitation."}, status_code=401)
+            return JSONResponse(
+                {"error": "Inicie sesión para revisar esta invitación."}, status_code=401
+            )
         form = await request.form()
         if not state.csrf_matches(str(form.get("csrf_token", "")), session.csrf_token):
-            return JSONResponse({"error": "CSRF token missing or invalid"}, status_code=403)
+            return JSONResponse(
+                {"error": "El formulario venció. Recargue la página e inténtelo de nuevo."},
+                status_code=403,
+            )
         token = str(form.get("token", ""))
         try:
             invitation_id = str(UUID(token.split(".", 1)[0]))
         except ValueError:
-            return JSONResponse({"error": "Invalid invitation link."}, status_code=422)
+            return JSONResponse({"error": "El enlace de invitación no es válido."}, status_code=422)
         if not 40 <= len(token) <= 200 or "." not in token:
-            return JSONResponse({"error": "Invalid invitation link."}, status_code=422)
+            return JSONResponse({"error": "El enlace de invitación no es válido."}, status_code=422)
         try:
             operation = (await state.runtime_catalog()).by_id().get("staff_invitation_preview")
             if state.runtime is None or operation is None or operation.method.upper() != "POST":
-                return JSONResponse({"error": "Invitation preview unavailable."}, status_code=503)
+                return JSONResponse(
+                    {"error": "La vista previa de la invitación no está disponible."},
+                    status_code=503,
+                )
             result = await state.runtime.request(
                 "POST",
                 operation.path_template.replace("{invitation_id}", invitation_id),
@@ -313,18 +363,26 @@ def install_staff_invitation_routes(app: FastAPI, state: AdminConsoleState) -> N
             )
         except (httpx.HTTPError, RuntimeError, ValueError):
             return JSONResponse(
-                {"error": "Could not verify the invitation. Retry later."}, status_code=503
+                {"error": "No se pudo verificar la invitación. Inténtelo más tarde."},
+                status_code=503,
             )
         body = as_mapping(result.payload)
         if not result.ok:
             return JSONResponse(
-                {"error": "Invitation unavailable. Sign in again or ask for a new link."},
+                {
+                    "error": (
+                        "La invitación no está disponible. "
+                        "Inicie sesión de nuevo o pida un enlace nuevo."
+                    )
+                },
                 status_code=result.status_code,
             )
         name = body.get("organization_display_name")
         expiry = body.get("expires_at")
         if not isinstance(name, str) or not name or not isinstance(expiry, str) or not expiry:
-            return JSONResponse({"error": "Invitation preview is incomplete."}, status_code=502)
+            return JSONResponse(
+                {"error": "La vista previa de la invitación llegó incompleta."}, status_code=502
+            )
         # Only the supported recipient projection crosses back to the browser.
         return JSONResponse(
             {"ok": True, "organization_display_name": name, "expires_at": expiry},

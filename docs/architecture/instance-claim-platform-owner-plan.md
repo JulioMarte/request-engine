@@ -4,6 +4,23 @@ Date: 2026-09-18
 Branch of reference: `cohesion/system-optimization`  
 Status: **accepted architecture and implementation handoff; not production certification.**
 
+Current authentication policy (2026-10-14): [ADR 0017](../adr/0017-optional-passkeys-administrative-authentication.md)
+supersedes this plan's mandatory initial passkey and exclusive phishing-resistant
+administrative admission assumptions. Password plus recovery codes can finalize
+claim; passkeys are optional. Recent password or verified WebAuthn can confirm
+administrative actions through the same API operations projected by the console.
+Explicit password-based recovery completion is bound to its session and epoch,
+and requires a fresh ordinary sign-in afterwards. Historical migration numbers
+and delivery checkpoints below are provenance, not the current Alembic head.
+Since the 2026-10-23 rebaseline (`docs/audits/postgresql-rebaseline-0047.md`) the
+WebAuthn, instance-claim and Platform Owner schema — including the former
+`0002`/`0034`/`0036`/`0037` WebAuthn revisions and the extension roles
+`request_webauthn_retention[_definer]` — is installed by the accepted
+`0001_initial` baseline. The populated-upgrade proof for legacy pre-binding
+passkeys became historical with it; discoverable login stays proven by
+`tests/db/test_webauthn_persistence.py` and `tests/e2e/test_native_webauthn_login_http.py`,
+and the shared-role ACL guard by `tests/db/test_webauthn_challenge_retention.py`.
+
 The reference software-authenticator runner keeps Python `3.13-slim` and the
 same isolated TCP/WebAuthn claim journey. Its base image is now Docker's
 official `public.ecr.aws/docker/library/python:3.13-slim` publication, avoiding
@@ -1627,6 +1644,30 @@ Delivered by revisions 0071-0074 and the Platform Owner HTTP/E2E journeys:
 - last-effective-owner continuity protection;
 - suspend/reactivate/revoke semantics with revisions, idempotency and append-only facts;
 - a second owner can be activated and the final effective owner cannot be removed.
+
+### P5.1 — Guided business setup after instance claim
+
+The private admin console's `/resources/business-setup` journey runs only with
+an existing ordinary authenticated session. It projects the canonical native
+organization creation Command through the same executor used by the other
+administrative workspaces. It does not accept a SetupSession, claim the instance,
+reopen setup, enroll a new Platform Owner or provide an alternate trust root.
+The owning operation continues to check current capability, accepted human
+authentication posture, idempotency and native identity/controller prerequisites.
+
+The operator deliberately chooses a named native account from the authorized
+private inventory. Account creation and business creation remain distinct;
+choosing a label does not manufacture an identity or grant platform authority.
+The successful owner response supplies the real organization and represented
+Party for the next setup link. Partial responses supply no fabricated authority
+or continuation. Platform owner status alone still confers no implicit tenant
+membership. Existing businesses require their actual tenant/Party authorization.
+
+This is an ordered configuration start, not proof of onboarding completion or
+production acceptance. See `admin-dashboard-completion.md` for visual controls,
+readback requirements and the explicit advanced-input limits. Existing instance
+claim, owner activation, recovery restriction and strong-factor guarantees remain
+unchanged.
 
 ### P6 — Instance recovery — delivered
 

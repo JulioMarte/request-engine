@@ -1,0 +1,45 @@
+{# Slot search and choice for the front desk. Expects: finder_action, finder_hidden,
+   choose_action, choose_hidden, choose_label, offerings, offerings_status,
+   offering_version_id, day, slots, slots_status, zone_name, intent_id. #}
+<form method="get" action="{{ finder_action }}" class="stack">
+  {% for name, value in finder_hidden.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}" />{% endfor %}
+  {% if offerings_status == 403 %}
+  <p class="alert warn">Sus permisos no incluyen «Buscar servicios». Pídaselo a quien administra los permisos del equipo.</p>
+  {% elif offerings_status not in range(200, 300) %}
+  <p class="alert error">No se pudieron cargar los servicios. Actualice la página para intentarlo de nuevo.</p>
+  {% elif not offerings %}
+  <p class="alert notice">Todavía no hay servicios que se puedan reservar. Agregue uno en la configuración del negocio.</p>
+  {% endif %}
+  <label>Servicio
+    <select name="offering_version_id" required>
+      {% for offering in offerings %}<option value="{{ offering.version_id }}" {% if offering.version_id == offering_version_id %}selected{% endif %}>{{ offering.name }}{% if offering.minutes %} · {{ offering.minutes }} min{% endif %}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Día<input type="date" name="day" value="{{ day }}" required /></label>
+  <button type="submit" class="secondary">Buscar horarios libres</button>
+</form>
+{% if offering_version_id %}
+<h3>Horarios libres del {{ day_label or day }} <small class="muted">({{ zone_label or zone_name }})</small></h3>
+{% if slots_status == 403 %}
+<p class="alert warn">Sus permisos no incluyen «Buscar horarios libres». Pídaselo a quien administra los permisos del equipo.</p>
+{% elif slots_status not in range(200, 300) %}
+<p class="alert error">No se pudieron cargar los horarios libres. Elija de nuevo el servicio y el día.</p>
+{% elif not slots %}
+<p class="alert notice">No hay horarios libres ese día. Pruebe otro día.</p>
+{% else %}
+<ul class="slot-list">
+  {% for slot in slots %}
+  <li>
+    <form method="post" data-plain-action action="{{ choose_action }}" data-confirm="{{ choose_label }} {{ slot.start }}–{{ slot.end }}?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="_intent_id" value="{{ intent_id }}-{{ loop.index }}" data-form-intent />
+      <input type="hidden" name="option_id" value="{{ slot.option_id }}" />
+      {% for name, value in choose_hidden.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}" />{% endfor %}
+      <button type="submit" class="secondary"><strong>{{ slot.start }}–{{ slot.end }}</strong>{% if slot.location or slot.price %}<small>{{ slot.location }}{% if slot.location and slot.price %} · {% endif %}{{ slot.price }}</small>{% endif %}</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+<p class="muted">Estos horarios todavía no están reservados. La cita se hace solo cuando usted elige uno, y otra persona podría tomarlo antes.</p>
+{% endif %}
+{% endif %}

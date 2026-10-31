@@ -30,6 +30,64 @@ same-tenant Location with an optional Offering link. Selection stays FIFO only
 only: it admits nobody. `read_queue_supply` (via `contracts/onboarding.py`)
 backs the `walk_in_queue` readiness fact of `GET /v1/onboarding/readiness`.
 
+Operator configuration inventory uses `queue.read_configuration`, a Query distinct
+from public `queue.list` and creation Command `queue.configure`. It exposes:
+
+- `GET /v1/queues/configuration` (`queue_service_queue_configuration_list`);
+- `GET /v1/queues/configuration/{queue_id}` (`queue_service_queue_configuration_read`).
+
+Both require an explicit `authority_party_id`, the actor's current tenant standing
+capability and current exact `operations.manage_supply` Representation, resolved
+inside the read transaction under Principal/Party serialization. The Party is an
+authority anchor; it does not manufacture tenant identity. No new default grant
+is implied by these routes. List includes inactive queues and uses UUID keyset
+pagination (`limit` 1–100, optional UUID `cursor`, `next_cursor` null at observed
+end). This is a live read, not a snapshot. Detail returns the current queue ID,
+key, display label, Location/Offering links, FIFO policy, active state and queue
+revision. Missing and foreign IDs have the same 404 response. Responses are
+`no-store`; unknown filters and malformed/beyond-bound inputs fail with 422.
+These read operations require neither idempotency key nor expected revision,
+admit no subjects and do not expose QueueEntry identities. No tool projection is
+needed: curated dashboard navigation invokes these same owner HTTP operations.
+
+### Closing and reopening a ServiceQueue (2026-10-25)
+
+`POST /v1/queues/{queue_id}:set-active` (`queue_service_queue_set_active`,
+capability `queue.configure`, owner Queue, `Idempotency-Key` required) closes
+(`active=false`) or reopens (`active=true`) one queue. Body:
+`{authority_party_id, expected_revision, active}`; response:
+`{queue_id, queue_key, display_name, location_id, offering_id, active, revision}`.
+
+- Authority: exact `operations.manage_supply` Representation of
+  `authority_party_id`, checked inside the transaction **before** idempotency, so
+  a withdrawn authority cannot read an old receipt back.
+- Lock: the `service_queues` row `FOR UPDATE` — the same first lock as join,
+  check-in and call-next (queue -> intake control -> entries/reservation). A
+  concurrent admission either commits first (and is counted) or waits and then
+  receives `409 queue_inactive`.
+- Closing is refused while the queue still has `waiting`, `called` or `serving`
+  entries: `409 service_queue_has_active_entries` with
+  `details {queue_id, waiting, called, serving}`. There is no automatic drain:
+  those entries are people physically waiting or being served, and cancelling
+  them silently would be false. Staff finish, mark no-show or cancel them first.
+  Terminal entries (`completed`, `cancelled`, `no_show`) do not block.
+- Reopening requires the queue's Location to be active
+  (`409 queue_configuration_conflict` otherwise).
+- `expected_revision` mismatch: `409 service_queue_revision_conflict`
+  (`details {queue_id, expected_revision, current_revision}`); requesting the
+  current state: `409 service_queue_state_unchanged` (refresh, nothing to do).
+  Missing/foreign queue: `404 queue_not_found`. The revision steps exactly once.
+- Closing is not intake control: `service_queue_intake_controls` is untouched
+  (pausing intake keeps the queue listed and serving; closing removes it from the
+  public `queue_list`, which shows active queues only). The operator read
+  `queue_service_queue_configuration_read/list` keeps showing closed queues with
+  `active` and `revision`.
+- Emits audit plus the PII-free outbox fact `service_queue.deactivated.v1` /
+  `service_queue.activated.v1` (aggregate `ServiceQueue`; payload `queue_id`,
+  `location_id`, `active`, `revision`). The change feed (ADR 0020) does not route
+  ServiceQueue facts — its `queue.` route is QueueEntry-only — so live screens
+  re-read after their own command response or on the next refresh.
+
 F3 keeps arrival and admission as separate facts:
 
 ```text
@@ -65,6 +123,32 @@ queue.classify_expected_workload
 They are distinct from the existing subject-facing `queue.join`.
 
 Reservation-backed check-in validates confirmed same-tenant planning context and creates QueueEntry without mutating Reservation or CapacityClaim.
+
+Served-visit guard (INV-SERVED-VISIT-001): `queue.check_in` and `queue.join` refuse a
+Reservation that already has a `completed` QueueEntry in **any** queue with
+`409 reservation_already_served`. Check-in reads the Reservation `FOR SHARE` after
+the ServiceQueue and intake-control locks (lock order: queue -> intake control ->
+reservation), so a concurrent Booking cancel/reschedule serializes with the
+admission. An entry that ended `cancelled` or `no_show` is not a served visit and
+does not block a new check-in. Concurrent active entries of one Reservation in
+*different* queues remain allowed: the Day Board multi-queue ambiguity contract
+(`active_queue_entry_count > 1`, `docs/v3/43-same-day-triage.md`) depends on it,
+and a lineage/handoff contract does not exist yet. A second active entry in the
+*same* queue is refused by the per-subject active-entry rule
+(`queue_entries_one_active_subject_uq`, `409 already_in_queue`). There is no
+PostgreSQL unique backstop on `reservation_id`: a partial unique index over
+completed entries would forbid completing both stages of a legitimate
+multi-queue visit, so the guard is the admission transaction itself.
+
+Every admission and triage fact appends a versioned outbox event on the
+`QueueEntry` aggregate in its own transaction, which is what lets the change feed
+(ADR 0020) signal it: `queue.entry_joined.v1`, `queue.entry_checked_in.v1`,
+`queue.entry_called.v1`, `queue.entry_skipped.v1`, `queue.entry_recall_held.v1`,
+`queue.entry_recall_released.v1`, `queue.entry_no_show.v1`,
+`queue.entry_cancelled.v1` and `queue.entry_expected_workload_classified.v1`.
+Payloads carry identifiers, closed enum values and revisions only; the operator's
+free-text recall-hold reason stays in the audit/hold record and never in the
+outbox.
 
 Walk-in creates QueueEntry with:
 

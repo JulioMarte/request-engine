@@ -15,6 +15,7 @@ ROLE_PATTERNS = (
     "request_webauthn_%",
     "request_proof_%",
     "request_operator_%",
+    "request_retention_%",
 )
 
 # pg_roles deliberately masks rolpassword as ******** for every role. This proof

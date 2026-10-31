@@ -1,6 +1,26 @@
-from .http_surface import HttpProbe, PublicHttpOperation, TenantIsolationMode
+from .http_surface import PROBE_UUID, HttpProbe, PublicHttpOperation, TenantIsolationMode
 
 DAY_BOARD_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
+    PublicHttpOperation(
+        "appointments.notes.add",
+        "POST",
+        "/v1/appointments/{reservation_id}/notes",
+        "appointments.annotate",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(f"/v1/appointments/{PROBE_UUID}/notes", body={"body": "Viene con su hijo"}),
+    ),
+    PublicHttpOperation(
+        "appointments.notes.list",
+        "GET",
+        "/v1/appointments/{reservation_id}/notes",
+        "appointments.day_board",
+        False,
+        False,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(f"/v1/appointments/{PROBE_UUID}/notes"),
+    ),
     PublicHttpOperation(
         "appointments.day_board",
         "GET",
@@ -16,5 +36,31 @@ DAY_BOARD_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
                 ("window_end", "2030-01-07T16:00:00+00:00"),
             ),
         ),
+    ),
+    PublicHttpOperation(
+        "appointments.calendar",
+        "GET",
+        "/v1/appointments/calendar",
+        "appointments.day_board",
+        False,
+        False,
+        TenantIsolationMode.FILTERED,
+        HttpProbe(
+            "/v1/appointments/calendar",
+            query=(
+                ("window_start", "2030-01-06T00:00:00+00:00"),
+                ("window_end", "2030-01-20T00:00:00+00:00"),
+            ),
+        ),
+    ),
+    PublicHttpOperation(
+        "front_desk.serving_resources",
+        "GET",
+        "/v1/locations/{location_id}/serving-resources",
+        "service_session.start",
+        False,
+        False,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(f"/v1/locations/{PROBE_UUID}/serving-resources"),
     ),
 )

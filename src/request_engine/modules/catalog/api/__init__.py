@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 
+from request_engine.modules.catalog.adapters.db.administration_reader import (
+    PostgresCatalogAdministrationReader,
+)
 from request_engine.modules.catalog.adapters.db.bootstrap_catalog_commands import (
     PostgresCatalogBootstrapCommands,
 )
@@ -9,11 +12,20 @@ from request_engine.modules.catalog.adapters.db.business_info_reader import (
 from request_engine.modules.catalog.adapters.db.configuration_reader import (
     PostgresCatalogConfigurationReader,
 )
+from request_engine.modules.catalog.adapters.db.location_closure_commands import (
+    PostgresLocationClosureCommands,
+)
 from request_engine.modules.catalog.adapters.db.location_creation_commands import (
     PostgresLocationCreationCommands,
 )
+from request_engine.modules.catalog.adapters.db.location_exception_reader import (
+    PostgresLocationExceptionReader,
+)
 from request_engine.modules.catalog.adapters.db.offering_catalog_reader import (
     PostgresOfferingCatalogReader,
+)
+from request_engine.modules.catalog.adapters.db.offering_edit_commands import (
+    PostgresOfferingEditCommands,
 )
 from request_engine.modules.catalog.adapters.db.offering_policy_commands import (
     PostgresOfferingBookingPolicyCommands,
@@ -27,8 +39,15 @@ from request_engine.modules.catalog.adapters.db.operational_profile_commands imp
 from request_engine.modules.catalog.adapters.db.organization_holiday_commands import (
     PostgresOrganizationHolidayCommands,
 )
+from request_engine.modules.catalog.api.administration_router import create_administration_router
 from request_engine.modules.catalog.api.bootstrap_router import create_bootstrap_router
+from request_engine.modules.catalog.api.configuration_edit_router import (
+    create_configuration_edit_router,
+)
 from request_engine.modules.catalog.api.configuration_router import create_configuration_router
+from request_engine.modules.catalog.api.location_exception_router import (
+    create_location_exception_router,
+)
 from request_engine.modules.catalog.api.operational_errors import (
     catalog_operational_error_handler,
     register_input_error_handler,
@@ -44,6 +63,8 @@ from request_engine.modules.catalog.application.errors import (
     CatalogConfigurationConflict,
     LocationOperationalRevisionConflict,
     OfferingBookingPolicyRevisionConflict,
+    OfferingRevisionConflict,
+    OfferingVersionSuperseded,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
@@ -60,9 +81,19 @@ def install_http(
     register_input_error_handler(app)
 
     app.include_router(
+        create_administration_router(
+            PostgresCatalogAdministrationReader(session_factory), actor_resolver
+        )
+    )
+    app.include_router(
         create_configuration_router(
             PostgresCatalogConfigurationReader(session_factory),
             actor_resolver,
+        )
+    )
+    app.include_router(
+        create_location_exception_router(
+            PostgresLocationExceptionReader(session_factory), actor_resolver
         )
     )
 
@@ -116,6 +147,8 @@ def install_operational_http(
         CatalogConfigurationConflict,
         catalog_operational_error_handler,
     )
+    for error_type in (OfferingRevisionConflict, OfferingVersionSuperseded):
+        app.add_exception_handler(error_type, catalog_operational_error_handler)
     profile = PostgresOperationalProfileCommands(session_factory)
     holidays = PostgresOrganizationHolidayCommands(session_factory)
     app.include_router(
@@ -132,6 +165,17 @@ def install_operational_http(
             exception_handler=profile,
             terms_handler=profile,
             holidays_handler=holidays,
+            actor_resolver=actor_resolver,
+        )
+    )
+    offering_edits = PostgresOfferingEditCommands(session_factory)
+    closures = PostgresLocationClosureCommands(session_factory)
+    app.include_router(
+        create_configuration_edit_router(
+            offering_handler=offering_edits,
+            version_handler=offering_edits,
+            exception_handler=closures,
+            holidays_handler=closures,
             actor_resolver=actor_resolver,
         )
     )

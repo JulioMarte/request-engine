@@ -98,6 +98,10 @@ Reschedule collects the union of old and new Resource ids before releasing old c
 
 A reschedule Outbox fact also preserves the released Reservation coordinates (`old_location_id`, `old_start_at`, `old_end_at`) before the authoritative row is moved. This is required because shared/local claim history may continue to change after commit and a delayed lifecycle consumer must not infer which historical slot was released by looking at the latest replaced claim or current Reservation location. The historical coordinates drive only released-slot recovery; capacity locking and current Reservation reconciliation continue to use the normal authoritative Booking state.
 
+Cancel and reschedule (and therefore any release of local or shared claims) first refuse a served Reservation (`reservation_already_served`, 409; `modules/booking/adapters/db/served_visit_guard.py`). The guard runs after the Reservation row is locked and before step 2: it takes `FOR SHARE` on the Reservation's `serving`/`completed` QueueEntries, so the order is Reservation → QueueEntry → local Resources → shared roots. Service completion locks ServiceQueue → QueueEntry → Resource and never a Reservation, so no cycle with the canonical order above is introduced, and a claim of a visit already served is never released into shared capacity.
+
+Staff appointment notes (`appointments_note_add`) lock the Reservation `FOR KEY SHARE` only to validate it, write an append-only `reservation_notes` fact and touch no Resource, shared root or CapacityClaim; they do not participate in capacity serialization.
+
 ## CapacityClaim lifecycle and provenance
 
 Shared capacity makes claim history security-relevant. PostgreSQL enforces that:
@@ -274,3 +278,12 @@ Historical V3 release matrices may remain as provenance, but their matrix status
 - Request-context GUCs recorded on authority events supplement database session provenance; they are not independently trusted against arbitrary SQL under a compromised session.
 - Global/shared identity retirement and merge/split are intentionally unsupported workflows in this capability.
 - There is no arbitrary maximum Resource count in `lock_shared_capacity_roots()` because the current product contract permits `0..N` resource requirements. A future cardinality limit must be introduced normatively.
+
+## Owner configuration edits (2026-10-25)
+
+`booking/api/__init__.py` also mounts the Resource configuration edits
+(`booking_resource_update`, `booking_resource_capabilities_replace`). They do not
+change shared-capacity semantics: capability replacement locks only the
+tenant-local Resource `FOR UPDATE` (the same first lock `guard_capacity_claim`
+takes), never touches CapacityClaims or `shared_capacity_claim_links`, and never
+locks a `SharedCapacityIdentity` root. Rename is a label precondition only.

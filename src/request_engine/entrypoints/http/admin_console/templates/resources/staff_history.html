@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Administrative history · Request Engine admin{% endblock %}
+{% block title %}Historial de cambios · Request Engine{% endblock %}
 {% block content %}
-<p><a href="/tenants/{{ organization_id }}/staff/{{ membership_id }}">← Staff member</a></p>
-<header class="page-heading"><div><p class="eyebrow">People &amp; permissions</p><h1>Administrative history</h1><p>Membership {{ membership_id }} · Organization {{ organization_id }}</p></div></header>
-<section class="card"><p>This read-only history shows recorded membership, permission and display-name changes. It does not include sign-ins, invitation delivery or every identity event. Private audit payloads are not displayed.</p>
+<p><a href="/tenants/{{ organization_id }}/staff/{{ membership_id }}">← Miembro del equipo</a></p>
+<header class="page-heading"><div><p class="eyebrow">Personas y permisos</p><h1>Historial de cambios</h1><p>Membresía {{ membership_id }} · Organización {{ organization_id }}</p></div></header>
+<section class="card"><p>Este historial, de solo lectura, muestra los cambios registrados de membresía, permisos y nombre. No incluye inicios de sesión, envíos de invitaciones ni todos los eventos de identidad. Los datos privados de auditoría no se muestran.</p>
 {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% else %}
-{% set labels = {'staff.invite': 'Membership added', 'staff.manage_authority': 'Permissions changed', 'staff.manage_membership': 'Membership status changed', 'staff.profile.update': 'Display name changed'} %}
-<div class="table-scroll"><table><caption>Newest administrative events first</caption><thead><tr><th scope="col">Time</th><th scope="col">Change</th><th scope="col">Actor</th><th scope="col">Revision</th></tr></thead><tbody>
-{% for entry in entries %}<tr><td><time datetime="{{ entry.occurred_at }}">{{ entry.occurred_at }}</time></td><td>{{ labels.get(entry.command_name, 'Administrative change') }}</td><td>{% if entry.actor_principal_id %}<code>{{ entry.actor_principal_id }}</code>{% else %}Not recorded{% endif %}</td><td>{{ entry.revision_kind }}: {{ entry.revision_before if entry.revision_before is not none else '—' }} → {{ entry.revision_after if entry.revision_after is not none else '—' }}</td></tr>
-{% else %}<tr><td colspan="4">No visible administrative events. This does not prove that no changes occurred.</td></tr>{% endfor %}
+{% set labels = {'staff.invite': 'Miembro agregado', 'staff.manage_authority': 'Permisos cambiados', 'staff.manage_membership': 'Estado del miembro cambiado', 'staff.profile.update': 'Nombre cambiado'} %}
+<div class="table-scroll"><table><caption>Cambios más recientes primero</caption><thead><tr><th scope="col">Fecha y hora</th><th scope="col">Cambio</th><th scope="col">Hecho por</th><th scope="col">Revisión</th></tr></thead><tbody>
+{% for entry in entries %}<tr><td><time datetime="{{ entry.occurred_at }}">{{ entry.occurred_at }}</time></td><td>{{ labels.get(entry.command_name, 'Cambio administrativo') }}</td><td>{% if entry.actor_principal_id %}<code>{{ entry.actor_principal_id }}</code>{% else %}No registrado{% endif %}</td><td>{{ entry.revision_kind }}: {{ entry.revision_before if entry.revision_before is not none else '—' }} → {{ entry.revision_after if entry.revision_after is not none else '—' }}</td></tr>
+{% else %}<tr><td colspan="4">No hay cambios visibles. Esto no prueba que no haya habido cambios.</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
-<nav aria-label="History pages"><p>{% if after or error %}<a href="/tenants/{{ organization_id }}/staff/{{ membership_id }}/history?limit={{ page_limit }}">Newest events</a>{% endif %}{% if next_cursor %} <a href="/tenants/{{ organization_id }}/staff/{{ membership_id }}/history?after={{ next_cursor }}&amp;limit={{ page_limit }}">Older events →</a>{% endif %}</p></nav>
+<nav aria-label="Páginas del historial"><p>{% if after or error %}<a href="/tenants/{{ organization_id }}/staff/{{ membership_id }}/history?limit={{ page_limit }}">Cambios más recientes</a>{% endif %}{% if next_cursor %} <a href="/tenants/{{ organization_id }}/staff/{{ membership_id }}/history?after={{ next_cursor }}&amp;limit={{ page_limit }}">Cambios anteriores →</a>{% endif %}</p></nav>
 </section>{% endblock %}

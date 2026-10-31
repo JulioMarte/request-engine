@@ -1,31 +1,31 @@
 {% extends "base.html" %}
 {% import "partials/inputs.html" as ui %}
-{% block title %}{{ operation.operation_id }} &middot; Request Engine admin{% endblock %}
+{% block title %}{{ operation.operation_id }} &middot; Administración de Request Engine{% endblock %}
 {% block content %}
 <section class="card">
-  <p><a href="/operations">&larr; Operations</a></p>
+  <p><a href="/operations">&larr; Operaciones</a></p>
   <h1><span class="method {{ operation.method | lower }}">{{ operation.method }}</span>
       {{ operation.operation_id }}</h1>
   <p><code>{{ operation.path_template }}</code></p>
   <dl class="detail">
-    {% if operation.owner %}<dt>owner</dt><dd>{{ operation.owner }}</dd>{% endif %}
-    {% if operation.capability %}<dt>capability</dt><dd><code>{{ operation.capability }}</code></dd>{% endif %}
-    {% if operation.kind %}<dt>kind</dt><dd>{{ operation.kind }}</dd>{% endif %}
-    {% if operation.idempotency %}<dt>idempotency</dt><dd>{{ operation.idempotency }}</dd>{% endif %}
-    {% if operation.exposure %}<dt>exposure</dt><dd>{{ operation.exposure }}</dd>{% endif %}
-    {% if operation.tool_name %}<dt>tool</dt><dd>{{ operation.tool_name }}{% if operation.tool_audiences %} ({{ operation.tool_audiences | join(', ') }}){% endif %}</dd>{% endif %}
-    <dt>auth</dt><dd>{{ operation.auth_kind }}</dd>
+    {% if operation.owner %}<dt>dueño</dt><dd>{{ operation.owner }}</dd>{% endif %}
+    {% if operation.capability %}<dt>capacidad</dt><dd><code>{{ operation.capability }}</code></dd>{% endif %}
+    {% if operation.kind %}<dt>tipo</dt><dd>{{ operation.kind }}</dd>{% endif %}
+    {% if operation.idempotency %}<dt>idempotencia</dt><dd>{{ operation.idempotency }}</dd>{% endif %}
+    {% if operation.exposure %}<dt>exposición</dt><dd>{{ operation.exposure }}</dd>{% endif %}
+    {% if operation.tool_name %}<dt>herramienta</dt><dd>{{ operation.tool_name }}{% if operation.tool_audiences %} ({{ operation.tool_audiences | join(', ') }}){% endif %}</dd>{% endif %}
+    <dt>autenticación</dt><dd>{{ operation.auth_kind }}</dd>
   </dl>
-  {% if operation.description %}<p class="muted">{{ operation.description }}</p>{% endif %}
+  {% if operation.description %}<details class="technical-details"><summary>Descripción técnica (en inglés)</summary><pre class="payload">{{ operation.description }}</pre></details>{% endif %}
 </section>
 <section class="card">
-  <h2>Execute</h2>
+  <h2>Ejecutar</h2>
   <form id="operation-form" class="stack" method="post" action="/operations/{{ operation.operation_id }}"
         hx-post="/operations/{{ operation.operation_id }}" hx-target="#result" hx-swap="innerHTML">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <input type="hidden" name="_intent_id" value="" data-form-intent />
     {{ ui.render(inputs) }}
-    <button type="submit">Run operation</button>
+    <button type="submit">Ejecutar operación</button>
   </form>
   <div id="result">
     {% if result %}{% include "partials/result.html" %}{% endif %}

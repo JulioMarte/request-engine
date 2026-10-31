@@ -57,9 +57,9 @@ def require_recent_authentication(
     or timezone-naive ``authenticated_at`` is treated as stale.
     """
 
-    if actor.recovery_restricted:
+    if actor.recovery_restricted or actor.recovery_derived:
         raise RecoveryCompletionRequired(
-            "complete account recovery before using sensitive authority"
+            "complete account recovery and sign in before using sensitive authority"
         )
     authenticated_at = actor.authenticated_at
     if authenticated_at is None or authenticated_at.tzinfo is None:
@@ -104,6 +104,41 @@ def require_phishing_resistant_authentication(
         raise RecentAuthenticationRequired("recent strong authentication is required")
     if now - authenticated_at > window:
         raise RecentAuthenticationRequired("recent strong authentication is required")
+
+
+def require_recent_admin_authentication(
+    actor: AuthenticationFreshnessContext,
+    *,
+    now: datetime,
+    window: timedelta = REAUTHENTICATION_WINDOW,
+) -> None:
+    """Require a recent normal credential proof for admin actions (ADR 0017).
+
+    Password proof is accepted without claiming MFA or phishing resistance.
+    Recovery evidence cannot authorize this path, even after its restriction ends.
+    """
+    if actor.recovery_restricted or actor.recovery_derived:
+        raise RecoveryCompletionRequired(
+            "complete account recovery and sign in before using sensitive authority"
+        )
+    if actor.authentication_assurance not in {
+        AuthenticationAssurance.SINGLE_FACTOR,
+        AuthenticationAssurance.MFA,
+        AuthenticationAssurance.PHISHING_RESISTANT,
+    } or (
+        actor.authentication_assurance is AuthenticationAssurance.PHISHING_RESISTANT
+        and not actor.user_verified
+    ):
+        raise RecentAuthenticationRequired("recent authentication is required")
+    authenticated_at = actor.authenticated_at
+    if (
+        authenticated_at is None
+        or authenticated_at.tzinfo is None
+        or now.tzinfo is None
+        or authenticated_at > now
+        or now - authenticated_at > window
+    ):
+        raise RecentAuthenticationRequired("recent authentication is required")
 
 
 def recovery_safe_capabilities(

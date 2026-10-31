@@ -50,7 +50,7 @@ test('accept stays disabled until a successful proof-bound preview', async () =>
 test('forgetting an invitation cannot be undone by a late preview response', async () => {
   const state = world();
   state.elements['invitation-cancel'].listeners.click();
-  state.complete({ok: true, json: async () => ({ok: true, organization_display_name: 'Old organization', expires_at: '2026-10-04T00:00:00Z'})});
+  state.complete({ok: true, json: async () => ({ok: true, organization_display_name: 'Negocio anterior', expires_at: '2026-10-04T00:00:00Z'})});
   await flush();
   assert.equal(state.button.disabled, true);
   assert.equal(state.elements['invitation-preview'].hidden, true);
@@ -60,9 +60,9 @@ test('forgetting an invitation cannot be undone by a late preview response', asy
 
 test('a failed preview does not enable acceptance or show an organization', async () => {
   const state = world();
-  state.complete({ok: false, json: async () => ({error: 'Invitation unavailable'})});
+  state.complete({ok: false, json: async () => ({error: 'La invitación no está disponible.'})});
   await flush();
   assert.equal(state.button.disabled, true);
   assert.equal(state.elements['invitation-preview'].hidden, true);
-  assert.equal(state.elements['invitation-message'].textContent, 'Invitation unavailable');
+  assert.equal(state.elements['invitation-message'].textContent, 'La invitación no está disponible.');
 });

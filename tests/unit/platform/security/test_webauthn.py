@@ -24,6 +24,7 @@ from request_engine.platform.security.webauthn import (
     WebAuthnVerificationError,
     extract_authentication_challenge,
     extract_registration_challenge,
+    public_key_to_json,
 )
 
 RP_ID = "localhost"
@@ -91,6 +92,29 @@ def test_registration_and_authentication_round_trip() -> None:
     assert authenticated.credential_id == authenticator.credential_id
     assert authenticated.user_verified is True
     assert authenticated.sign_count == 1
+
+
+@pytest.mark.parametrize(
+    ("display_name", "expected"),
+    [(None, "owner@example.test"), ("Alex Owner", "Alex Owner"), ("", "owner@example.test")],
+)
+def test_registration_options_include_browser_required_display_name(
+    display_name: str | None, expected: str
+) -> None:
+    service = _service()
+    if display_name is None:
+        options = service.begin_registration(
+            user_handle=b"owner-user-handle-123", user_name=USER_NAME
+        )
+    else:
+        options = service.begin_registration(
+            user_handle=b"owner-user-handle-123",
+            user_name=USER_NAME,
+            user_display_name=display_name,
+        )
+    wire_options = json.loads(json.dumps(public_key_to_json(options.public_key)))
+    assert wire_options["user"]["displayName"] == expected
+    assert wire_options["user"]["name"] == "owner@example.test"
 
 
 def test_fido2_ceremony_state_contract_matches_reconstruction() -> None:

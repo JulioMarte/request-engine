@@ -228,6 +228,21 @@ path = "tests/integration/v3_worker_runtime/test_delivery_outcome_event_fencing.
 evidence = ["invariant", "adversarial"]
 
 [[proofs]]
+guarantee = "INV-DELIVERY-OUTCOME-001"
+path = "tests/e2e/test_provider_callback_delivery_loop.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-PROVIDER-CALLBACK-AUTH-001"
+path = "tests/e2e/test_provider_callback_delivery_loop.py"
+evidence = ["invariant", "adversarial", "contract", "security"]
+
+[[proofs]]
+guarantee = "INV-PROVIDER-CALLBACK-AUTH-001"
+path = "tests/modules/platform/test_provider_callback_authentication.py"
+evidence = ["adversarial", "contract", "security"]
+
+[[proofs]]
 guarantee = "INV-CONTACT-VERIFICATION-001"
 path = "tests/integration/s0b_party_registry/test_contact_point_verification_guard.py"
 evidence = ["invariant", "adversarial", "security"]
@@ -290,6 +305,16 @@ evidence = ["invariant", "security"]
 [[proofs]]
 guarantee = "INV-AGENT-RISK-001"
 path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-MCP-PROJECTION-001"
+path = "tests/e2e/test_mcp_gateway_http.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-POLICY-001"
+path = "tests/e2e/test_mcp_gateway_http.py"
 evidence = ["contract", "invariant", "adversarial", "security"]
 
 [[proofs]]
@@ -471,11 +496,6 @@ evidence = ["invariant", "adversarial", "security", "concurrency"]
 guarantee = "INV-IDEMPOTENCY-001"
 path = "tests/integration/f1_operational_profile/test_configuration_command_authority_matrix.py"
 evidence = ["invariant", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-NATIVE-WEBAUTHN-DISCOVERABLE-LOGIN-001"
-path = "tests/db/test_webauthn_populated_upgrade.py"
-evidence = ["invariant", "adversarial", "security", "provenance"]
 
 [[proofs]]
 guarantee = "INV-WEBAUTHN-CHALLENGE-RETENTION-001"
@@ -770,3 +790,118 @@ evidence = ["contract"]
 guarantee = "INV-HTTP-AUTH-ADMISSION-001"
 path = "tests/db/test_shared_http_auth_admission.py"
 evidence = ["invariant", "adversarial", "security", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/unit/platform/security/test_privileged_authentication.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/db/test_native_password_proof_finalization.py"
+evidence = ["invariant", "adversarial", "security", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/e2e/test_native_session_reauth_http.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/unit/admin_console/test_password_reauthentication.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/db/test_native_reauth_freshness.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+path = "tests/e2e/test_instance_setup_http.py"
+evidence = ["contract", "security"]
+
+[[proofs]]
+guarantee = "INV-STAFF-INVITATION-PROPOSAL-001"
+path = "tests/db/test_staff_invitation_proposals.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-STAFF-INVITATION-PROPOSAL-001"
+path = "tests/e2e/test_staff_invitation_proposals_http.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-STAFF-INVITATION-PROPOSAL-001"
+path = "tests/unit/test_staff_invitation_proposal_http.py"
+evidence = ["contract", "security"]
+
+[[proofs]]
+guarantee = "INV-STAFF-REPRESENTATION-001"
+path = "tests/db/test_staff_representation_delegation.py"
+evidence = ["invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-STAFF-REPRESENTATION-001"
+path = "tests/e2e/test_staff_representation_delegation_http.py"
+evidence = ["contract", "adversarial", "invariant"]
+
+[[proofs]]
+guarantee = "INV-STAFF-INVITATION-LINK-001"
+path = "tests/db/test_staff_invitation_links.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
+guarantee = "INV-APPOINTMENT-NOTES-001"
+path = "tests/e2e/test_appointment_notes.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
+guarantee = "INV-APPOINTMENT-NOTES-001"
+path = "tests/modules/booking/test_appointment_notes_domain.py"
+evidence = ["invariant"]
+
+[[proofs]]
+guarantee = "INV-CATALOG-CONFIG-EDITS-001"
+path = "tests/e2e/test_configuration_edits_catalog.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
+guarantee = "INV-RESOURCE-CONFIG-EDITS-001"
+path = "tests/e2e/test_configuration_edits_booking.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
+guarantee = "INV-SERVICE-QUEUE-CLOSE-001"
+path = "tests/e2e/test_configuration_edits_queue.py"
+evidence = ["invariant", "adversarial", "contract"]
+
+[[proofs]]
+guarantee = "INV-SERVICE-QUEUE-CLOSE-001"
+path = "tests/modules/queue/test_service_queue_set_active.py"
+evidence = ["contract"]
+
+[[proofs]]
+guarantee = "INV-SERVED-VISIT-001"
+path = "tests/e2e/test_served_visit_guards.py"
+evidence = ["invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-OUTBOX-001"
+path = "tests/e2e/test_change_feed_queue_triage_signals.py"
+evidence = ["invariant", "contract"]
+
+[[proofs]]
+guarantee = "INV-SELF-SERVICE-ACCOUNT-001"
+path = "tests/db/test_self_service_business_accounts.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-SELF-SERVICE-ACCOUNT-001"
+path = "tests/e2e/test_self_service_business_http.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-SELF-SERVICE-ACCOUNT-001"
+path = "tests/unit/test_self_service_business_http.py"
+evidence = ["contract", "security"]

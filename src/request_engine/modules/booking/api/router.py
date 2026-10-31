@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, status
 
+from request_engine.modules.booking.api.appointment_note_routes import add_appointment_note_routes
 from request_engine.modules.booking.api.arrival_estimate_routes import add_arrival_estimate_routes
 from request_engine.modules.booking.api.dependencies import IdempotencyKey
 from request_engine.modules.booking.api.discovery_booking import book_selected_option
@@ -14,10 +15,14 @@ from request_engine.modules.booking.api.models import (
     BookAppointmentBody,
     CancelReservationBody,
     RescheduleReservationBody,
+    ReservationReadView,
     ReservationView,
 )
 from request_engine.modules.booking.application import errors as booking_errors
 from request_engine.modules.booking.application.authority import SUBJECT_OVERRIDE_PERMISSION
+from request_engine.modules.booking.application.commands.add_appointment_note import (
+    AddAppointmentNoteHandler,
+)
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentHandler,
 )
@@ -44,6 +49,10 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
     ReservationReader,
     get_reservation_status,
 )
+from request_engine.modules.booking.application.queries.list_appointment_notes import (
+    NOTES_READ_CAPABILITY,
+    AppointmentNoteReader,
+)
 from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.booking.contracts.discovery import DiscoveryHandoffReader
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
@@ -62,6 +71,8 @@ def create_router(
     reschedule_handler: RescheduleReservationHandler,
     attendance_handler: RecordAttendanceResponseHandler,
     arrival_estimate_handler: RecordArrivalEstimateHandler,
+    note_handler: AddAppointmentNoteHandler,
+    note_reader: AppointmentNoteReader,
     reservation_reader: ReservationReader,
     authority_reader: PartyAuthorityReader,
     actor_resolver: ActorResolver,
@@ -120,7 +131,7 @@ def create_router(
     async def reservation_status(
         reservation_id: UUID,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
-    ) -> ReservationView:
+    ) -> ReservationReadView:
         require_capability(actor, "appointments.read")
         reservation = await get_reservation_status(
             reservation_reader,
@@ -132,7 +143,12 @@ def create_router(
         )
         if reservation is None:
             raise booking_errors.ReservationNotFound(reservation_id)
-        return ReservationView.from_contract(reservation)
+        notes = (
+            await note_reader.summarize(actor.organization_id, reservation_id)
+            if actor.allows(NOTES_READ_CAPABILITY)
+            else None
+        )
+        return ReservationReadView.from_read(reservation, notes)
 
     async def cancel(
         reservation_id: UUID,
@@ -212,6 +228,14 @@ def create_router(
         slots,
         capability="appointments.find_slots",
         methods=["GET"],
+        operation_id="appointments_find_slots",
+        tool_name="appointments_find_slots",
+        tool_audiences=("operator",),
+        summary="Find appointment slots",
+        description=(
+            "Find bookable appointment options for an offering version in a time window. "
+            "Each returned option_id is a signed, short-lived token used to book or reschedule."
+        ),
         response_model=tuple[AppointmentSlotView, ...],
         response_model_exclude_none=True,
     )
@@ -221,6 +245,14 @@ def create_router(
         book,
         capability="appointments.book",
         methods=["POST"],
+        operation_id="appointments_book",
+        tool_name="appointments_book",
+        tool_audiences=("operator",),
+        summary="Book an appointment",
+        description=(
+            "Book an appointment for a registered Party using an option_id returned by "
+            "appointments_find_slots."
+        ),
         response_model=ReservationView,
         status_code=status.HTTP_201_CREATED,
     )
@@ -230,7 +262,15 @@ def create_router(
         reservation_status,
         capability="appointments.read",
         methods=["GET"],
-        response_model=ReservationView,
+        operation_id="appointments_read",
+        tool_name="appointments_read",
+        tool_audiences=("operator",),
+        summary="Read an appointment",
+        description=(
+            "Read the current state and revision of one appointment reservation. Staff "
+            "callers holding appointments.day_board also get note_count and latest_note."
+        ),
+        response_model=ReservationReadView,
     )
     add_capability_route(
         router,
@@ -238,6 +278,14 @@ def create_router(
         cancel,
         capability="appointments.cancel",
         methods=["POST"],
+        operation_id="appointments_cancel",
+        tool_name="appointments_cancel",
+        tool_audiences=("operator",),
+        summary="Cancel an appointment",
+        description=(
+            "Cancel an appointment reservation. Requires the reservation's current revision "
+            "from appointments_read."
+        ),
         response_model=ReservationView,
     )
     add_capability_route(
@@ -246,6 +294,14 @@ def create_router(
         reschedule,
         capability="appointments.reschedule",
         methods=["POST"],
+        operation_id="appointments_reschedule",
+        tool_name="appointments_reschedule",
+        tool_audiences=("operator",),
+        summary="Reschedule an appointment",
+        description=(
+            "Move an appointment to a new option_id from appointments_find_slots. Requires "
+            "the reservation's current revision from appointments_read."
+        ),
         response_model=ReservationView,
     )
     add_capability_route(
@@ -257,4 +313,5 @@ def create_router(
         response_model=AttendanceStateView,
     )
     add_arrival_estimate_routes(router, arrival_estimate_handler, actor_resolver)
+    add_appointment_note_routes(router, note_handler, note_reader, actor_resolver)
     return router

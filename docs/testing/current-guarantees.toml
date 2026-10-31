@@ -77,6 +77,48 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["provenance"]
 
 [[guarantees]]
+id = "INV-SERVED-VISIT-001"
+statement = "A Reservation whose visit was served (it has a completed QueueEntry) cannot be admitted again to any queue through queue.check_in or queue.join, and cannot be cancelled or rescheduled (including operational-recovery reschedule): each refusal is a 409 reservation_already_served with no new QueueEntry, no released or moved CapacityClaim, no Reservation revision change and no lifecycle outbox fact. The cancel/reschedule guard locks the Reservation's serving/completed QueueEntries FOR SHARE after the Reservation lock, so a cancel racing an in-flight service completion waits and refuses; admission reads the Reservation FOR SHARE after the queue/intake locks and concurrent admissions of one Reservation into one queue admit exactly one entry. Concurrent active entries of one Reservation in different queues remain allowed (Day Board multi-queue ambiguity); Queue/Delivery lifecycle commands do not re-check Reservation status."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["capacity"]
+
+[[guarantees]]
+id = "INV-APPOINTMENT-NOTES-001"
+statement = "Appointment notes are append-only staff facts owned by Booking: a note is written only through appointments_note_add with appointments.annotate and a required Idempotency-Key (same key + same body replays the first receipt; a different body fails 409), on a Reservation of the caller's tenant in any status, and never advances the Reservation revision. The author Principal id and kind come from the authoritative principal row (trigger backstop), the body is trimmed, 1..1000 characters and free of control characters except tab/newline, and a correction may only supersede a note of the same Reservation. Notes are read only with the staff read appointments.day_board (list, day board, calendar count, appointments_read summary); a subject-scoped appointments.read caller never receives note data. UPDATE/DELETE are rejected by a trigger and the runtime role holds only SELECT/INSERT; foreign-tenant notes are opaque (404 / no rows under RLS); the reservation.note_added.v1 change fact carries no note text."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-CATALOG-CONFIG-EDITS-001"
+statement = "Catalog configuration edits after creation are owner Commands under catalog.manage with exact Party authority checked before idempotency, a required Idempotency-Key (same key + same body replays, different body fails 409) and an explicit concurrency token: an Offering rename compares-and-sets offerings.revision and never creates a version; a duration/base-price change appends exactly one immutable OfferingVersion N+1 under the Offering row lock only when expected_current_offering_version_id is still the latest (concurrent losers get 409 offering_version_superseded), copying requirements and the effective booking policy, while existing Reservations keep their exact OfferingVersion and terms; a Location hours exception (including a declared holiday) is removed only by deactivation under the Location lock and operational_revision CAS, and holiday removal deactivates only the exact local full-day unavailable closures of the given dates. Rows stay auditable, foreign targets are opaque and change facts carry no names or reasons."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["capacity", "provenance"]
+
+[[guarantees]]
+id = "INV-RESOURCE-CONFIG-EDITS-001"
+statement = "Booking Resource configuration edits are owner Commands under booking.manage_supply with exact operations.manage_supply authority: replacing a Resource's capability set locks the Resource row (the capacity serialization root) FOR UPDATE, compares-and-sets availability_revision and advances it exactly once when the set changes, refuses with 409 resource_capability_held while a live Hold depends on a removed capability, and never cancels, moves or rewrites existing Reservations or CapacityClaims (retained ones are reported); only future slot search and new claims stop using removed capabilities. A Resource-wide schedule exception is removed by deactivation (row kept, availability_revision advanced) and inactive exceptions no longer affect availability. Rename is a label precondition that does not advance availability_revision."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["capacity", "availability"]
+
+[[guarantees]]
+id = "INV-SERVICE-QUEUE-CLOSE-001"
+statement = "A ServiceQueue is closed or reopened only through queue_service_queue_set_active under queue.configure with exact operations.manage_supply authority, a required Idempotency-Key and expected revision; the command locks the ServiceQueue row first (the same root as check-in/join/call-next), refuses to close while any entry is waiting, called or serving (409 service_queue_has_active_entries, no automatic drain), requires an active Location to reopen, advances the revision exactly once and leaves intake control untouched; admissions after a committed close fail queue_inactive."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["availability", "provenance"]
+
+[[guarantees]]
+id = "INV-SELF-SERVICE-ACCOUNT-001"
+statement = "Business owner self-service (ADR 0021): only a current HUMAN platform Principal holding organization.provision issues an account invitation (revisioned, idempotent, append-only audited, revocable while pending); PostgreSQL stores only a SHA-256 digest of the 256-bit code, which is returned once for shared_code delivery and never for email delivery. Public enrollment with the code is rate-limited as an authentication attempt, single-use, rejects expired, revoked and used codes and codes whose issuer no longer holds organization.provision indistinguishably, lets the invitee choose their own login and password under the native policy and atomically creates exactly one account.organization.create entitlement for that native identity. The entitlement is neither tenant nor platform authority and never appears in ActorContext. POST /v1/me/organizations requires a normal native session revalidated in PostgreSQL and an active entitlement, locks the entitlement row as the serialization root so concurrent creations never exceed max_organizations (CHECK and UNIQUE(entitlement, sequence) backstops), is idempotent per (entitlement, Idempotency-Key) with 409 on changed intent, and atomically creates the organization (default timezone, locale and currency), its Party and the creating human as root controller with the newest initial controller policy; the root fact keeps the issuing platform Principal as provenance, which gains no tenant grant or membership. The four account tables have FORCE RLS without policies and no runtime table privileges; the runtime role executes exactly the three reviewed request_auth functions."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
 id = "INV-PRIVILEGE-001"
 statement = "Runtime database roles and security-definer surfaces retain least privilege, tenant isolation and explicit callable/write authority."
 severity = "critical"
@@ -252,6 +294,13 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["provenance"]
 
 [[guarantees]]
+id = "INV-PROVIDER-CALLBACK-AUTH-001"
+statement = "The provider-event HTTP callback derives organization, provider and connection only from a verified per-connection credential (HMAC over timestamp and raw body with a key derived from the deployment secret for exactly that organization + provider + connection, inside a bounded skew window), never from the body; it is not mounted when unconfigured, accepts only connections with a registered ProviderEvent handler, answers every credential failure (including an unknown organization) with one uniform 401, and a rejected callback persists nothing."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
 id = "INV-CONTACT-VERIFICATION-001"
 statement = "Party and staff contact points are created unverified and become verified only through the explicit confirmation command; verification is monotonic (no role can downgrade a verified contact point through direct mutation) and deactivation never rewrites verification provenance."
 severity = "critical"
@@ -305,6 +354,34 @@ id = "INV-AGENT-BUDGET-001"
 statement = "Per-minute agent mutation budgets are enforced through a race-safe conditional upsert so concurrent requests cannot exceed the configured limit within one window; exhausted budgets deny further mutations with 429 while read operations and other agents' budgets remain unaffected."
 severity = "critical"
 required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-MCP-PROJECTION-001"
+statement = "The MCP tool gateway is a projection, never an authority: tools/list advertises only operations in the caller's current authorized operation catalog that carry explicit tool metadata, and tools/call re-resolves the tool in that current catalog and executes the same owner HTTP operation with the caller's own credential, so authentication, tenant and agent policy, risk ceiling, budgets, idempotency and owner validation are unchanged; unauthorized tools are indistinguishable from unknown ones and execute nothing, and model arguments cannot supply organization, principal or other inputs outside the owner operation's documented contract."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-STAFF-INVITATION-PROPOSAL-001"
+statement = "An AGENT (or HUMAN) holding operational staff.propose_invitation may only record an inert, tenant-isolated pending staff invitation proposal that grants, stages and sends nothing and is unique per organization and normalized email while pending; only a current recently authenticated HUMAN staff.invite manager can approve it (creating exactly one invitation through the ordinary staff invitation path in the same transaction) or reject it, decisions are revision-checked with exactly one concurrent winner, and agents are denied decisions in Python, by the AUTHORITY_CHANGE risk ban and by the PostgreSQL manager gate and decision guard (ADR 0019)."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-STAFF-REPRESENTATION-001"
+statement = "A current HUMAN staff.manage_authority manager (not recovery-restricted) may delegate to another active HUMAN staff member of the same tenant only the exact operations.manage_profile/manage_supply/manage_terms/manage_discovery Representation scopes of an active organization Party that the manager itself holds through an active, currently valid, delegable Representation; delegated rows are never delegable (no re-delegation chain), record grantor and provenance immutably, and the replace operation never revokes a delegable (root or self-bootstrap) Representation, never targets the actor itself, rejects a stale target authority revision with exactly one concurrent winner, is idempotent with replay revalidating current manager authority, appends one audit row, and a revocation denies the delegate's very next configuration command or Query; AGENT actors are denied by the AUTHORITY_CHANGE risk ban and the PostgreSQL manager gate."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-STAFF-INVITATION-LINK-001"
+statement = "A staff invitation created or resent with delivery=link returns its acceptance proof (and console acceptance URL with the proof in the fragment) exactly once, in that command's no-store response; PostgreSQL stores only the proof's SHA256 digest and the current delivery channel, never the raw proof in invitation, audit, idempotency or delivery rows; reads and idempotent replays never return the proof again; the delivery channel is part of the command intent; a link resend rotates the digest so the previous proof cannot activate membership and fences any queued email generation; acceptance keeps the same native HUMAN session, expiry, revocation and zero-grant semantics as email; and the audit records that a shareable link was issued."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
 risk = ["security"]
 
 [[guarantees]]
@@ -379,7 +456,7 @@ risk = ["security", "provenance"]
 
 [[guarantees]]
 id = "INV-CONTROLLER-POLICY-ADOPTION-001"
-statement = "Legacy controller-policy adoption is opt-in and requires current HUMAN consent from the immutable original tenant root through its active bound native identity, followed by a distinct active platform HUMAN identity with the dedicated adoption capability and recent phishing-resistant proof. Both participants must be active on their configured native authority and in normal recovery posture at admission. Consent snapshots the controller native identity and recovery epoch; any subsequent recovery invalidates unapplied consent permanently, including after recovery completes, and requires withdrawal plus fresh consent. Apply checks both participants' current posture under authority/identity/recovery-state locks in canonical order. The platform operator can inspect bounded consent context and the exact proposed/revoked capability delta before applying. Application adds only currently missing target-policy grants, attributes them to the platform approver, records an immutable application fact whose tenant controller and binding are constrained to the same organization, and exact consent replay remains readable after the policy changes. The adoption-facts table is RLS-enabled and forced with a tenant-bound runtime policy but grants no direct application-role table access; its validated command/read paths remain the access boundary. A database provenance trigger rejects recording a tenant principal as the platform approver. Missing platform adoption authority and reuse of the root's same native identity are denied without applying grants. Apply and withdrawal serialize on the tenant authority locks: if withdrawal wins, apply fails without effects; if apply wins, a later withdrawal conflicts and the applied request, fact and grants remain. A synchronized same-actor/same-key concurrent apply replays the original fact without duplicate grant/fact effects, while a different-key/payload retry conflicts and does not duplicate the fact or grant delta. Apply serializes in both orders with the supported platform-owner lifecycle revocation: revocation-first denies apply, while apply-first commits the adoption before revocation. Apply also serializes in both orders with recovery of either participant, tenant-controller identity-binding suspension, actual controller staff-membership suspension, and supported global native disable of either participant; the winning transition determines whether adoption commits or is denied without effects. Native-authority suspension has no supported public lifecycle command and is not claimed as owner-command race evidence; direct concurrent revocation of a single platform capability is not a supported public command and is not covered."
+statement = "Legacy controller-policy adoption is opt-in and requires current HUMAN consent from the immutable original tenant root through its active bound native identity, followed by a distinct active platform HUMAN identity with the dedicated adoption capability and recent normal credential proof under ADR 0017 (password or verified WebAuthn; never recovery evidence). Both participants must be active on their configured native authority and in normal recovery posture at admission. Consent snapshots the controller native identity and recovery epoch; any subsequent recovery invalidates unapplied consent permanently, including after recovery completes, and requires withdrawal plus fresh consent. Apply checks both participants' current posture under authority/identity/recovery-state locks in canonical order. The platform operator can inspect bounded consent context and the exact proposed/revoked capability delta before applying. Application adds only currently missing target-policy grants, attributes them to the platform approver, records an immutable application fact whose tenant controller and binding are constrained to the same organization, and exact consent replay remains readable after the policy changes. The adoption-facts table is RLS-enabled and forced with a tenant-bound runtime policy but grants no direct application-role table access; its validated command/read paths remain the access boundary. A database provenance trigger rejects recording a tenant principal as the platform approver. Missing platform adoption authority and reuse of the root's same native identity are denied without applying grants. Apply and withdrawal serialize on the tenant authority locks: if withdrawal wins, apply fails without effects; if apply wins, a later withdrawal conflicts and the applied request, fact and grants remain. A synchronized same-actor/same-key concurrent apply replays the original fact without duplicate grant/fact effects, while a different-key/payload retry conflicts and does not duplicate the fact or grant delta. Apply serializes in both orders with the supported platform-owner lifecycle revocation: revocation-first denies apply, while apply-first commits the adoption before revocation. Apply also serializes in both orders with recovery of either participant, tenant-controller identity-binding suspension, actual controller staff-membership suspension, and supported global native disable of either participant; the winning transition determines whether adoption commits or is denied without effects. Native-authority suspension has no supported public lifecycle command and is not claimed as owner-command race evidence; direct concurrent revocation of a single platform capability is not a supported public command and is not covered."
 severity = "high"
 required_evidence = ["contract", "invariant", "adversarial"]
 risk = ["security", "provenance"]
@@ -400,7 +477,7 @@ risk = ["security"]
 
 [[guarantees]]
 id = "INV-INSTANCE-CLAIM-001"
-statement = "The installation trust root is created by at most one atomic first claim: before finalize no Principal, identity binding, authority grant, native identity or credential exists for the installation, finalize promotes the pending native identity and a verified WebAuthn authenticator, grants the immutable platform-owner-v1 policy, promotes the setup recovery codes, consumes the SetupSession and transitions the instance UNCLAIMED to CLAIMED exactly once, and setup never reopens or admits a second owner."
+statement = "The installation trust root is created by at most one atomic first claim: before finalize no Principal, identity binding, authority grant, native identity or credential exists for the installation, finalize promotes the pending native identity and policy-compliant password credential, plus any optionally registered verified WebAuthn authenticators, grants the immutable platform-owner-v1 policy, promotes the setup recovery codes, consumes the SetupSession and transitions the instance UNCLAIMED to CLAIMED exactly once, and setup never reopens or admits a second owner."
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security", "provenance"]
@@ -490,14 +567,14 @@ risk = ["security", "availability"]
 
 [[guarantees]]
 id = "INV-NATIVE-RECOVERY-POSTURE-001"
-statement = "Every successful Native HUMAN password-recovery path enters a persisted recovery_restricted posture without changing standing grants, bindings or memberships; request-local effective authority removes all AUTHORITY_CHANGE capabilities while restricted, recent/phishing-resistant privileged guards fail closed, and only a fresh accepted strong-factor proof can complete recovery and restore normal posture."
+statement = "Every successful Native HUMAN password-recovery path enters a persisted recovery_restricted posture without changing standing grants, bindings or memberships; request-local effective authority removes all AUTHORITY_CHANGE capabilities while restricted, ordinary recent administrative guards fail closed, and only explicit recovery completion with fresh accepted WebAuthn proof or verification of the recovered current password bound to the exact recovery session and epoch can restore normal posture. Password reauthentication never silently completes recovery; a recovery-derived session remains RECOVERY after completion and must be replaced by a fresh ordinary sign-in before administrative use."
 severity = "critical"
 required_evidence = ["invariant", "adversarial", "contract"]
 risk = ["security", "provenance"]
 
 [[guarantees]]
 id = "INV-VERIFIED-RECOVERY-ADDRESS-001"
-statement = "A Native HUMAN may add or revoke a recovery email only from its own authenticated session, creation/revocation requires recent phishing-resistant proof, verification and recovery tokens are one-time and stored only as digests/fingerprints, a verified address is required before public password recovery can dispatch, public recovery requests return the same empty 202 result for known, unknown, throttled or unavailable-delivery cases, and the database suppresses repeated dispatch for the same identity/address within one minute."
+statement = "A Native HUMAN may add or revoke a recovery email only from its own authenticated session, creation/revocation requires recent normal credential proof under ADR 0017, verification and recovery tokens are one-time and stored only as digests/fingerprints, a verified address is required before public password recovery can dispatch, public recovery requests return the same empty 202 result for known, unknown, throttled or unavailable-delivery cases, and the database suppresses repeated dispatch for the same identity/address within one minute."
 severity = "critical"
 required_evidence = ["invariant", "adversarial", "contract"]
 risk = ["security", "availability"]
@@ -518,7 +595,7 @@ risk = ["security", "provenance"]
 
 [[guarantees]]
 id = "INV-PLATFORM-CONFIG-GOVERNANCE-001"
-statement = "Platform configuration reads and mutations execute through explicit Platform-plane capabilities owned by platform_configuration; mutation requires an active HUMAN Platform actor with recent phishing-resistant authentication, exact idempotency intent and append-only provenance, while recovery-restricted or stale authority fails closed and administrative secret reads expose metadata only."
+statement = "Platform configuration reads and mutations execute through explicit Platform-plane capabilities owned by platform_configuration; mutation requires an active HUMAN Platform actor with recent normal credential authentication under ADR 0017, exact idempotency intent and append-only provenance, while recovery-restricted or stale authority fails closed and administrative secret reads expose metadata only."
 severity = "critical"
 required_evidence = ["invariant", "adversarial", "contract"]
 risk = ["security", "provenance"]
@@ -596,3 +673,10 @@ statement = "The effective recovery policy is typed, revision-governed and secre
 severity = "high"
 required_evidence = ["contract", "invariant", "adversarial"]
 risk = ["availability", "provenance"]
+
+[[guarantees]]
+id = "INV-ADMIN-PASSWORD-REAUTHENTICATION-001"
+statement = "Administrative admission accepts a recent verified normal password or WebAuthn proof under ADR 0017 without granting capabilities or manufacturing assurance. Password proof is SINGLE_FACTOR, never MFA or PHISHING_RESISTANT; reauthentication refreshes only the bearer-owning active session after locking and revalidating its identity, current password credential, original credential binding, expiry and recovery posture. Concurrent revocation, password replacement or recovery cannot accept stale proof. Missing, naive, future or older-than-five-minute timestamps fail closed. Recovery-derived or restricted sessions cannot use ordinary administrative admission or escape recovery through password reauthentication. Console and API delegate to the same owner operations; failed proof cannot execute the pending business command or alter its revision/idempotency intent."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from request_engine.modules.platform_configuration.application.runtime import (
     ActivePlatformConfigurationError,
     ActivePlatformConfigurationResolver,
@@ -13,6 +11,7 @@ from request_engine.platform.secrets.delivery import (
 )
 from request_engine.platform.secrets.delivery_parts import RecoveryDeliveryChannel
 from request_engine.platform.secrets.smtp_delivery_channel import (
+    DeliveryPurpose,
     SmtpRecoveryDeliveryChannel,
 )
 
@@ -27,13 +26,13 @@ class ManagedSmtpRecoveryDeliveryChannel(RecoveryDeliveryChannel):
         fallback: SmtpRecoveryDeliveryChannel | None = None,
         reset_url: str | None = None,
         operational_metrics: P7OperationalMetrics | None = None,
-        purpose: Literal["identity_recovery", "staff_invitation"] = "identity_recovery",
+        purpose: DeliveryPurpose = "identity_recovery",
     ) -> None:
         self._resolver = resolver
         self._fallback = fallback
         self._reset_url = reset_url
         self._operational_metrics = operational_metrics
-        self._purpose: Literal["identity_recovery", "staff_invitation"] = purpose
+        self._purpose: DeliveryPurpose = purpose
 
     async def send(
         self,

@@ -3,6 +3,55 @@
 from .http_surface import PROBE_UUID, HttpProbe, PublicHttpOperation, TenantIsolationMode
 
 _READS = (
+    (
+        "catalog_location_configuration_list",
+        "/v1/catalog/locations/configuration",
+        "catalog.read_configuration",
+        True,
+        False,
+    ),
+    (
+        "catalog_location_configuration_read",
+        "/v1/catalog/locations/{location_id}/configuration",
+        "catalog.read_configuration",
+        True,
+        True,
+    ),
+    (
+        "catalog_location_hours_exception_list",
+        "/v1/catalog/locations/{location_id}/hours-exceptions",
+        "catalog.read_configuration",
+        True,
+        True,
+    ),
+    (
+        "catalog_offering_configuration_list",
+        "/v1/catalog/offerings/configuration",
+        "catalog.read_configuration",
+        True,
+        False,
+    ),
+    (
+        "catalog_offering_configuration_read",
+        "/v1/catalog/offerings/{offering_id}/configuration",
+        "catalog.read_configuration",
+        True,
+        True,
+    ),
+    (
+        "queue_service_queue_configuration_list",
+        "/v1/queues/configuration",
+        "queue.read_configuration",
+        True,
+        False,
+    ),
+    (
+        "queue_service_queue_configuration_read",
+        "/v1/queues/configuration/{queue_id}",
+        "queue.read_configuration",
+        True,
+        True,
+    ),
     ("booking_resource_list", "/v1/booking/resources", "booking.read_supply", True, False),
     (
         "booking_resource_exception_list",
@@ -80,7 +129,15 @@ _READS = (
 
 def _read(name: str, path: str, capability: str, party: bool, detail: bool) -> PublicHttpOperation:
     probe = path.replace("{purpose}", "appointment_confirmation")
-    for parameter in ("resource_id", "offering_version_id", "assignment_id", "definition_id"):
+    for parameter in (
+        "resource_id",
+        "offering_version_id",
+        "assignment_id",
+        "definition_id",
+        "location_id",
+        "offering_id",
+        "queue_id",
+    ):
         probe = probe.replace("{" + parameter + "}", PROBE_UUID)
     return PublicHttpOperation(
         name,
@@ -110,6 +167,19 @@ ADMINISTRATIVE_CONFIGURATION_HTTP_OPERATIONS = tuple(_read(*row) for row in _REA
                 "credential_expires_at": "2099-01-01T00:00:00Z",
                 "provenance_reference": "classification-proof",
             },
+        ),
+    ),
+    PublicHttpOperation(
+        "queue_service_queue_set_active",
+        "POST",
+        "/v1/queues/{queue_id}:set-active",
+        "queue.configure",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/queues/{PROBE_UUID}:set-active",
+            body={"authority_party_id": PROBE_UUID, "expected_revision": 1, "active": False},
         ),
     ),
     PublicHttpOperation(

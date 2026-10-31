@@ -650,6 +650,145 @@ _P7_CONFIGURATION_COLUMNS = {
 
 # Adoption command ACLs are column-scoped. This inventory must fail if a future
 # migration reintroduces whole-table authority to the SECURITY DEFINER owner.
+# 0006 (ADR 0021) self-service owner accounts: column-scoped access to the four
+# private account tables plus profile defaults and the policy-catalog revision.
+_SELF_SERVICE_ACCOUNT_COLUMNS = {
+    *{
+        ("account_invitations", column, "SELECT")
+        for column in (
+            "id",
+            "token_digest",
+            "delivery_channel",
+            "destination_email",
+            "max_organizations",
+            "status",
+            "revision",
+            "delivery_status",
+            "invited_by_principal_id",
+            "native_identity_id",
+            "intent_digest",
+            "idempotency_key_digest",
+            "created_at",
+            "expires_at",
+            "accepted_at",
+            "revoked_at",
+        )
+    },
+    *{
+        ("account_invitations", column, "INSERT")
+        for column in (
+            "id",
+            "token_digest",
+            "token_fingerprint",
+            "delivery_channel",
+            "destination_email",
+            "max_organizations",
+            "delivery_status",
+            "invited_by_principal_id",
+            "provenance_reference",
+            "idempotency_key_digest",
+            "intent_digest",
+            "expires_at",
+        )
+    },
+    *{
+        ("account_invitations", column, "UPDATE")
+        for column in (
+            "status",
+            "revision",
+            "delivery_status",
+            "native_identity_id",
+            "accepted_at",
+            "revoked_at",
+            "revoke_reason_code",
+        )
+    },
+    *{
+        ("account_invitation_facts", column, "SELECT")
+        for column in (
+            "invitation_id",
+            "action",
+            "actor_principal_id",
+            "idempotency_key_digest",
+            "intent_digest",
+        )
+    },
+    *{
+        ("account_invitation_facts", column, "INSERT")
+        for column in (
+            "invitation_id",
+            "action",
+            "actor_principal_id",
+            "native_identity_id",
+            "revision_before",
+            "revision_after",
+            "reason_code",
+            "delivery_status",
+            "idempotency_key_digest",
+            "intent_digest",
+            "correlation_id",
+        )
+    },
+    *{
+        ("account_entitlements", column, "SELECT")
+        for column in (
+            "id",
+            "identity_authority_id",
+            "native_identity_id",
+            "max_organizations",
+            "organizations_created",
+            "status",
+            "revision",
+            "granted_by_principal_id",
+            "source_invitation_id",
+        )
+    },
+    *{
+        ("account_entitlements", column, "INSERT")
+        for column in (
+            "id",
+            "identity_authority_id",
+            "native_identity_id",
+            "entitlement_key",
+            "max_organizations",
+            "granted_by_principal_id",
+            "source_invitation_id",
+        )
+    },
+    *{
+        ("account_entitlements", column, "UPDATE")
+        for column in ("organizations_created", "revision", "updated_at")
+    },
+    *{
+        ("account_organization_creations", column, "SELECT")
+        for column in (
+            "entitlement_id",
+            "organization_id",
+            "controller_principal_id",
+            "idempotency_key_digest",
+            "intent_digest",
+        )
+    },
+    *{
+        ("account_organization_creations", column, "INSERT")
+        for column in (
+            "entitlement_id",
+            "native_identity_id",
+            "organization_id",
+            "controller_principal_id",
+            "sequence",
+            "idempotency_key_digest",
+            "intent_digest",
+            "correlation_id",
+        )
+    },
+    *{
+        ("organizations", column, "INSERT")
+        for column in ("default_timezone", "default_locale", "default_currency")
+    },
+    ("initial_controller_policies", "revision", "SELECT"),
+}
+
 _CONTROLLER_POLICY_ADOPTION_COLUMNS = (
     {
         ("controller_policy_adoption_requests", column, "SELECT")
@@ -767,6 +906,7 @@ def test_platform_control_definer_has_only_reviewed_columns(
         | _P7_CONFIGURATION_COLUMNS
         | _NATIVE_RECEIPT_COLUMNS
         | _CONTROLLER_POLICY_ADOPTION_COLUMNS
+        | _SELF_SERVICE_ACCOUNT_COLUMNS
     )
     assert admin_conn.execute(
         """

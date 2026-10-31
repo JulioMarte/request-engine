@@ -66,6 +66,7 @@ claim of retracting in-flight email or exactly-once SMTP delivery is made.
 - Each delivery attempt receives a deterministic provider idempotency key derived from `CommunicationTask + attempt_no`.
 - The worker executes three phases: `prepare DB transaction -> provider I/O -> finalize DB transaction`.
 - A crashed/leased replay that finds the latest Delivery in `attempting`, `accepted` or `ambiguous` performs provider lookup/reconciliation before any new send.
+- Transport outcome reports return through the signed provider-event HTTP callback (`docs/v3/10-worker-runtime-hardening.md`, "Authenticated HTTP callback surface"); the webhook handoff carries `organization_id` only so the gateway can select its callback key.
 - A send-side exception is treated conservatively as `ambiguous`; it is never interpreted as proof that the provider did not accept the request.
 - `accepted` and `ambiguous` results schedule a fenced `reconcile_delivery` action. Repeated `accepted` lookups may schedule another future reconciliation, but replay first reuses already-scheduled future work.
 - `delivered` is terminal and completes the CommunicationTask. Late nonterminal, failed or not-found results cannot downgrade the same Delivery or emit a contradictory task failure.

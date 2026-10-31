@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{% if values.template == "chief-of-staff" %}Configurar asistente del negocio{% else %}Crear asistente{% endif %} · Request Engine{% endblock %}
+{% block content %}
+{% set chief = values.template == "chief-of-staff" %}
+<header class="page-heading">
+  <div>
+    <p class="breadcrumb"><a href="/tenants/{{ organization_id }}/agents">Asistentes y API</a></p>
+    <h1>{% if chief %}Configure su asistente del negocio{% else %}Crear un asistente{% endif %}</h1>
+    <p>{% if chief %}Su asistente del negocio hace lo que usted le pide desde Claude, por texto o por voz. Solo puede usar permisos que usted ya tiene y puede compartir. Cuando se trata de agregar personas al equipo, siempre le llega a usted como una sugerencia para aprobar.{% else %}Elija lo que el asistente puede hacer y sus límites de seguridad. Usted recibe su clave una sola vez, al final.{% endif %}</p>
+  </div>
+</header>
+
+{% if form_errors %}<div class="alert error" role="alert"><strong>Revise el formulario.</strong><ul>{% for message in form_errors %}<li>{{ message }}</li>{% endfor %}</ul></div>{% endif %}
+
+<form id="agent-create" class="stack" method="post" action="/tenants/{{ organization_id }}/agents" data-plain-action>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <input type="hidden" name="intent" value="{{ values.intent }}" />
+  <input type="hidden" name="template" value="{{ values.template }}" />
+
+  <section class="card">
+    <h2>Sobre el asistente</h2>
+    <label>Nombre<input name="display_name" value="{{ values.display_name }}" maxlength="200" required /></label>
+    <label>Qué hace<textarea name="purpose" maxlength="2000" required>{{ values.purpose }}</textarea></label>
+    <fieldset><legend>Cómo trabaja</legend>
+      <label class="check"><input type="radio" name="operating_mode" value="assisted" {% if values.operating_mode == "assisted" %}checked{% endif %} /> Actúa en nombre de alguien cuando se lo piden (recomendado para un asistente del negocio)</label>
+      <label class="check"><input type="radio" name="operating_mode" value="autonomous" {% if values.operating_mode == "autonomous" %}checked{% endif %} /> Trabaja por su cuenta, por ejemplo respondiendo a pacientes</label>
+    </fieldset>
+    {% if needs_authority_field %}
+    <label>Autoridad de identidad de servicio
+      <input name="identity_authority_id" value="{{ values.identity_authority_id | default('') }}" required pattern="[0-9a-fA-F-]{36}" />
+      <small class="muted">La autoridad de servicio que se mostró cuando se reclamó esta instalación por primera vez. Pida al administrador de la plataforma que la configure en la consola para que este campo desaparezca.</small>
+    </label>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Lo que puede hacer</h2>
+    {% if ceiling_status not in range(200, 300) %}
+    <p class="alert warning">No se pudieron cargar los permisos que usted puede compartir. Vuelva a cargar la página antes de crear un asistente.</p>
+    {% elif not usable_capabilities %}
+    <p class="alert warning">Usted no tiene permisos que pueda compartir con un asistente. Pídalos a quien maneja los permisos del equipo.</p>
+    {% else %}
+    <p class="muted">Solo aparecen los permisos que usted tiene y puede compartir. Las acciones que cambian quién puede hacer qué nunca están disponibles para los asistentes.</p>
+    {% for group, items in grouped_capabilities(usable_capabilities) %}
+    <fieldset><legend>{{ group }}</legend>
+      {% for item in items %}
+      <label class="permission-choice"><input type="checkbox" name="capabilities" value="{{ item.key }}" {% if item.key in values.capabilities %}checked{% endif %} /><span>{{ item.label }}</span><code>{{ item.key }}</code></label>
+      {% endfor %}
+    </fieldset>
+    {% endfor %}
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Límites de seguridad</h2>
+    <fieldset><legend>Hasta dónde puede llegar</legend>
+      {% for value, label in risk_choices %}
+      <label class="check"><input type="radio" name="risk_ceiling" value="{{ value }}" {% if values.risk_ceiling == value %}checked{% endif %} /> {{ label }}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="row">
+      <label>Máximo de cambios por minuto<input type="number" name="max_mutations_per_minute" min="1" max="600" step="1" value="{{ values.max_mutations_per_minute }}" required /></label>
+      <label>La clave vence en
+        <select name="expires_days">{% for days in expiry_choices %}<option value="{{ days }}" {% if values.expires_days == days | string %}selected{% endif %}>{{ days }} días</option>{% endfor %}</select>
+      </label>
+    </div>
+  </section>
+
+  <div class="page-actions">
+    <button type="submit">{% if chief %}Crear asistente del negocio{% else %}Crear asistente{% endif %}</button>
+    <a class="button secondary" href="/tenants/{{ organization_id }}/agents">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

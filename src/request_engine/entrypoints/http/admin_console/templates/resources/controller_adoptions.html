@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Adopción de política del controlador · Request Engine{% endblock %}
+{% block content %}
+{% set request_states = {'pending': 'Pendiente', 'applied': 'Aplicada', 'expired': 'Vencida', 'cancelled': 'Cancelada', 'rejected': 'Rechazada', 'superseded': 'Reemplazada'} %}
+<header class="page-heading"><div><a href="/resources">← Espacios de trabajo</a><h1>Adopción de política del controlador</h1><p>Revise el consentimiento del negocio antes de agregar la política actual del controlador.</p></div></header>
+<section class="card">
+{% if result %}{% include "partials/result.html" %}{% else %}
+<div class="table-scroll"><table class="ops"><thead><tr><th scope="col">Negocio</th><th scope="col">Cambio de política</th><th scope="col">Estado</th><th scope="col">Vence</th><th scope="col">Acción</th></tr></thead><tbody>
+{% for row in rows %}<tr><td><code>{{ row.organization_id }}</code></td><td>{{ row.source_policy_key }} → {{ row.target_policy_key }}</td><td>{{ request_states.get(row.status, row.status) }}</td><td>{{ row.expires_at }}</td><td><a href="/resources/controller-policy-adoptions/{{ row.request_id | urlencode }}">Revisar consentimiento</a></td></tr>
+{% else %}<tr><td colspan="5"><div class="empty-state"><strong>No hay solicitudes de adopción de política</strong><p>La plataforma devolvió una lista vacía.</p></div></td></tr>{% endfor %}
+</tbody></table></div>
+{% if next_url %}<a class="button secondary" href="{{ next_url }}">Siguiente →</a>{% endif %}
+{% endif %}
+</section>
+{% endblock %}

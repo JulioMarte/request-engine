@@ -8,7 +8,9 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 
+from request_engine.entrypoints.http.admin_console.navigation import login_redirect
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
+from request_engine.entrypoints.http.admin_console.viewer import OrganizationHint
 
 
 class _OrganizationChoice(BaseModel):
@@ -29,13 +31,17 @@ def install_my_organization_routes(app: FastAPI, state: AdminConsoleState) -> No
         request: Request,
         after: UUID | None = None,
         limit: int = Query(default=50, ge=1, le=100),
+        home: bool = False,
     ) -> Response:
         session = state.session(request)
         if session is None:
-            return RedirectResponse("/login", status_code=303)
+            return login_redirect(request)
         page: _OrganizationPage | None = None
         status = 503
-        error = "Your organizations are temporarily unavailable. Try again shortly."
+        error = (
+            "Sus organizaciones no están disponibles por el momento. "
+            "Intente de nuevo en unos minutos."
+        )
         if state.runtime is not None:
             try:
                 operation = (await state.runtime_catalog()).by_id().get("self_organization_list")
@@ -51,12 +57,23 @@ def install_my_organization_routes(app: FastAPI, state: AdminConsoleState) -> No
                     if result.ok:
                         page = _OrganizationPage.model_validate(result.payload)
                         status, error = 200, ""
+                        if after is None and page.next_after is None:
+                            state.viewer.record_organizations(
+                                session,
+                                tuple(
+                                    OrganizationHint(str(item.organization_id), item.display_name)
+                                    for item in page.items
+                                ),
+                            )
                     elif result.status_code == 401:
-                        status, error = 401, "Your session is no longer valid. Sign in again."
+                        status, error = 401, "Su sesión ya no es válida. Inicie sesión de nuevo."
                     elif result.status_code == 403:
-                        status, error = 403, "This session cannot list organizations."
+                        status, error = 403, "Esta sesión no puede ver la lista de organizaciones."
             except (httpx.HTTPError, ValidationError, ValueError, RuntimeError):
                 pass
+        if home and page is not None and len(page.items) == 1 and page.next_after is None:
+            # Coming from the home page with exactly one business: open it directly.
+            return RedirectResponse(f"/tenants/{page.items[0].organization_id}", status_code=303)
         return state.templates.TemplateResponse(
             request,
             "resources/my_organizations.html",

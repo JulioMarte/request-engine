@@ -1,7 +1,10 @@
 from typing import cast
 
 from request_engine.modules.queue.adapters.db.live_queue_locking import lock_active_queue
-from request_engine.modules.queue.adapters.db.triage_audit import append_triage_audit
+from request_engine.modules.queue.adapters.db.triage_audit import (
+    append_triage_audit,
+    append_triage_event,
+)
 from request_engine.modules.queue.adapters.db.triage_codec import result_from_json, result_to_json
 from request_engine.modules.queue.adapters.db.triage_entry import (
     bump_waiting_revision,
@@ -94,6 +97,18 @@ async def recall_hold(
                 "condition_kind": command.condition_kind.value,
             },
             idempotency_id=idem_id,
+        )
+        await append_triage_event(
+            session,
+            organization_id=command.organization_id,
+            entry_id=command.queue_entry_id,
+            event_type="queue.entry_recall_held.v1",
+            payload={
+                "queue_id": str(queue_id),
+                "hold_id": str(hold.id),
+                "condition_kind": command.condition_kind.value,
+                "revision": revision,
+            },
         )
         await complete_idempotency(session, idem_id, {"result": result_to_json(result)})
         return result

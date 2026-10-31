@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Cambiar fecha de la cita · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div><p class="eyebrow">Hoy</p><h1>Cambiar fecha de la cita</h1><p>Elija un nuevo horario libre. La cita conserva su hora actual hasta que el cambio se complete.</p></div>
+  <div class="page-actions"><a class="button secondary" href="/tenants/{{ organization_id }}/today">Volver a hoy</a></div>
+</header>
+{% if not revision %}
+<p class="alert error">A este enlace le falta la versión actual de la cita. Ábralo de nuevo desde Hoy.</p>
+{% else %}
+<section class="card">
+  {% set finder_action = "/tenants/" ~ organization_id ~ "/today/appointments/" ~ reservation_id ~ "/reschedule" %}
+  {% set finder_hidden = {"revision": revision} %}
+  {% set choose_action = finder_action %}
+  {% set choose_hidden = {"expected_revision": revision} %}
+  {% set choose_label = "¿Cambiar la cita a" %}
+  {% include "partials/slot_finder.html" %}
+</section>
+{% endif %}
+{% endblock %}

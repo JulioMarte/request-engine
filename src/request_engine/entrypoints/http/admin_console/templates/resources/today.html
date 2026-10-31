@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}Hoy · {{ business_name or "Negocio" }} · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div>
+    <p class="eyebrow">{{ business_name or "Su negocio" }}</p>
+    <h1>Hoy</h1>
+    <p><time datetime="{{ local_date.isoformat() }}">{{ local_date_label | capitalize }}</time>, {{ local_now }} ({{ zone_label }}).</p>
+  </div>
+  <div class="page-actions"><a class="button" href="/tenants/{{ organization_id }}/today/visit">Nueva visita</a><a class="button secondary" href="/tenants/{{ organization_id }}/today">Actualizar</a></div>
+</header>
+{% if notice %}<p class="alert notice" role="status">{{ notice }}</p>{% endif %}
+
+<div class="today-grid">
+  <section class="queue-board" aria-labelledby="queues-title">
+    <h2 id="queues-title" class="sr-only">Filas de espera</h2>
+    {% if queues_status == 403 %}
+    <div class="panel"><div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Usted no tiene acceso a las filas de espera</strong><p>Sus permisos no incluyen «Ver filas de espera» ni «Ver la fila en vivo». Pídaselos a quien administra los permisos del equipo. Si usted es el dueño, <a href="/tenants/{{ organization_id }}/permissions-update">revise los permisos del dueño</a>.</p></div></div></div>
+    {% elif queues_status not in range(200, 300) %}
+    <div class="panel"><div class="error-state"><span aria-hidden="true">!</span><div><strong>No se pudieron cargar las filas de espera</strong><p>Actualice la página para intentarlo de nuevo. Ninguna fila aparece vacía hasta que el sistema lo confirme.</p></div></div></div>
+    {% elif not queues %}
+    <div class="panel"><div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>No hay filas de espera activas</strong><p>Las filas para pacientes sin cita aparecen aquí cuando se crea una en la configuración del negocio.</p></div><a class="button secondary" href="/tenants/{{ organization_id }}/configuration">Crear una fila de espera</a></div></div>
+    {% endif %}
+    {% for queue in queues %}
+    <article class="panel queue-card" aria-labelledby="queue-{{ queue.queue_id }}">
+      <div class="panel-heading"><div><h2 id="queue-{{ queue.queue_id }}">{{ queue.name }}</h2><p>{{ queue.waiting | length }} en espera</p></div></div>
+      {% if queue.status == 403 %}
+      <p class="unavailable-note">Usted puede ver que esta fila existe, pero no quién está en ella.</p>
+      {% elif queue.status not in range(200, 300) %}
+      <p class="unavailable-note">No se pudo cargar esta fila. Actualice la página para intentarlo de nuevo.</p>
+      {% else %}
+      {% set current = (queue.serving + queue.called) | first %}
+      {% if current %}
+      <div class="ticket {% if notice and current in queue.called %}called{% endif %}" role="status" aria-live="polite">
+        <span class="ticket-number" aria-hidden="true">{{ ((current.subject_display_name or "?").split() | map("first") | join(""))[:2] | upper }}</span>
+        <div><small>{% if current in queue.serving %}En atención{% else %}Llamado al mostrador{% endif %}</small><strong>{{ current.subject_display_name }}</strong></div>
+      </div>
+      {% else %}
+      <div class="ticket idle"><span class="ticket-number">—</span><div><small>Nadie en el mostrador</small><strong>Llame al siguiente paciente cuando esté listo</strong></div></div>
+      {% endif %}
+      <div class="queue-actions">
+        <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/queues/{{ queue.queue_id }}/call-next">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="_intent_id" value="{{ intent_id }}-{{ queue.queue_id }}" data-form-intent />
+          <button type="submit">Llamar al siguiente</button>
+        </form>
+        {% for entry in queue.serving %}{% if entry.service_session_id and entry.service_revision %}
+        <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/sessions/{{ entry.service_session_id }}/complete">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="_intent_id" value="{{ intent_id }}-c-{{ entry.service_session_id }}" data-form-intent />
+          <input type="hidden" name="expected_revision" value="{{ entry.service_revision }}" />
+          <button type="submit" class="secondary">Terminar atención de {{ entry.subject_display_name }}</button>
+        </form>
+        {% endif %}{% endfor %}
+      </div>
+      <ol class="waiting-list" aria-label="En espera en {{ queue.name }}">
+        {% for entry in queue.called + queue.waiting %}
+        <li>
+          <span class="waiting-pos">{{ loop.index }}</span>
+          <div><strong>{{ entry.subject_display_name }}</strong><small>{% if entry.status == 'called' %}Llamado{% else %}En espera{% endif %}{% if entry.scheduled_at %} · con cita{% endif %}{% if entry.active_skip_reason %} · saltado: {{ entry.active_skip_reason }}{% endif %}{% if entry.recall_hold_id %} · apartado{% if entry.recall_hold_reason %}: {{ entry.recall_hold_reason }}{% endif %}{% endif %}</small></div>
+          <div class="entry-actions">
+            {% if entry.status == 'called' and not entry.service_session_id %}
+            {% set staff = service_staff.at(queue.location_id) %}
+            {% if service_staff.problem == 'capability' %}
+            <p class="unavailable-note">Para iniciar la atención aquí necesita el permiso «Iniciar atención». Pídaselo a quien administra los permisos del equipo.</p>
+            {% elif service_staff.problem %}
+            <p class="unavailable-note">No se pudo cargar la lista de médicos y consultorios. Actualice la página para intentarlo de nuevo.</p>
+            {% elif not staff %}
+            <p class="unavailable-note">Ningún médico o consultorio trabaja en esta sede ahora mismo. <a href="/tenants/{{ organization_id }}/setup?step=providers">Agregue un médico o consultorio</a> para iniciar la atención.</p>
+            {% else %}
+            <form method="post" data-plain-action class="inline-form start-service" action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/start-service">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="_intent_id" value="{{ intent_id }}-v-{{ entry.queue_entry_id }}" data-form-intent />
+              <input type="hidden" name="expected_queue_revision" value="{{ entry.queue_revision }}" />
+              <label for="staff-{{ entry.queue_entry_id }}">Atiende</label>
+              <select id="staff-{{ entry.queue_entry_id }}" name="staff" required>
+                {% if staff | length > 1 %}<option value="">Elija un médico o consultorio</option>{% endif %}
+                {% for person in staff %}<option value="{{ person.resource_id }}@{{ person.location_id }}">{{ person.name }}</option>{% endfor %}
+              </select>
+              <button type="submit">Iniciar atención</button>
+            </form>
+            {% endif %}
+            {% endif %}
+            {% if entry.status != 'called' and entry.recall_hold_id %}
+            <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/recall-hold/release">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="_intent_id" value="{{ intent_id }}-r-{{ entry.queue_entry_id }}" data-form-intent />
+              <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
+              <input type="hidden" name="hold_id" value="{{ entry.recall_hold_id }}" />
+              <button type="submit" class="secondary">Devolver a la fila</button>
+            </form>
+            {% elif entry.status != 'called' %}
+            <form method="post" data-plain-action class="inline-form" action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/operator-select" data-confirm="¿Llamar a {{ entry.subject_display_name }} antes que a los demás de la fila?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="_intent_id" value="{{ intent_id }}-o-{{ entry.queue_entry_id }}" data-form-intent />
+              <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
+              <label class="sr-only" for="reason-{{ entry.queue_entry_id }}">Motivo para llamar ahora</label>
+              <select id="reason-{{ entry.queue_entry_id }}" name="reason">
+                <option value="urgent">Urgente</option>
+                <option value="scheduled_commitment">Tiene cita</option>
+                <option value="operator_override">Otro motivo</option>
+              </select>
+              <button type="submit" class="secondary">Llamar ahora</button>
+            </form>
+            <details class="entry-more">
+              <summary>Apartar</summary>
+              <form method="post" data-plain-action class="stack" action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/recall-hold">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <input type="hidden" name="_intent_id" value="{{ intent_id }}-h-{{ entry.queue_entry_id }}" data-form-intent />
+                <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
+                <input type="hidden" name="local_date" value="{{ today_iso }}" />
+                <input type="hidden" name="zone_name" value="{{ zone_name }}" />
+                <label>Hasta que
+                  <select name="condition_kind">
+                    <option value="until_customer_initiates">El paciente avise que está listo</option>
+                    <option value="until_time">Llegue una hora de hoy</option>
+                  </select>
+                </label>
+                <label>Hora (solo si eligió una hora)<input type="time" name="local_time" /></label>
+                <label>Nota<input type="text" name="reason" maxlength="250" placeholder="Resultados de laboratorio, salió un momento…" /></label>
+                <button type="submit" class="secondary">Apartar</button>
+              </form>
+            </details>
+            {% endif %}
+            {# The owner only records a no-show for someone already called. #}
+            {% if entry.status == 'called' %}
+            <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/no-show" data-confirm="¿Marcar que {{ entry.subject_display_name }} no se presentó?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="_intent_id" value="{{ intent_id }}-n-{{ entry.queue_entry_id }}" data-form-intent />
+              <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
+              <button type="submit" class="secondary">No se presentó</button>
+            </form>
+            {% endif %}
+            <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/entries/{{ entry.queue_entry_id }}/skip">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <input type="hidden" name="_intent_id" value="{{ intent_id }}-s-{{ entry.queue_entry_id }}" data-form-intent />
+              <input type="hidden" name="expected_revision" value="{{ entry.queue_revision }}" />
+              <input type="hidden" name="reason" value="{{ 'no_response' if entry.status == 'called' else 'temporarily_unavailable' }}" />
+              <button type="submit" class="secondary">Saltar</button>
+            </form>
+          </div>
+        </li>
+        {% else %}
+        <li><span class="waiting-pos" aria-hidden="true">–</span><div><strong>Nadie en espera</strong><small>Los pacientes que lleguen aparecerán aquí.</small></div></li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </section>
+
+  <section class="panel" aria-labelledby="day-title">
+    <div class="panel-heading"><h2 id="day-title">Citas de hoy</h2></div>
+    {% if board_status in range(200, 300) %}
+    <div class="day-summary">
+      <div><strong>{{ board_entries | length }}</strong><span>Reservadas</span></div>
+      <div><strong>{{ checked_in_count }}</strong><span>Llegaron</span></div>
+      <div><strong>{{ seen_count }}</strong><span>Atendidos</span></div>
+      <div><strong>{{ waiting_count }}</strong><span>En filas de espera</span></div>
+    </div>
+    {% if board_entries %}
+    <ol class="day-sheet">
+      {% for row in sheet %}
+      <li class="day-hour {% if row.now %}now{% endif %}">
+        <time>{{ row.hour }}</time>
+        <div class="day-slots">
+          {% for booking in row.bookings %}
+          <div class="booking {{ booking.css }}">
+            <div><strong>{{ booking.name }}</strong><small>{{ booking.start }}–{{ booking.end }} · {{ booking.status }}{% if booking.open and not booking.seen %} · {{ booking.attendance_label }}{% endif %}{% if booking.eta %} · llega a las {{ booking.eta }}{% endif %}</small></div>
+            {% if booking.arrival %}<span class="badge active">{{ booking.arrival }}</span>{% endif %}
+            {% if booking.open %}
+            <div class="booking-actions">
+              {% if booking.can_check_in and queues %}
+              <form method="post" data-plain-action class="inline-form" action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/check-in">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <input type="hidden" name="_intent_id" value="{{ intent_id }}-i-{{ booking.reservation_id }}" data-form-intent />
+                <input type="hidden" name="subject_party_id" value="{{ booking.subject_party_id }}" />
+                {% if queues | length == 1 %}
+                <input type="hidden" name="queue_id" value="{{ queues[0].queue_id }}" />
+                {% else %}
+                <label class="sr-only" for="queue-{{ booking.reservation_id }}">Fila de espera</label>
+                <select id="queue-{{ booking.reservation_id }}" name="queue_id">
+                  {% for queue in queues %}<option value="{{ queue.queue_id }}" {% if queue.location_id and queue.location_id == booking.location_id %}selected{% endif %}>{{ queue.name }}</option>{% endfor %}
+                </select>
+                {% endif %}
+                <button type="submit">Registrar llegada</button>
+              </form>
+              {% endif %}
+              {% if booking.needs_answer %}
+              <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/attendance">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <input type="hidden" name="_intent_id" value="{{ intent_id }}-a-{{ booking.reservation_id }}" data-form-intent />
+                <input type="hidden" name="expected_revision" value="{{ booking.revision }}" />
+                <input type="hidden" name="response" value="accepted" />
+                <button type="submit" class="secondary">Marcar que viene</button>
+              </form>
+              <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/attendance" data-confirm="¿Registrar que {{ booking.name }} no vendrá?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <input type="hidden" name="_intent_id" value="{{ intent_id }}-d-{{ booking.reservation_id }}" data-form-intent />
+                <input type="hidden" name="expected_revision" value="{{ booking.revision }}" />
+                <input type="hidden" name="response" value="declined" />
+                <button type="submit" class="secondary">Marcar que no viene</button>
+              </form>
+              {% endif %}
+              <details class="entry-more">
+                <summary>Más</summary>
+                {% if not booking.checked_in %}
+                <form method="post" data-plain-action class="stack" action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/arrival-estimate">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                  <input type="hidden" name="_intent_id" value="{{ intent_id }}-e-{{ booking.reservation_id }}" data-form-intent />
+                  <input type="hidden" name="expected_revision" value="{{ booking.revision }}" />
+                  <input type="hidden" name="local_date" value="{{ today_iso }}" />
+                  <input type="hidden" name="zone_name" value="{{ zone_name }}" />
+                  <label>Llegará tarde, a las<input type="time" name="local_time" required /></label>
+                  <button type="submit" class="secondary">Guardar hora de llegada</button>
+                </form>
+                {% endif %}
+                <a class="button secondary" href="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/reschedule?offering_version_id={{ booking.offering_version_id }}&amp;revision={{ booking.revision }}&amp;day={{ today_iso }}">Cambiar fecha</a>
+                <form method="post" data-plain-action action="/tenants/{{ organization_id }}/today/appointments/{{ booking.reservation_id }}/cancel" data-confirm="¿Cancelar la cita de {{ booking.name }} de las {{ booking.start }}?">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                  <input type="hidden" name="_intent_id" value="{{ intent_id }}-x-{{ booking.reservation_id }}" data-form-intent />
+                  <input type="hidden" name="expected_revision" value="{{ booking.revision }}" />
+                  <button type="submit" class="danger">Cancelar cita</button>
+                </form>
+              </details>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>No hay citas hoy</strong><p>Reserve una cita ahora. Las citas que reserven su equipo, sus pacientes o su asistente del negocio aparecerán aquí.</p><p><a class="button secondary" href="/tenants/{{ organization_id }}/today/visit">Reservar una cita</a></p></div></div>
+    {% endif %}
+    {% elif board_status == 403 %}
+    <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Usted no tiene acceso a las citas del día</strong><p>Sus permisos no incluyen «Ver las citas del día». Pídaselo a quien administra los permisos del equipo.</p></div></div>
+    {% else %}
+    <div class="error-state"><span aria-hidden="true">!</span><div><strong>No se pudieron cargar las citas</strong><p>Actualice la página para intentarlo de nuevo.</p></div></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

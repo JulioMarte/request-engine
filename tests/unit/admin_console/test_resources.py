@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+from uuid import UUID
 
 import httpx
 import pytest
@@ -23,6 +24,8 @@ from request_engine.entrypoints.http.admin_console.resources import (
     resolve_operation,
 )
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
+from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
+from request_engine.modules.platform_configuration.api.deployment_http import DeploymentBindingBody
 
 _CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 
@@ -505,6 +508,10 @@ def test_build_inputs_marks_secrets_and_prefills() -> None:
     assert provision is not None
     provision_inputs = build_inputs(provision, secret_fields=("password",))
     assert {item["name"]: item["secret"] for item in provision_inputs}["password"] is True
+    # The generic operations form passes no workspace secret list; a credential
+    # must still never render as visible text there.
+    generic = {item["name"]: item["secret"] for item in build_inputs(provision)}
+    assert generic == {"login_handle": False, "password": True}
 
 
 def test_summarize_payload_buckets_scalars_and_nested() -> None:
@@ -513,7 +520,7 @@ def test_summarize_payload_buckets_scalars_and_nested() -> None:
     )
     rendered = dict(scalars)
     assert rendered["status"] == "active"
-    assert rendered["active"] == "yes"
+    assert rendered["active"] == "sí"
     assert rendered["tags"] == "a, b"
     assert [key for key, _ in nested] == ["meta"]
 
@@ -525,9 +532,9 @@ async def test_resources_index_lists_workspaces() -> None:
         await _login(client)
         response = await client.get("/resources")
     assert response.status_code == 200
-    assert "Native identities" in response.text
-    assert "Platform owners" in response.text
-    assert "Deployment recovery" in response.text
+    assert "Identidades nativas" in response.text
+    assert "Dueños de la plataforma" in response.text
+    assert "Recuperación del despliegue" in response.text
 
 
 @pytest.mark.asyncio
@@ -557,7 +564,7 @@ async def test_detail_hides_actions_when_authoritative_read_fails() -> None:
         await _login(client)
         response = await client.get(f"/resources/native-identities/{_NATIVE_ID}")
     assert response.status_code == 200
-    assert "Item unavailable" in response.text
+    assert "Registro no disponible" in response.text
     assert 'id="action-disable"' not in response.text
 
 
@@ -575,8 +582,8 @@ async def test_list_error_is_not_rendered_as_a_genuine_empty_collection() -> Non
     async with _client(app) as client:
         await _login(client)
         response = await client.get("/resources/native-identities")
-    assert "Could not load native identities" in response.text
-    assert "No native identities yet" not in response.text
+    assert "No se pudo cargar: identidades nativas" in response.text
+    assert "Todavía no hay registros en identidades nativas" not in response.text
 
 
 @pytest.mark.asyncio
@@ -680,9 +687,9 @@ async def test_step_up_result_retries_the_same_form() -> None:
         )
     assert executed.status_code == 200
     assert 'data-retry-form="action-suspend"' in executed.text
-    assert "Confirm with passkey" in executed.text
-    assert "Your entries will be preserved" in executed.text
-    assert "Technical details" in executed.text
+    assert "Confirmar con llave de acceso" in executed.text
+    assert "Lo que escribió se conserva" in executed.text
+    assert "Detalles técnicos" in executed.text
 
 
 @pytest.mark.asyncio
@@ -692,18 +699,19 @@ async def test_secrets_workspace_states_it_cannot_list() -> None:
         await _login(client)
         response = await client.get("/resources/secrets")
     assert response.status_code == 200
-    assert "no secret-enumeration operation" in response.text
-    assert "Create secret" in response.text
+    assert "no tiene una operación para listarlos" in response.text
+    assert "Crear secreto" in response.text
 
 
 @pytest.mark.asyncio
-async def test_owners_workspace_states_it_cannot_list() -> None:
+async def test_owners_workspace_without_canonical_read_fails_closed() -> None:
     app = create_admin_console_app(_settings(), client=FakeControl())
     async with _client(app) as client:
         await _login(client)
         response = await client.get("/resources/owners")
-    assert response.status_code == 200
-    assert "no owner enumeration operation" in response.text
+    assert response.status_code == 503
+    assert "La información de los dueños no está disponible por el momento" in response.text
+    assert "No se muestran datos de dueños ni formularios de acción" in response.text
 
 
 @pytest.mark.asyncio
@@ -715,10 +723,12 @@ async def test_organizations_workspace_uses_platform_create_operation() -> None:
         page = await client.get("/resources/organizations")
         assert page.status_code == 200
         assert "Acme Clinic" in page.text
+        assert 'href="/resources/business-setup"' in page.text
         detail = await client.get(f"/resources/organizations/{_ORGANIZATION_ID}")
         assert detail.status_code == 200
         assert "America/Santo_Domingo" in detail.text
-        match = _CSRF_RE.search(page.text)
+        setup_page = await client.get("/resources/business-setup")
+        match = _CSRF_RE.search(setup_page.text)
         assert match is not None
         created = await client.post(
             "/resources/organizations",
@@ -729,7 +739,7 @@ async def test_organizations_workspace_uses_platform_create_operation() -> None:
             },
         )
     assert created.status_code == 200
-    assert "completed successfully" in created.text
+    assert "La acción se completó correctamente" in created.text
     call = next(
         item
         for item in control.calls
@@ -756,3 +766,396 @@ async def test_resources_require_a_session() -> None:
     async with _client(app) as client:
         assert (await client.get("/resources")).status_code == 303
         assert (await client.get("/resources/native-identities")).status_code == 303
+
+
+class ReadPayloadControl(FakeControl):
+    def __init__(self, path: str, payload: Any, *, status: int = 200) -> None:
+        super().__init__()
+        self.read_path, self.read_payload, self.read_status = path, payload, status
+
+    async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if method == "GET" and path == self.read_path:
+            self.calls.append((method, path, kwargs))
+            return ControlResponse(self.read_status, self.read_payload, {})
+        return await super().request(method, path, **kwargs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        {},
+        {"native_identity_id": _NATIVE_ID},
+        {"native_identity_id": _NATIVE_ID, "revision": True, "status": "active"},
+        {"native_identity_id": _PRINCIPAL_ID, "revision": 3, "status": "active"},
+    ],
+)
+async def test_partial_identity_read_never_offers_disable(payload: Any) -> None:
+    control = ReadPayloadControl(f"/v1/platform/native-identities/{_NATIVE_ID}", payload)
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await _login(client)
+        page = await client.get(f"/resources/native-identities/{_NATIVE_ID}")
+    assert "invalid_owner_response" in page.text
+    assert 'id="action-disable"' not in page.text
+    assert len([call for call in control.calls if call[0] == "POST"]) == 1  # login only
+
+
+_PARTIAL_IDENTITY_PAGES: list[Any] = [
+    {},
+    {"items": []},
+    {"items": [{}], "next_cursor": None},
+    {"items": [], "next_cursor": True},
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", _PARTIAL_IDENTITY_PAGES)
+async def test_partial_identity_page_is_not_a_genuine_empty_collection(payload: Any) -> None:
+    control = ReadPayloadControl("/v1/platform/native-identities", payload)
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await _login(client)
+        page = await client.get("/resources/native-identities")
+    assert "invalid_owner_response" in page.text
+    assert "Todavía no hay registros en identidades nativas" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_valid_empty_identity_page_remains_empty_without_transport_error() -> None:
+    control = ReadPayloadControl(
+        "/v1/platform/native-identities", {"items": [], "next_cursor": None}
+    )
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await _login(client)
+        page = await client.get("/resources/native-identities")
+    assert "Todavía no hay registros en identidades nativas" in page.text
+    assert "invalid_owner_response" not in page.text
+
+
+class ExtendedReadControl(ReadPayloadControl):
+    async def openapi(self) -> dict[str, Any]:
+        document = _openapi()
+        for path, key, params, method in (
+            (
+                "/v1/platform/configurations/{configuration_kind}",
+                "platform_configuration_revision_list",
+                [_param("configuration_kind", "path", True)],
+                "get",
+            ),
+            (
+                "/v1/platform/configurations/{configuration_kind}/{revision}",
+                "platform_configuration_revision_get",
+                [_param("configuration_kind", "path", True), _param("revision", "path", True)],
+                "get",
+            ),
+            ("/v1/platform/configurations:stage", "platform_configuration_stage", [], "post"),
+            ("/v1/platform/configurations:validate", "platform_configuration_validate", [], "post"),
+            ("/v1/platform/configurations:activate", "platform_configuration_activate", [], "post"),
+            ("/v1/platform/configurations:disable", "platform_configuration_disable", [], "post"),
+            ("/v1/platform/providers:test", "platform_provider_test", [], "post"),
+            (
+                "/v1/platform/secrets/{binding_id}",
+                "platform_secret_metadata_get",
+                [_param("binding_id", "path", True)],
+                "get",
+            ),
+            ("/v1/platform/secrets:rotate", "platform_secret_rotate", [], "post"),
+            ("/v1/platform/secrets:revoke", "platform_secret_revoke", [], "post"),
+            (
+                "/v1/platform/keyrings:rotate",
+                "platform_appointment_signing_keyring_rotate",
+                [],
+                "post",
+            ),
+            (
+                "/v1/platform/deployment-recovery:plan",
+                "platform_deployment_recovery_plan",
+                [],
+                "get",
+            ),
+            (
+                "/v1/platform/deployment-recovery:configure",
+                "platform_deployment_recovery_configure",
+                [],
+                "post",
+            ),
+            (
+                "/v1/platform/deployment-recovery:reconcile",
+                "platform_deployment_recovery_reconcile",
+                [],
+                "post",
+            ),
+        ):
+            document["paths"][path] = {
+                method: _op(
+                    key,
+                    capability="test.transport.only",
+                    kind="query" if method == "get" else "command",
+                    idempotency="none" if method == "get" else "required",
+                    params=params,
+                )
+            }
+        return document
+
+    async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if method == "GET" and path == "/v1/platform/configurations/email.delivery":
+            self.calls.append((method, path, kwargs))
+            if path == self.read_path:
+                return ControlResponse(self.read_status, self.read_payload, {})
+            return ControlResponse(200, {"items": []}, {})
+        return await super().request(method, path, **kwargs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "upstream,console,forbidden_forms",
+    [
+        (
+            "/v1/platform/secrets/" + _NATIVE_ID,
+            "/resources/secrets/" + _NATIVE_ID,
+            ("secret-rotate", "secret-revoke"),
+        ),
+        (
+            "/v1/platform/configurations/email.delivery/3",
+            "/resources/configurations/email.delivery/3",
+            ("action-validate", "action-activate"),
+        ),
+        (
+            "/v1/platform/deployment-recovery:plan",
+            "/resources/deployment-recovery",
+            ("configure", "reconcile"),
+        ),
+    ],
+)
+@pytest.mark.parametrize("payload", [{}, None])
+async def test_incomplete_control_read_hides_revision_sensitive_actions(
+    upstream: str,
+    console: str,
+    forbidden_forms: tuple[str, ...],
+    payload: Any,
+) -> None:
+    control = ExtendedReadControl(upstream, payload)
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await _login(client)
+        page = await client.get(console)
+    assert "invalid_owner_response" in page.text
+    assert all(f'id="{form}"' not in page.text for form in forbidden_forms)
+    assert len([call for call in control.calls if call[0] == "POST"]) == 1
+
+
+_CONFIGURATION_PAGES: list[Any] = [{}, {"items": [{}]}, {"items": []}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", _CONFIGURATION_PAGES)
+async def test_configuration_inventory_distinguishes_partial_from_valid_empty(payload: Any) -> None:
+    control = ExtendedReadControl("/v1/platform/configurations", payload)
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await _login(client)
+        page = await client.get("/resources/configurations")
+    assert ("invalid_owner_response" in page.text) is (payload != {"items": []})
+
+
+@pytest.mark.asyncio
+async def test_valid_configuration_detail_with_no_active_revision_keeps_actions() -> None:
+    control = ExtendedReadControl(
+        "/v1/platform/configurations/email.delivery/3",
+        {
+            "configuration_kind": "email.delivery",
+            "revision": 3,
+            "state": "draft",
+            "configuration": {},
+        },
+    )
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await _login(client)
+        page = await client.get("/resources/configurations/email.delivery/3")
+    assert "invalid_owner_response" not in page.text
+    assert 'id="action-activate"' in page.text
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_deployment_preserves_owner_error_without_actions() -> None:
+    control = ExtendedReadControl(
+        "/v1/platform/deployment-recovery:plan", {"error": {"code": "not_configured"}}, status=404
+    )
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await _login(client)
+        page = await client.get("/resources/deployment-recovery")
+    assert "not_configured" in page.text
+    assert "invalid_owner_response" not in page.text
+    assert 'id="configure"' not in page.text
+
+
+_SECRET_READ: dict[str, Any] = {
+    "binding_id": _NATIVE_ID,
+    "purpose": "email.delivery",
+    "revision": 4,
+    "backend_version": 6,
+}
+_DEPLOYMENT_READ: dict[str, Any] = {
+    "state": "in_sync",
+    "changes": [],
+    "binding": {
+        "revision": 4,
+        "base_url": "https://deployment.example.test",
+        "database_uuid": "database-installation",
+        "secret_binding_id": _NATIVE_ID,
+    },
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "upstream,console,payload,form",
+    [
+        (
+            "/v1/platform/secrets/" + _NATIVE_ID,
+            "/resources/secrets/" + _NATIVE_ID,
+            _SECRET_READ,
+            "secret-rotate",
+        ),
+        (
+            "/v1/platform/deployment-recovery:plan",
+            "/resources/deployment-recovery",
+            _DEPLOYMENT_READ,
+            "configure",
+        ),
+    ],
+)
+async def test_valid_secret_and_deployment_read_remain_actionable(
+    upstream: str,
+    console: str,
+    payload: dict[str, Any],
+    form: str,
+) -> None:
+    control = ExtendedReadControl(upstream, payload)
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await _login(client)
+        page = await client.get(console)
+    assert "invalid_owner_response" not in page.text
+    assert f'id="{form}"' in page.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {**_SECRET_READ, "binding_id": _PRINCIPAL_ID},
+        {**_SECRET_READ, "revision": True},
+        {**_SECRET_READ, "backend_version": 0},
+    ],
+)
+async def test_secret_revision_or_identity_mismatch_cannot_supply_actions(
+    payload: dict[str, Any],
+) -> None:
+    control = ExtendedReadControl("/v1/platform/secrets/" + _NATIVE_ID, payload)
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await _login(client)
+        page = await client.get("/resources/secrets/" + _NATIVE_ID)
+    assert "invalid_owner_response" in page.text
+    assert 'id="secret-rotate"' not in page.text
+
+
+class InitialDeploymentControl(FakeControl):
+    def __init__(self, *, error_code: str = "platform_configuration_changed") -> None:
+        super().__init__()
+        self.error_code = error_code
+
+    async def openapi(self) -> dict[str, Any]:
+        inert = cast(Any, object())
+        return create_platform_control_app(
+            auth_session_factory=inert,
+            platform_read_session_factory=inert,
+            platform_write_session_factory=inert,
+            native_authority_id=UUID(int=1),
+            webauthn_decoy_key=b"initial-binding-ui-proof-key-32-bytes",
+        ).openapi()
+
+    async def request(self, method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if path == "/v1/platform/deployment-recovery:plan":
+            self.calls.append((method, path, kwargs))
+            return ControlResponse(404, {"error": {"code": "platform_configuration_not_found"}}, {})
+        if method == "PUT" and path == "/v1/platform/deployment-recovery":
+            self.calls.append((method, path, kwargs))
+            return ControlResponse(
+                403 if self.error_code == "phishing_resistant_auth_required" else 409,
+                {"error": {"code": self.error_code}},
+                {},
+            )
+        return await super().request(method, path, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_initial_deployment_setup_uses_canonical_default_without_get_effects() -> None:
+    control = InitialDeploymentControl()
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        anonymous = await client.get("/resources/deployment-recovery/new")
+        assert anonymous.status_code == 303
+        assert control.calls == []
+        await _login(client)
+        missing = await client.get("/resources/deployment-recovery")
+        assert 'href="/resources/deployment-recovery/new"' in missing.text
+        assert "No se reportaron cambios" not in missing.text
+        page = await client.get("/resources/deployment-recovery/new")
+        assert page.status_code == 200
+        assert 'id="configure"' in page.text
+        assert 'name="expected_active_revision"' in page.text
+        assert 'value="0"' not in page.text
+        assert 'id="reconcile"' not in page.text
+        assert [method for method, _, _ in control.calls] == ["POST", "GET"]
+        csrf = _CSRF_RE.search(page.text)
+        assert csrf is not None
+        data = {
+            "csrf_token": csrf.group(1),
+            "base_url": "https://deployment.example.test",
+            "database_uuid": "database-installation",
+            "secret_binding_id": _NATIVE_ID,
+            "expected_active_revision": "",
+            "scheduled_backup_uuid": "",
+            "s3_storage_uuid": "",
+            "_intent_id": "initial-binding-proof-intent",
+        }
+        denied = await client.post(
+            "/resources/deployment-recovery/actions/configure", data={**data, "csrf_token": "bad"}
+        )
+        assert "verificación de seguridad del formulario" in denied.text
+        assert not [call for call in control.calls if call[0] == "PUT"]
+        conflict = await client.post("/resources/deployment-recovery/actions/configure", data=data)
+        assert "la configuración cambió" in conflict.text.lower()
+        writes = [call for call in control.calls if call[0] == "PUT"]
+        assert len(writes) == 1
+        forwarded = writes[0][2]
+        assert "expected_active_revision" not in forwarded["json_body"]
+        assert (
+            DeploymentBindingBody.model_validate(forwarded["json_body"]).expected_active_revision
+            is None
+        )
+        assert forwarded["json_body"]["secret_binding_id"] == _NATIVE_ID
+        assert forwarded["extra_headers"]["idempotency-key"] == "initial-binding-proof-intent"
+
+
+@pytest.mark.asyncio
+async def test_initial_binding_step_up_points_to_the_actual_submitted_form() -> None:
+    control = InitialDeploymentControl(error_code="phishing_resistant_auth_required")
+    async with _client(create_admin_console_app(_settings(), client=control)) as client:
+        await _login(client)
+        page = await client.get("/resources/deployment-recovery/new")
+        csrf = _CSRF_RE.search(page.text)
+        assert csrf is not None
+        response = await client.post(
+            "/resources/deployment-recovery/actions/configure",
+            data={
+                "csrf_token": csrf.group(1),
+                "base_url": "https://deployment.example.test",
+                "database_uuid": "database-installation",
+                "secret_binding_id": _NATIVE_ID,
+                "_intent_id": "initial-binding-step-up-intent",
+            },
+        )
+        assert 'data-retry-form="configure"' in response.text
+        assert 'id="configure"' in page.text
+        assert "initial-binding-step-up-intent" in response.text
+        write = next(call for call in control.calls if call[0] == "PUT")
+        assert write[2]["extra_headers"]["idempotency-key"] == "initial-binding-step-up-intent"
+        assert "expected_active_revision" not in write[2]["json_body"]

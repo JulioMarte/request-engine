@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -21,6 +22,8 @@ from request_engine.platform.security.freshness import (
     REAUTHENTICATION_WINDOW,
     PhishingResistantAuthenticationRequired,
     RecentAuthenticationRequired,
+    RecoveryCompletionRequired,
+    require_recent_admin_authentication,
 )
 from request_engine.platform.security.native_auth import (
     CredentialInvalid,
@@ -212,6 +215,12 @@ class NativeRecoveryCodesView(BaseModel):
     codes: list[str]
 
 
+class NativeRecoveryCompletionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(min_length=1, max_length=1024, repr=False)
+
+
 class NativeRecoveryAddressCreateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -369,9 +378,17 @@ def create_native_auth_router(
         raw_token = bearer_token(request)
         parsed = parse_opaque_token(raw_token)
         subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        if (
+            subject.metadata.get("recovery_derived") == "true"
+            or subject.metadata.get("recovery_restricted") == "true"
+            or subject.metadata.get("authentication_assurance")
+            == AuthenticationAssurance.RECOVERY.value
+        ):
+            raise RecoveryCompletionRequired(
+                "complete recovery and sign in before reauthentication"
+            )
         authenticated_at = await service.reauthenticate_session(
             session_id=parsed.token_id,
-            credential_id=_session_credential_id(subject),
             password=payload.password,
         )
         _prevent_secret_caching(response)
@@ -425,15 +442,22 @@ def create_native_auth_router(
     async def complete_recovery(
         request: Request,
         response: Response,
+        payload: NativeRecoveryCompletionBody | None = None,
     ) -> NativeRecoveryReadinessView:
         if recovery_codes is None:
             raise RuntimeError("recovery-code lifecycle is not composed")
         raw_token = bearer_token(request)
         subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
-        _require_recent_phishing_resistant_subject(subject)
-        readiness = await recovery_codes.complete_recovery(
-            native_identity_id=UUID(subject.subject_id)
-        )
+        if payload is not None:
+            readiness = await recovery_codes.complete_recovery_with_password(
+                session_id=parse_opaque_token(raw_token).token_id,
+                password=payload.password,
+            )
+        else:
+            _require_recent_phishing_resistant_subject(subject)
+            readiness = await recovery_codes.complete_recovery(
+                native_identity_id=UUID(subject.subject_id)
+            )
         _prevent_secret_caching(response)
         return NativeRecoveryReadinessView(
             recovery_state=readiness.recovery_state,
@@ -455,7 +479,7 @@ def create_native_auth_router(
             raise RuntimeError("verified recovery addresses are not composed")
         raw_token = bearer_token(request)
         subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
-        _require_recent_phishing_resistant_subject(subject)
+        _require_recent_admin_subject(subject)
         try:
             prepared = await recovery_addresses.prepare_email(
                 native_identity_id=UUID(subject.subject_id),
@@ -528,7 +552,7 @@ def create_native_auth_router(
             raise RuntimeError("verified recovery addresses are not composed")
         raw_token = bearer_token(request)
         subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
-        _require_recent_phishing_resistant_subject(subject)
+        _require_recent_admin_subject(subject)
         try:
             await recovery_addresses.revoke(
                 native_identity_id=UUID(subject.subject_id),
@@ -627,7 +651,7 @@ def create_native_auth_router(
             raise RuntimeError("recovery-code lifecycle is not composed")
         raw_token = bearer_token(request)
         subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
-        _require_recent_phishing_resistant_subject(subject)
+        _require_recent_admin_subject(subject)
         codes = await recovery_codes.issue_for_identity(native_identity_id=UUID(subject.subject_id))
         _prevent_secret_caching(response)
         return NativeRecoveryCodesView(codes=list(codes))
@@ -770,16 +794,23 @@ def create_native_auth_router(
         operation_id="nativeSessionReauthenticate",
         response_model=NativeSessionReauthView,
         status_code=status.HTTP_200_OK,
-        summary="Refresh the reauthentication freshness of the current native session",
+        summary="Prove the current password again for the current native session",
         description=(
-            "Verifies the current session's password again and advances its "
-            "last_authenticated_at freshness basis. The session, identity, "
+            "Verifies the current identity's password and advances the same session's "
+            "last_authenticated_at freshness basis with truthful single-factor password "
+            "evidence, including sessions initially created using WebAuthn. "
+            "Recovery-derived or restricted sessions cannot use this operation. "
+            "The session, identity, "
             "credential and authority must all still be active. An invalid "
             "password or unusable session returns the same opaque 401 as the "
             "other native authentication routes."
         ),
         responses={
             401: {"model": ErrorEnvelope, "description": "Session or password is invalid"},
+            403: {
+                "model": ErrorEnvelope,
+                "description": "Explicit recovery completion is required",
+            },
             422: {"model": ErrorEnvelope, "description": "Invalid input"},
         },
     )
@@ -873,9 +904,12 @@ def create_native_auth_router(
             methods=["POST"],
             operation_id="nativeRecoveryCompleteCurrent",
             response_model=NativeRecoveryReadinessView,
-            summary="Complete a restricted recovery after strong re-authentication",
+            summary="Explicitly complete restricted recovery with a current credential proof",
             description=(
-                "Requires a recent phishing-resistant session for the same native identity. "
+                "Accepts a current password in the optional body, or a recent phishing-resistant "
+                "session when no body is supplied. Password completion is bound to the exact "
+                "authenticated session and current recovery epoch. Recovery-derived sessions "
+                "remain recovery evidence and must sign in normally before administrative work. "
                 "It changes only recovery posture and never creates, restores or elevates "
                 "Principal authority, bindings, memberships or grants."
             ),
@@ -1165,16 +1199,37 @@ def _require_recent_phishing_resistant_subject(subject: AuthenticatedSubject) ->
         raise RecentAuthenticationRequired("recent strong authentication is required")
 
 
+@dataclass(frozen=True, slots=True)
+class _NativeSubjectFreshness:
+    authentication_assurance: AuthenticationAssurance | None
+    user_verified: bool
+    recovery_derived: bool
+    recovery_restricted: bool
+    authenticated_at: datetime | None
+
+
+def _require_recent_admin_subject(subject: AuthenticatedSubject) -> None:
+    metadata = subject.metadata
+    try:
+        assurance = AuthenticationAssurance(metadata.get("authentication_assurance"))
+    except ValueError:
+        assurance = None
+    try:
+        authenticated_at = datetime.fromisoformat(metadata.get("authenticated_at", ""))
+    except ValueError:
+        authenticated_at = None
+    require_recent_admin_authentication(
+        _NativeSubjectFreshness(
+            authentication_assurance=assurance,
+            user_verified=metadata.get("user_verified") == "true",
+            recovery_derived=metadata.get("recovery_derived") == "true",
+            recovery_restricted=metadata.get("recovery_restricted") == "true",
+            authenticated_at=authenticated_at,
+        ),
+        now=datetime.now(UTC),
+    )
+
+
 def _prevent_secret_caching(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
-
-
-def _session_credential_id(subject: AuthenticatedSubject) -> UUID:
-    value = subject.metadata.get("credential_id")
-    if value is None:
-        raise CredentialInvalid("native session credential is invalid")
-    try:
-        return UUID(value)
-    except ValueError as exc:
-        raise CredentialInvalid("native session credential is invalid") from exc

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Aprobaciones · Request Engine{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div>
+    <p class="eyebrow">{{ nav_organization_name or "Su negocio" }}</p>
+    <h1>Aprobaciones</h1>
+    <p>Sugerencias de su asistente del negocio y de otros asistentes que necesitan su decisión. Los asistentes pueden sugerir personas para el equipo; solo una persona puede invitarlas.</p>
+  </div>
+</header>
+
+<section class="panel" aria-labelledby="pending-title">
+  <div class="panel-heading"><h2 id="pending-title">Esperando su decisión</h2>{% if proposals %}<span class="count-badge">{{ proposals | length }}</span>{% endif %}</div>
+  {% if not supported %}
+  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Las aprobaciones todavía no están disponibles en esta instalación</strong><p>Actualice Request Engine para que los asistentes puedan sugerir nuevos miembros del equipo.</p></div></div>
+  {% elif status == 403 %}
+  <div class="empty-state neutral"><span aria-hidden="true">i</span><div><strong>Usted no tiene acceso a las aprobaciones</strong><p>Sus permisos actuales no incluyen "Ver el equipo".</p></div></div>
+  {% elif status not in range(200, 300) %}
+  <div class="error-state"><span aria-hidden="true">!</span><div><strong>No se pudieron cargar las aprobaciones</strong><p>Vuelva a cargar la página para intentarlo de nuevo.</p></div></div>
+  {% elif not proposals %}
+  <div class="empty-state"><span aria-hidden="true">✓</span><div><strong>No hay nada que decidir</strong><p>Cuando su asistente del negocio sugiera agregar a alguien, aparecerá aquí.</p></div></div>
+  {% else %}
+  <ul class="approval-list">
+    {% for item in proposals %}
+    <li>
+      <div>
+        <strong>Invitar a {{ item.display_name or item.email }}{% if item.display_name %} ({{ item.email }}){% endif %}</strong>
+        <p>Sugerido por {{ item.proposer_label }}{% if item.created_at %} · <time datetime="{{ item.created_at }}">{{ item.created_at[:16] | replace("T", " ") }}</time>{% endif %}</p>
+        {% if item.note %}<p>“{{ item.note }}”</p>{% endif %}
+      </div>
+      <div class="approval-actions">
+        <form id="approve-{{ item.proposal_id }}" method="post" action="/tenants/{{ organization_id }}/approvals/{{ item.proposal_id }}/approve" data-plain-action data-confirm="¿Enviar una invitación al equipo a {{ item.email }}? Entrará sin permisos hasta que usted se los dé.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="intent" value="{{ intent }}-{{ loop.index }}" />
+          <input type="hidden" name="expected_revision" value="{{ item.revision }}" />
+          <button type="submit">Aprobar e invitar</button>
+        </form>
+        <form id="reject-{{ item.proposal_id }}" method="post" action="/tenants/{{ organization_id }}/approvals/{{ item.proposal_id }}/reject" data-plain-action>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="intent" value="{{ intent }}-r{{ loop.index }}" />
+          <input type="hidden" name="expected_revision" value="{{ item.revision }}" />
+          <button type="submit" class="secondary">Rechazar</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}

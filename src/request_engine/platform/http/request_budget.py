@@ -18,6 +18,11 @@ from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 from request_engine.platform.security.http import request_correlation_id
 
+STREAM_PATHS = frozenset({"/v1/changes/stream"})
+# Public credential-creating endpoints outside /auth/native share the authentication
+# admission budget (rate limit + bounded concurrency) before any password work.
+PUBLIC_CREDENTIAL_PATHS = frozenset({"/v1/account-invitations:enroll"})
+
 
 @dataclass(frozen=True, slots=True)
 class HttpRequestBudget:
@@ -27,6 +32,9 @@ class HttpRequestBudget:
     max_authentication_per_minute: int = 120
     max_active_probes: int = 4
     body_timeout_seconds: float = 15
+    # Long-lived Server-Sent Event streams are admitted from their own bounded
+    # pool so open streams can never exhaust ordinary request capacity.
+    max_active_streams: int = 256
 
     def __post_init__(self) -> None:
         integer_bounds = (
@@ -34,6 +42,7 @@ class HttpRequestBudget:
             (self.max_active_requests, 4096),
             (self.max_active_authentication, 64),
             (self.max_active_probes, 64),
+            (self.max_active_streams, 65_536),
         )
         if any(
             type(value) is not int or not 0 < value <= maximum for value, maximum in integer_bounds
@@ -73,6 +82,7 @@ class HttpRequestBudget:
                 os.environ.get("REQUEST_ENGINE_HTTP_BODY_TIMEOUT_SECONDS", "15")
             ),
             max_active_probes=int(os.environ.get("REQUEST_ENGINE_HTTP_MAX_ACTIVE_PROBES", "4")),
+            max_active_streams=int(os.environ.get("REQUEST_ENGINE_HTTP_MAX_ACTIVE_STREAMS", "256")),
         )
 
 
@@ -97,6 +107,7 @@ class RequestBudgetMiddleware:
         self.active = asyncio.Semaphore(budget.max_active_requests)
         self.authentication = asyncio.Semaphore(budget.max_active_authentication)
         self.probes = asyncio.Semaphore(budget.max_active_probes)
+        self.streams = asyncio.Semaphore(budget.max_active_streams)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -114,10 +125,21 @@ class RequestBudgetMiddleware:
                 self.probes.release()
             return
         path = str(scope["path"])
+        if scope["method"] == "GET" and path in STREAM_PATHS:
+            if self.streams.locked():
+                await self._reject(scope, receive, send, 503, "request_capacity_exceeded", True)
+                return
+            await self.streams.acquire()
+            try:
+                await self._admitted(scope, receive, send)
+            finally:
+                self.streams.release()
+            return
         authentication = (
             path == "/auth/native"
             or path.startswith("/auth/native/")
             or path.startswith("/v1/setup/")
+            or path in PUBLIC_CREDENTIAL_PATHS
         )
         authentication_attempt = (scope["method"] == "POST" and authentication) or (
             scope["method"] == "PUT" and path == "/auth/native/password"

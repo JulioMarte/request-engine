@@ -1,5 +1,43 @@
 # Handoff 01 — Product Roadmap State
 
+> **Status update (2026-10-21, branch `feature/admin-dashboard-completion`).** Sections
+> below are the Sep 2026 snapshot; this note supersedes them where they disagree.
+> Migrations were rebaselined (`0001_initial` + appended revisions; ask Alembic for
+> the head instead of trusting a number here).
+>
+> - **Day board (FU-1): built.** `GET /v1/appointments/day-board`
+>   (`appointments.day_board`) and the console *Today* workspace. Today now runs the
+>   receptionist day through owner operations: patient lookup/registration, slot
+>   search and booking, walk-in queue join, check-in, attendance confirmation, arrival
+>   estimate, reschedule, cancel, call-next/skip/no-show, start service (choosing the
+>   doctor or room at that location) and finish, and S5 triage. The day board read
+>   (`request_read.reservation_day_v1`, migration `0045`) reports `served_at` and
+>   `visit_arrived_at`, so a finished visit shows "Seen at" instead of looking untouched.
+> - **Owner front-desk authority: built.** `tenant-controller-v9` (migration `0044`)
+>   gives business owners, delegably, the queue, check-in, service and profile
+>   capabilities the front desk needs. New businesses get v9; existing ones move through
+>   the owner's *Owner permissions* request plus approval by a second platform owner
+>   (ADR 0016; the first-claim owner cannot approve by design).
+> - **Guided clinic setup: built.** `/tenants/{org}/setup` composes owner operations for
+>   clinic details, location and hours, services with prices, doctors/rooms with weekly
+>   availability and a walk-in line, then shows readiness and real free times.
+> - **Open owner-rule gaps (decisions pending):** a reservation whose visit was completed
+>   can be checked in again (`require_reservation_match` / `ensure_subject_not_active`
+>   only look at reservation status and active entries) and can still be cancelled or
+>   rescheduled. The console no longer offers check-in, attendance or arrival actions for
+>   a served booking but still offers move and cancel; the owner commands refuse none of
+>   these yet.
+> - **S5 triage: built.** `operator-select`, `recall-hold` (+ release) and `skip` under
+>   `/v1/queue-entries/{id}/…`; `until_event` recall holds are not offered in the console.
+> - **Delivery outcome callbacks: built.** `POST /v1/provider-events/{provider_key}/{connection_key}`
+>   (HMAC-signed, per-organization/connection key, persist-before-interpret; mounted only
+>   when `REQUEST_ENGINE_PROVIDER_CALLBACK_SECRET` is set). See `docs/v3/10`.
+> - **Local whole-system run: built (dev-only).** `scripts/dev/local_stack.ps1 up` /
+>   `scripts/dev/local_stack.sh up` start migrate, runtime API, control plane, console,
+>   worker and a dev-only loopback gateway. See `README.md`.
+> - **Still NOT built:** S4 inbound interpretation (F7c), S6 after-hours intake, the
+>   real communication gateway with WhatsApp/Chatwoot, and any production deployment.
+
 What the product is, what is actually shipped, what comes next, and what does **not**
 exist despite sounding like it might. Verified against `development` at `a8760d9f`
 (Sep 2026); migrations head `0026_s3_escalation_lineage`.

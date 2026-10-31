@@ -189,7 +189,7 @@ def _verify_scrypt(password: str, verifier: str) -> bool:
 def _verify_argon2id(password: str, verifier: str) -> bool:
     try:
         return _ARGON2_HASHER.verify(verifier, password.encode("utf-8"))
-    except (VerifyMismatchError, VerificationError, InvalidHashError):
+    except (UnicodeError, VerifyMismatchError, VerificationError, InvalidHashError):
         return False
 
 

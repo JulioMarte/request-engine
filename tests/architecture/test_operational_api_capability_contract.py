@@ -9,11 +9,20 @@ from request_engine.modules.booking.api.operational_assignment_router import (
 from request_engine.modules.booking.api.resource_bootstrap_router import (
     create_resource_bootstrap_router,
 )
+from request_engine.modules.booking.api.resource_configuration_router import (
+    create_resource_configuration_router,
+)
+from request_engine.modules.catalog.api.configuration_edit_router import (
+    create_configuration_edit_router,
+)
 from request_engine.modules.catalog.api.operational_profile_router import (
     create_operational_profile_router,
 )
 from request_engine.modules.catalog.api.operational_schedule_router import (
     create_operational_schedule_router,
+)
+from request_engine.modules.queue.api.service_queue_activation_router import (
+    create_service_queue_activation_router,
 )
 from request_engine.modules.queue.api.service_queue_bootstrap_router import (
     create_service_queue_bootstrap_router,
@@ -211,4 +220,73 @@ def test_tenancy_profile_operations_use_non_bootstrap_management_capability() ->
             operation_id=operation_id,
             owner="tenancy",
             capability="organization.manage_profile",
+        )
+
+
+def test_configuration_edit_routes_publish_canonical_operation_policy() -> None:
+    app = FastAPI()
+    app.include_router(
+        create_configuration_edit_router(
+            offering_handler=cast(Any, object()),
+            version_handler=cast(Any, object()),
+            exception_handler=cast(Any, object()),
+            holidays_handler=cast(Any, object()),
+            actor_resolver=cast(Any, _Resolver()),
+        )
+    )
+    app.include_router(
+        create_resource_configuration_router(
+            update_handler=cast(Any, object()),
+            capabilities_handler=cast(Any, object()),
+            actor_resolver=cast(Any, _Resolver()),
+        )
+    )
+    app.include_router(
+        create_service_queue_activation_router(
+            handler=cast(Any, object()),
+            actor_resolver=cast(Any, _Resolver()),
+        )
+    )
+    expected = {
+        ("/v1/operations/offerings/{offering_id}", "patch"): (
+            "catalog_offering_update",
+            "catalog",
+            "catalog.manage",
+        ),
+        ("/v1/operations/offerings/{offering_id}/versions", "post"): (
+            "catalog_offering_version_supersede",
+            "catalog",
+            "catalog.manage",
+        ),
+        (
+            "/v1/operations/locations/{location_id}/hours-exceptions/{exception_id}:deactivate",
+            "post",
+        ): ("catalog_location_hours_exception_deactivate", "catalog", "catalog.manage"),
+        ("/v1/operations/organization/holidays:remove", "post"): (
+            "catalog_organization_holidays_remove",
+            "catalog",
+            "catalog.manage",
+        ),
+        ("/v1/operations/resources/{resource_id}", "patch"): (
+            "booking_resource_update",
+            "booking",
+            "booking.manage_supply",
+        ),
+        ("/v1/operations/resources/{resource_id}/capabilities", "put"): (
+            "booking_resource_capabilities_replace",
+            "booking",
+            "booking.manage_supply",
+        ),
+        ("/v1/queues/{queue_id}:set-active", "post"): (
+            "queue_service_queue_set_active",
+            "queue",
+            "queue.configure",
+        ),
+    }
+    for (path, method), (operation_id, owner, capability) in expected.items():
+        _assert_command_policy(
+            _operation(app, path, method),
+            operation_id=operation_id,
+            owner=owner,
+            capability=capability,
         )

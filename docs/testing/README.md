@@ -27,6 +27,7 @@ Key references:
 - `docs/testing/current-proof-map.toml` — representative proof mapping.
 - `docs/testing/test-architecture-migration.md` — test-taxonomy/disposition ledger.
 - `tests/AGENTS.md` — executable working rules for test placement and authorship.
+- `README.md` § *Run the whole system locally* — development-only full stack (`scripts/dev/local_stack.py`, `compose.dev.yaml`) for manual exploration; it is not CI evidence.
 
 ## Contributor / agent evidence flow
 
@@ -67,7 +68,7 @@ cluster. For a Docker-free local PostgreSQL proof, explicitly set
 `REQUEST_ENGINE_BASELINE_PG_BIN` to a directory containing PostgreSQL 18's
 `initdb`, `pg_ctl`, `postgres` and `createdb`. Run as a user supported by those
 binaries, with the usual `PG*` installation credentials. This mode initializes
-and destroys a separate temporary cluster with SCRAM authentication and loopback
+and destroys a separate UTF-8 temporary cluster with SCRAM authentication and loopback
 TCP only, installs immutable 0001 twice, and runs the same catalog, identity and
 integrity checks. It does not fall back automatically or replace Docker/system
 acceptance. Port acquisition is fail-closed if another process takes the selected

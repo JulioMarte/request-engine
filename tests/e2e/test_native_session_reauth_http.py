@@ -138,3 +138,88 @@ async def test_native_session_reauth_http_refreshes_freshness_and_fails_closed(
         schema = (await client.get("/openapi.json")).json()
         operation = schema["paths"][_REAUTH_PATH]["post"]
         assert operation["operationId"] == "nativeSessionReauthenticate"
+
+
+@pytest.mark.asyncio
+async def test_password_only_recovery_requires_explicit_current_password_completion(
+    e2e_admin_conn: PgConnection,
+    e2e_session_factory: SessionFactory,
+    platform_read_session_factory: SessionFactory,
+    platform_control_session_factory: SessionFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority_id, _root_id, handle, password = _bootstrap_root(
+        e2e_admin_conn, monkeypatch, provenance="password-only-recovery-completion"
+    )
+    app = create_platform_control_app(
+        auth_session_factory=e2e_session_factory,
+        platform_read_session_factory=platform_read_session_factory,
+        platform_write_session_factory=platform_control_session_factory,
+        native_authority_id=authority_id,
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://control.test"
+    ) as client:
+        login = await client.post(
+            "/auth/native/sessions", json={"login_handle": handle, "password": password}
+        )
+        assert login.status_code == 201, login.text
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        issued = await client.post("/auth/native/sessions/current/recovery-codes", headers=headers)
+        assert issued.status_code == 201, issued.text
+        recovered_password = "new password after offline recovery"
+        # Exhaust the set through the actual recovery operation. Completion must
+        # remain possible when the last available code was needed for recovery.
+        for code in issued.json()["codes"]:
+            recovered = await client.post(
+                "/auth/native/password:recover-with-code",
+                json={"recovery_code": code, "new_password": recovered_password},
+            )
+            assert recovered.status_code == 204, recovered.text
+        recovered_login = await client.post(
+            "/auth/native/sessions",
+            json={"login_handle": handle, "password": recovered_password},
+        )
+        assert recovered_login.status_code == 201, recovered_login.text
+        token = recovered_login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        before = await client.get("/auth/native/sessions/current", headers=headers)
+        assert before.json()["recovery_restricted"] is True
+        denied_reauth = await client.post(
+            _REAUTH_PATH, headers=headers, json={"password": recovered_password}
+        )
+        assert denied_reauth.status_code == 403
+        assert denied_reauth.json()["error"]["code"] == "recovery_completion_required"
+        wrong = await client.post(
+            "/auth/native/sessions/current/recovery:complete",
+            headers=headers,
+            json={"password": "incorrect"},
+        )
+        assert wrong.status_code == 401
+        readiness = await client.get(
+            "/auth/native/sessions/current/recovery-readiness", headers=headers
+        )
+        assert readiness.json()["recovery_state"] == "recovery_restricted"
+        assert readiness.json()["remaining_codes"] == 0
+        assert readiness.json()["active_webauthn_credentials"] == 0
+        completed = await client.post(
+            "/auth/native/sessions/current/recovery:complete",
+            headers=headers,
+            json={"password": recovered_password},
+        )
+        assert completed.status_code == 200, completed.text
+        assert completed.headers["cache-control"] == "no-store"
+        assert completed.json()["recovery_state"] == "normal"
+        after = await client.get("/auth/native/sessions/current", headers=headers)
+        for fact in ("authentication_methods", "authentication_assurance", "recovery_derived"):
+            assert after.json()[fact] == before.json()[fact]
+        normal_login = await client.post(
+            "/auth/native/sessions",
+            json={"login_handle": handle, "password": recovered_password},
+        )
+        assert normal_login.status_code == 201
+        normal_headers = {"Authorization": f"Bearer {normal_login.json()['access_token']}"}
+        replenished = await client.post(
+            "/auth/native/sessions/current/recovery-codes", headers=normal_headers
+        )
+        assert replenished.status_code == 201, replenished.text

@@ -2,6 +2,12 @@
 
 Status: Accepted (2026-09-18)
 
+Current policy amendment: [ADR 0017](0017-optional-passkeys-administrative-authentication.md)
+replaces mandatory passkey enrollment for initial claim and exclusive WebAuthn
+admission for administrative actions. Password and recovery codes remain required
+for initial claim; passkeys are optional. Original sections below retain decision
+provenance; current authentication policy is governed by ADR 0017.
+
 ## Context
 
 Request Engine is a self-hosted, native-first platform with a separate platform

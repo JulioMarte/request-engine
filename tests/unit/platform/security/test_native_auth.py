@@ -55,6 +55,11 @@ def test_malformed_password_verifier_fails_closed() -> None:
     )
 
 
+def test_password_verification_rejects_invalid_utf8_without_raising() -> None:
+    verifier = hash_password("a sufficiently long password")
+    assert not verify_password("invalid-utf8-\ud800", verifier)
+
+
 def test_opaque_token_persists_only_digest_and_fingerprint() -> None:
     material = issue_opaque_token()
     parsed = parse_opaque_token(material.raw_token)

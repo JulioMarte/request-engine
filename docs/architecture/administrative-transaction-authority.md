@@ -94,6 +94,14 @@ writers update Party/children and append audit facts without later acquiring a
 conflicting Principal lock; Principal FK KEY SHARE does not conflict with SHARE.
 The operational-authority bootstrap writer already orders Principal before
 Party. Future Party or Representation writers must preserve this compatibility.
+The staff Representation delegation writer
+(`request_engine.replace_staff_representations`, migration `0005`) does: after the
+staff roots and the manager's own Principal (SHARE), it locks the target Principal
+FOR UPDATE, then the authority Party FOR SHARE, then the manager's delegable
+Representation rows FOR SHARE, and only then writes target Representations, whose
+trigger updates the already held target Principal. A delegate's configuration
+transaction admitted before that writer commits may finish; its next transaction
+observes the revocation (see the Tenancy README and INV-STAFF-REPRESENTATION-001).
 The old `lock_current_party_authority` primitive and unrelated callers remain
 unchanged. This is a scoped connection replacement, not a global lock redesign.
 

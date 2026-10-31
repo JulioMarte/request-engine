@@ -219,6 +219,85 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
 
 
 @pytest.mark.asyncio
+async def test_password_only_claim_over_http_admits_password_administration(
+    private_runtime_configuration: UUID,
+    e2e_admin_conn: PgConnection,
+) -> None:
+    """ADR 0017: no passkey is needed to claim, sign in or confirm administration."""
+
+    _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    app = create_app()
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://private-control.test"
+        ) as client,
+    ):
+        issued = (await client.post("/v1/setup/sessions")).json()
+        setup_headers = {"Authorization": f"Setup {issued['token']}"}
+        enrolled = await client.post(
+            "/v1/setup/native-identity",
+            headers=setup_headers,
+            json={"login_handle": LOGIN_HANDLE, "password": PASSWORD},
+        )
+        assert enrolled.status_code == 204
+        finalize_headers = {**setup_headers, "Idempotency-Key": "password-only-claim"}
+        claim_body = {"claim_provenance": "e2e:password-only-claim"}
+        # Recovery codes remain a claim prerequisite even without a passkey.
+        premature = await client.post(
+            "/v1/setup:finalize", headers=finalize_headers, json=claim_body
+        )
+        assert premature.status_code == 409, premature.text
+        assert (await client.get("/v1/setup")).json() == {"setup_required": True}
+        codes = await client.post("/v1/setup/recovery-codes", headers=setup_headers)
+        assert codes.status_code == 201
+        finalized = await client.post(
+            "/v1/setup:finalize",
+            headers={**setup_headers, "Idempotency-Key": "password-only-claim-2"},
+            json=claim_body,
+        )
+        assert finalized.status_code == 201, finalized.text
+        result = finalized.json()
+        assert (await client.get("/v1/setup")).json() == {"setup_required": False}
+
+        login = await client.post(
+            "/auth/native/sessions", json={"login_handle": LOGIN_HANDLE, "password": PASSWORD}
+        )
+        assert login.status_code == 201
+        owner_auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        current = (await client.get("/auth/native/sessions/current", headers=owner_auth)).json()
+        assert current["authentication_methods"] == ["password"]
+        assert current["authentication_assurance"] == "single_factor"
+        assert current["user_verified"] is False
+
+        wrong = await client.post(
+            "/auth/native/sessions:reauth", headers=owner_auth, json={"password": "not it"}
+        )
+        assert wrong.status_code == 401
+        confirmed = await client.post(
+            "/auth/native/sessions:reauth", headers=owner_auth, json={"password": PASSWORD}
+        )
+        assert confirmed.status_code == 200, confirmed.text
+
+        # A recent-proof-guarded owner command is admitted on password evidence.
+        invited = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**owner_auth, "Idempotency-Key": "password-owner-invite"},
+            json={"provenance_reference": "e2e:password-only-owner"},
+        )
+        assert invited.status_code == 201, invited.text
+
+    native_identity_id = UUID(result["native_identity_id"])
+    assert e2e_admin_conn.execute(
+        "SELECT count(*) FROM request_engine.webauthn_credentials WHERE native_identity_id = %s",
+        (native_identity_id,),
+    ).fetchone() == (0,)
+    assert e2e_admin_conn.execute(
+        "SELECT state FROM request_engine.platform_instance WHERE id IS NOT NULL"
+    ).fetchone() == ("claimed",)
+
+
+@pytest.mark.asyncio
 async def test_webauthn_registration_rejects_another_setup_session(
     private_runtime_configuration: UUID,
     e2e_admin_conn: PgConnection,

@@ -40,6 +40,14 @@ class SelfAuthorityView(BaseModel):
     observed_at: datetime
     representations: list[CurrentRepresentationView]
     next_after: UUID | None
+    capabilities: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Capabilities resolved for this caller in this organization when the request "
+            "was authenticated, sorted. Advisory for interfaces deciding what to offer; "
+            "every operation re-checks its own capability and relationship."
+        ),
+    )
     requires_owner_validation: Literal[True] = True
 
 
@@ -92,6 +100,7 @@ def create_self_authority_router(
                 for item in result.representations
             ],
             next_after=result.next_after,
+            capabilities=sorted(actor.capabilities),
         )
 
     add_capability_route(

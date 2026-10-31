@@ -28,6 +28,10 @@ from request_engine.modules.tenancy.api.identity_recovery import (
 from request_engine.modules.tenancy.api.native_platform_provisioning import (
     install_native_platform_provisioning_http,
 )
+from request_engine.modules.tenancy.api.platform_account_invitations import (
+    AccountInvitationMailer,
+    install_platform_account_invitations_http,
+)
 from request_engine.modules.tenancy.api.platform_native_identity_management import (
     install_native_identity_management_http,
 )
@@ -90,6 +94,7 @@ def create_platform_control_app(
     operational_metrics: P7OperationalMetrics | None = None,
     webauthn_policy: WebAuthnPolicy | None = None,
     webauthn_decoy_key: bytes | None = None,
+    account_invitation_mailer: AccountInvitationMailer | None = None,
 ) -> FastAPI:
     """Explicit private control-plane composition; caller owns pool lifecycles."""
     runtime = build_native_auth_runtime(
@@ -186,6 +191,13 @@ def create_platform_control_app(
         app,
         read_session_factory=platform_read_session_factory,
         actor_resolver=runtime.platform_actor_resolver,
+    )
+    install_platform_account_invitations_http(
+        app,
+        write_session_factory=platform_write_session_factory,
+        read_session_factory=platform_read_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
+        mailer=account_invitation_mailer,
     )
     install_platform_controller_policy_adoption_http(
         app,

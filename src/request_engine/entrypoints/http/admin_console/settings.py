@@ -5,6 +5,7 @@ Credential material lives in an explicitly configured private persistent store.
 
 from pathlib import Path
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,6 +24,12 @@ class AdminConsoleSettings(BaseSettings):
 
     control_api_base_url: str
     runtime_api_base_url: str | None = None
+    # Address agents and MCP clients use to reach the runtime API from outside.
+    # Shown in connection instructions only; defaults to runtime_api_base_url.
+    public_runtime_api_base_url: str | None = None
+    # Deployment fact (not a secret): the built-in workload identity authority
+    # returned by instance claim. Agent creation forms use it; absent -> asked.
+    workload_authority_id: UUID | None = None
     session_secret: SecretStr
     session_store_directory: Path
     session_cookie_name: str = "re_admin_console"
@@ -36,7 +43,7 @@ class AdminConsoleSettings(BaseSettings):
     log_level: str = "INFO"
     debug: bool = False
 
-    @field_validator("control_api_base_url", "runtime_api_base_url")
+    @field_validator("control_api_base_url", "runtime_api_base_url", "public_runtime_api_base_url")
     @classmethod
     def validate_base_url(cls, value: str | None) -> str | None:
         if value is None:

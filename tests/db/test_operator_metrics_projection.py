@@ -346,7 +346,7 @@ def test_operator_projection_plan_uses_ordered_indexes_for_oldest_work(
     assert 0 < aggregate[1] < 3 * 24 * 60 * 60
 
 
-def test_column_acl_poisoning_rejects_0039_before_any_object_is_installed(
+def test_column_acl_poisoning_rejects_baseline_before_any_object_is_installed(
     pg_conninfo: str,
 ) -> None:
     database = f"re_operator_metrics_acl_{uuid4().hex}"
@@ -377,22 +377,15 @@ def test_column_acl_poisoning_rejects_0039_before_any_object_is_installed(
     ).render_as_string(hide_password=False)
     environment = {**os.environ, "MIGRATION_DATABASE_URL": migration_url}
     try:
-        baseline = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "0038_shared_http_auth_admission"],
-            cwd=ROOT,
-            env=environment,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert baseline.returncode == 0, baseline.stdout + baseline.stderr
+        # A column ACL for the shared cluster role exists in the target database
+        # before the baseline installs (historically: before 0039).
         with psycopg.connect(isolated_conninfo, autocommit=True) as isolated:
+            isolated.execute("CREATE TABLE public.metrics_acl_probe (status text)")
             isolated.execute(
-                "GRANT SELECT (status) ON request_engine.scheduled_actions "
-                "TO request_operator_metrics"
+                "GRANT SELECT (status) ON public.metrics_acl_probe TO request_operator_metrics"
             )
         failed_upgrade = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "0039_operator_metrics_projection"],
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
             cwd=ROOT,
             env=environment,
             check=False,
@@ -402,15 +395,15 @@ def test_column_acl_poisoning_rejects_0039_before_any_object_is_installed(
         assert failed_upgrade.returncode != 0
         assert "pre-existing object grants" in failed_upgrade.stderr
         with psycopg.connect(isolated_conninfo) as isolated:
-            assert isolated.execute("SELECT version_num FROM alembic_version").fetchone() == (
-                "0038_shared_http_auth_admission",
-            )
+            # Nothing is installed: no Alembic state, schemas or metrics objects.
             assert isolated.execute(
-                "SELECT to_regclass('request_admin.read_operator_metrics()')"
-            ).fetchone() == (None,)
+                "SELECT to_regclass('public.alembic_version'), "
+                "to_regnamespace('request_admin'), to_regnamespace('request_engine')"
+            ).fetchone() == (None, None, None)
             assert isolated.execute(
-                "SELECT to_regclass('request_engine.scheduled_actions_metrics_pending_due_idx')"
-            ).fetchone() == (None,)
+                "SELECT has_column_privilege("
+                "'request_operator_metrics', 'public.metrics_acl_probe', 'status', 'SELECT')"
+            ).fetchone() == (True,)
     finally:
         with psycopg.connect(cluster_conninfo, autocommit=True) as cluster_admin:
             cluster_admin.execute(

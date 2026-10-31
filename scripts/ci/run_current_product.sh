@@ -80,6 +80,8 @@ uv run pytest \
   tests/integration/f1_operational_profile/test_contextual_configuration_races.py \
   tests/integration/f1_operational_profile/test_configuration_command_authority_matrix.py \
   tests/integration/f1_operational_profile/test_supply_configuration_reads.py \
+  tests/integration/f1_operational_profile/test_catalog_administration_reads.py \
+  tests/integration/f1_operational_profile/test_queue_configuration_reads.py \
   tests/db/test_catalog_booking_policy_override.py \
   tests/db/test_organization_channel_policies.py \
   tests/db/test_channel_policy_creation_race.py \
@@ -119,6 +121,8 @@ uv run pytest \
   tests/db/test_native_platform_provisioning.py \
   tests/db/test_native_identity_admin_provision.py \
   tests/db/test_initial_controller_policy.py \
+  tests/db/test_local_stack_revision_guard.py \
+  tests/db/test_tenant_controller_v9_adoption.py \
   tests/db/test_native_tenant_root_bootstrap.py \
   tests/db/test_native_identity_actor_runtime.py \
   tests/db/test_native_human_auth_runtime.py \
@@ -130,6 +134,7 @@ uv run pytest \
   tests/db/test_http_sql_execution_budget.py \
   tests/db/test_shared_http_auth_admission.py \
   tests/db/test_operator_metrics_projection.py \
+  tests/db/test_change_feed_signal.py \
   tests/db/test_operator_alert_smoke_setup.py \
   tests/db/test_workload_authentication.py \
   tests/db/test_agent_governance.py \
@@ -137,6 +142,7 @@ uv run pytest \
   tests/db/test_agent_credential_rotation.py \
   tests/db/test_self_authority_reader.py \
   tests/db/test_self_organization_discovery.py \
+  tests/db/test_self_service_business_accounts.py \
   tests/db/test_resource_authority_inspection.py \
   tests/db/test_agent_policy.py \
   tests/db/test_delegation_concurrency.py \
@@ -150,8 +156,12 @@ uv run pytest \
   tests/db/test_temporary_proof_cleanup_worker.py \
   tests/db/test_staff_email_invitations.py \
   tests/db/test_staff_invitation_delivery.py \
+  tests/db/test_staff_invitation_proposals.py \
+  tests/db/test_staff_invitation_links.py \
+  tests/db/test_staff_representation_delegation.py \
   tests/db/test_identity_governance_audit.py \
   tests/db/test_controller_policy_upgrade.py \
+  tests/db/test_controller_policy_adoption_provenance.py \
   tests/db/test_identity_onboarding_readiness.py \
   tests/db/test_staff_invitation_anchor_authority.py \
   tests/db/test_platform_control_definer_topology.py \
@@ -166,13 +176,15 @@ uv run pytest \
   tests/db/test_native_multi_session.py \
   tests/db/test_platform_instance_setup.py \
   tests/db/test_instance_claim.py \
+  tests/db/test_native_reauth_freshness.py \
+  tests/db/test_native_password_proof_finalization.py \
+  tests/db/test_password_rehash.py \
   tests/db/test_platform_configuration_foundation.py \
   tests/db/test_platform_configuration_governance.py \
   tests/db/test_recovery_code_persistence.py \
   tests/db/test_native_recovery_addresses.py \
   tests/db/test_webauthn_persistence.py \
   tests/db/test_webauthn_concurrency.py \
-  tests/db/test_webauthn_populated_upgrade.py \
   tests/db/test_webauthn_challenge_retention.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/principal-authority.xml"

@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from time import monotonic
+from typing import Any, cast
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -22,19 +23,42 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from request_engine.entrypoints.http.admin_console.capability_labels import (
+    capability_label,
+    grouped_capabilities,
+)
 from request_engine.entrypoints.http.admin_console.client import (
     ControlPlaneClient,
     ControlPlanePort,
 )
+from request_engine.entrypoints.http.admin_console.configuration_labels import task_label
 from request_engine.entrypoints.http.admin_console.routes_auth import install_auth_routes
+from request_engine.entrypoints.http.admin_console.routes_business_setup import (
+    install_business_setup_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_clinic_setup import (
+    install_clinic_setup_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_controller_adoption import (
+    install_controller_adoption_routes,
+)
 from request_engine.entrypoints.http.admin_console.routes_diagnostics import (
     install_diagnostics_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_front_desk_booking import (
+    install_front_desk_booking_routes,
 )
 from request_engine.entrypoints.http.admin_console.routes_my_organizations import (
     install_my_organization_routes,
 )
 from request_engine.entrypoints.http.admin_console.routes_operations import (
     install_operation_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_owner_enrollment import (
+    install_owner_enrollment_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_owner_permissions import (
+    install_owner_permission_routes,
 )
 from request_engine.entrypoints.http.admin_console.routes_resources import (
     install_resource_routes,
@@ -43,8 +67,20 @@ from request_engine.entrypoints.http.admin_console.routes_setup import install_s
 from request_engine.entrypoints.http.admin_console.routes_staff_invitations import (
     install_staff_invitation_routes,
 )
+from request_engine.entrypoints.http.admin_console.routes_tenant_agents import (
+    install_tenant_agent_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_tenant_approvals import (
+    install_tenant_approval_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_tenant_configuration import (
+    install_tenant_configuration_routes,
+)
 from request_engine.entrypoints.http.admin_console.routes_tenant_staff import (
     install_tenant_staff_routes,
+)
+from request_engine.entrypoints.http.admin_console.routes_tenant_workspace import (
+    install_tenant_workspace_routes,
 )
 from request_engine.entrypoints.http.admin_console.settings import AdminConsoleSettings
 from request_engine.entrypoints.http.admin_console.state import AdminConsoleState
@@ -54,6 +90,7 @@ _CONTENT_SECURITY_POLICY = (
     "script-src 'self'; "
     "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data:; "
+    "font-src 'self'; "
     "connect-src 'self'; "
     "form-action 'self'; "
     "frame-ancestors 'none'; "
@@ -124,6 +161,10 @@ def create_admin_console_app(
         lifespan=lifespan,
     )
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+    template_globals = cast(dict[str, Any], templates.env.globals)
+    template_globals["grouped_capabilities"] = grouped_capabilities
+    template_globals["task_label"] = task_label
+    template_globals["capability_label"] = capability_label
     app.mount(
         "/static",
         StaticFiles(directory=str(Path(__file__).parent / "static")),
@@ -206,7 +247,14 @@ def create_admin_console_app(
             target = _origin_identity(f"{request.url.scheme}://{request.url.netloc}")
             source = _origin_identity(origins[0]) if len(origins) == 1 else None
             if source is None or target is None or source != target:
-                response = JSONResponse({"error": "Same-origin request required"}, status_code=403)
+                response = JSONResponse(
+                    {
+                        "error": (
+                            "Esta acción debe enviarse desde la misma consola. Recargue la página."
+                        )
+                    },
+                    status_code=403,
+                )
             else:
                 response = await call_next(request)
         else:
@@ -214,7 +262,11 @@ def create_admin_console_app(
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        # Same-origin keeps paths away from other sites while letting browsers send a
+        # real Origin on ordinary form posts (Chromium sends "null" under
+        # no-referrer). Pages holding one-time secrets keep their own no-referrer.
+        if "referrer-policy" not in response.headers:
+            response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Content-Security-Policy"] = _CONTENT_SECURITY_POLICY
         return response
 
@@ -245,10 +297,20 @@ def create_admin_console_app(
     app.add_api_route("/health/ready", ready, methods=["GET"], include_in_schema=False)
 
     install_auth_routes(app, state)
+    install_owner_enrollment_routes(app, state)
     install_setup_routes(app, state)
     install_operation_routes(app, state)
+    install_controller_adoption_routes(app, state)
+    install_business_setup_routes(app, state)
     install_resource_routes(app, state)
     install_tenant_staff_routes(app, state)
+    install_tenant_workspace_routes(app, state)
+    install_front_desk_booking_routes(app, state)
+    install_clinic_setup_routes(app, state)
+    install_owner_permission_routes(app, state)
+    install_tenant_agent_routes(app, state)
+    install_tenant_approval_routes(app, state)
+    install_tenant_configuration_routes(app, state)
     install_staff_invitation_routes(app, state)
     install_my_organization_routes(app, state)
     install_diagnostics_routes(app, state)

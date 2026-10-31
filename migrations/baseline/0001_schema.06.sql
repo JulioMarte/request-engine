@@ -1,1490 +1,2044 @@
-               AND principal.id <> p_excluded_principal_id
-               AND request_platform.principal_is_effective_platform_controller(
-                       principal.id)
-             ORDER BY principal.id
-             LIMIT 1;
-            IF v_candidate IS NULL THEN
-                RAISE EXCEPTION 'Platform must retain an effective controller'
-                    USING ERRCODE = '23514';
-            END IF;
-        END
-        $$;
-
-
-ALTER FUNCTION request_platform.assert_other_platform_controller(p_excluded_principal_id uuid) OWNER TO request_platform_control_definer;
+ALTER FUNCTION request_engine.read_onboarding_identity_facts(p_organization_id uuid) OWNER TO request_engine_schema_owner;
 
 --
--- Name: assert_other_platform_owner(uuid); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: reject_immutable_mutation(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE FUNCTION request_platform.assert_other_platform_owner(p_excluded_principal_id uuid) RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER
+CREATE FUNCTION request_engine.reject_immutable_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RAISE EXCEPTION '% is append-only', TG_TABLE_NAME
+        USING ERRCODE = '55000';
+END
+$$;
+
+
+ALTER FUNCTION request_engine.reject_immutable_mutation() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: reject_native_identity_provision_receipt_mutation(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.reject_native_identity_provision_receipt_mutation() RETURNS trigger
+    LANGUAGE plpgsql
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
     AS $$
-        DECLARE
-            v_candidate uuid;
-        BEGIN
-            PERFORM principal.id
-              FROM request_engine.principals AS principal
-             WHERE principal.principal_plane = 'platform'
-             ORDER BY principal.id
-             FOR UPDATE;
+    BEGIN RAISE EXCEPTION 'provision receipt is immutable' USING ERRCODE='55000'; END $$;
 
-            SELECT principal.id
-              INTO v_candidate
-              FROM request_engine.principals AS principal
-             WHERE principal.principal_plane = 'platform'
-               AND principal.id <> p_excluded_principal_id
-               AND request_platform.principal_is_effective_platform_owner(principal.id)
-             ORDER BY principal.id
-             LIMIT 1;
-            IF v_candidate IS NULL THEN
-                RAISE EXCEPTION 'Platform must retain an effective Platform Owner'
-                    USING ERRCODE = '23514';
-            END IF;
-        END
+
+ALTER FUNCTION request_engine.reject_native_identity_provision_receipt_mutation() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: reject_queue_entry_operator_selection_mutation(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.reject_queue_entry_operator_selection_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'QueueEntry operator selections are immutable facts'
+        USING ERRCODE = '23514';
+END
+$$;
+
+
+ALTER FUNCTION request_engine.reject_queue_entry_operator_selection_mutation() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: reject_temporary_proof_receipt_mutation(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.reject_temporary_proof_receipt_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        BEGIN RAISE EXCEPTION 'retention receipt is immutable' USING ERRCODE='55000'; END;
         $$;
 
 
-ALTER FUNCTION request_platform.assert_other_platform_owner(p_excluded_principal_id uuid) OWNER TO request_platform_control_definer;
+ALTER FUNCTION request_engine.reject_temporary_proof_receipt_mutation() OWNER TO request_engine_schema_owner;
 
 --
--- Name: assert_platform_configuration_actor(text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: replace_agent_authority(uuid, bigint, text[], text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE FUNCTION request_platform.assert_platform_configuration_actor(p_capability text) RETURNS TABLE(actor_id uuid, actor_method text, correlation_id uuid)
+CREATE FUNCTION request_engine.replace_agent_authority(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
     AS $$
         DECLARE
             v_actor_id uuid;
-            v_actor_revision bigint;
-            v_actor_method text;
-            v_correlation_id uuid;
-            v_actor_kind text;
-            v_actor_active boolean;
-            v_actor_current_revision bigint;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_profile_status text;
+            v_workload_identity_id uuid;
+            v_current_revision bigint;
+            v_capability text;
+            v_plane text;
         BEGIN
-            IF p_capability NOT IN (
-                'platform.configuration.read',
-                'platform.configuration.stage',
-                'platform.configuration.validate',
-                'platform.configuration.activate',
-                'platform.configuration.disable',
-                'platform.secret.write',
-                'platform.secret.rotate',
-                'platform.secret.revoke',
-                'platform.provider.test',
-                'platform.readiness.read'
-            ) THEN
-                RAISE EXCEPTION 'Unknown platform configuration capability'
-                    USING ERRCODE = '22023';
+            PERFORM request_engine.acquire_identity_topology_share();
+            v_actor_id := request_engine.assert_staff_manager(
+                'agent.manage_authority'
+            );
+            SELECT status, workload_identity_id
+              INTO v_profile_status, v_workload_identity_id
+              FROM request_engine.agent_profiles
+             WHERE principal_id = p_principal_id
+             FOR SHARE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Agent profile not found' USING ERRCODE = 'P0002';
             END IF;
-
-            BEGIN
-                v_actor_id := NULLIF(
-                    current_setting(
-                        'request_engine.authenticated_principal_id',
-                        true
-                    ),
-                    ''
-                )::uuid;
-                v_actor_revision := NULLIF(
-                    current_setting(
-                        'request_engine.authority_revision',
-                        true
-                    ),
-                    ''
-                )::bigint;
-                v_actor_method := NULLIF(
-                    current_setting(
-                        'request_engine.authentication_method',
-                        true
-                    ),
-                    ''
-                );
-                v_correlation_id := NULLIF(
-                    current_setting(
-                        'request_engine.correlation_id',
-                        true
-                    ),
-                    ''
-                )::uuid;
-            EXCEPTION WHEN invalid_text_representation THEN
-                RAISE EXCEPTION 'Platform actor provenance is malformed'
-                    USING ERRCODE = '28000';
-            END;
-
-            IF v_actor_id IS NULL
-               OR v_actor_revision IS NULL
-               OR v_actor_method IS NULL
-            THEN
-                RAISE EXCEPTION 'Platform actor provenance is required'
-                    USING ERRCODE = '28000';
-            END IF;
-
-            SELECT
-                principal.principal_kind,
-                principal.active,
-                principal.authority_revision
-              INTO
-                v_actor_kind,
-                v_actor_active,
-                v_actor_current_revision
-              FROM request_engine.principals AS principal
-             WHERE principal.id = v_actor_id
-               AND principal.principal_plane = 'platform';
-
-            IF NOT FOUND
-               OR NOT v_actor_active
-               OR v_actor_kind <> 'human'
-            THEN
-                RAISE EXCEPTION
-                    'Platform configuration requires an active HUMAN principal'
-                    USING ERRCODE = '42501';
-            END IF;
-
-            IF v_actor_current_revision <> v_actor_revision THEN
-                RAISE EXCEPTION 'Platform authority revision is stale'
-                    USING ERRCODE = '40001';
-            END IF;
-
-            IF NOT EXISTS (
-                SELECT 1
-                  FROM request_engine.principal_authority_grants AS grant_row
-                 WHERE grant_row.principal_id = v_actor_id
-                   AND grant_row.principal_plane = 'platform'
-                   AND grant_row.authority_plane = 'platform'
-                   AND grant_row.status = 'active'
-                   AND grant_row.capability_key = p_capability
-            ) THEN
-                RAISE EXCEPTION
-                    'Current Platform Principal lacks configuration authority'
-                    USING ERRCODE = '42501';
-            END IF;
-
-            RETURN QUERY
-            SELECT v_actor_id, v_actor_method, v_correlation_id;
-        END
-        $$;
-
-
-ALTER FUNCTION request_platform.assert_platform_configuration_actor(p_capability text) OWNER TO request_platform_control_definer;
-
---
--- Name: assert_platform_has_controller(); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.assert_platform_has_controller() RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $$
-        DECLARE
-            v_candidate uuid;
-        BEGIN
-            SELECT principal.id
-              INTO v_candidate
-              FROM request_engine.principals AS principal
-             WHERE principal.principal_plane = 'platform'
-               AND request_platform.principal_is_effective_platform_controller(
-                       principal.id)
-             ORDER BY principal.id
-             LIMIT 1;
-            IF v_candidate IS NULL THEN
-                RAISE EXCEPTION 'Platform must retain an effective controller'
+            IF v_profile_status NOT IN ('pending', 'active') THEN
+                RAISE EXCEPTION 'Suspended or revoked agents cannot receive authority'
                     USING ERRCODE = '55000';
             END IF;
-        END
-        $$;
-
-
-ALTER FUNCTION request_platform.assert_platform_has_controller() OWNER TO request_platform_control_definer;
-
---
--- Name: assert_platform_identity_actor(text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.assert_platform_identity_actor(p_capability text) RETURNS TABLE(actor_id uuid, actor_method text, correlation_id uuid)
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $$
-        DECLARE
-            v_actor_id uuid;
-            v_actor_revision bigint;
-            v_actor_method text;
-            v_correlation_id uuid;
-            v_actor_kind text;
-            v_actor_active boolean;
-            v_actor_current_revision bigint;
-        BEGIN
-            IF p_capability NOT IN (
-                'platform.identity.recover', 'platform.identity.recovery_approve'
-            ) THEN
-                RAISE EXCEPTION 'Unknown platform identity recovery capability'
-                    USING ERRCODE = '22023';
-            END IF;
-            BEGIN
-                v_actor_id := NULLIF(current_setting(
-                    'request_engine.authenticated_principal_id', true
-                ), '')::uuid;
-                v_actor_revision := NULLIF(current_setting(
-                    'request_engine.authority_revision', true
-                ), '')::bigint;
-                v_actor_method := NULLIF(current_setting(
-                    'request_engine.authentication_method', true
-                ), '');
-                v_correlation_id := NULLIF(current_setting(
-                    'request_engine.correlation_id', true
-                ), '')::uuid;
-            EXCEPTION WHEN invalid_text_representation THEN
-                RAISE EXCEPTION 'Platform actor provenance is malformed'
-                    USING ERRCODE = '28000';
-            END;
-            IF v_actor_id IS NULL OR v_actor_revision IS NULL OR v_actor_method IS NULL THEN
-                RAISE EXCEPTION 'Platform actor provenance is required'
-                    USING ERRCODE = '28000';
-            END IF;
-
-            SELECT principal.principal_kind, principal.active,
-                   principal.authority_revision
-              INTO v_actor_kind, v_actor_active, v_actor_current_revision
-              FROM request_engine.principals AS principal
-             WHERE principal.id = v_actor_id
-               AND principal.principal_plane = 'platform';
-            IF NOT FOUND OR NOT v_actor_active OR v_actor_kind <> 'human' THEN
-                RAISE EXCEPTION 'Current Platform Principal cannot administer identity recovery'
+            IF p_principal_id = v_actor_id THEN
+                RAISE EXCEPTION 'Agent authority self-replacement is forbidden'
                     USING ERRCODE = '42501';
             END IF;
-            IF v_actor_current_revision <> v_actor_revision THEN
-                RAISE EXCEPTION 'Platform authority revision is stale'
+            SELECT authority_revision
+              INTO v_current_revision
+              FROM request_engine.principals
+             WHERE id = p_principal_id
+             FOR UPDATE;
+            IF v_current_revision <> p_expected_authority_revision THEN
+                RAISE EXCEPTION 'Agent authority revision is stale'
                     USING ERRCODE = '40001';
             END IF;
-            IF NOT EXISTS (
-                SELECT 1
-                  FROM request_engine.principal_authority_grants AS actor_grant
-                 WHERE actor_grant.principal_id = v_actor_id
-                   AND actor_grant.principal_plane = 'platform'
-                   AND actor_grant.authority_plane = 'platform'
-                   AND actor_grant.status = 'active'
-                   AND actor_grant.capability_key = p_capability
-            ) THEN
-                RAISE EXCEPTION 'Current Platform Principal lacks identity recovery authority'
-                    USING ERRCODE = '42501';
-            END IF;
-            RETURN QUERY SELECT v_actor_id, v_actor_method, v_correlation_id;
-        END
-        $$;
-
-
-ALTER FUNCTION request_platform.assert_platform_identity_actor(p_capability text) OWNER TO request_platform_control_definer;
-
---
--- Name: assert_platform_owner_actor(text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.assert_platform_owner_actor(p_capability text) RETURNS TABLE(actor_id uuid, actor_method text, correlation_id uuid)
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $$
-        DECLARE
-            v_actor_id uuid;
-            v_actor_revision bigint;
-            v_actor_method text;
-            v_correlation_id uuid;
-            v_actor_kind text;
-            v_actor_active boolean;
-            v_actor_current_revision bigint;
-        BEGIN
-            IF p_capability NOT IN (
-                'platform.owner.provision',
-                'platform.owner.manage_lifecycle'
-            ) THEN
-                RAISE EXCEPTION 'Unknown Platform Owner capability'
+            IF length(btrim(p_provenance_reference)) = 0
+               OR EXISTS (
+                   SELECT 1
+                     FROM unnest(COALESCE(p_desired_capabilities, ARRAY[]::text[])) AS cap
+                    WHERE length(btrim(cap)) = 0
+               )
+               OR cardinality(COALESCE(p_desired_capabilities, ARRAY[]::text[])) <>
+                  cardinality(
+                      ARRAY(
+                          SELECT DISTINCT cap
+                            FROM unnest(
+                                COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                            ) AS cap
+                      )
+                  )
+            THEN
+                RAISE EXCEPTION 'Desired agent authority is invalid'
                     USING ERRCODE = '22023';
             END IF;
 
-            BEGIN
-                v_actor_id := NULLIF(current_setting(
-                    'request_engine.authenticated_principal_id', true
-                ), '')::uuid;
-                v_actor_revision := NULLIF(current_setting(
-                    'request_engine.authority_revision', true
-                ), '')::bigint;
-                v_actor_method := NULLIF(current_setting(
-                    'request_engine.authentication_method', true
-                ), '');
-                v_correlation_id := NULLIF(current_setting(
-                    'request_engine.correlation_id', true
-                ), '')::uuid;
-            EXCEPTION WHEN invalid_text_representation THEN
-                RAISE EXCEPTION 'Platform actor provenance is malformed'
-                    USING ERRCODE = '28000';
-            END;
-
-            IF v_actor_id IS NULL OR v_actor_revision IS NULL OR v_actor_method IS NULL THEN
-                RAISE EXCEPTION 'Platform actor provenance is required'
-                    USING ERRCODE = '28000';
-            END IF;
-
-            SELECT principal.principal_kind, principal.active,
-                   principal.authority_revision
-              INTO v_actor_kind, v_actor_active, v_actor_current_revision
-              FROM request_engine.principals AS principal
-             WHERE principal.id = v_actor_id
-               AND principal.principal_plane = 'platform';
-            IF NOT FOUND OR NOT v_actor_active OR v_actor_kind <> 'human' THEN
-                RAISE EXCEPTION 'Current Platform Principal cannot administer owners'
-                    USING ERRCODE = '42501';
-            END IF;
-            IF v_actor_current_revision <> v_actor_revision THEN
-                RAISE EXCEPTION 'Platform authority revision is stale'
-                    USING ERRCODE = '40001';
-            END IF;
-
-            IF NOT EXISTS (
-                SELECT 1
-                  FROM request_engine.principal_authority_grants AS actor_grant
-                 WHERE actor_grant.principal_id = v_actor_id
-                   AND actor_grant.status = 'active'
-                   AND actor_grant.capability_key = p_capability
-            ) THEN
-                RAISE EXCEPTION 'Current Platform Principal lacks Platform Owner authority'
-                    USING ERRCODE = '42501';
-            END IF;
-
-            RETURN QUERY SELECT v_actor_id, v_actor_method, v_correlation_id;
-        END
-        $$;
-
-
-ALTER FUNCTION request_platform.assert_platform_owner_actor(p_capability text) OWNER TO request_platform_control_definer;
-
---
--- Name: claim_identity_recovery_delivery_tickets(integer, integer); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.claim_identity_recovery_delivery_tickets(p_limit integer, p_lease_seconds integer) RETURNS TABLE(ticket_id uuid, case_id uuid, generation integer, secret_reference text, secret_digest text, destination_reference text, expires_at timestamp with time zone, attempt_count integer, claim_token uuid)
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $$
-        DECLARE
-            v_terminal record;
-            v_revision_before bigint;
-            v_revision_after bigint;
-        BEGIN
-            IF p_limit IS NULL OR p_limit < 1 OR p_limit > 100 THEN
-                RAISE EXCEPTION 'Delivery ticket claim limit must be between 1 and 100'
-                    USING ERRCODE = '22023';
-            END IF;
-            IF p_lease_seconds IS NULL OR p_lease_seconds < 1 OR p_lease_seconds > 900 THEN
-                RAISE EXCEPTION 'Delivery ticket lease must be between 1 and 900 seconds'
-                    USING ERRCODE = '22023';
-            END IF;
-
-            -- Close abandoned work that can no longer be executed. An active
-            -- final attempt is left alone until its lease expires; an expired
-            -- proof is terminal immediately because a delivered proof would no
-            -- longer be consumable.
-            FOR v_terminal IN
-                SELECT ticket.id,
-                       ticket.case_id,
-                       CASE
-                           WHEN ticket.expires_at <= clock_timestamp()
-                           THEN 'proof_expired'
-                           ELSE 'attempts_exhausted'
-                       END AS error_class
-                  FROM request_engine.identity_recovery_delivery_tickets AS ticket
-                  JOIN request_engine.identity_recovery_cases AS recovery_case
-                    ON recovery_case.id = ticket.case_id
-                 WHERE recovery_case.status = 'issued'
-                   AND ticket.status IN ('pending', 'sending')
-                   AND (
-                       ticket.expires_at <= clock_timestamp()
-                       OR (
-                           ticket.attempt_count >= ticket.max_attempts
-                           AND (
-                               ticket.status = 'pending'
-                               OR ticket.lease_until <= clock_timestamp()
-                           )
-                       )
-                   )
-                 ORDER BY ticket.id
-                 FOR UPDATE OF ticket SKIP LOCKED
+            FOR v_capability IN
+                SELECT cap
+                  FROM unnest(
+                      COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                  ) AS cap
             LOOP
-                UPDATE request_engine.identity_recovery_delivery_tickets AS ticket
-                   SET status = 'failed',
-                       claim_token = NULL,
-                       lease_until = NULL,
-                       last_error_class = v_terminal.error_class,
-                       updated_at = clock_timestamp()
-                 WHERE ticket.id = v_terminal.id;
+                SELECT authority_plane
+                  INTO v_plane
+                  FROM request_engine.principal_authority_grants
+                 WHERE organization_id = v_org_id
+                   AND principal_id = v_actor_id
+                   AND capability_key = v_capability
+                   AND status = 'active'
+                   AND delegable
+                 FOR SHARE;
+                IF NOT FOUND OR v_plane <> 'operational' THEN
+                    RAISE EXCEPTION
+                        'Desired authority exceeds the agent operational ceiling'
+                        USING ERRCODE = '42501';
+                END IF;
+            END LOOP;
 
-                UPDATE request_engine.identity_recovery_cases AS recovery_case
-                   SET delivery_status = 'failed',
-                       revision = recovery_case.revision + 1,
-                       updated_at = clock_timestamp()
-                 WHERE recovery_case.id = v_terminal.case_id
-                   AND recovery_case.status = 'issued'
-                   AND recovery_case.delivery_status IN ('pending', 'sending')
-                RETURNING recovery_case.revision - 1, recovery_case.revision
-                     INTO v_revision_before, v_revision_after;
+            UPDATE request_engine.principal_authority_grants
+               SET status = 'revoked',
+                   revision = revision + 1,
+                   revoked_at = clock_timestamp(),
+                   revoked_by_principal_id = v_actor_id
+             WHERE organization_id = v_org_id
+               AND principal_id = p_principal_id
+               AND status = 'active'
+               AND NOT (
+                   capability_key = ANY(
+                       COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                   )
+               );
 
-                IF FOUND THEN
-                    INSERT INTO request_engine.platform_identity_recovery_facts (
-                        id,
-                        case_id,
-                        action,
-                        actor_principal_id,
-                        actor_authentication_method,
-                        reason_code,
-                        external_case_reference,
-                        revision_before,
-                        revision_after,
-                        correlation_id,
+            FOR v_capability IN
+                SELECT cap
+                  FROM unnest(
+                      COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                  ) AS cap
+            LOOP
+                IF NOT EXISTS (
+                    SELECT 1
+                      FROM request_engine.principal_authority_grants
+                     WHERE principal_id = p_principal_id
+                       AND capability_key = v_capability
+                       AND status = 'active'
+                ) THEN
+                    INSERT INTO request_engine.principal_authority_grants (
+                        organization_id,
+                        principal_id,
+                        principal_plane,
+                        authority_plane,
                         capability_key,
-                        idempotency_key_digest,
-                        intent_digest
+                        delegable,
+                        granted_by_principal_id,
+                        provenance_kind,
+                        provenance_reference
                     ) VALUES (
-                        uuidv7(),
-                        v_terminal.case_id,
-                        'delivery_failed',
-                        NULL,
-                        NULL,
-                        v_terminal.error_class,
-                        NULL,
-                        v_revision_before,
-                        v_revision_after,
-                        NULL,
-                        'platform.identity.recovery_delivery',
-                        NULL,
-                        NULL
+                        v_org_id,
+                        p_principal_id,
+                        'tenant',
+                        'operational',
+                        v_capability,
+                        false,
+                        v_actor_id,
+                        'agent_authority_management',
+                        btrim(p_provenance_reference)
                     );
                 END IF;
             END LOOP;
 
-            RETURN QUERY
-            WITH candidate AS (
-                SELECT ticket.id,
-                       CASE
-                           WHEN ticket.status = 'pending' THEN ticket.next_attempt_at
-                           ELSE ticket.lease_until
-                       END AS due_at
-                  FROM request_engine.identity_recovery_delivery_tickets AS ticket
-                  JOIN request_engine.identity_recovery_cases AS recovery_case
-                    ON recovery_case.id = ticket.case_id
-                 WHERE (
-                           (
-                               ticket.status = 'pending'
-                               AND ticket.next_attempt_at <= clock_timestamp()
-                           )
-                           OR (
-                               ticket.status = 'sending'
-                               AND ticket.lease_until <= clock_timestamp()
-                           )
-                       )
-                   AND ticket.expires_at > clock_timestamp()
-                   AND ticket.attempt_count < ticket.max_attempts
-                   AND recovery_case.status = 'issued'
-                 ORDER BY due_at, ticket.id
-                 LIMIT p_limit
-                 FOR UPDATE OF ticket SKIP LOCKED
-            )
-            UPDATE request_engine.identity_recovery_delivery_tickets AS ticket
-               SET status = 'sending',
-                   claim_token = uuidv7(),
-                   lease_until = clock_timestamp() + make_interval(secs => p_lease_seconds),
-                   attempt_count = ticket.attempt_count + 1,
-                   last_error_class = CASE
-                       WHEN ticket.status = 'sending' THEN 'lease_expired'
-                       ELSE ticket.last_error_class
-                   END,
-                   updated_at = clock_timestamp()
-              FROM candidate
-             WHERE ticket.id = candidate.id
-            RETURNING ticket.id,
-                      ticket.case_id,
-                      ticket.generation,
-                      ticket.secret_reference,
-                      ticket.secret_digest,
-                      ticket.destination_reference,
-                      ticket.expires_at,
-                      ticket.attempt_count,
-                      ticket.claim_token;
-
-            UPDATE request_engine.identity_recovery_cases AS recovery_case
-               SET delivery_status = 'sending',
-                   revision = recovery_case.revision + 1,
-                   updated_at = clock_timestamp()
-             WHERE recovery_case.status = 'issued'
-               AND recovery_case.delivery_status = 'pending'
-               AND EXISTS (
-                   SELECT 1
-                     FROM request_engine.identity_recovery_delivery_tickets AS ticket
-                    WHERE ticket.case_id = recovery_case.id
-                      AND ticket.status = 'sending'
-                      AND ticket.lease_until > clock_timestamp()
-               );
+            SELECT authority_revision
+              INTO v_current_revision
+              FROM request_engine.principals
+             WHERE id = p_principal_id;
+            RETURN v_current_revision;
         END
         $$;
 
 
-ALTER FUNCTION request_platform.claim_identity_recovery_delivery_tickets(p_limit integer, p_lease_seconds integer) OWNER TO request_platform_control_definer;
+ALTER FUNCTION request_engine.replace_agent_authority(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) OWNER TO request_engine_schema_owner;
 
 --
--- Name: commit_platform_secret_mutation(uuid); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: replace_integration_authority(uuid, bigint, text[], text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE FUNCTION request_platform.commit_platform_secret_mutation(p_operation_id uuid) RETURNS TABLE(operation_id uuid, operation_kind text, binding_id uuid, secret_id uuid, purpose text, backend text, expected_binding_revision bigint, expected_backend_version integer, applied_backend_version integer, operation_state text, result_binding_id uuid, result_binding_revision bigint, result_binding_status text)
+CREATE FUNCTION request_engine.replace_integration_authority(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
     AS $$
-        DECLARE
-            v_operation request_engine.platform_secret_mutations%ROWTYPE;
-            v_actor_id uuid;
-            v_ignore_method text;
-            v_ignore_correlation uuid;
-            v_result record;
-        BEGIN
-            SELECT *
-              INTO v_operation
-              FROM request_engine.platform_secret_mutations
-             WHERE id = p_operation_id
-             FOR UPDATE;
-            IF NOT FOUND THEN
-                RAISE EXCEPTION 'Platform secret mutation does not exist'
-                    USING ERRCODE = 'P0002';
-            END IF;
-
-            SELECT actor_id, actor_method, correlation_id
-              INTO v_actor_id, v_ignore_method, v_ignore_correlation
-              FROM request_platform.assert_platform_configuration_actor(
-                  v_operation.capability_key
-              );
-            IF v_actor_id <> v_operation.actor_principal_id THEN
-                RAISE EXCEPTION 'Platform secret mutation belongs to another actor'
-                    USING ERRCODE = '42501';
-            END IF;
-
-            IF v_operation.state IN ('committed', 'reconcile_required') THEN
-                RETURN QUERY SELECT
-                    v_operation.id, v_operation.operation_kind, v_operation.binding_id,
-                    v_operation.secret_id, v_operation.purpose, v_operation.backend,
-                    v_operation.expected_binding_revision,
-                    v_operation.expected_backend_version,
-                    v_operation.applied_backend_version, v_operation.state,
-                    v_operation.result_binding_id, v_operation.result_binding_revision,
-                    v_operation.result_binding_status;
-                RETURN;
-            END IF;
-            IF v_operation.state <> 'backend_applied' THEN
-                RAISE EXCEPTION 'Backend mutation has not been recorded'
-                    USING ERRCODE = '55000';
-            END IF;
-
+            DECLARE
+                v_actor uuid;
+                v_revision bigint;
+                v_before bigint;
+                v_capability text := 'integration.manage_authority';
             BEGIN
-                IF v_operation.operation_kind = 'create' THEN
-                    SELECT * INTO v_result
-                      FROM request_platform.record_platform_secret_binding(
-                          v_operation.purpose,
-                          v_operation.backend,
-                          v_operation.secret_id,
-                          v_operation.applied_backend_version,
-                          v_operation.idempotency_key_digest,
-                          v_operation.intent_digest
-                      );
-                ELSIF v_operation.operation_kind = 'rotate' THEN
-                    SELECT * INTO v_result
-                      FROM request_platform.commit_platform_secret_rotation(
-                          v_operation.binding_id,
-                          v_operation.expected_binding_revision,
-                          v_operation.expected_backend_version,
-                          v_operation.applied_backend_version,
-                          v_operation.idempotency_key_digest,
-                          v_operation.intent_digest
-                      );
-                ELSE
-                    SELECT * INTO v_result
-                      FROM request_platform.revoke_platform_secret_binding(
-                          v_operation.binding_id,
-                          v_operation.expected_binding_revision,
-                          v_operation.expected_backend_version,
-                          v_operation.idempotency_key_digest,
-                          v_operation.intent_digest
-                      );
+                PERFORM request_engine.acquire_identity_topology_share();
+                v_actor := request_engine.assert_staff_manager(v_capability);
+                IF p_provenance_reference IS NULL
+                   OR length(btrim(p_provenance_reference)) NOT BETWEEN 1 AND 500 THEN
+                    RAISE EXCEPTION 'Integration provenance is required'
+                        USING ERRCODE = '22023';
                 END IF;
-            EXCEPTION
-                WHEN SQLSTATE '40001' OR unique_violation THEN
-                    UPDATE request_engine.platform_secret_mutations
-                       SET state = 'reconcile_required',
-                           reconcile_required_at = clock_timestamp()
-                     WHERE id = p_operation_id
-                    RETURNING * INTO v_operation;
-
-                    RETURN QUERY SELECT
-                        v_operation.id, v_operation.operation_kind,
-                        v_operation.binding_id, v_operation.secret_id,
-                        v_operation.purpose, v_operation.backend,
-                        v_operation.expected_binding_revision,
-                        v_operation.expected_backend_version,
-                        v_operation.applied_backend_version, v_operation.state,
-                        v_operation.result_binding_id,
-                        v_operation.result_binding_revision,
-                        v_operation.result_binding_status;
-                    RETURN;
-            END;
-
-            UPDATE request_engine.platform_secret_mutations
-               SET state = 'committed',
-                   result_binding_id = v_result.binding_id,
-                   result_binding_revision = v_result.revision,
-                   result_binding_status = v_result.status,
-                   committed_at = clock_timestamp()
-             WHERE id = p_operation_id
-            RETURNING * INTO v_operation;
-
-            RETURN QUERY SELECT
-                v_operation.id, v_operation.operation_kind, v_operation.binding_id,
-                v_operation.secret_id, v_operation.purpose, v_operation.backend,
-                v_operation.expected_binding_revision,
-                v_operation.expected_backend_version,
-                v_operation.applied_backend_version, v_operation.state,
-                v_operation.result_binding_id, v_operation.result_binding_revision,
-                v_operation.result_binding_status;
-        END
-        $$;
-
-
-ALTER FUNCTION request_platform.commit_platform_secret_mutation(p_operation_id uuid) OWNER TO request_platform_control_definer;
-
---
--- Name: commit_platform_secret_rotation(uuid, bigint, integer, integer, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.commit_platform_secret_rotation(p_binding_id uuid, p_expected_revision bigint, p_expected_backend_version integer, p_new_backend_version integer, p_idempotency_key_digest text, p_intent_digest text) RETURNS TABLE(binding_id uuid, revision bigint, backend_version integer, status text)
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $_$
-        DECLARE
-            v_actor_id uuid;
-            v_actor_method text;
-            v_correlation_id uuid;
-            v_replay record;
-            v_binding record;
-            v_revision bigint;
-        BEGIN
-            SELECT actor_id, actor_method, correlation_id
-              INTO v_actor_id, v_actor_method, v_correlation_id
-              FROM request_platform.assert_platform_configuration_actor(
-                  'platform.secret.rotate'
-              );
-
-            IF p_binding_id IS NULL
-               OR p_expected_revision IS NULL
-               OR p_expected_revision < 1
-               OR p_expected_backend_version IS NULL
-               OR p_expected_backend_version < 1
-               OR p_new_backend_version IS NULL
-               OR p_new_backend_version <= p_expected_backend_version
-               OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
-               OR p_intent_digest !~ '^[0-9a-f]{64}$'
-            THEN
-                RAISE EXCEPTION 'Platform secret rotation input is invalid'
-                    USING ERRCODE = '22023';
-            END IF;
-
-            PERFORM pg_catalog.pg_advisory_xact_lock(
-                pg_catalog.hashtextextended(
-                    'p7/idempotency/'
-                    || v_actor_id::text
-                    || '/platform.secret.rotate/'
-                    || p_idempotency_key_digest,
-                    0
-                )
-            );
-
-            SELECT
-                fact.secret_binding_id,
-                fact.revision,
-                fact.intent_digest,
-                fact.detail
-              INTO v_replay
-              FROM request_engine.platform_configuration_facts AS fact
-             WHERE fact.actor_principal_id = v_actor_id
-               AND fact.capability_key = 'platform.secret.rotate'
-               AND fact.idempotency_key_digest = p_idempotency_key_digest;
-
-            IF FOUND THEN
-                IF v_replay.intent_digest <> p_intent_digest THEN
-                    RAISE EXCEPTION
-                        'Idempotency key conflicts with another secret-rotation intent'
-                        USING ERRCODE = '23505';
+                
+                IF p_expected_authority_revision IS NULL OR p_expected_authority_revision < 1
+                   OR p_desired_capabilities IS NULL
+                   OR array_position(p_desired_capabilities, NULL) IS NOT NULL
+                   OR cardinality(p_desired_capabilities) > 128 THEN
+                    RAISE EXCEPTION 'Invalid integration authority input'
+                        USING ERRCODE = '22023';
                 END IF;
-                RETURN QUERY
-                SELECT
-                    v_replay.secret_binding_id,
-                    v_replay.revision,
-                    (v_replay.detail ->> 'backend_version')::integer,
-                    v_replay.detail ->> 'result_status';
-                RETURN;
-            END IF;
-
-            SELECT
-                binding.id,
-                binding.purpose,
-                binding.backend_version,
-                binding.revision,
-                binding.status
-              INTO v_binding
-              FROM request_engine.platform_secret_bindings AS binding
-             WHERE binding.id = p_binding_id
-             FOR UPDATE;
-
-            IF NOT FOUND THEN
-                RAISE EXCEPTION 'Platform secret binding does not exist'
-                    USING ERRCODE = 'P0002';
-            END IF;
-
-            IF v_binding.status <> 'active'
-               OR v_binding.revision <> p_expected_revision
-               OR v_binding.backend_version <> p_expected_backend_version
-            THEN
-                RAISE EXCEPTION 'Platform secret binding revision is stale'
-                    USING ERRCODE = '40001';
-            END IF;
-
-            UPDATE request_engine.platform_secret_bindings AS binding
-               SET backend_version = p_new_backend_version,
-                   revision = binding.revision + 1,
-                   rotated_at = clock_timestamp()
-             WHERE binding.id = p_binding_id
-            RETURNING binding.revision INTO v_revision;
-
-            INSERT INTO request_engine.platform_configuration_facts (
-                event_kind,
-                configuration_kind,
-                revision,
-                secret_binding_id,
-                actor_principal_id,
-                actor_authentication_method,
-                correlation_id,
-                detail,
-                capability_key,
-                idempotency_key_digest,
-                intent_digest
-            ) VALUES (
-                'secret_rotated',
-                NULL,
-                v_revision,
-                p_binding_id,
-                v_actor_id,
-                v_actor_method,
-                v_correlation_id,
-                jsonb_build_object(
-                    'purpose',
-                    v_binding.purpose,
-                    'previous_backend_version',
-                    p_expected_backend_version,
-                    'backend_version',
-                    p_new_backend_version,
-                    'result_status',
-                    'active'
-                ),
-                'platform.secret.rotate',
-                p_idempotency_key_digest,
-                p_intent_digest
-            );
-
-            RETURN QUERY
-            SELECT
-                p_binding_id,
-                v_revision,
-                p_new_backend_version,
-                'active'::text;
-        END
-        $_$;
+            
+                IF 'authority_replace' <> 'provision' THEN
+                    SELECT authority_revision INTO v_before
+                      FROM request_engine.principals
+                     WHERE id = p_principal_id
+                       AND organization_id = request_engine.current_organization_id()
+                       AND principal_kind = 'integration' AND principal_plane = 'tenant'
+                     FOR UPDATE;
+                    IF NOT FOUND THEN
+                        RAISE EXCEPTION 'Integration Principal not found' USING ERRCODE = 'P0002';
+                    END IF;
+                END IF;
+                v_revision := request_engine.replace_integration_authority_state(p_principal_id, p_expected_authority_revision, p_desired_capabilities, p_provenance_reference);
+                IF 'authority_replace' = 'authority_replace' AND v_revision = v_before THEN
+                    UPDATE request_engine.principals
+                       SET authority_revision = authority_revision + 1
+                     WHERE id = p_principal_id RETURNING authority_revision INTO v_revision;
+                END IF;
+                PERFORM request_engine.append_integration_fact(
+                    p_principal_id, v_actor, 'authority_replace', p_provenance_reference, v_capability
+                );
+                RETURN v_revision;
+            END $$;
 
 
-ALTER FUNCTION request_platform.commit_platform_secret_rotation(p_binding_id uuid, p_expected_revision bigint, p_expected_backend_version integer, p_new_backend_version integer, p_idempotency_key_digest text, p_intent_digest text) OWNER TO request_platform_control_definer;
+ALTER FUNCTION request_engine.replace_integration_authority(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) OWNER TO request_engine_schema_owner;
 
 --
--- Name: complete_identity_recovery_delivery_ticket(uuid, uuid, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: replace_integration_authority_state(uuid, bigint, text[], text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE FUNCTION request_platform.complete_identity_recovery_delivery_ticket(p_ticket_id uuid, p_claim_token uuid, p_outcome text, p_error_class text) RETURNS boolean
+CREATE FUNCTION request_engine.replace_integration_authority_state(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
     AS $$
         DECLARE
-            v_case_id uuid;
-            v_revision_before bigint;
-            v_revision_after bigint;
-        BEGIN
-            IF p_ticket_id IS NULL OR p_claim_token IS NULL
-               OR p_outcome IS NULL
-               OR p_outcome NOT IN ('delivered', 'unknown', 'failed')
-               OR (p_error_class IS NOT NULL
-                   AND length(btrim(p_error_class)) NOT BETWEEN 1 AND 80) THEN
-                RAISE EXCEPTION 'Delivery completion input is invalid'
-                    USING ERRCODE = '22023';
-            END IF;
-
-            UPDATE request_engine.identity_recovery_delivery_tickets
-               SET status = p_outcome,
-                   claim_token = NULL,
-                   lease_until = NULL,
-                   last_error_class = CASE
-                       WHEN p_outcome = 'delivered' THEN NULL
-                       ELSE btrim(p_error_class)
-                   END,
-                   delivered_at = CASE
-                       WHEN p_outcome = 'delivered' THEN clock_timestamp()
-                       ELSE delivered_at
-                   END,
-                   updated_at = clock_timestamp()
-             WHERE id = p_ticket_id
-               AND claim_token = p_claim_token
-               AND status = 'sending'
-            RETURNING case_id INTO v_case_id;
-            IF NOT FOUND THEN
-                RETURN false;
-            END IF;
-
-            UPDATE request_engine.identity_recovery_cases
-               SET delivery_status = p_outcome,
-                   revision = revision + 1,
-                   updated_at = clock_timestamp()
-             WHERE id = v_case_id
-               AND status = 'issued'
-            RETURNING revision - 1, revision INTO v_revision_before, v_revision_after;
-            IF FOUND THEN
-                INSERT INTO request_engine.platform_identity_recovery_facts (
-                    id,
-                    case_id,
-                    action,
-                    actor_principal_id,
-                    actor_authentication_method,
-                    reason_code,
-                    external_case_reference,
-                    revision_before,
-                    revision_after,
-                    correlation_id,
-                    capability_key,
-                    idempotency_key_digest,
-                    intent_digest
-                ) VALUES (
-                    uuidv7(),
-                    v_case_id,
-                    CASE p_outcome
-                        WHEN 'delivered' THEN 'deliver'
-                        WHEN 'unknown' THEN 'delivery_unknown'
-                        ELSE 'delivery_failed'
-                    END,
-                    NULL,
-                    NULL,
-                    NULL,
-                    NULL,
-                    v_revision_before,
-                    v_revision_after,
-                    NULL,
-                    'platform.identity.recovery_delivery',
-                    NULL,
-                    NULL
-                );
-            END IF;
-            RETURN true;
-        END
-        $$;
-
-
-ALTER FUNCTION request_platform.complete_identity_recovery_delivery_ticket(p_ticket_id uuid, p_claim_token uuid, p_outcome text, p_error_class text) OWNER TO request_platform_control_definer;
-
---
--- Name: create_identity_recovery_case(uuid, uuid, text, text, text, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.create_identity_recovery_case(p_case_id uuid, p_target_native_identity_id uuid, p_reason_code text, p_evidence_reference text, p_delivery_destination_reference text, p_idempotency_key_digest text, p_intent_digest text) RETURNS TABLE(case_id uuid, target_native_identity_id uuid, status text, delivery_status text, revision bigint, issuance_generation integer, approval_expires_at timestamp with time zone, proof_expires_at timestamp with time zone, created_at timestamp with time zone, approved_at timestamp with time zone, issued_at timestamp with time zone, consumed_at timestamp with time zone, revoked_at timestamp with time zone)
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $_$
-        DECLARE
             v_actor_id uuid;
-            v_actor_method text;
-            v_correlation_id uuid;
-            v_replay record;
-            v_identity_status text;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_principal record;
+            v_active boolean;
+            v_current_revision bigint;
+            v_capability text;
+            v_plane text;
         BEGIN
             PERFORM request_engine.acquire_identity_topology_share();
-            IF p_case_id IS NULL OR p_target_native_identity_id IS NULL
-               OR p_reason_code IS NULL
-               OR length(btrim(p_reason_code)) NOT BETWEEN 1 AND 80
-               OR p_evidence_reference IS NULL
-               OR length(btrim(p_evidence_reference)) NOT BETWEEN 1 AND 400
-               OR p_delivery_destination_reference IS NULL
-               OR length(btrim(p_delivery_destination_reference)) NOT BETWEEN 1 AND 200
-               OR p_idempotency_key_digest IS NULL
-               OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
-               OR p_intent_digest IS NULL
-               OR p_intent_digest !~ '^[0-9a-f]{64}$' THEN
-                RAISE EXCEPTION 'Identity recovery case input is invalid'
-                    USING ERRCODE = '22023';
-            END IF;
-
-            SELECT actor_id, actor_method, correlation_id
-              INTO v_actor_id, v_actor_method, v_correlation_id
-              FROM request_platform.assert_platform_identity_actor('platform.identity.recover');
-
-            -- Replay is evaluated only after revalidating current actor authority.
-            SELECT fact.case_id, fact.intent_digest
-              INTO v_replay
-              FROM request_engine.platform_identity_recovery_facts AS fact
-             WHERE fact.actor_principal_id = v_actor_id
-               AND fact.action = 'request'
-               AND fact.idempotency_key_digest = p_idempotency_key_digest;
-            IF FOUND THEN
-                IF v_replay.intent_digest <> p_intent_digest THEN
-                    RAISE EXCEPTION
-                        'Idempotency key was already used for another recovery request'
-                        USING ERRCODE = '23505';
-                END IF;
-                RETURN QUERY SELECT
-
-            recovery_case.id,
-            recovery_case.target_native_identity_id,
-            recovery_case.status,
-            recovery_case.delivery_status,
-            recovery_case.revision,
-            recovery_case.issuance_generation,
-            recovery_case.approval_expires_at,
-            recovery_case.proof_expires_at,
-            recovery_case.created_at,
-            recovery_case.approved_at,
-            recovery_case.issued_at,
-            recovery_case.consumed_at,
-            recovery_case.revoked_at
-                  FROM request_engine.identity_recovery_cases AS recovery_case
-                 WHERE recovery_case.id = v_replay.case_id;
-                RETURN;
-            END IF;
-
-            -- Authority/identity locks belong to the auth primitives; this
-            -- command only validates current reachability before creating the case.
-            PERFORM 1
-              FROM request_engine.identity_authorities AS authority
-              JOIN request_engine.native_identities AS native_identity
-                ON native_identity.identity_authority_id = authority.id
-             WHERE native_identity.id = p_target_native_identity_id
-               AND authority.kind = 'native' AND authority.status = 'active'
-               AND native_identity.status = 'active';
+            v_actor_id := request_engine.assert_staff_manager(
+                'integration.manage_authority'
+            );
+            SELECT principal_kind, principal_plane
+              INTO v_principal
+              FROM request_engine.principals
+             WHERE id = p_principal_id;
             IF NOT FOUND THEN
-                RAISE EXCEPTION 'Recovery target is not an active Native identity'
-                    USING ERRCODE = '22023';
+                RAISE EXCEPTION 'Integration Principal not found'
+                    USING ERRCODE = 'P0002';
             END IF;
-
-            INSERT INTO request_engine.identity_recovery_cases (
-                id,
-                target_native_identity_id,
-                requester_principal_id,
-                status,
-                reason_code,
-                evidence_reference,
-                delivery_destination_reference
-            ) VALUES (
-                p_case_id,
-                p_target_native_identity_id,
-                v_actor_id,
-                'requested',
-                btrim(p_reason_code),
-                btrim(p_evidence_reference),
-                btrim(p_delivery_destination_reference)
-            );
-            INSERT INTO request_engine.platform_identity_recovery_facts (
-                id,
-                case_id,
-                action,
-                actor_principal_id,
-                actor_authentication_method,
-                reason_code,
-                external_case_reference,
-                revision_before,
-                revision_after,
-                correlation_id,
-                capability_key,
-                idempotency_key_digest,
-                intent_digest
-            ) VALUES (
-                uuidv7(),
-                p_case_id,
-                'request',
-                v_actor_id,
-                v_actor_method,
-                btrim(p_reason_code),
-                btrim(p_evidence_reference),
-                1,
-                1,
-                v_correlation_id,
-                'platform.identity.recover',
-                p_idempotency_key_digest,
-                p_intent_digest
-            );
-            RETURN QUERY SELECT
-
-            recovery_case.id,
-            recovery_case.target_native_identity_id,
-            recovery_case.status,
-            recovery_case.delivery_status,
-            recovery_case.revision,
-            recovery_case.issuance_generation,
-            recovery_case.approval_expires_at,
-            recovery_case.proof_expires_at,
-            recovery_case.created_at,
-            recovery_case.approved_at,
-            recovery_case.issued_at,
-            recovery_case.consumed_at,
-            recovery_case.revoked_at
-              FROM request_engine.identity_recovery_cases AS recovery_case
-             WHERE recovery_case.id = p_case_id;
-        END
-        $_$;
-
-
-ALTER FUNCTION request_platform.create_identity_recovery_case(p_case_id uuid, p_target_native_identity_id uuid, p_reason_code text, p_evidence_reference text, p_delivery_destination_reference text, p_idempotency_key_digest text, p_intent_digest text) OWNER TO request_platform_control_definer;
-
---
--- Name: create_platform_owner_invitation(uuid, bytea, text, timestamp with time zone, text, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.create_platform_owner_invitation(p_invitation_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, p_provenance_reference text, p_idempotency_key_digest text, p_intent_digest text) RETURNS TABLE(invitation_id uuid, created boolean, status text, expires_at timestamp with time zone)
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $_$
-        DECLARE
-            v_actor_id uuid;
-            v_actor_revision bigint;
-            v_actor_current_revision bigint;
-            v_actor_active boolean;
-            v_actor_kind text;
-            v_correlation_id uuid;
-            v_existing record;
-        BEGIN
-            IF p_invitation_id IS NULL
-               OR p_token_digest IS NULL OR octet_length(p_token_digest) <> 32
-               OR p_token_fingerprint !~ '^[0-9a-f]{16}$'
-               OR p_expires_at IS NULL
-               OR p_expires_at <= clock_timestamp()
-               OR p_expires_at > clock_timestamp() + interval '7 days'
-               OR p_provenance_reference IS NULL
-               OR length(btrim(p_provenance_reference)) NOT BETWEEN 1 AND 500
-               OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
-               OR p_intent_digest !~ '^[0-9a-f]{64}$'
+            IF v_principal.principal_kind <> 'integration'
+               OR v_principal.principal_plane <> 'tenant'
             THEN
-                RAISE EXCEPTION 'Platform Owner invitation input is invalid'
-                    USING ERRCODE = '22023';
+                RAISE EXCEPTION
+                    'Integration authority requires a tenant INTEGRATION Principal'
+                    USING ERRCODE = '23514';
             END IF;
-
-            BEGIN
-                v_actor_id := NULLIF(current_setting(
-                    'request_engine.authenticated_principal_id', true
-                ), '')::uuid;
-                v_actor_revision := NULLIF(current_setting(
-                    'request_engine.authority_revision', true
-                ), '')::bigint;
-                v_correlation_id := NULLIF(current_setting(
-                    'request_engine.correlation_id', true
-                ), '')::uuid;
-            EXCEPTION WHEN invalid_text_representation THEN
-                RAISE EXCEPTION 'Platform actor provenance is malformed'
-                    USING ERRCODE = '28000';
-            END;
-            IF v_actor_id IS NULL OR v_actor_revision IS NULL THEN
-                RAISE EXCEPTION 'Platform actor provenance is required'
-                    USING ERRCODE = '28000';
-            END IF;
-
-            SELECT principal.active, principal.principal_kind, principal.authority_revision
-              INTO v_actor_active, v_actor_kind, v_actor_current_revision
-              FROM request_engine.principals AS principal
-             WHERE principal.id = v_actor_id
-               AND principal.principal_plane = 'platform'
-             FOR UPDATE;
-            IF NOT FOUND OR NOT v_actor_active OR v_actor_kind <> 'human'
-               OR v_actor_current_revision <> v_actor_revision
-            THEN
-                RAISE EXCEPTION 'Current Platform Owner is unavailable or stale'
-                    USING ERRCODE = '40001';
-            END IF;
-            IF NOT EXISTS (
-                SELECT 1 FROM request_engine.principal_authority_grants AS grant_row
-                 WHERE grant_row.principal_id = v_actor_id
-                   AND grant_row.status = 'active'
-                   AND grant_row.capability_key = 'platform.owner.provision'
-            ) THEN
-                RAISE EXCEPTION 'Current Platform Principal cannot invite owners'
+            IF p_principal_id = v_actor_id THEN
+                RAISE EXCEPTION 'Integration authority self-replacement is forbidden'
                     USING ERRCODE = '42501';
             END IF;
-
-            SELECT invitation.id, invitation.status, invitation.expires_at,
-                   invitation.intent_digest
-              INTO v_existing
-              FROM request_engine.platform_owner_invitations AS invitation
-             WHERE invitation.invited_by_principal_id = v_actor_id
-               AND invitation.idempotency_key_digest = p_idempotency_key_digest;
-            IF FOUND THEN
-                IF v_existing.intent_digest <> p_intent_digest THEN
-                    RAISE EXCEPTION 'Idempotency key conflicts with another invitation'
-                        USING ERRCODE = '23505';
-                END IF;
-                RETURN QUERY SELECT v_existing.id, false, v_existing.status,
-                                    v_existing.expires_at;
-                RETURN;
+            SELECT active, authority_revision
+              INTO v_active, v_current_revision
+              FROM request_engine.principals
+             WHERE id = p_principal_id
+             FOR UPDATE;
+            IF NOT v_active THEN
+                RAISE EXCEPTION
+                    'Suspended or revoked integrations cannot receive authority'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF v_current_revision <> p_expected_authority_revision THEN
+                RAISE EXCEPTION 'Integration authority revision is stale'
+                    USING ERRCODE = '40001';
+            END IF;
+            IF length(btrim(p_provenance_reference)) = 0
+               OR EXISTS (
+                   SELECT 1
+                     FROM unnest(COALESCE(p_desired_capabilities, ARRAY[]::text[])) AS cap
+                    WHERE length(btrim(cap)) = 0
+               )
+               OR cardinality(COALESCE(p_desired_capabilities, ARRAY[]::text[])) <>
+                  cardinality(
+                      ARRAY(
+                          SELECT DISTINCT cap
+                            FROM unnest(
+                                COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                            ) AS cap
+                      )
+                  )
+            THEN
+                RAISE EXCEPTION 'Desired integration authority is invalid'
+                    USING ERRCODE = '22023';
             END IF;
 
-            INSERT INTO request_engine.platform_owner_invitations (
-                id, token_digest, token_fingerprint, invited_by_principal_id,
-                provenance_reference, idempotency_key_digest, intent_digest, expires_at
-            ) VALUES (
-                p_invitation_id, p_token_digest, p_token_fingerprint, v_actor_id,
-                btrim(p_provenance_reference), p_idempotency_key_digest,
-                p_intent_digest, p_expires_at
-            );
+            FOR v_capability IN
+                SELECT cap
+                  FROM unnest(
+                      COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                  ) AS cap
+            LOOP
+                SELECT authority_plane
+                  INTO v_plane
+                  FROM request_engine.principal_authority_grants
+                 WHERE organization_id = v_org_id
+                   AND principal_id = v_actor_id
+                   AND capability_key = v_capability
+                   AND status = 'active'
+                   AND delegable
+                 FOR SHARE;
+                IF NOT FOUND OR v_plane <> 'operational' THEN
+                    RAISE EXCEPTION
+                        'Desired authority exceeds the integration operational ceiling'
+                        USING ERRCODE = '42501';
+                END IF;
+            END LOOP;
 
-            INSERT INTO request_engine.platform_owner_invitation_facts (
-                invitation_id, action, actor_principal_id, revision_before,
-                revision_after, correlation_id
-            ) VALUES (
-                p_invitation_id, 'create', v_actor_id, 0, 1, v_correlation_id
-            );
+            UPDATE request_engine.principal_authority_grants
+               SET status = 'revoked',
+                   revision = revision + 1,
+                   revoked_at = clock_timestamp(),
+                   revoked_by_principal_id = v_actor_id
+             WHERE organization_id = v_org_id
+               AND principal_id = p_principal_id
+               AND status = 'active'
+               AND NOT (
+                   capability_key = ANY(
+                       COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                   )
+               );
 
-            RETURN QUERY SELECT p_invitation_id, true, 'pending'::text, p_expires_at;
+            FOR v_capability IN
+                SELECT cap
+                  FROM unnest(
+                      COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                  ) AS cap
+            LOOP
+                IF NOT EXISTS (
+                    SELECT 1
+                      FROM request_engine.principal_authority_grants
+                     WHERE principal_id = p_principal_id
+                       AND capability_key = v_capability
+                       AND status = 'active'
+                ) THEN
+                    INSERT INTO request_engine.principal_authority_grants (
+                        organization_id,
+                        principal_id,
+                        principal_plane,
+                        authority_plane,
+                        capability_key,
+                        delegable,
+                        granted_by_principal_id,
+                        provenance_kind,
+                        provenance_reference
+                    ) VALUES (
+                        v_org_id,
+                        p_principal_id,
+                        'tenant',
+                        'operational',
+                        v_capability,
+                        false,
+                        v_actor_id,
+                        'integration_authority_management',
+                        btrim(p_provenance_reference)
+                    );
+                END IF;
+            END LOOP;
+
+            SELECT authority_revision
+              INTO v_current_revision
+              FROM request_engine.principals
+             WHERE id = p_principal_id;
+            RETURN v_current_revision;
         END
-        $_$;
+        $$;
 
 
-ALTER FUNCTION request_platform.create_platform_owner_invitation(p_invitation_id uuid, p_token_digest bytea, p_token_fingerprint text, p_expires_at timestamp with time zone, p_provenance_reference text, p_idempotency_key_digest text, p_intent_digest text) OWNER TO request_platform_control_definer;
+ALTER FUNCTION request_engine.replace_integration_authority_state(p_principal_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) OWNER TO request_engine_schema_owner;
 
 --
--- Name: create_setup_session(uuid, bytea, text, text, integer); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: replace_staff_authority(uuid, bigint, text[], text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE FUNCTION request_platform.create_setup_session(p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_mode text, p_ttl_seconds integer) RETURNS uuid
+CREATE FUNCTION request_engine.replace_staff_authority(p_membership_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $_$
+    AS $$
+        DECLARE
+            v_actor_id uuid;
+            v_target_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_current_revision bigint;
+            v_capability text;
+            v_plane text;
+            v_target_is_controller boolean;
+            v_desired_is_controller boolean;
+        BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+            PERFORM request_engine.lock_tenant_staff_root();
+            v_actor_id := request_engine.assert_staff_manager(
+                'staff.manage_authority'
+            );
+            SELECT membership.principal_id
+              INTO v_target_id
+              FROM request_engine.staff_memberships AS membership
+             WHERE membership.id = p_membership_id
+               AND membership.organization_id = v_org_id
+               AND membership.status = 'active'
+             FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Active Staff membership not found'
+                    USING ERRCODE = 'P0002';
+            END IF;
+            IF v_target_id = v_actor_id THEN
+                RAISE EXCEPTION 'Staff authority self-replacement is forbidden'
+                    USING ERRCODE = '42501';
+            END IF;
+            SELECT authority_revision INTO v_current_revision
+              FROM request_engine.principals
+             WHERE id = v_target_id
+             FOR UPDATE;
+            IF v_current_revision <> p_expected_authority_revision THEN
+                RAISE EXCEPTION 'Staff authority revision is stale'
+                    USING ERRCODE = '40001';
+            END IF;
+            IF length(btrim(p_provenance_reference)) = 0
+               OR EXISTS (
+                   SELECT 1
+                     FROM unnest(COALESCE(p_desired_capabilities, ARRAY[]::text[])) AS cap
+                    WHERE length(btrim(cap)) = 0
+               )
+               OR cardinality(COALESCE(p_desired_capabilities, ARRAY[]::text[])) <>
+                  cardinality(
+                      ARRAY(
+                          SELECT DISTINCT cap
+                            FROM unnest(
+                                COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                            ) AS cap
+                      )
+                  )
+            THEN
+                RAISE EXCEPTION 'Desired Staff authority is invalid'
+                    USING ERRCODE = '22023';
+            END IF;
+
+            FOR v_capability IN
+                SELECT cap
+                  FROM unnest(
+                      COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                  ) AS cap
+            LOOP
+                SELECT authority_plane INTO v_plane
+                  FROM request_engine.principal_authority_grants
+                 WHERE organization_id = v_org_id
+                   AND principal_id = v_actor_id
+                   AND capability_key = v_capability
+                   AND status = 'active'
+                   AND delegable
+                 FOR SHARE;
+                IF NOT FOUND OR v_plane = 'platform' THEN
+                    RAISE EXCEPTION 'Desired authority exceeds delegable ceiling'
+                        USING ERRCODE = '42501';
+                END IF;
+            END LOOP;
+
+            SELECT (
+                SELECT count(DISTINCT capability_key) = 3
+                  FROM request_engine.principal_authority_grants
+                 WHERE principal_id = v_target_id
+                   AND status = 'active'
+                   AND capability_key IN (
+                       'staff.manage_membership',
+                       'staff.manage_authority',
+                       'identity.bind'
+                   )
+            ) INTO v_target_is_controller;
+            -- Evaluate the actual resulting authority: omitted capabilities
+            -- outside the actor's ceiling are preserved by the write below.
+            SELECT NOT EXISTS (
+                SELECT 1
+                  FROM request_engine.principal_authority_grants target_grant
+                 WHERE target_grant.organization_id = v_org_id
+                   AND target_grant.principal_id = v_target_id
+                   AND target_grant.status = 'active'
+                   AND target_grant.capability_key IN (
+                       'staff.manage_membership',
+                       'staff.manage_authority',
+                       'identity.bind'
+                   )
+                   AND NOT (
+                       target_grant.capability_key = ANY(
+                           COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                       )
+                   )
+                   AND EXISTS (
+                       SELECT 1
+                         FROM request_engine.principal_authority_grants actor_grant
+                        WHERE actor_grant.organization_id = v_org_id
+                          AND actor_grant.principal_id = v_actor_id
+                          AND actor_grant.capability_key = target_grant.capability_key
+                          AND actor_grant.status = 'active'
+                          AND actor_grant.delegable
+                          AND actor_grant.authority_plane IN ('tenant_control', 'operational')
+                   )
+            ) INTO v_desired_is_controller;
+            IF v_target_is_controller AND NOT v_desired_is_controller THEN
+                PERFORM request_engine.assert_other_tenant_controller(v_target_id);
+            END IF;
+
+            UPDATE request_engine.principal_authority_grants
+               SET status = 'revoked',
+                   revision = revision + 1,
+                   revoked_at = clock_timestamp(),
+                   revoked_by_principal_id = v_actor_id
+             WHERE organization_id = v_org_id
+               AND principal_id = v_target_id
+               AND status = 'active'
+               AND NOT (
+                   capability_key = ANY(
+                       COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                   )
+               )
+               AND EXISTS (
+                   SELECT 1
+                     FROM request_engine.principal_authority_grants AS actor_grant
+                    WHERE actor_grant.organization_id = v_org_id
+                      AND actor_grant.principal_id = v_actor_id
+                      AND actor_grant.capability_key =
+                          request_engine.principal_authority_grants.capability_key
+                      AND actor_grant.status = 'active'
+                      AND actor_grant.delegable
+                      AND actor_grant.authority_plane IN ('tenant_control', 'operational')
+               );
+
+            FOR v_capability IN
+                SELECT cap
+                  FROM unnest(
+                      COALESCE(p_desired_capabilities, ARRAY[]::text[])
+                  ) AS cap
+            LOOP
+                IF NOT EXISTS (
+                    SELECT 1
+                      FROM request_engine.principal_authority_grants
+                     WHERE principal_id = v_target_id
+                       AND capability_key = v_capability
+                       AND status = 'active'
+                ) THEN
+                    SELECT authority_plane INTO v_plane
+                      FROM request_engine.principal_authority_grants
+                     WHERE principal_id = v_actor_id
+                       AND organization_id = v_org_id
+                       AND capability_key = v_capability
+                       AND status = 'active'
+                       AND delegable;
+                    INSERT INTO request_engine.principal_authority_grants (
+                        organization_id,
+                        principal_id,
+                        principal_plane,
+                        authority_plane,
+                        capability_key,
+                        delegable,
+                        granted_by_principal_id,
+                        provenance_kind,
+                        provenance_reference
+                    ) VALUES (
+                        v_org_id,
+                        v_target_id,
+                        'tenant',
+                        v_plane,
+                        v_capability,
+                        false,
+                        v_actor_id,
+                        'authority_management',
+                        btrim(p_provenance_reference)
+                    );
+                END IF;
+            END LOOP;
+            SELECT authority_revision INTO v_current_revision
+              FROM request_engine.principals
+             WHERE id = v_target_id;
+            RETURN v_current_revision;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.replace_staff_authority(p_membership_id uuid, p_expected_authority_revision bigint, p_desired_capabilities text[], p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: require_trusted_actor_context(uuid); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.require_trusted_actor_context(p_organization_id uuid) RETURNS uuid
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
 DECLARE
-    v_instance_id uuid;
-    v_state text;
-    v_active integer;
+    v_organization_id uuid;
+    v_principal_id uuid;
 BEGIN
-    -- Serializes concurrent creation (bounded active cap) and, together with the
-    -- finalize command taking the same lock, setup creation against a claim.
-    PERFORM pg_catalog.pg_advisory_xact_lock(1380274257, 1902476358);
+    v_organization_id := request_engine.current_organization_id();
+    v_principal_id := request_engine.current_authenticated_principal_id();
 
-    SELECT instance.id, instance.state
-      INTO v_instance_id, v_state
-      FROM request_engine.platform_instance AS instance
-     WHERE instance.singleton_key = 1;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Platform instance is not initialized' USING ERRCODE = '55000';
+    IF v_organization_id IS NULL OR v_principal_id IS NULL THEN
+        RAISE EXCEPTION 'trusted actor context is required'
+            USING ERRCODE = '42501';
     END IF;
-    IF v_state <> 'unclaimed' THEN
-        RAISE EXCEPTION 'Setup is closed' USING ERRCODE = '55000';
+    IF v_organization_id <> p_organization_id THEN
+        RAISE EXCEPTION 'organization does not match trusted actor context'
+            USING ERRCODE = '42501';
+    END IF;
+    RETURN v_principal_id;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.require_trusted_actor_context(p_organization_id uuid) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: resolve_current_party_authority(uuid, uuid, uuid, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.resolve_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text) RETURNS TABLE(representation_id uuid, authority_kind text, valid_from timestamp with time zone, valid_until timestamp with time zone)
+    LANGUAGE sql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+    SELECT
+        r.id,
+        r.authority_kind,
+        r.valid_from,
+        r.valid_until
+    FROM request_engine.representations r
+    JOIN request_engine.principals p
+      ON p.organization_id = r.organization_id
+     AND p.id = r.principal_id
+    JOIN request_engine.parties party
+      ON party.organization_id = r.organization_id
+     AND party.id = r.represented_party_id
+    CROSS JOIN LATERAL (SELECT clock_timestamp() AS db_now) clock
+    WHERE p_scope_key <> ''
+      AND r.organization_id = p_organization_id
+      AND r.principal_id = p_principal_id
+      AND r.represented_party_id = p_represented_party_id
+      AND r.scope_key = p_scope_key
+      AND r.status = 'active'
+      AND p.active
+      AND party.active
+      AND r.valid_from <= clock.db_now
+      AND (r.valid_until IS NULL OR r.valid_until > clock.db_now)
+    ORDER BY r.valid_from DESC, r.id DESC
+    LIMIT 1
+$$;
+
+
+ALTER FUNCTION request_engine.resolve_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: revoke_delegation(uuid, bigint, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.revoke_delegation(p_id uuid, p_expected_revision bigint, p_provenance_reference text) RETURNS bigint
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_delegator uuid;
+            v_status text;
+            v_delegate uuid;
+            v_revision bigint;
+        BEGIN
+            v_actor_id := current_setting(
+                'request_engine.authenticated_principal_id', true
+            )::uuid;
+            SELECT delegator_principal_id, status, delegate_principal_id, revision
+              INTO v_delegator, v_status, v_delegate, v_revision
+              FROM request_engine.delegations
+             WHERE id = p_id
+             FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Delegation not found' USING ERRCODE = 'P0002';
+            END IF;
+            IF v_actor_id IS NULL
+               OR v_actor_id NOT IN (v_delegator, v_delegate)
+               OR length(btrim(p_provenance_reference)) = 0
+            THEN
+                RAISE EXCEPTION 'Only the delegator or delegate may revoke'
+                    USING ERRCODE = '42501';
+            END IF;
+            IF v_status <> 'active' THEN
+                RAISE EXCEPTION 'Delegation is already revoked'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF v_revision <> p_expected_revision THEN
+                RAISE EXCEPTION 'Delegation revision is stale'
+                    USING ERRCODE = '40001';
+            END IF;
+            UPDATE request_engine.delegations
+               SET status = 'revoked',
+                   revision = revision + 1,
+                   revoked_at = clock_timestamp(),
+                   revoked_by_principal_id = v_actor_id
+             WHERE id = p_id;
+            RETURN p_expected_revision + 1;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.revoke_delegation(p_id uuid, p_expected_revision bigint, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: revoke_webauthn_credentials_on_disable(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.revoke_webauthn_credentials_on_disable() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        BEGIN
+            IF NEW.status = 'disabled' AND OLD.status <> 'disabled' THEN
+                UPDATE request_engine.webauthn_credentials
+                   SET status = 'revoked',
+                       revision = revision + 1,
+                       revoked_at = clock_timestamp()
+                 WHERE native_identity_id = NEW.id
+                   AND status = 'active';
+            END IF;
+            RETURN NEW;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.revoke_webauthn_credentials_on_disable() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: search_discovery_candidates_v2(text, double precision, double precision, integer, timestamp with time zone, timestamp with time zone, integer); Type: FUNCTION; Schema: request_engine; Owner: request_engine_discovery_definer
+--
+
+CREATE FUNCTION request_engine.search_discovery_candidates_v2(p_classification_key text, p_origin_latitude double precision, p_origin_longitude double precision, p_radius_meters integer, p_window_start timestamp with time zone, p_window_end timestamp with time zone, p_limit integer) RETURNS TABLE(publication_id uuid, publication_revision bigint, mapping_id uuid, mapping_revision bigint, organization_id uuid, organization_key text, organization_display_name text, offering_id uuid, offering_key text, offering_display_name text, offering_version_id uuid, location_id uuid, location_key text, location_display_name text, location_address_line1 text, location_address_line2 text, location_locality text, location_administrative_area text, location_postal_code text, location_country_code text, resource_id uuid, provider_visibility text, provider_key text, provider_display_name text, provider_role_label text, provider_profile_image_ref text, publication_start timestamp with time zone, publication_end timestamp with time zone, distance_meters double precision)
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $_$
+BEGIN
+    IF p_classification_key IS NULL
+       OR p_origin_latitude IS NULL
+       OR p_origin_longitude IS NULL
+       OR p_radius_meters IS NULL
+       OR p_window_start IS NULL
+       OR p_window_end IS NULL
+       OR p_limit IS NULL
+       OR p_classification_key !~ '^[a-z0-9]+(_[a-z0-9]+)*$'
+       OR p_origin_latitude NOT BETWEEN -90 AND 90
+       OR p_origin_longitude NOT BETWEEN -180 AND 180
+       OR p_radius_meters NOT BETWEEN 1 AND 100000
+       OR p_window_end <= p_window_start
+       OR p_window_end - p_window_start > interval '7 days'
+       OR p_limit NOT BETWEEN 1 AND 201 THEN
+        RAISE EXCEPTION 'invalid discovery search contract' USING ERRCODE = '22023';
     END IF;
 
-    IF p_session_id IS NULL
-       OR p_token_digest IS NULL
-       OR octet_length(p_token_digest) <> 32
-       OR p_token_fingerprint IS NULL
-       OR p_token_fingerprint !~ '^[0-9a-f]{16}$'
-       OR p_mode IS NULL
-       OR p_mode NOT IN ('interactive', 'protected', 'automated')
-       OR p_ttl_seconds IS NULL
-       OR p_ttl_seconds < 60
-       OR p_ttl_seconds > 3600
-    THEN
-        RAISE EXCEPTION 'Setup session material is invalid' USING ERRCODE = '22023';
-    END IF;
-
-    SELECT count(*) INTO v_active
-      FROM request_engine.setup_sessions
-     WHERE status = 'pending'
-       AND expires_at > clock_timestamp();
-    IF v_active >= 5 THEN
-        RAISE EXCEPTION 'Too many active setup sessions' USING ERRCODE = '54000';
-    END IF;
-
-    INSERT INTO request_engine.setup_sessions (
-        id, instance_id, token_digest, token_fingerprint, mode, expires_at
-    ) VALUES (
-        p_session_id,
-        v_instance_id,
-        p_token_digest,
-        p_token_fingerprint,
-        p_mode,
-        clock_timestamp() + pg_catalog.make_interval(secs => p_ttl_seconds)
-    );
-    RETURN p_session_id;
+    RETURN QUERY
+    WITH eligible AS (
+        SELECT
+            dp.id AS publication_id,
+            dp.revision AS publication_revision,
+            map.id AS mapping_id,
+            map.revision AS mapping_revision,
+            org.id AS organization_id,
+            org.organization_key,
+            org.display_name AS organization_display_name,
+            o.id AS offering_id,
+            o.offering_key,
+            o.display_name AS offering_display_name,
+            latest.id AS offering_version_id,
+            l.id AS location_id,
+            l.location_key,
+            l.display_name AS location_display_name,
+            l.address_line1 AS location_address_line1,
+            l.address_line2 AS location_address_line2,
+            l.locality AS location_locality,
+            l.administrative_area AS location_administrative_area,
+            l.postal_code AS location_postal_code,
+            l.country_code AS location_country_code,
+            dp.resource_id,
+            dp.provider_visibility,
+            CASE WHEN dp.provider_visibility = 'public'
+                THEN r.resource_key END AS provider_key,
+            CASE WHEN dp.provider_visibility = 'public'
+                THEN rpp.display_name END AS provider_display_name,
+            CASE WHEN dp.provider_visibility = 'public'
+                THEN rpp.role_label END AS provider_role_label,
+            CASE WHEN dp.provider_visibility = 'public'
+                THEN rpp.profile_image_ref END AS provider_profile_image_ref,
+            lower(dp.effective_during) AS publication_start,
+            upper(dp.effective_during) AS publication_end,
+            6371008.8 * 2 * asin(sqrt(LEAST(1.0, GREATEST(0.0,
+                power(sin(radians((l.latitude::double precision - p_origin_latitude) / 2)), 2)
+                + cos(radians(p_origin_latitude))
+                * cos(radians(l.latitude::double precision))
+                * power(sin(radians((l.longitude::double precision - p_origin_longitude) / 2)), 2)
+            )))) AS distance_meters
+        FROM request_engine.discovery_publications dp
+        JOIN request_engine.offering_service_classifications map
+          ON map.organization_id = dp.organization_id
+         AND map.offering_id = dp.offering_id
+         AND map.status = 'active'
+        JOIN request_engine.service_classifications sc
+          ON sc.id = map.service_classification_id
+         AND sc.status = 'active'
+         AND sc.classification_key = p_classification_key
+        JOIN request_engine.organizations org
+          ON org.id = dp.organization_id
+         AND org.operational_status = 'active'
+        JOIN request_engine.offerings o
+          ON o.organization_id = dp.organization_id
+         AND o.id = dp.offering_id
+         AND o.active
+        JOIN LATERAL (
+            SELECT ov.id, ov.bookable
+              FROM request_engine.offering_versions ov
+             WHERE ov.organization_id = o.organization_id
+               AND ov.offering_id = o.id
+             ORDER BY ov.version DESC
+             LIMIT 1
+        ) latest ON latest.bookable
+        JOIN request_engine.locations l
+          ON l.organization_id = dp.organization_id
+         AND l.id = dp.location_id
+         AND l.active
+         AND l.latitude IS NOT NULL
+         AND l.longitude IS NOT NULL
+        LEFT JOIN request_engine.resources r
+          ON r.organization_id = dp.organization_id
+         AND r.id = dp.resource_id
+        LEFT JOIN request_engine.resource_public_profiles rpp
+          ON rpp.organization_id = dp.organization_id
+         AND rpp.resource_id = dp.resource_id
+         AND rpp.active
+        WHERE dp.status = 'active'
+          AND dp.effective_during && tstzrange(p_window_start, p_window_end, '[)')
+          AND (dp.resource_id IS NULL OR r.active)
+          AND (
+              dp.provider_visibility = 'hidden'
+              OR (rpp.resource_id IS NOT NULL AND rpp.display_name IS NOT NULL)
+          )
+    )
+    SELECT e.*
+      FROM eligible e
+     WHERE e.distance_meters <= p_radius_meters
+     ORDER BY
+        e.distance_meters,
+        e.organization_id,
+        e.location_id,
+        e.offering_id,
+        e.publication_id
+     LIMIT p_limit;
 END
 $_$;
 
 
-ALTER FUNCTION request_platform.create_setup_session(p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, p_mode text, p_ttl_seconds integer) OWNER TO request_platform_control_definer;
+ALTER FUNCTION request_engine.search_discovery_candidates_v2(p_classification_key text, p_origin_latitude double precision, p_origin_longitude double precision, p_radius_meters integer, p_window_start timestamp with time zone, p_window_end timestamp with time zone, p_limit integer) OWNER TO request_engine_discovery_definer;
 
 --
--- Name: disable_native_identity(uuid, bigint, text, text, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: seed_initial_controller_policy(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE FUNCTION request_platform.disable_native_identity(p_native_identity_id uuid, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text) RETURNS TABLE(fact_id uuid, native_identity_id uuid, revision_after bigint, affected_tenant_count integer, affected_platform boolean)
+CREATE FUNCTION request_engine.seed_initial_controller_policy() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $_$
+    AS $$
+        DECLARE
+            v_grants jsonb;
+        BEGIN
+            IF NEW.initial_controller_policy_key IS NULL THEN
+                RETURN NEW;
+            END IF;
+            SELECT grants INTO STRICT v_grants
+              FROM request_engine.initial_controller_policies
+             WHERE policy_key = NEW.initial_controller_policy_key;
+            IF EXISTS (
+                SELECT 1 FROM jsonb_to_recordset(v_grants)
+                    AS g(capability_key text, authority_plane text, delegable boolean)
+                 WHERE g.capability_key IS NULL OR btrim(g.capability_key) = ''
+                    OR g.capability_key LIKE '%*%' OR g.authority_plane IS NULL
+                    OR g.authority_plane NOT IN ('tenant_control', 'operational')
+                    OR g.delegable IS NULL
+            ) THEN
+                RAISE EXCEPTION 'Invalid initial controller policy' USING ERRCODE = '23514';
+            END IF;
+            PERFORM set_config('request_engine.organization_id', NEW.organization_id::text, true);
+            INSERT INTO request_engine.principal_authority_grants (
+                organization_id, principal_id, principal_plane, authority_plane,
+                capability_key, delegable, granted_by_principal_id,
+                provenance_kind, provenance_reference
+            )
+            SELECT NEW.organization_id, NEW.controller_principal_id, 'tenant', g.authority_plane,
+                   g.capability_key, g.delegable, NEW.provisioned_by_principal_id, 'provisioning',
+                   'policy:' || NEW.initial_controller_policy_key
+                       || ';root:' || NEW.provenance_reference
+              FROM jsonb_to_recordset(v_grants)
+                AS g(capability_key text, authority_plane text, delegable boolean);
+            RETURN NEW;
+        END $$;
+
+
+ALTER FUNCTION request_engine.seed_initial_controller_policy() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: seed_root_staff_membership(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.seed_root_staff_membership() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_grant record;
+        BEGIN
+            PERFORM set_config(
+                'request_engine.organization_id',
+                NEW.organization_id::text,
+                true
+            );
+            INSERT INTO request_engine.staff_memberships (
+                id,
+                organization_id,
+                principal_id,
+                identity_binding_id,
+                authority_anchor_party_id,
+                status,
+                established_by_principal_id,
+                provenance_kind,
+                provenance_reference,
+                activated_at
+            ) VALUES (
+                gen_random_uuid(),
+                NEW.organization_id,
+                NEW.controller_principal_id,
+                NEW.controller_binding_id,
+                NEW.organization_party_id,
+                'active',
+                NEW.provisioned_by_principal_id,
+                'root_provisioning',
+                NEW.provenance_reference,
+                clock_timestamp()
+            );
+
+            FOR v_grant IN
+                SELECT *
+                  FROM request_engine.principal_authority_grants
+                 WHERE principal_id = NEW.controller_principal_id
+                   AND organization_id = NEW.organization_id
+                   AND authority_plane = 'tenant_control'
+                   AND status = 'active'
+                   AND NOT delegable
+                 FOR UPDATE
+            LOOP
+                UPDATE request_engine.principal_authority_grants
+                   SET status = 'revoked',
+                       revision = revision + 1,
+                       revoked_at = clock_timestamp(),
+                       revoked_by_principal_id = NEW.provisioned_by_principal_id
+                 WHERE id = v_grant.id;
+                INSERT INTO request_engine.principal_authority_grants (
+                    organization_id,
+                    principal_id,
+                    principal_plane,
+                    authority_plane,
+                    capability_key,
+                    delegable,
+                    granted_by_principal_id,
+                    provenance_kind,
+                    provenance_reference
+                ) VALUES (
+                    NEW.organization_id,
+                    NEW.controller_principal_id,
+                    'tenant',
+                    v_grant.authority_plane,
+                    v_grant.capability_key,
+                    true,
+                    v_grant.granted_by_principal_id,
+                    'provisioning',
+                    concat(NEW.provenance_reference, '-root-delegable')
+                );
+            END LOOP;
+            RETURN NEW;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.seed_root_staff_membership() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: seed_root_staff_read_authority(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.seed_root_staff_read_authority() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        BEGIN
+            PERFORM set_config('request_engine.organization_id', NEW.organization_id::text, true);
+            INSERT INTO request_engine.principal_authority_grants (
+                organization_id, principal_id, principal_plane, authority_plane,
+                capability_key, delegable, granted_by_principal_id,
+                provenance_kind, provenance_reference
+            ) VALUES (
+                NEW.organization_id, NEW.controller_principal_id, 'tenant', 'tenant_control',
+                'staff.read', true, NEW.provisioned_by_principal_id,
+                'provisioning', concat(NEW.provenance_reference, '-staff-inspection-v1')
+            );
+            RETURN NEW;
+        END $$;
+
+
+ALTER FUNCTION request_engine.seed_root_staff_read_authority() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: set_integration_status(uuid, bigint, text, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.set_integration_status(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) RETURNS bigint
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+            DECLARE
+                v_actor uuid;
+                v_revision bigint;
+                v_before bigint;
+                v_capability text := CASE WHEN p_target_status = 'active' THEN 'integration.provision' ELSE 'integration.suspend' END;
+            BEGIN
+                PERFORM request_engine.acquire_identity_topology_share();
+                v_actor := request_engine.assert_staff_manager(v_capability);
+                IF p_provenance_reference IS NULL
+                   OR length(btrim(p_provenance_reference)) NOT BETWEEN 1 AND 500 THEN
+                    RAISE EXCEPTION 'Integration provenance is required'
+                        USING ERRCODE = '22023';
+                END IF;
+                
+                IF p_expected_revision IS NULL OR p_expected_revision < 1 THEN
+                    RAISE EXCEPTION 'Invalid integration revision' USING ERRCODE = '22023';
+                END IF;
+            
+                IF 'status_transition' <> 'provision' THEN
+                    SELECT authority_revision INTO v_before
+                      FROM request_engine.principals
+                     WHERE id = p_principal_id
+                       AND organization_id = request_engine.current_organization_id()
+                       AND principal_kind = 'integration' AND principal_plane = 'tenant'
+                     FOR UPDATE;
+                    IF NOT FOUND THEN
+                        RAISE EXCEPTION 'Integration Principal not found' USING ERRCODE = 'P0002';
+                    END IF;
+                END IF;
+                v_revision := request_engine.set_integration_status_state(p_principal_id, p_expected_revision, p_target_status, p_provenance_reference);
+                IF 'status_transition' = 'authority_replace' AND v_revision = v_before THEN
+                    UPDATE request_engine.principals
+                       SET authority_revision = authority_revision + 1
+                     WHERE id = p_principal_id RETURNING authority_revision INTO v_revision;
+                END IF;
+                PERFORM request_engine.append_integration_fact(
+                    p_principal_id, v_actor, 'status_transition', p_provenance_reference, v_capability
+                );
+                RETURN v_revision;
+            END $$;
+
+
+ALTER FUNCTION request_engine.set_integration_status(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: set_integration_status_state(uuid, bigint, text, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.set_integration_status_state(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) RETURNS bigint
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
         DECLARE
             v_actor_id uuid;
-            v_actor_revision bigint;
-            v_actor_method text;
-            v_actor_kind text;
-            v_actor_active boolean;
-            v_actor_current_revision bigint;
-            v_correlation_id uuid;
-            v_identity record;
-            v_binding record;
-            v_authority_kind text;
-            v_authority_status text;
-            v_revision_before bigint;
-            v_org_ids uuid[];
-            v_org_id uuid;
-            v_affected_platform boolean := false;
-            v_affected_tenants integer := 0;
-            v_replay record;
-            v_fact_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_principal record;
+            v_active boolean;
+            v_binding_status text;
+            v_workload_identity_id uuid;
+            v_current_revision bigint;
         BEGIN
-            PERFORM set_config('lock_timeout', '10s', true);
-            PERFORM request_engine.acquire_identity_topology_exclusive();
-
-            IF p_native_identity_id IS NULL
-               OR p_expected_revision IS NULL
-               OR p_expected_revision < 1 THEN
-                RAISE EXCEPTION 'Native identity and expected revision are required'
+            PERFORM request_engine.acquire_identity_topology_share();
+            IF p_target_status = 'active' THEN
+                v_actor_id := request_engine.assert_staff_manager(
+                    'integration.provision'
+                );
+            ELSIF p_target_status IN ('suspended', 'revoked') THEN
+                v_actor_id := request_engine.assert_staff_manager(
+                    'integration.suspend'
+                );
+            ELSE
+                RAISE EXCEPTION 'Unsupported integration target status'
                     USING ERRCODE = '22023';
             END IF;
-            IF p_reason_code IS NULL
-               OR length(btrim(p_reason_code)) NOT BETWEEN 1 AND 80
-               OR (p_external_case_reference IS NOT NULL
-                   AND length(btrim(p_external_case_reference)) NOT BETWEEN 1 AND 200)
-               OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
-               OR p_intent_digest !~ '^[0-9a-f]{64}$' THEN
-                RAISE EXCEPTION 'Disable reason, case reference or digests are invalid'
+            IF length(btrim(p_provenance_reference)) = 0 THEN
+                RAISE EXCEPTION 'Transition provenance is required'
                     USING ERRCODE = '22023';
             END IF;
-
-            BEGIN
-                v_actor_id := NULLIF(current_setting(
-                    'request_engine.authenticated_principal_id', true
-                ), '')::uuid;
-                v_actor_revision := NULLIF(current_setting(
-                    'request_engine.authority_revision', true
-                ), '')::bigint;
-                v_actor_method := NULLIF(current_setting(
-                    'request_engine.authentication_method', true
-                ), '');
-                v_correlation_id := NULLIF(current_setting(
-                    'request_engine.correlation_id', true
-                ), '')::uuid;
-            EXCEPTION WHEN invalid_text_representation THEN
-                RAISE EXCEPTION 'Platform actor provenance is malformed'
-                    USING ERRCODE = '28000';
-            END;
-            IF v_actor_id IS NULL OR v_actor_revision IS NULL OR v_actor_method IS NULL THEN
-                RAISE EXCEPTION 'Platform actor provenance is required'
-                    USING ERRCODE = '28000';
+            SELECT pr.active, pr.authority_revision,
+                   b.status, wi.id
+              INTO v_active, v_current_revision,
+                   v_binding_status, v_workload_identity_id
+              FROM request_engine.principals pr
+              LEFT JOIN request_engine.identity_bindings b
+                ON b.principal_id = pr.id
+               AND b.status <> 'revoked'
+              LEFT JOIN request_engine.workload_identities wi
+                ON wi.id::text = b.subject_id
+             WHERE pr.id = p_principal_id
+               AND pr.principal_kind = 'integration'
+               AND pr.principal_plane = 'tenant'
+               AND pr.organization_id = v_org_id
+             FOR UPDATE OF pr;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Integration Principal not found'
+                    USING ERRCODE = 'P0002';
             END IF;
-
-            -- Platform-plane serialization root: lock the platform Principal set in
-            -- id order before bindings, grants or facts.
-            PERFORM principal.id
-              FROM request_engine.principals AS principal
-             WHERE principal.principal_plane = 'platform'
-             ORDER BY principal.id
-             FOR UPDATE;
-
-            SELECT principal.principal_kind, principal.active,
-                   principal.authority_revision
-              INTO v_actor_kind, v_actor_active, v_actor_current_revision
-              FROM request_engine.principals AS principal
-             WHERE principal.id = v_actor_id
-               AND principal.principal_plane = 'platform';
-            IF NOT FOUND OR NOT v_actor_active OR v_actor_kind <> 'human' THEN
-                RAISE EXCEPTION 'Current Platform Principal cannot disable identities'
+            IF p_principal_id = v_actor_id THEN
+                RAISE EXCEPTION 'Integration self-transition is forbidden'
                     USING ERRCODE = '42501';
             END IF;
-            IF v_actor_current_revision <> v_actor_revision THEN
-                RAISE EXCEPTION 'Platform authority revision is stale'
+            IF v_current_revision <> p_expected_revision THEN
+                RAISE EXCEPTION 'Integration revision is stale'
                     USING ERRCODE = '40001';
             END IF;
-            IF NOT EXISTS (
-                SELECT 1
-                  FROM request_engine.principal_authority_grants AS actor_grant
-                 WHERE actor_grant.principal_id = v_actor_id
-                   AND actor_grant.principal_plane = 'platform'
-                   AND actor_grant.authority_plane = 'platform'
-                   AND actor_grant.status = 'active'
-                   AND actor_grant.capability_key = 'platform.identity.disable'
+            v_binding_status := COALESCE(v_binding_status, 'revoked');
+            IF NOT (
+                (v_binding_status = 'pending'
+                    AND p_target_status IN ('active', 'revoked'))
+                OR (v_binding_status = 'active'
+                    AND p_target_status IN ('suspended', 'revoked'))
+                OR (v_binding_status = 'suspended'
+                    AND p_target_status IN ('active', 'revoked'))
             ) THEN
-                RAISE EXCEPTION 'Current Platform Principal lacks identity disable authority'
-                    USING ERRCODE = '42501';
-            END IF;
-
-            -- Replay is evaluated only after revalidating current actor authority.
-            SELECT fact.id, fact.native_identity_id, fact.revision_after,
-                   fact.affected_tenant_count, fact.affected_platform,
-                   fact.intent_digest
-              INTO v_replay
-              FROM request_engine.platform_identity_disable_facts AS fact
-             WHERE fact.actor_principal_id = v_actor_id
-               AND fact.capability_key = 'platform.identity.disable'
-               AND fact.idempotency_key_digest = p_idempotency_key_digest;
-            IF FOUND THEN
-                IF v_replay.intent_digest <> p_intent_digest THEN
-                    RAISE EXCEPTION 'Idempotency key was used with a different intent'
-                        USING ERRCODE = '40001';
-                END IF;
-                RETURN QUERY SELECT v_replay.id, v_replay.native_identity_id,
-                                    v_replay.revision_after,
-                                    v_replay.affected_tenant_count,
-                                    v_replay.affected_platform;
-                RETURN;
-            END IF;
-
-            SELECT identity.id, identity.identity_authority_id,
-                   identity.status, identity.revision
-              INTO v_identity
-              FROM request_engine.native_identities AS identity
-             WHERE identity.id = p_native_identity_id
-             FOR UPDATE;
-            IF NOT FOUND THEN
-                RAISE EXCEPTION 'Native identity not found' USING ERRCODE = 'P0002';
-            END IF;
-            IF v_identity.status <> 'active' THEN
-                RAISE EXCEPTION 'Native identity is already disabled or terminal'
+                RAISE EXCEPTION 'Invalid integration state transition'
                     USING ERRCODE = '55000';
             END IF;
-            IF v_identity.revision <> p_expected_revision THEN
-                RAISE EXCEPTION 'Native identity revision is stale'
+            IF p_target_status = 'active' THEN                UPDATE request_engine.principals
+                   SET active = true
+                 WHERE id = p_principal_id;
+                UPDATE request_engine.identity_bindings
+                   SET status = 'active',
+                       revision = revision + 1
+                 WHERE principal_id = p_principal_id
+                   AND status <> 'revoked';
+            ELSIF p_target_status = 'suspended' THEN
+                UPDATE request_engine.principals
+                   SET active = false
+                 WHERE id = p_principal_id;
+                UPDATE request_engine.identity_bindings
+                   SET status = 'suspended',
+                       revision = revision + 1
+                 WHERE principal_id = p_principal_id
+                   AND status <> 'revoked';
+            ELSE
+                UPDATE request_engine.principals
+                   SET active = false
+                 WHERE id = p_principal_id;
+                UPDATE request_engine.identity_bindings
+                   SET status = 'revoked',
+                       revision = revision + 1,
+                       revoked_at = clock_timestamp()
+                 WHERE principal_id = p_principal_id
+                   AND status <> 'revoked';
+                UPDATE request_engine.workload_credentials
+                   SET status = 'revoked',
+                       revision = revision + 1,
+                       revoked_at = clock_timestamp()
+                 WHERE workload_identity_id = v_workload_identity_id
+                   AND status = 'active';
+                UPDATE request_engine.workload_identities
+                   SET status = 'disabled',
+                       revision = revision + 1,
+                       disabled_at = clock_timestamp()
+                 WHERE id = v_workload_identity_id
+                   AND status = 'active';
+            END IF;
+
+            SELECT authority_revision
+              INTO v_current_revision
+              FROM request_engine.principals
+             WHERE id = p_principal_id;
+            RETURN v_current_revision;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.set_integration_status_state(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: stamp_shared_capacity_authority_event_context(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.stamp_shared_capacity_authority_event_context() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+BEGIN
+    NEW.details := COALESCE(NEW.details, '{}'::jsonb) || pg_catalog.jsonb_strip_nulls(
+        pg_catalog.jsonb_build_object(
+            'database_session_user', session_user,
+            'authenticated_principal_id',
+                NULLIF(current_setting('request_engine.authenticated_principal_id', true), ''),
+            'correlation_id',
+                NULLIF(current_setting('request_engine.correlation_id', true), ''),
+            'principal_kind',
+                NULLIF(current_setting('request_engine.principal_kind', true), ''),
+            'authentication_method',
+                NULLIF(current_setting('request_engine.authentication_method', true), '')
+        )
+    );
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.stamp_shared_capacity_authority_event_context() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: touch_updated_at(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.touch_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at := clock_timestamp();
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.touch_updated_at() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: transition_agent_profile(uuid, bigint, text, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.transition_agent_profile(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) RETURNS bigint
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor_id uuid;
+            v_profile request_engine.agent_profiles%ROWTYPE;
+            v_new_revision bigint;
+        BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+            IF p_target_status = 'active' THEN
+                v_actor_id := request_engine.assert_staff_manager('agent.provision');
+            ELSIF p_target_status IN ('suspended', 'revoked') THEN
+                v_actor_id := request_engine.assert_staff_manager('agent.suspend');
+            ELSE
+                RAISE EXCEPTION 'Unsupported agent profile target status'
+                    USING ERRCODE = '22023';
+            END IF;
+            SELECT * INTO v_profile
+              FROM request_engine.agent_profiles
+             WHERE principal_id = p_principal_id
+             FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Agent profile not found' USING ERRCODE = 'P0002';
+            END IF;
+            IF v_profile.principal_id = v_actor_id THEN
+                RAISE EXCEPTION 'Agent self-transition is forbidden'
+                    USING ERRCODE = '42501';
+            END IF;
+            IF v_profile.revision <> p_expected_revision THEN
+                RAISE EXCEPTION 'Agent profile revision is stale'
                     USING ERRCODE = '40001';
             END IF;
-            v_revision_before := v_identity.revision;
+            IF length(btrim(p_provenance_reference)) = 0 THEN
+                RAISE EXCEPTION 'Transition provenance is required'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF NOT (
+                (v_profile.status = 'pending'
+                    AND p_target_status IN ('active', 'revoked'))
+                OR (v_profile.status = 'active'
+                    AND p_target_status IN ('suspended', 'revoked'))
+                OR (v_profile.status = 'suspended'
+                    AND p_target_status IN ('active', 'revoked'))
+            ) THEN
+                RAISE EXCEPTION 'Invalid agent profile state transition'
+                    USING ERRCODE = '55000';
+            END IF;
+            v_new_revision := v_profile.revision + 1;
 
-            SELECT authority.kind, authority.status
-              INTO v_authority_kind, v_authority_status
-              FROM request_engine.identity_authorities AS authority
-             WHERE authority.id = v_identity.identity_authority_id;
-            IF NOT FOUND OR v_authority_kind <> 'native' OR v_authority_status <> 'active' THEN
-                RAISE EXCEPTION 'Native identity authority is not active native'
+            IF p_target_status = 'active' THEN
+                UPDATE request_engine.principals
+                   SET active = true
+                 WHERE id = v_profile.principal_id;
+                UPDATE request_engine.identity_bindings
+                   SET status = 'active',
+                       revision = revision + 1
+                 WHERE principal_id = v_profile.principal_id
+                   AND subject_id = v_profile.workload_identity_id::text
+                   AND status <> 'revoked';
+            ELSIF p_target_status = 'suspended' THEN
+                UPDATE request_engine.principals
+                   SET active = false
+                 WHERE id = v_profile.principal_id;
+                UPDATE request_engine.identity_bindings
+                   SET status = 'suspended',
+                       revision = revision + 1
+                 WHERE principal_id = v_profile.principal_id
+                   AND subject_id = v_profile.workload_identity_id::text
+                   AND status <> 'revoked';
+            ELSE
+                UPDATE request_engine.principals
+                   SET active = false
+                 WHERE id = v_profile.principal_id;
+                UPDATE request_engine.identity_bindings
+                   SET status = 'revoked',
+                       revision = revision + 1,
+                       revoked_at = clock_timestamp()
+                 WHERE principal_id = v_profile.principal_id
+                   AND subject_id = v_profile.workload_identity_id::text
+                   AND status <> 'revoked';
+                UPDATE request_engine.workload_credentials
+                   SET status = 'revoked',
+                       revision = revision + 1,
+                       revoked_at = clock_timestamp()
+                 WHERE workload_identity_id = v_profile.workload_identity_id
+                   AND status = 'active';
+                UPDATE request_engine.workload_identities
+                   SET status = 'disabled',
+                       revision = revision + 1,
+                       disabled_at = clock_timestamp()
+                 WHERE id = v_profile.workload_identity_id
+                   AND status = 'active';
+            END IF;
+
+            UPDATE request_engine.agent_profiles
+               SET status = p_target_status,
+                   revision = v_new_revision,
+                   suspended_at = CASE
+                       WHEN p_target_status = 'suspended'
+                       THEN clock_timestamp()
+                       ELSE suspended_at
+                   END,
+                   revoked_at = CASE
+                       WHEN p_target_status = 'revoked'
+                       THEN clock_timestamp()
+                       ELSE NULL
+                   END
+             WHERE principal_id = p_principal_id;
+            RETURN v_new_revision;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.transition_agent_profile(p_principal_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: transition_identity_binding(uuid, bigint, text, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.transition_identity_binding(p_binding_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) RETURNS bigint
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_binding request_engine.identity_bindings%ROWTYPE;
+            v_was_controller boolean;
+        BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+            PERFORM request_engine.lock_tenant_staff_root();
+            v_actor_id := request_engine.assert_staff_manager('identity.bind');
+            SELECT * INTO v_binding
+              FROM request_engine.identity_bindings
+             WHERE id = p_binding_id
+               AND organization_id = v_org_id
+               AND principal_plane = 'tenant'
+             FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Identity binding not found'
+                    USING ERRCODE = 'P0002';
+            END IF;
+            IF p_expected_revision IS NULL OR p_expected_revision < 1 THEN
+                RAISE EXCEPTION 'A positive Identity binding revision is required'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF v_binding.revision <> p_expected_revision THEN
+                RAISE EXCEPTION 'Identity binding revision is stale'
+                    USING ERRCODE = '40001';
+            END IF;
+            IF p_provenance_reference IS NULL
+               OR length(btrim(p_provenance_reference)) = 0 THEN
+                RAISE EXCEPTION 'Transition provenance is required'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_target_status = 'suspended' THEN
+                IF v_binding.status <> 'active' THEN
+                    RAISE EXCEPTION 'Identity binding cannot be suspended'
+                        USING ERRCODE = '55000';
+                END IF;
+            ELSIF p_target_status = 'active' THEN
+                IF v_binding.status <> 'suspended' THEN
+                    RAISE EXCEPTION 'Identity binding cannot be reactivated'
+                        USING ERRCODE = '55000';
+                END IF;
+            ELSIF p_target_status = 'revoked' THEN
+                IF v_binding.status NOT IN ('pending', 'active', 'suspended') THEN
+                    RAISE EXCEPTION 'Identity binding cannot be revoked'
+                        USING ERRCODE = '55000';
+                END IF;
+            ELSE
+                RAISE EXCEPTION 'Unsupported Identity binding target status'
+                    USING ERRCODE = '22023';
+            END IF;
+
+            v_was_controller := request_engine.principal_is_effective_tenant_controller(
+                v_org_id, v_binding.principal_id
+            );
+
+            UPDATE request_engine.identity_bindings
+               SET status = p_target_status,
+                   revision = revision + 1,
+                   revoked_at = CASE
+                       WHEN p_target_status = 'revoked'
+                       THEN clock_timestamp()
+                       ELSE NULL
+                   END
+             WHERE id = p_binding_id
+               AND organization_id = v_org_id;
+
+            IF v_was_controller AND p_target_status IN ('suspended', 'revoked') THEN
+                PERFORM request_engine.assert_tenant_has_controller();
+            END IF;
+            RETURN p_expected_revision + 1;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.transition_identity_binding(p_binding_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: transition_staff_membership(uuid, bigint, text, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.transition_staff_membership(p_membership_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) RETURNS bigint
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_membership request_engine.staff_memberships%ROWTYPE;
+            v_native_identity_id uuid;
+        BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+            PERFORM request_engine.lock_tenant_staff_root();
+            v_actor_id := request_engine.assert_staff_manager(
+                'staff.manage_membership'
+            );
+            SELECT * INTO v_membership
+              FROM request_engine.staff_memberships
+             WHERE id = p_membership_id
+               AND organization_id = v_org_id
+             FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Staff membership not found' USING ERRCODE = 'P0002';
+            END IF;
+            IF v_membership.principal_id = v_actor_id THEN
+                RAISE EXCEPTION 'Staff membership self-transition is forbidden'
+                    USING ERRCODE = '42501';
+            END IF;
+            IF p_expected_revision IS NULL OR p_expected_revision < 1 THEN
+                RAISE EXCEPTION 'A positive Staff membership revision is required'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF v_membership.revision <> p_expected_revision THEN
+                RAISE EXCEPTION 'Staff membership revision is stale'
+                    USING ERRCODE = '40001';
+            END IF;
+            IF p_provenance_reference IS NULL OR length(btrim(p_provenance_reference)) = 0 THEN
+                RAISE EXCEPTION 'Transition provenance is required'
+                    USING ERRCODE = '22023';
+            END IF;
+
+            IF p_target_status = 'active' THEN
+                IF v_membership.status NOT IN ('invited', 'suspended') THEN
+                    RAISE EXCEPTION 'Staff membership cannot be activated'
+                        USING ERRCODE = '55000';
+                END IF;
+                UPDATE request_engine.principals
+                   SET active = true
+                 WHERE id = v_membership.principal_id
+                   AND organization_id = v_org_id;
+                UPDATE request_engine.identity_bindings
+                   SET status = 'active',
+                       revision = revision + 1
+                 WHERE id = v_membership.identity_binding_id
+                   AND organization_id = v_org_id;
+                UPDATE request_engine.staff_memberships
+                   SET status = 'active',
+                       revision = revision + 1,
+                       activated_at = COALESCE(activated_at, clock_timestamp()),
+                       suspended_at = NULL
+                 WHERE id = p_membership_id
+                   AND organization_id = v_org_id;
+            ELSIF p_target_status IN ('suspended', 'revoked') THEN
+                IF (p_target_status = 'suspended' AND v_membership.status <> 'active')
+                   OR (p_target_status = 'revoked'
+                       AND v_membership.status NOT IN ('invited', 'active', 'suspended')) THEN
+                    RAISE EXCEPTION 'Staff membership cannot make this terminal transition'
+                        USING ERRCODE = '55000';
+                END IF;
+                IF (
+                    SELECT count(DISTINCT capability_key)
+                      FROM request_engine.principal_authority_grants
+                     WHERE organization_id = v_org_id
+                       AND principal_id = v_membership.principal_id
+                       AND status = 'active'
+                       AND capability_key IN (
+                           'staff.manage_membership',
+                           'staff.manage_authority',
+                           'identity.bind'
+                       )
+                ) = 3 THEN
+                    PERFORM request_engine.assert_other_tenant_controller(
+                        v_membership.principal_id
+                    );
+                END IF;
+                UPDATE request_engine.principals
+                   SET active = false
+                 WHERE id = v_membership.principal_id
+                   AND organization_id = v_org_id;
+                UPDATE request_engine.identity_bindings
+                   SET status = p_target_status,
+                       revision = revision + 1,
+                       revoked_at = CASE
+                           WHEN p_target_status = 'revoked'
+                           THEN clock_timestamp()
+                           ELSE NULL
+                       END
+                 WHERE id = v_membership.identity_binding_id
+                   AND organization_id = v_org_id;
+                UPDATE request_engine.staff_memberships
+                   SET status = p_target_status,
+                       revision = revision + 1,
+                       suspended_at = CASE
+                           WHEN p_target_status = 'suspended'
+                           THEN clock_timestamp()
+                           ELSE suspended_at
+                       END,
+                       revoked_at = CASE
+                           WHEN p_target_status = 'revoked'
+                           THEN clock_timestamp()
+                           ELSE NULL
+                       END
+                 WHERE id = p_membership_id
+                   AND organization_id = v_org_id;
+
+                SELECT binding.subject_id::uuid INTO v_native_identity_id
+                  FROM request_engine.identity_bindings AS binding
+                  JOIN request_engine.identity_authorities AS authority
+                    ON authority.id = binding.identity_authority_id
+                 WHERE binding.id = v_membership.identity_binding_id
+                   AND binding.organization_id = v_org_id
+                   AND authority.kind = 'native';
+                IF v_native_identity_id IS NOT NULL THEN
+                    PERFORM request_auth.revoke_native_sessions(
+                        v_native_identity_id,
+                        'staff_' || p_target_status
+                    );
+                END IF;
+            ELSE
+                RAISE EXCEPTION 'Unsupported Staff membership target status'
+                    USING ERRCODE = '22023';
+            END IF;
+            RETURN p_expected_revision + 1;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.transition_staff_membership(p_membership_id uuid, p_expected_revision bigint, p_target_status text, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: upgrade_controller_policy(uuid, text, text, bigint, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.upgrade_controller_policy(p_target_principal_id uuid, p_source_policy_key text, p_target_policy_key text, p_expected_authority_revision bigint, p_provenance_reference text) RETURNS bigint
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_target_grants jsonb;
+            v_current_revision bigint;
+            v_root_controller_id uuid;
+            v_root_policy_key text;
+            v_grant record;
+            v_actor_plane text;
+        BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+            PERFORM request_engine.lock_tenant_staff_root();
+            v_actor_id := request_engine.assert_staff_manager(
+                'controller_policy_upgrade'
+            );
+
+            IF p_target_principal_id IS NULL
+               OR p_target_policy_key IS NULL
+               OR length(btrim(p_target_policy_key)) = 0
+               OR p_expected_authority_revision IS NULL
+               OR p_expected_authority_revision < 1
+               OR p_provenance_reference IS NULL
+               OR length(btrim(p_provenance_reference)) = 0
+            THEN
+                RAISE EXCEPTION 'Controller policy upgrade input is invalid'
+                    USING ERRCODE = '22023';
+            END IF;
+
+            SELECT grants INTO v_target_grants
+              FROM request_engine.initial_controller_policies
+             WHERE policy_key = p_target_policy_key;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Unknown controller policy'
+                    USING ERRCODE = '22023';
+            END IF;
+
+            IF p_source_policy_key IS NOT NULL
+               AND length(btrim(p_source_policy_key)) > 0
+            THEN
+                SELECT root_fact.controller_principal_id,
+                       root_fact.initial_controller_policy_key
+                  INTO v_root_controller_id, v_root_policy_key
+                  FROM request_engine.organization_root_provisioning_facts AS root_fact
+                 WHERE root_fact.organization_id = v_org_id;
+                IF v_root_controller_id = p_target_principal_id
+                   AND v_root_policy_key IS NOT NULL
+                   AND v_root_policy_key IS DISTINCT FROM btrim(p_source_policy_key)
+                THEN
+                    RAISE EXCEPTION 'Controller policy source assertion is stale'
+                        USING ERRCODE = '40001';
+                END IF;
+            END IF;
+
+            SELECT authority_revision INTO v_current_revision
+              FROM request_engine.principals
+             WHERE id = p_target_principal_id
+               AND organization_id = v_org_id
+               AND principal_plane = 'tenant'
+               AND active
+             FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Target Principal is not visible in this tenant'
+                    USING ERRCODE = 'P0002';
+            END IF;
+            IF v_current_revision <> p_expected_authority_revision THEN
+                RAISE EXCEPTION 'Controller policy revision is stale'
+                    USING ERRCODE = '40001';
+            END IF;
+            IF p_target_principal_id = v_actor_id THEN
+                RAISE EXCEPTION 'Controller policy self-upgrade is forbidden'
+                    USING ERRCODE = '42501';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                  FROM jsonb_to_recordset(v_target_grants)
+                    AS g(capability_key text, authority_plane text, delegable boolean)
+                 WHERE EXISTS (
+                           SELECT 1
+                             FROM request_engine.principal_authority_grants AS revoked
+                            WHERE revoked.organization_id = v_org_id
+                              AND revoked.principal_id = p_target_principal_id
+                              AND revoked.capability_key = g.capability_key
+                              AND revoked.status = 'revoked'
+                       )
+                   AND NOT EXISTS (
+                           SELECT 1
+                             FROM request_engine.principal_authority_grants AS active
+                            WHERE active.organization_id = v_org_id
+                              AND active.principal_id = p_target_principal_id
+                              AND active.capability_key = g.capability_key
+                              AND active.status = 'active'
+                       )
+            ) THEN
+                RAISE EXCEPTION 'Controller policy upgrade cannot restore revoked authority'
                     USING ERRCODE = '23514';
             END IF;
 
-            -- Only tenants whose continuity currently depends on this identity need a
-            -- post-disable controller proof. The tenant predicate is owner-executed
-            -- over FORCE RLS tables, so the trusted tenant GUC is set per candidate.
-            FOR v_binding IN
-                SELECT DISTINCT binding.organization_id, binding.principal_id
-                  FROM request_engine.identity_bindings AS binding
-                 WHERE binding.identity_authority_id = v_identity.identity_authority_id
-                   AND binding.subject_id = p_native_identity_id::text
-                   AND binding.principal_plane = 'tenant'
-                   AND binding.organization_id IS NOT NULL
-                   AND binding.status = 'active'
+            FOR v_grant IN
+                SELECT g.capability_key
+                  FROM jsonb_to_recordset(v_target_grants)
+                    AS g(capability_key text, authority_plane text, delegable boolean)
+                 WHERE NOT EXISTS (
+                           SELECT 1
+                             FROM request_engine.principal_authority_grants AS active
+                            WHERE active.organization_id = v_org_id
+                              AND active.principal_id = p_target_principal_id
+                              AND active.capability_key = g.capability_key
+                              AND active.status = 'active'
+                       )
             LOOP
-                PERFORM set_config(
-                    'request_engine.organization_id', v_binding.organization_id::text, true
-                );
-                IF request_engine.principal_is_effective_tenant_controller(
-                       v_binding.organization_id, v_binding.principal_id) THEN
-                    v_org_ids := array_append(v_org_ids, v_binding.organization_id);
+                SELECT grant_row.authority_plane INTO v_actor_plane
+                  FROM request_engine.principal_authority_grants AS grant_row
+                 WHERE grant_row.organization_id = v_org_id
+                   AND grant_row.principal_id = v_actor_id
+                   AND grant_row.capability_key = v_grant.capability_key
+                   AND grant_row.status = 'active'
+                   AND grant_row.delegable
+                 FOR SHARE;
+                IF NOT FOUND OR v_actor_plane = 'platform' THEN
+                    RAISE EXCEPTION 'Controller policy upgrade exceeds delegable ceiling'
+                        USING ERRCODE = '42501';
                 END IF;
             END LOOP;
-            PERFORM set_config('request_engine.organization_id', '', true);
-            v_org_ids := (
-                SELECT array_agg(DISTINCT org)
-                  FROM unnest(v_org_ids) AS org
-            );
-            v_affected_tenants := COALESCE(array_length(v_org_ids, 1), 0);
 
-            SELECT EXISTS (
-                SELECT 1
-                  FROM request_engine.identity_bindings AS binding
-                 WHERE binding.identity_authority_id = v_identity.identity_authority_id
-                   AND binding.subject_id = p_native_identity_id::text
-                   AND binding.principal_plane = 'platform'
-                   AND binding.status = 'active'
-                   AND request_platform.principal_is_effective_platform_controller(
-                           binding.principal_id)
-            ) INTO v_affected_platform;
+            INSERT INTO request_engine.principal_authority_grants (
+                organization_id,
+                principal_id,
+                principal_plane,
+                authority_plane,
+                capability_key,
+                delegable,
+                granted_by_principal_id,
+                provenance_kind,
+                provenance_reference
+            )
+            SELECT v_org_id,
+                   p_target_principal_id,
+                   'tenant',
+                   g.authority_plane,
+                   g.capability_key,
+                   false,
+                   v_actor_id,
+                   'controller_policy_upgrade',
+                   btrim(p_provenance_reference)
+              FROM jsonb_to_recordset(v_target_grants)
+                AS g(capability_key text, authority_plane text, delegable boolean)
+             WHERE NOT EXISTS (
+                       SELECT 1
+                         FROM request_engine.principal_authority_grants AS active
+                        WHERE active.organization_id = v_org_id
+                          AND active.principal_id = p_target_principal_id
+                          AND active.capability_key = g.capability_key
+                          AND active.status = 'active'
+                   );
 
-            UPDATE request_engine.native_identities
-               SET status = 'disabled',
-                   session_epoch = session_epoch + 1,
-                   revision = revision + 1,
-                   updated_at = clock_timestamp(),
-                   disabled_at = clock_timestamp()
-             WHERE id = p_native_identity_id;
-            UPDATE request_engine.native_credentials AS credential
-               SET status = 'revoked',
-                   revision = credential.revision + 1,
-                   revoked_at = clock_timestamp()
-             WHERE credential.native_identity_id = p_native_identity_id
-               AND credential.status = 'active';
-            UPDATE request_engine.native_sessions AS session
-               SET status = 'revoked',
-                   revoked_at = clock_timestamp(),
-                   revocation_reason = 'identity_disabled'
-             WHERE session.native_identity_id = p_native_identity_id
-               AND session.status = 'active';
-            UPDATE request_engine.native_recovery_intents AS intent
-               SET status = 'revoked',
-                   revoked_at = clock_timestamp()
-             WHERE intent.native_identity_id = p_native_identity_id
-               AND intent.status = 'pending';
-
-            IF v_org_ids IS NOT NULL THEN
-                FOREACH v_org_id IN ARRAY v_org_ids LOOP
-                    PERFORM set_config(
-                        'request_engine.organization_id', v_org_id::text, true
-                    );
-                    PERFORM request_engine.assert_organization_has_controller(v_org_id);
-                END LOOP;
-                PERFORM set_config('request_engine.organization_id', '', true);
-            END IF;
-            IF v_affected_platform THEN
-                PERFORM request_platform.assert_platform_has_controller();
-            END IF;
-
-            INSERT INTO request_engine.platform_identity_disable_facts (
-                actor_principal_id, capability_key, native_identity_id,
-                native_authority_id, revision_before, revision_after, reason_code,
-                external_case_reference, affected_tenant_count, affected_platform,
-                idempotency_key_digest, intent_digest, correlation_id
-            ) VALUES (
-                v_actor_id, 'platform.identity.disable', p_native_identity_id,
-                v_identity.identity_authority_id, v_revision_before,
-                v_revision_before + 1, btrim(p_reason_code),
-                NULLIF(btrim(p_external_case_reference), ''),
-                v_affected_tenants, v_affected_platform,
-                p_idempotency_key_digest, p_intent_digest, v_correlation_id
-            ) RETURNING id INTO v_fact_id;
-
-            RETURN QUERY SELECT v_fact_id, p_native_identity_id,
-                                v_revision_before + 1, v_affected_tenants,
-                                v_affected_platform;
+            SELECT authority_revision INTO v_current_revision
+              FROM request_engine.principals
+             WHERE id = p_target_principal_id;
+            RETURN v_current_revision;
         END
-        $_$;
+        $$;
 
 
-ALTER FUNCTION request_platform.disable_native_identity(p_native_identity_id uuid, p_expected_revision bigint, p_reason_code text, p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text) OWNER TO request_platform_control_definer;
+ALTER FUNCTION request_engine.upgrade_controller_policy(p_target_principal_id uuid, p_source_policy_key text, p_target_policy_key text, p_expected_authority_revision bigint, p_provenance_reference text) OWNER TO request_engine_schema_owner;
 
 --
--- Name: disable_platform_configuration(text, bigint, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: upsert_agent_policy(uuid, text[], text[], text, integer, text); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
 --
 
-CREATE FUNCTION request_platform.disable_platform_configuration(p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, p_intent_digest text) RETURNS TABLE(configuration_revision_id uuid, revision bigint, state text)
+CREATE FUNCTION request_engine.upsert_agent_policy(p_agent_principal_id uuid, p_allowed_capabilities text[], p_denied_capabilities text[], p_risk_ceiling text, p_max_mutations_per_minute integer, p_provenance_reference text) RETURNS bigint
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor_id uuid;
+            v_org_id uuid := request_engine.current_organization_id();
+            v_profile_status text;
+            v_revision bigint;
+            v_capability text;
+        BEGIN
+            v_actor_id := request_engine.assert_staff_manager(
+                'agent.manage_policy'
+            );
+            FOREACH v_capability IN ARRAY p_allowed_capabilities
+            LOOP
+                IF v_capability IS NULL
+                   OR length(btrim(v_capability)) = 0
+                   OR length(v_capability) > 200
+                THEN
+                    RAISE EXCEPTION 'Invalid agent policy capability key'
+                        USING ERRCODE = '22023';
+                END IF;
+            END LOOP;
+            FOREACH v_capability IN ARRAY p_denied_capabilities
+            LOOP
+                IF v_capability IS NULL
+                   OR length(btrim(v_capability)) = 0
+                   OR length(v_capability) > 200
+                THEN
+                    RAISE EXCEPTION 'Invalid agent policy capability key'
+                        USING ERRCODE = '22023';
+                END IF;
+            END LOOP;
+            IF p_agent_principal_id = v_actor_id
+               OR p_risk_ceiling NOT IN (
+                    'read',
+                    'low_impact_write',
+                    'reversible_write',
+                    'external_commitment',
+                    'sensitive_data',
+                    'financial',
+                    'destructive'
+               )
+               OR p_max_mutations_per_minute IS NULL
+               OR p_max_mutations_per_minute <= 0
+               OR p_allowed_capabilities && p_denied_capabilities
+               OR length(btrim(p_provenance_reference)) = 0
+            THEN
+                RAISE EXCEPTION 'Invalid agent policy input'
+                    USING ERRCODE = '22023';
+            END IF;
+
+            SELECT status
+              INTO v_profile_status
+              FROM request_engine.agent_profiles
+             WHERE principal_id = p_agent_principal_id
+             FOR SHARE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Agent profile not found' USING ERRCODE = 'P0002';
+            END IF;
+            IF v_profile_status NOT IN ('pending', 'active') THEN
+                RAISE EXCEPTION 'Suspended or revoked agents cannot receive policy'
+                    USING ERRCODE = '55000';
+            END IF;
+
+            INSERT INTO request_engine.agent_policies (
+                organization_id,
+                agent_principal_id,
+                allowed_capabilities,
+                denied_capabilities,
+                risk_ceiling,
+                max_mutations_per_minute,
+                provenance_reference
+            ) VALUES (
+                v_org_id,
+                p_agent_principal_id,
+                p_allowed_capabilities,
+                p_denied_capabilities,
+                p_risk_ceiling,
+                p_max_mutations_per_minute,
+                p_provenance_reference
+            )
+            ON CONFLICT (organization_id, agent_principal_id)
+            DO UPDATE SET
+                allowed_capabilities = EXCLUDED.allowed_capabilities,
+                denied_capabilities = EXCLUDED.denied_capabilities,
+                risk_ceiling = EXCLUDED.risk_ceiling,
+                max_mutations_per_minute = EXCLUDED.max_mutations_per_minute,
+                provenance_reference = EXCLUDED.provenance_reference,
+                policy_revision = request_engine.agent_policies.policy_revision + 1,
+                updated_at = clock_timestamp()
+            RETURNING policy_revision INTO v_revision;
+            RETURN v_revision;
+        END
+        $$;
+
+
+ALTER FUNCTION request_engine.upsert_agent_policy(p_agent_principal_id uuid, p_allowed_capabilities text[], p_denied_capabilities text[], p_risk_ceiling text, p_max_mutations_per_minute integer, p_provenance_reference text) OWNER TO request_engine_schema_owner;
+
+--
+-- Name: validate_offering_version_delivery_policy(); Type: FUNCTION; Schema: request_engine; Owner: request_engine_schema_owner
+--
+
+CREATE FUNCTION request_engine.validate_offering_version_delivery_policy() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'request_engine'
+    AS $$
+DECLARE
+    v_access jsonb;
+    v_item jsonb;
+    v_access_key text;
+    v_kind text;
+    v_provider text;
+    v_provisioning text;
+    v_public_data jsonb;
+    v_seen_keys text[] := ARRAY[]::text[];
+BEGIN
+    IF jsonb_typeof(NEW.delivery_policy) <> 'object' THEN
+        RAISE EXCEPTION 'delivery_policy must be a JSON object'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF NOT NEW.delivery_policy ? 'access' THEN
+        RETURN NEW;
+    END IF;
+
+    v_access := NEW.delivery_policy -> 'access';
+    IF jsonb_typeof(v_access) <> 'array' THEN
+        RAISE EXCEPTION 'delivery_policy.access must be an array'
+            USING ERRCODE = '23514';
+    END IF;
+
+    FOR v_item IN
+        SELECT value
+        FROM jsonb_array_elements(v_access) AS access_item(value)
+    LOOP
+        IF jsonb_typeof(v_item) <> 'object' THEN
+            RAISE EXCEPTION 'delivery_policy.access entries must be objects'
+                USING ERRCODE = '23514';
+        END IF;
+
+        IF NOT v_item ? 'key' OR jsonb_typeof(v_item -> 'key') <> 'string' THEN
+            RAISE EXCEPTION 'delivery_policy.access key must be a string'
+                USING ERRCODE = '23514';
+        END IF;
+        v_access_key := v_item ->> 'key';
+        IF v_access_key = '' OR btrim(v_access_key) <> v_access_key THEN
+            RAISE EXCEPTION 'delivery_policy.access key must be a non-empty trimmed string'
+                USING ERRCODE = '23514';
+        END IF;
+        IF v_access_key = ANY(v_seen_keys) THEN
+            RAISE EXCEPTION 'delivery_policy.access contains duplicate key %', v_access_key
+                USING ERRCODE = '23514';
+        END IF;
+        v_seen_keys := array_append(v_seen_keys, v_access_key);
+
+        IF NOT v_item ? 'kind' OR jsonb_typeof(v_item -> 'kind') <> 'string' THEN
+            RAISE EXCEPTION 'delivery_policy.access kind must be a string'
+                USING ERRCODE = '23514';
+        END IF;
+        v_kind := v_item ->> 'kind';
+        IF v_kind NOT IN (
+            'video_link',
+            'phone',
+            'physical_location',
+            'instructions',
+            'external_session'
+        ) THEN
+            RAISE EXCEPTION 'delivery_policy.access kind is unsupported: %', v_kind
+                USING ERRCODE = '23514';
+        END IF;
+
+        v_provider := NULL;
+        IF v_item ? 'provider' THEN
+            IF jsonb_typeof(v_item -> 'provider') <> 'string' THEN
+                RAISE EXCEPTION 'delivery_policy.access provider must be a string'
+                    USING ERRCODE = '23514';
+            END IF;
+            v_provider := v_item ->> 'provider';
+            IF v_provider = '' OR btrim(v_provider) <> v_provider THEN
+                RAISE EXCEPTION
+                    'delivery_policy.access provider must be a non-empty trimmed string'
+                    USING ERRCODE = '23514';
+            END IF;
+        END IF;
+
+        v_provisioning := 'immediate';
+        IF v_item ? 'provisioning' THEN
+            IF jsonb_typeof(v_item -> 'provisioning') <> 'string' THEN
+                RAISE EXCEPTION 'delivery_policy.access provisioning must be a string'
+                    USING ERRCODE = '23514';
+            END IF;
+            v_provisioning := v_item ->> 'provisioning';
+        END IF;
+        IF v_provisioning NOT IN ('immediate', 'manual') THEN
+            RAISE EXCEPTION 'delivery_policy.access provisioning is unsupported: %', v_provisioning
+                USING ERRCODE = '23514';
+        END IF;
+
+        v_public_data := '{}'::jsonb;
+        IF v_item ? 'public_data' THEN
+            IF jsonb_typeof(v_item -> 'public_data') <> 'object' THEN
+                RAISE EXCEPTION 'delivery_policy.access public_data must be an object'
+                    USING ERRCODE = '23514';
+            END IF;
+            v_public_data := v_item -> 'public_data';
+        END IF;
+
+        IF v_provisioning = 'immediate'
+           AND v_provider IS NULL
+           AND v_public_data = '{}'::jsonb
+        THEN
+            RAISE EXCEPTION
+                'immediate static delivery access requires non-empty public_data'
+                USING ERRCODE = '23514';
+        END IF;
+    END LOOP;
+
+    RETURN NEW;
+END
+$$;
+
+
+ALTER FUNCTION request_engine.validate_offering_version_delivery_policy() OWNER TO request_engine_schema_owner;
+
+--
+-- Name: activate_platform_configuration(text, bigint, bigint, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
+--
+
+CREATE FUNCTION request_platform.activate_platform_configuration(p_configuration_kind text, p_revision bigint, p_expected_active_revision bigint, p_idempotency_key_digest text, p_intent_digest text) RETURNS TABLE(configuration_revision_id uuid, revision bigint, state text)
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
     AS $_$
@@ -1494,20 +2048,25 @@ CREATE FUNCTION request_platform.disable_platform_configuration(p_configuration_
             v_correlation_id uuid;
             v_replay record;
             v_target record;
+            v_previous record;
         BEGIN
             SELECT actor_id, actor_method, correlation_id
               INTO v_actor_id, v_actor_method, v_correlation_id
               FROM request_platform.assert_platform_configuration_actor(
-                  'platform.configuration.disable'
+                  'platform.configuration.activate'
               );
 
             IF p_configuration_kind !~ '^[a-z][a-z0-9_.-]{1,79}$'
                OR p_revision IS NULL
                OR p_revision < 1
+               OR (
+                   p_expected_active_revision IS NOT NULL
+                   AND p_expected_active_revision < 1
+               )
                OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
                OR p_intent_digest !~ '^[0-9a-f]{64}$'
             THEN
-                RAISE EXCEPTION 'Platform configuration disable input is invalid'
+                RAISE EXCEPTION 'Platform configuration activation input is invalid'
                     USING ERRCODE = '22023';
             END IF;
 
@@ -1515,7 +2074,7 @@ CREATE FUNCTION request_platform.disable_platform_configuration(p_configuration_
                 pg_catalog.hashtextextended(
                     'p7/idempotency/'
                     || v_actor_id::text
-                    || '/platform.configuration.disable/'
+                    || '/platform.configuration.activate/'
                     || p_idempotency_key_digest,
                     0
                 )
@@ -1529,13 +2088,13 @@ CREATE FUNCTION request_platform.disable_platform_configuration(p_configuration_
               INTO v_replay
               FROM request_engine.platform_configuration_facts AS fact
              WHERE fact.actor_principal_id = v_actor_id
-               AND fact.capability_key = 'platform.configuration.disable'
+               AND fact.capability_key = 'platform.configuration.activate'
                AND fact.idempotency_key_digest = p_idempotency_key_digest;
 
             IF FOUND THEN
                 IF v_replay.intent_digest <> p_intent_digest THEN
                     RAISE EXCEPTION
-                        'Idempotency key conflicts with another disable intent'
+                        'Idempotency key conflicts with another activation intent'
                         USING ERRCODE = '23505';
                 END IF;
                 RETURN QUERY
@@ -1555,6 +2114,30 @@ CREATE FUNCTION request_platform.disable_platform_configuration(p_configuration_
 
             SELECT
                 revision_row.id,
+                revision_row.revision,
+                revision_row.secret_binding_id
+              INTO v_previous
+              FROM request_engine.platform_configuration_revisions AS revision_row
+             WHERE revision_row.configuration_kind = p_configuration_kind
+               AND revision_row.state = 'active'
+             FOR UPDATE;
+
+            IF p_expected_active_revision IS NULL THEN
+                IF FOUND THEN
+                    RAISE EXCEPTION
+                        'Platform configuration active revision changed'
+                        USING ERRCODE = '40001';
+                END IF;
+            ELSIF NOT FOUND
+               OR v_previous.revision <> p_expected_active_revision
+            THEN
+                RAISE EXCEPTION
+                    'Platform configuration active revision changed'
+                    USING ERRCODE = '40001';
+            END IF;
+
+            SELECT
+                revision_row.id,
                 revision_row.state,
                 revision_row.secret_binding_id
               INTO v_target
@@ -1568,15 +2151,50 @@ CREATE FUNCTION request_platform.disable_platform_configuration(p_configuration_
                     USING ERRCODE = 'P0002';
             END IF;
 
-            IF v_target.state NOT IN ('draft', 'validated', 'active') THEN
+            IF v_target.state <> 'validated' THEN
                 RAISE EXCEPTION
-                    'Platform configuration revision cannot be disabled'
+                    'Platform configuration revision requires validation'
                     USING ERRCODE = '40001';
             END IF;
 
+            IF v_previous.id IS NOT NULL THEN
+                UPDATE request_engine.platform_configuration_revisions
+                   SET state = 'superseded'
+                 WHERE id = v_previous.id;
+
+                INSERT INTO request_engine.platform_configuration_facts (
+                    event_kind,
+                    configuration_revision_id,
+                    configuration_kind,
+                    revision,
+                    secret_binding_id,
+                    actor_principal_id,
+                    actor_authentication_method,
+                    correlation_id,
+                    detail,
+                    capability_key
+                ) VALUES (
+                    'superseded',
+                    v_previous.id,
+                    p_configuration_kind,
+                    v_previous.revision,
+                    v_previous.secret_binding_id,
+                    v_actor_id,
+                    v_actor_method,
+                    v_correlation_id,
+                    jsonb_build_object(
+                        'result_state',
+                        'superseded',
+                        'superseded_by_revision',
+                        p_revision
+                    ),
+                    'platform.configuration.activate'
+                );
+            END IF;
+
             UPDATE request_engine.platform_configuration_revisions
-               SET state = 'disabled',
-                   disabled_at = clock_timestamp()
+               SET state = 'active',
+                   activated_at = clock_timestamp()
              WHERE id = v_target.id;
 
             INSERT INTO request_engine.platform_configuration_facts (
@@ -1593,7 +2211,7 @@ CREATE FUNCTION request_platform.disable_platform_configuration(p_configuration_
                 idempotency_key_digest,
                 intent_digest
             ) VALUES (
-                'disabled',
+                'activated',
                 v_target.id,
                 p_configuration_kind,
                 p_revision,
@@ -1602,1022 +2220,415 @@ CREATE FUNCTION request_platform.disable_platform_configuration(p_configuration_
                 v_actor_method,
                 v_correlation_id,
                 jsonb_build_object(
-                    'previous_state',
-                    v_target.state,
+                    'previous_active_revision',
+                    p_expected_active_revision,
                     'result_state',
-                    'disabled'
+                    'active'
                 ),
-                'platform.configuration.disable',
+                'platform.configuration.activate',
                 p_idempotency_key_digest,
                 p_intent_digest
             );
 
-            IF v_target.state = 'active' THEN
-                PERFORM pg_catalog.pg_notify(
-                    'request_engine_platform_configuration',
-                    jsonb_build_object(
-                        'configuration_kind',
-                        p_configuration_kind,
-                        'revision',
-                        p_revision,
-                        'state',
-                        'disabled'
-                    )::text
-                );
-            END IF;
+            PERFORM pg_catalog.pg_notify(
+                'request_engine_platform_configuration',
+                jsonb_build_object(
+                    'configuration_kind',
+                    p_configuration_kind,
+                    'revision',
+                    p_revision,
+                    'state',
+                    'active'
+                )::text
+            );
 
             RETURN QUERY
-            SELECT v_target.id, p_revision, 'disabled'::text;
+            SELECT v_target.id, p_revision, 'active'::text;
         END
         $_$;
 
 
-ALTER FUNCTION request_platform.disable_platform_configuration(p_configuration_kind text, p_revision bigint, p_idempotency_key_digest text, p_intent_digest text) OWNER TO request_platform_control_definer;
+ALTER FUNCTION request_platform.activate_platform_configuration(p_configuration_kind text, p_revision bigint, p_expected_active_revision bigint, p_idempotency_key_digest text, p_intent_digest text) OWNER TO request_platform_control_definer;
 
 --
--- Name: enroll_platform_owner_invitation(bytea, uuid, uuid, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: activate_platform_owner_invitation(uuid, uuid, uuid, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
 --
 
-CREATE FUNCTION request_platform.enroll_platform_owner_invitation(p_token_digest bytea, p_native_identity_id uuid, p_credential_id uuid, p_login_handle text, p_password_verifier text) RETURNS TABLE(invitation_id uuid, native_identity_id uuid)
+CREATE FUNCTION request_platform.activate_platform_owner_invitation(p_invitation_id uuid, p_principal_id uuid, p_binding_id uuid, p_idempotency_key_digest text, p_intent_digest text) RETURNS TABLE(principal_id uuid, binding_id uuid, invitation_revision bigint)
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $_$
+    AS $$
         DECLARE
+            v_actor_id uuid;
             v_invitation record;
             v_instance record;
+            v_created uuid;
+            v_revision_before bigint;
         BEGIN
-            IF p_token_digest IS NULL OR octet_length(p_token_digest) <> 32
-               OR p_native_identity_id IS NULL OR p_credential_id IS NULL
-               OR p_login_handle IS NULL
-               OR length(btrim(p_login_handle)) NOT BETWEEN 1 AND 320
-               OR p_password_verifier IS NULL
-               OR NOT (p_password_verifier LIKE '$argon2id$%'
-                       OR p_password_verifier LIKE 'scrypt$%')
-            THEN
-                RETURN;
-            END IF;
+            SELECT actor_id
+              INTO v_actor_id
+              FROM request_platform.assert_platform_owner_actor(
+                  'platform.owner.provision'
+              );
 
             SELECT invitation.id, invitation.status, invitation.revision,
-                   invitation.expires_at
+                   invitation.native_identity_id, invitation.provenance_reference
               INTO v_invitation
               FROM request_engine.platform_owner_invitations AS invitation
-             WHERE invitation.token_digest = p_token_digest
+             WHERE invitation.id = p_invitation_id
              FOR UPDATE;
-            IF NOT FOUND
-               OR v_invitation.status <> 'pending'
-               OR v_invitation.expires_at <= clock_timestamp()
-            THEN
+            IF NOT FOUND OR v_invitation.status NOT IN ('enrolled', 'consumed') THEN
+                RAISE EXCEPTION 'Platform Owner invitation is not activatable'
+                    USING ERRCODE = '22023';
+            END IF;
+
+            IF v_invitation.status = 'consumed' THEN
+                SELECT fact.principal_id INTO v_created
+                  FROM request_engine.platform_owner_provisioning_facts AS fact
+                 WHERE fact.native_identity_id = v_invitation.native_identity_id
+                 ORDER BY fact.created_at DESC
+                 LIMIT 1;
+                IF v_created IS NULL THEN
+                    RAISE EXCEPTION 'Consumed invitation has no owner authority fact'
+                        USING ERRCODE = '55000';
+                END IF;
+                SELECT binding.id
+                  INTO p_binding_id
+                  FROM request_engine.identity_bindings AS binding
+                 WHERE binding.principal_id = v_created
+                   AND binding.principal_plane = 'platform'
+                 ORDER BY binding.id
+                 LIMIT 1;
+                RETURN QUERY SELECT v_created, p_binding_id, v_invitation.revision;
                 RETURN;
             END IF;
 
-            SELECT instance.id, instance.built_in_native_authority_id, instance.state
+            SELECT instance.built_in_native_authority_id
               INTO v_instance
               FROM request_engine.platform_instance AS instance
              WHERE instance.singleton_key = 1
-             FOR SHARE;
-            IF NOT FOUND OR v_instance.state <> 'claimed' THEN
-                RETURN;
-            END IF;
-
-            INSERT INTO request_engine.native_identities (
-                id, identity_authority_id, login_handle
-            ) VALUES (
-                p_native_identity_id, v_instance.built_in_native_authority_id,
-                btrim(p_login_handle)
-            );
-            INSERT INTO request_engine.native_credentials (
-                id, native_identity_id, verifier
-            ) VALUES (
-                p_credential_id, p_native_identity_id, p_password_verifier
-            );
-
-            UPDATE request_engine.platform_owner_invitations
-               SET status = 'enrolled',
-                   revision = revision + 1,
-                   native_identity_id = p_native_identity_id,
-                   enrolled_at = clock_timestamp()
-             WHERE id = v_invitation.id;
-
-            INSERT INTO request_engine.platform_owner_invitation_facts (
-                invitation_id, action, native_identity_id, revision_before, revision_after
-            ) VALUES (
-                v_invitation.id, 'enroll', p_native_identity_id,
-                v_invitation.revision, v_invitation.revision + 1
-            );
-
-            RETURN QUERY SELECT v_invitation.id, p_native_identity_id;
-        EXCEPTION WHEN unique_violation THEN
-            RETURN;
-        END
-        $_$;
-
-
-ALTER FUNCTION request_platform.enroll_platform_owner_invitation(p_token_digest bytea, p_native_identity_id uuid, p_credential_id uuid, p_login_handle text, p_password_verifier text) OWNER TO request_platform_control_definer;
-
---
--- Name: establish_root(uuid, bytea, uuid, uuid, text, uuid, text, uuid, uuid); Type: FUNCTION; Schema: request_platform; Owner: request_bootstrap_definer
---
-
-CREATE FUNCTION request_platform.establish_root(p_intent_id uuid, p_token_digest bytea, p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_password_verifier text, p_principal_id uuid, p_binding_id uuid) RETURNS uuid
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $$
-        DECLARE
-            v_provenance text;
-            v_authority_kind text;
-            v_authority_status text;
-        BEGIN
-            PERFORM request_engine.acquire_identity_topology_exclusive();
-            PERFORM pg_catalog.pg_advisory_xact_lock(1380274257, 1902476356);
-
-            SELECT provenance_reference
-              INTO v_provenance
-              FROM request_engine.platform_bootstrap_intents
-             WHERE id = p_intent_id
-               AND token_digest = p_token_digest
-               AND permitted_action = 'platform.root.establish'
-               AND status = 'pending'
-               AND expires_at > clock_timestamp()
-             FOR UPDATE;
+               AND instance.state = 'claimed';
             IF NOT FOUND THEN
-                RETURN NULL;
-            END IF;
-
-            PERFORM 1
-              FROM request_engine.principals
-             WHERE principal_plane = 'platform'
-             LIMIT 1;
-            IF FOUND THEN
-                RAISE EXCEPTION 'Platform root already exists'
+                RAISE EXCEPTION 'Platform instance is unavailable'
                     USING ERRCODE = '55000';
             END IF;
 
-            SELECT kind, status
-              INTO v_authority_kind, v_authority_status
-              FROM request_engine.identity_authorities
-             WHERE id = p_identity_authority_id;
-            IF NOT FOUND OR v_authority_kind <> 'native'
-               OR v_authority_status <> 'active'
-            THEN
-                RAISE EXCEPTION 'Platform root requires an active Native identity authority'
-                    USING ERRCODE = '23514';
-            END IF;
-
-            INSERT INTO request_engine.native_identities (
-                id, identity_authority_id, login_handle
-            ) VALUES (
-                p_native_identity_id, p_identity_authority_id, p_login_handle
-            );
-            INSERT INTO request_engine.native_credentials (
-                id, native_identity_id, verifier
-            ) VALUES (
-                p_credential_id, p_native_identity_id, p_password_verifier
-            );
-            INSERT INTO request_engine.principals (
-                id, principal_plane, principal_kind, external_subject
-            ) VALUES (
+            v_created := request_platform.provision_native_platform_owner(
                 p_principal_id,
-                'platform',
-                'human',
-                'native-bootstrap:' || p_native_identity_id::text
-            );
-            INSERT INTO request_engine.identity_bindings (
-                id, principal_id, principal_plane, identity_authority_id,
-                subject_id, status
-            ) VALUES (
                 p_binding_id,
-                p_principal_id,
-                'platform',
-                p_identity_authority_id,
-                p_native_identity_id::text,
-                'active'
-            );
-
-            INSERT INTO request_engine.principal_authority_grants (
-                principal_id, principal_plane, authority_plane, capability_key,
-                delegable, provenance_kind, provenance_reference
-            )
-            SELECT p_principal_id,
-                   'platform',
-                   'platform',
-                   capability_key,
-                   delegable,
-                   'trust_bootstrap',
-                   'platform-bootstrap:' || p_intent_id::text || ':' || v_provenance
-              FROM (VALUES
-                  ('platform.principal.provision', true),
-                  ('platform.tenant_provisioner.provision', true),
-                  ('organization.provision', true),
-                  ('platform.identity.recover', false),
-                  ('platform.identity.read', false),
-                  ('platform.identity.recovery_approve', false),
-                  ('platform.recovery_operator.provision', false),
-                  ('platform.provisioner.read', false),
-                  ('platform.provisioner.manage_lifecycle', false),
-                  ('platform.owner.read', false),
-                  ('platform.owner.provision', false),
-                  ('platform.owner.manage_lifecycle', false),
-                  ('platform.identity.provision', false)
-              ) AS initial_grant(capability_key, delegable);
-
-            UPDATE request_engine.platform_bootstrap_intents
-               SET status = 'consumed',
-                   revision = revision + 1,
-                   consumed_at = clock_timestamp()
-             WHERE id = p_intent_id;
-            RETURN p_principal_id;
-        END
-        $$;
-
-
-ALTER FUNCTION request_platform.establish_root(p_intent_id uuid, p_token_digest bytea, p_identity_authority_id uuid, p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, p_password_verifier text, p_principal_id uuid, p_binding_id uuid) OWNER TO request_bootstrap_definer;
-
---
--- Name: finalize_instance_claim(uuid, text, text, text, text, uuid); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.finalize_instance_claim(p_setup_session_id uuid, p_idempotency_key_digest text, p_intent_digest text, p_claim_provenance text, p_actor_authentication_method text, p_correlation_id uuid) RETURNS TABLE(instance_id uuid, owner_principal_id uuid, native_identity_id uuid, setup_session_id uuid, policy_key text)
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $_$
-        DECLARE
-            v_instance request_engine.platform_instance%ROWTYPE;
-            v_session request_engine.setup_sessions%ROWTYPE;
-            v_identity request_engine.setup_pending_identity%ROWTYPE;
-            v_verified_count integer;
-            v_policy request_engine.platform_owner_policies%ROWTYPE;
-            v_principal_id uuid;
-            v_binding_id uuid;
-            v_replay request_engine.platform_installation_claim_facts%ROWTYPE;
-        BEGIN
-            PERFORM request_engine.acquire_identity_topology_exclusive();
-
-            IF p_setup_session_id IS NULL
-               OR p_idempotency_key_digest IS NULL
-               OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
-               OR p_intent_digest IS NULL
-               OR p_intent_digest !~ '^[0-9a-f]{64}$'
-               OR p_claim_provenance IS NULL
-               OR length(btrim(p_claim_provenance)) NOT BETWEEN 1 AND 500
-            THEN
-                RAISE EXCEPTION 'Instance claim request is invalid' USING ERRCODE = '22023';
-            END IF;
-
-            -- Serialization root: the singleton instance row.
-            SELECT instance.* INTO v_instance
-              FROM request_engine.platform_instance AS instance
-             WHERE instance.singleton_key = 1
-             FOR UPDATE;
-            IF NOT FOUND THEN
-                RAISE EXCEPTION 'Platform instance is not initialized' USING ERRCODE = '55000';
-            END IF;
-
-            IF v_instance.state = 'claimed' THEN
-                SELECT fact.* INTO v_replay
-                  FROM request_engine.platform_installation_claim_facts AS fact
-                 WHERE fact.idempotency_key_digest = p_idempotency_key_digest;
-                IF FOUND AND v_replay.intent_digest = p_intent_digest THEN
-                    RETURN QUERY SELECT v_replay.instance_id, v_replay.owner_principal_id,
-                                        v_replay.native_identity_id,
-                                        v_replay.setup_session_id, v_replay.policy_key;
-                    RETURN;
-                END IF;
-                RAISE EXCEPTION 'Instance is already claimed' USING ERRCODE = '55000';
-            END IF;
-
-            SELECT session.* INTO v_session
-              FROM request_engine.setup_sessions AS session
-             WHERE session.id = p_setup_session_id;
-            IF NOT FOUND
-               OR v_session.status <> 'pending'
-               OR v_session.expires_at <= clock_timestamp()
-               OR v_session.instance_id <> v_instance.id
-            THEN
-                RAISE EXCEPTION 'Setup session is not usable' USING ERRCODE = '55000';
-            END IF;
-
-            SELECT identity.* INTO v_identity
-              FROM request_engine.setup_pending_identity AS identity
-             WHERE identity.setup_session_id = p_setup_session_id;
-            IF NOT FOUND OR v_identity.status <> 'pending' THEN
-                RAISE EXCEPTION 'Setup has no pending identity' USING ERRCODE = '55000';
-            END IF;
-
-            SELECT count(*)::integer INTO v_verified_count
-              FROM request_engine.setup_pending_webauthn_credential AS credential
-             WHERE credential.setup_session_id = p_setup_session_id
-               AND credential.status = 'pending'
-               AND credential.user_verified;
-            IF v_verified_count < 1 THEN
-                RAISE EXCEPTION 'Setup requires a verified WebAuthn authenticator'
-                    USING ERRCODE = '55000';
-            END IF;
-
-            IF NOT EXISTS (
-                SELECT 1 FROM request_engine.recovery_code_sets AS code_set
-                 WHERE code_set.setup_session_id = p_setup_session_id
-                   AND code_set.status = 'active'
-            ) THEN
-                RAISE EXCEPTION 'Setup requires recovery codes' USING ERRCODE = '55000';
-            END IF;
-
-            SELECT policy.* INTO v_policy
-              FROM request_engine.platform_owner_policies AS policy
-             WHERE policy.policy_key = 'platform-owner-v1';
-            IF NOT FOUND THEN
-                RAISE EXCEPTION 'Platform owner policy is missing' USING ERRCODE = '55000';
-            END IF;
-
-            v_principal_id := gen_random_uuid();
-            v_binding_id := gen_random_uuid();
-
-            INSERT INTO request_engine.native_identities (
-                id, identity_authority_id, login_handle
-            ) VALUES (
-                v_identity.id, v_instance.built_in_native_authority_id,
-                v_identity.login_handle
-            );
-            INSERT INTO request_engine.native_credentials (
-                id, native_identity_id, verifier
-            ) VALUES (
-                gen_random_uuid(), v_identity.id, v_identity.verifier
-            );
-            INSERT INTO request_engine.webauthn_credentials (
-                id, native_identity_id, credential_id, public_key, sign_count,
-                aaguid, backup_eligible, backup_state, user_verified
-            )
-            SELECT gen_random_uuid(), v_identity.id, credential.credential_id,
-                   credential.public_key, credential.sign_count, credential.aaguid,
-                   credential.backup_eligible, credential.backup_state,
-                   credential.user_verified
-              FROM request_engine.setup_pending_webauthn_credential AS credential
-             WHERE credential.setup_session_id = p_setup_session_id
-               AND credential.status = 'pending';
-
-            INSERT INTO request_engine.principals (
-                id, principal_plane, principal_kind, external_subject
-            ) VALUES (
-                v_principal_id, 'platform', 'human', 'instance-claim:' || v_identity.id::text
-            );
-            INSERT INTO request_engine.identity_bindings (
-                id, principal_id, principal_plane, identity_authority_id, subject_id, status
-            ) VALUES (
-                v_binding_id, v_principal_id, 'platform',
-                v_instance.built_in_native_authority_id, v_identity.id::text, 'active'
-            );
-            INSERT INTO request_engine.principal_authority_grants (
-                principal_id, principal_plane, authority_plane, capability_key,
-                delegable, provenance_kind, provenance_reference
-            )
-            SELECT v_principal_id, 'platform', 'platform',
-                   grant_item ->> 'capability_key',
-                   coalesce((grant_item ->> 'delegable')::boolean, false),
-                   'trust_bootstrap',
-                   'instance-claim:' || v_instance.id::text || ':' || btrim(p_claim_provenance)
-              FROM jsonb_array_elements(v_policy.grants) AS grant_item;
-
-            UPDATE request_engine.recovery_code_sets AS code_set
-               SET setup_session_id = NULL,
-                   native_identity_id = v_identity.id
-             WHERE code_set.setup_session_id = p_setup_session_id
-               AND code_set.status = 'active';
-
-            UPDATE request_engine.setup_pending_identity
-               SET status = 'promoted', promoted_at = clock_timestamp()
-             WHERE id = v_identity.id;
-            UPDATE request_engine.setup_pending_webauthn_credential AS credential
-               SET status = 'promoted', promoted_at = clock_timestamp()
-             WHERE credential.setup_session_id = p_setup_session_id
-               AND credential.status = 'pending';
-
-            UPDATE request_engine.setup_sessions
-               SET status = 'consumed',
-                   revision = revision + 1,
-                   consumed_at = clock_timestamp()
-             WHERE id = p_setup_session_id;
-
-            UPDATE request_engine.platform_instance
-               SET state = 'claimed',
-                   revision = revision + 1,
-                   claimed_at = clock_timestamp(),
-                   initial_owner_principal_id = v_principal_id,
-                   claim_provenance = btrim(p_claim_provenance)
-             WHERE singleton_key = 1;
-
-            INSERT INTO request_engine.platform_installation_claim_facts (
-                instance_id, setup_session_id, owner_principal_id, native_identity_id,
-                policy_key, claim_provenance, idempotency_key_digest, intent_digest,
-                correlation_id
-            ) VALUES (
-                v_instance.id, p_setup_session_id, v_principal_id, v_identity.id,
-                v_policy.policy_key, btrim(p_claim_provenance), p_idempotency_key_digest,
-                p_intent_digest, p_correlation_id
-            );
-
-            RETURN QUERY SELECT v_instance.id, v_principal_id, v_identity.id,
-                                p_setup_session_id, v_policy.policy_key;
-        END
-        $_$;
-
-
-ALTER FUNCTION request_platform.finalize_instance_claim(p_setup_session_id uuid, p_idempotency_key_digest text, p_intent_digest text, p_claim_provenance text, p_actor_authentication_method text, p_correlation_id uuid) OWNER TO request_platform_control_definer;
-
---
--- Name: grant_platform_owner_v2_capabilities_on_claim(); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.grant_platform_owner_v2_capabilities_on_claim() RETURNS trigger
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $$
-        BEGIN
-            IF OLD.state = 'unclaimed'
-               AND NEW.state = 'claimed'
-               AND NEW.initial_owner_principal_id IS NOT NULL
-               AND EXISTS (
-                   SELECT 1
-                     FROM request_engine.principals AS principal
-                    WHERE principal.id = NEW.initial_owner_principal_id
-                      AND principal.principal_plane = 'platform'
-                      AND principal.principal_kind = 'human'
-                      AND principal.active
-               )
-            THEN
-                INSERT INTO request_engine.principal_authority_grants (
-                    principal_id, principal_plane, authority_plane, capability_key,
-                    delegable, provenance_kind, provenance_reference
-                )
-                SELECT NEW.initial_owner_principal_id,
-                       'platform',
-                       'platform',
-                       capability.capability_key,
-                       false,
-                       'trust_bootstrap',
-                       'platform-owner-v2-claim:' || NEW.id::text
-                  FROM (
-                      VALUES ('platform.owner.read'),
-                             ('platform.owner.provision'),
-                             ('platform.owner.manage_lifecycle'),
-                             ('platform.identity.provision')
-                  ) AS capability(capability_key)
-                 WHERE NOT EXISTS (
-                     SELECT 1
-                       FROM request_engine.principal_authority_grants AS existing
-                      WHERE existing.principal_id = NEW.initial_owner_principal_id
-                        AND existing.capability_key = capability.capability_key
-                        AND existing.status = 'active'
-                 );
-            END IF;
-            RETURN NEW;
-        END
-        $$;
-
-
-ALTER FUNCTION request_platform.grant_platform_owner_v2_capabilities_on_claim() OWNER TO request_platform_control_definer;
-
---
--- Name: issue_identity_recovery_case(uuid, bigint, integer, uuid, bytea, text, timestamp with time zone, uuid, text, text, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.issue_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_ticket_id uuid, p_secret_reference text, p_secret_digest text, p_idempotency_key_digest text, p_intent_digest text) RETURNS TABLE(case_id uuid, target_native_identity_id uuid, status text, delivery_status text, revision bigint, issuance_generation integer, approval_expires_at timestamp with time zone, proof_expires_at timestamp with time zone, created_at timestamp with time zone, approved_at timestamp with time zone, issued_at timestamp with time zone, consumed_at timestamp with time zone, revoked_at timestamp with time zone)
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $_$
-        DECLARE
-            v_actor_id uuid;
-            v_actor_method text;
-            v_correlation_id uuid;
-            v_replay record;
-            v_case record;
-            v_superseded record;
-            v_created boolean;
-        BEGIN
-            PERFORM request_engine.acquire_identity_topology_share();
-            IF p_case_id IS NULL OR p_expected_revision IS NULL
-               OR p_expected_revision < 1
-               OR p_generation IS NULL OR p_generation < 1
-               OR p_recovery_id IS NULL
-               OR p_token_digest IS NULL OR octet_length(p_token_digest) <> 32
-               OR p_token_fingerprint IS NULL
-               OR p_token_fingerprint !~ '^[0-9a-f]{16}$'
-               OR p_proof_expires_at IS NULL
-               OR p_proof_expires_at <= clock_timestamp()
-               OR p_proof_expires_at > clock_timestamp() + interval '30 minutes'
-               OR p_ticket_id IS NULL
-               OR p_secret_reference IS NULL
-               OR length(btrim(p_secret_reference)) NOT BETWEEN 1 AND 400
-               OR p_secret_digest IS NULL
-               OR p_secret_digest !~ '^[0-9a-f]{64}$'
-               OR p_idempotency_key_digest IS NULL
-               OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
-               OR p_intent_digest IS NULL
-               OR p_intent_digest !~ '^[0-9a-f]{64}$' THEN
-                RAISE EXCEPTION 'Identity recovery issuance input is invalid'
-                    USING ERRCODE = '22023';
-            END IF;
-
-            SELECT actor_id, actor_method, correlation_id
-              INTO v_actor_id, v_actor_method, v_correlation_id
-              FROM request_platform.assert_platform_identity_actor('platform.identity.recover');
-
-            SELECT fact.case_id, fact.intent_digest
-              INTO v_replay
-              FROM request_engine.platform_identity_recovery_facts AS fact
-             WHERE fact.actor_principal_id = v_actor_id
-               AND fact.action = 'issue'
-               AND fact.idempotency_key_digest = p_idempotency_key_digest;
-            IF FOUND THEN
-                IF v_replay.intent_digest <> p_intent_digest THEN
-                    RAISE EXCEPTION
-                        'Idempotency key was already used for another recovery issuance'
-                        USING ERRCODE = '23505';
-                END IF;
-                RETURN QUERY SELECT
-                    recovery_case.id,
-                    recovery_case.target_native_identity_id,
-                    recovery_case.status,
-                    recovery_case.delivery_status,
-                    recovery_case.revision,
-                    recovery_case.issuance_generation,
-                    recovery_case.approval_expires_at,
-                    recovery_case.proof_expires_at,
-                    recovery_case.created_at,
-                    recovery_case.approved_at,
-                    recovery_case.issued_at,
-                    recovery_case.consumed_at,
-                    recovery_case.revoked_at
-                  FROM request_engine.identity_recovery_cases AS recovery_case
-                 WHERE recovery_case.id = v_replay.case_id;
-                RETURN;
-            END IF;
-
-            SELECT * INTO v_case
-              FROM request_engine.identity_recovery_cases
-             WHERE id = p_case_id;
-            IF NOT FOUND THEN
-                RAISE EXCEPTION 'Identity recovery case does not exist'
-                    USING ERRCODE = 'P0002';
-            END IF;
-            IF v_case.status <> 'approved' THEN
-                RAISE EXCEPTION 'Only an approved recovery case can be issued'
-                    USING ERRCODE = '55000';
-            END IF;
-            IF v_case.revision <> p_expected_revision THEN
-                RAISE EXCEPTION 'Identity recovery case revision is stale'
-                    USING ERRCODE = '40001';
-            END IF;
-            IF v_case.approval_expires_at IS NULL
-               OR v_case.approval_expires_at <= clock_timestamp() THEN
-                RAISE EXCEPTION 'Recovery approval has expired'
-                    USING ERRCODE = '55000';
-            END IF;
-            IF NOT EXISTS (
-                SELECT 1
-                  FROM request_engine.identity_recovery_issuance_reservations AS reservation
-                 WHERE reservation.case_id = p_case_id
-                   AND reservation.generation = p_generation
-                   AND reservation.idempotency_key_digest = p_idempotency_key_digest
-            ) THEN
-                RAISE EXCEPTION 'Identity recovery issuance generation is not reserved'
-                    USING ERRCODE = '40001';
-            END IF;
-
-            -- The auth primitive owns the authoritative authority/identity locks
-            -- and revokes every prior pending intent for the target. Calling it
-            -- before the case lock serializes concurrent issuances of the same
-            -- identity on the identity row instead of on the case set.
-            SELECT request_auth.create_native_recovery_intent(
-                v_case.target_native_identity_id,
-                p_recovery_id,
-                p_token_digest,
-                p_token_fingerprint,
-                p_proof_expires_at
-            ) INTO v_created;
-            IF v_created IS NOT TRUE THEN
-                RAISE EXCEPTION 'Recovery target is no longer eligible for issuance'
-                    USING ERRCODE = '23514';
-            END IF;
-
-            SELECT * INTO v_case
-              FROM request_engine.identity_recovery_cases
-             WHERE id = p_case_id
-             FOR UPDATE;
-            IF v_case.status <> 'approved' THEN
-                RAISE EXCEPTION 'Only an approved recovery case can be issued'
-                    USING ERRCODE = '55000';
-            END IF;
-            IF v_case.revision <> p_expected_revision THEN
-                RAISE EXCEPTION 'Identity recovery case revision is stale'
-                    USING ERRCODE = '40001';
-            END IF;
-            IF v_case.approval_expires_at IS NULL
-               OR v_case.approval_expires_at <= clock_timestamp() THEN
-                RAISE EXCEPTION 'Recovery approval has expired'
-                    USING ERRCODE = '55000';
-            END IF;
-            IF NOT EXISTS (
-                SELECT 1
-                  FROM request_engine.identity_recovery_issuance_reservations AS reservation
-                 WHERE reservation.case_id = p_case_id
-                   AND reservation.generation = p_generation
-                   AND reservation.idempotency_key_digest = p_idempotency_key_digest
-            ) THEN
-                RAISE EXCEPTION 'Identity recovery issuance generation is not reserved'
-                    USING ERRCODE = '40001';
-            END IF;
-
-            -- A new issuance supersedes every other live proof of this identity.
-            FOR v_superseded IN
-                SELECT candidate.id, candidate.revision
-                  FROM request_engine.identity_recovery_cases AS candidate
-                 WHERE candidate.target_native_identity_id = v_case.target_native_identity_id
-                   AND candidate.status = 'issued'
-                   AND candidate.id <> p_case_id
-                 ORDER BY candidate.id
-                 FOR UPDATE
-            LOOP
-                UPDATE request_engine.identity_recovery_cases
-                   SET status = 'revoked',
-                       revoked_at = clock_timestamp(),
-                       revoke_reason_code = 'superseded_by_new_issuance',
-                       revision = identity_recovery_cases.revision + 1,
-                       updated_at = clock_timestamp()
-                 WHERE id = v_superseded.id;
-                UPDATE request_engine.identity_recovery_delivery_tickets
-                   SET status = 'cancelled',
-                       claim_token = NULL,
-                       lease_until = NULL,
-                       updated_at = clock_timestamp()
-                 WHERE identity_recovery_delivery_tickets.case_id = v_superseded.id
-                   AND identity_recovery_delivery_tickets.status IN ('pending', 'sending');
-                INSERT INTO request_engine.platform_identity_recovery_facts (
-                    id,
-                    case_id,
-                    action,
-                    actor_principal_id,
-                    actor_authentication_method,
-                    reason_code,
-                    external_case_reference,
-                    revision_before,
-                    revision_after,
-                    correlation_id,
-                    capability_key,
-                    idempotency_key_digest,
-                    intent_digest
-                ) VALUES (
-                    uuidv7(),
-                    v_superseded.id,
-                    'revoke',
-                    v_actor_id,
-                    v_actor_method,
-                    'superseded_by_new_issuance',
-                    NULL,
-                    v_superseded.revision,
-                    v_superseded.revision + 1,
-                    v_correlation_id,
-                    'platform.identity.recover',
-                    NULL,
-                    NULL
-                );
-            END LOOP;
-
-            UPDATE request_engine.identity_recovery_cases
-               SET status = 'issued',
-                   recovery_intent_id = p_recovery_id,
-                   issuance_generation = p_generation,
-                   issued_at = clock_timestamp(),
-                   proof_expires_at = p_proof_expires_at,
-                   delivery_status = 'pending',
-                   revision = identity_recovery_cases.revision + 1,
-                   updated_at = clock_timestamp()
-             WHERE id = p_case_id;
-            DELETE FROM request_engine.identity_recovery_issuance_reservations AS reservation
-             WHERE reservation.case_id = p_case_id
-               AND reservation.generation = p_generation;
-            INSERT INTO request_engine.identity_recovery_delivery_tickets (
-                id,
-                case_id,
-                generation,
-                status,
-                secret_reference,
-                secret_digest,
-                destination_reference,
-                expires_at
-            ) VALUES (
-                p_ticket_id,
-                p_case_id,
-                p_generation,
-                'pending',
-                btrim(p_secret_reference),
-                p_secret_digest,
-                v_case.delivery_destination_reference,
-                p_proof_expires_at
-            );
-            INSERT INTO request_engine.platform_identity_recovery_facts (
-                id,
-                case_id,
-                action,
-                actor_principal_id,
-                actor_authentication_method,
-                reason_code,
-                external_case_reference,
-                revision_before,
-                revision_after,
-                correlation_id,
-                capability_key,
-                idempotency_key_digest,
-                intent_digest
-            ) VALUES (
-                uuidv7(),
-                p_case_id,
-                'issue',
-                v_actor_id,
-                v_actor_method,
-                'recovery_issued',
-                v_case.evidence_reference,
-                v_case.revision,
-                v_case.revision + 1,
-                v_correlation_id,
-                'platform.identity.recover',
+                v_instance.built_in_native_authority_id,
+                v_invitation.native_identity_id,
+                'owner-invitation:' || v_invitation.id::text || ':'
+                    || v_invitation.provenance_reference,
                 p_idempotency_key_digest,
                 p_intent_digest
             );
-            RETURN QUERY SELECT
-                recovery_case.id,
-                recovery_case.target_native_identity_id,
-                recovery_case.status,
-                recovery_case.delivery_status,
-                recovery_case.revision,
-                recovery_case.issuance_generation,
-                recovery_case.approval_expires_at,
-                recovery_case.proof_expires_at,
-                recovery_case.created_at,
-                recovery_case.approved_at,
-                recovery_case.issued_at,
-                recovery_case.consumed_at,
-                recovery_case.revoked_at
-              FROM request_engine.identity_recovery_cases AS recovery_case
-             WHERE recovery_case.id = p_case_id;
-        END
-        $_$;
 
+            v_revision_before := v_invitation.revision;
+            UPDATE request_engine.platform_owner_invitations
+               SET status = 'consumed',
+                   revision = revision + 1,
+                   consumed_at = clock_timestamp()
+             WHERE id = v_invitation.id
+            RETURNING revision INTO v_invitation.revision;
 
-ALTER FUNCTION request_platform.issue_identity_recovery_case(p_case_id uuid, p_expected_revision bigint, p_generation integer, p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, p_proof_expires_at timestamp with time zone, p_ticket_id uuid, p_secret_reference text, p_secret_digest text, p_idempotency_key_digest text, p_intent_digest text) OWNER TO request_platform_control_definer;
+            INSERT INTO request_engine.platform_owner_invitation_facts (
+                invitation_id, action, actor_principal_id, native_identity_id,
+                revision_before, revision_after, correlation_id
+            ) VALUES (
+                v_invitation.id,
+                'activate',
+                v_actor_id,
+                v_invitation.native_identity_id,
+                v_revision_before,
+                v_invitation.revision,
+                NULLIF(current_setting('request_engine.correlation_id', true), '')::uuid
+            );
 
---
--- Name: managed_oidc_projection_matches(text, text, text, bigint); Type: FUNCTION; Schema: request_platform; Owner: request_engine_schema_owner
---
-
-CREATE FUNCTION request_platform.managed_oidc_projection_matches(p_issuer text, p_jwks_uri text, p_audience text, p_revision bigint) RETURNS boolean
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $$
-            SELECT EXISTS (
-                SELECT 1
-                  FROM request_engine.identity_authorities AS authority
-                 WHERE authority.kind = 'oidc'
-                   AND authority.issuer_or_environment = p_issuer
-                   AND authority.status = 'active'
-                   AND authority.configuration_ref = jsonb_build_object(
-                       'jwks_uri', p_jwks_uri,
-                       'audience', p_audience,
-                       'managed_configuration_revision', p_revision
-                   )::text
-            )
-        $$;
-
-
-ALTER FUNCTION request_platform.managed_oidc_projection_matches(p_issuer text, p_jwks_uri text, p_audience text, p_revision bigint) OWNER TO request_engine_schema_owner;
-
---
--- Name: mark_platform_secret_backend_applied(uuid, integer); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.mark_platform_secret_backend_applied(p_operation_id uuid, p_applied_backend_version integer) RETURNS TABLE(operation_id uuid, operation_kind text, binding_id uuid, secret_id uuid, purpose text, backend text, expected_binding_revision bigint, expected_backend_version integer, applied_backend_version integer, operation_state text, result_binding_id uuid, result_binding_revision bigint, result_binding_status text)
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $$
-        DECLARE
-            v_operation request_engine.platform_secret_mutations%ROWTYPE;
-            v_actor_id uuid;
-            v_ignore_method text;
-            v_ignore_correlation uuid;
-        BEGIN
-            SELECT *
-              INTO v_operation
-              FROM request_engine.platform_secret_mutations
-             WHERE id = p_operation_id
-             FOR UPDATE;
-            IF NOT FOUND THEN
-                RAISE EXCEPTION 'Platform secret mutation does not exist'
-                    USING ERRCODE = 'P0002';
-            END IF;
-
-            SELECT actor_id, actor_method, correlation_id
-              INTO v_actor_id, v_ignore_method, v_ignore_correlation
-              FROM request_platform.assert_platform_configuration_actor(
-                  v_operation.capability_key
-              );
-            IF v_actor_id <> v_operation.actor_principal_id THEN
-                RAISE EXCEPTION 'Platform secret mutation belongs to another actor'
-                    USING ERRCODE = '42501';
-            END IF;
-
-            IF v_operation.state IN ('committed', 'reconcile_required') THEN
-                RETURN QUERY SELECT
-                    v_operation.id, v_operation.operation_kind, v_operation.binding_id,
-                    v_operation.secret_id, v_operation.purpose, v_operation.backend,
-                    v_operation.expected_binding_revision,
-                    v_operation.expected_backend_version,
-                    v_operation.applied_backend_version, v_operation.state,
-                    v_operation.result_binding_id, v_operation.result_binding_revision,
-                    v_operation.result_binding_status;
-                RETURN;
-            END IF;
-
-            IF p_applied_backend_version IS NULL OR p_applied_backend_version < 1
-               OR (v_operation.operation_kind = 'rotate'
-                   AND p_applied_backend_version <= v_operation.expected_backend_version)
-               OR (v_operation.operation_kind = 'revoke'
-                   AND p_applied_backend_version <> v_operation.expected_backend_version)
-            THEN
-                RAISE EXCEPTION 'Applied backend version is invalid'
-                    USING ERRCODE = '22023';
-            END IF;
-
-            IF v_operation.state = 'backend_applied' THEN
-                IF v_operation.applied_backend_version <> p_applied_backend_version THEN
-                    RAISE EXCEPTION 'Backend-applied version changed'
-                        USING ERRCODE = '40001';
-                END IF;
-            ELSE
-                UPDATE request_engine.platform_secret_mutations
-                   SET state = 'backend_applied',
-                       applied_backend_version = p_applied_backend_version,
-                       backend_applied_at = clock_timestamp()
-                 WHERE id = p_operation_id
-                RETURNING * INTO v_operation;
-            END IF;
-
-            RETURN QUERY SELECT
-                v_operation.id, v_operation.operation_kind, v_operation.binding_id,
-                v_operation.secret_id, v_operation.purpose, v_operation.backend,
-                v_operation.expected_binding_revision,
-                v_operation.expected_backend_version,
-                v_operation.applied_backend_version, v_operation.state,
-                v_operation.result_binding_id, v_operation.result_binding_revision,
-                v_operation.result_binding_status;
+            RETURN QUERY SELECT v_created, p_binding_id, v_invitation.revision;
         END
         $$;
 
 
-ALTER FUNCTION request_platform.mark_platform_secret_backend_applied(p_operation_id uuid, p_applied_backend_version integer) OWNER TO request_platform_control_definer;
+ALTER FUNCTION request_platform.activate_platform_owner_invitation(p_invitation_id uuid, p_principal_id uuid, p_binding_id uuid, p_idempotency_key_digest text, p_intent_digest text) OWNER TO request_platform_control_definer;
 
 --
--- Name: native_identity_ready_for_platform_owner(uuid, uuid); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
+-- Name: apply_controller_policy_adoption(uuid, bigint, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
 --
 
-CREATE FUNCTION request_platform.native_identity_ready_for_platform_owner(p_identity_authority_id uuid, p_native_identity_id uuid) RETURNS boolean
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
-    AS $$
-            SELECT EXISTS (
-                SELECT 1
-                  FROM request_engine.identity_authorities AS authority
-                  JOIN request_engine.native_identities AS identity
-                    ON identity.identity_authority_id = authority.id
-                 WHERE authority.id = p_identity_authority_id
-                   AND authority.kind = 'native'
-                   AND authority.status = 'active'
-                   AND identity.id = p_native_identity_id
-                   AND identity.status = 'active'
-                   AND EXISTS (
-                       SELECT 1
-                         FROM request_engine.native_credentials AS password
-                        WHERE password.native_identity_id = identity.id
-                          AND password.kind = 'password'
-                          AND password.status = 'active'
-                   )
-                   AND EXISTS (
-                       SELECT 1
-                         FROM request_engine.webauthn_credentials AS credential
-                        WHERE credential.native_identity_id = identity.id
-                          AND credential.status = 'active'
-                          AND credential.user_verified
-                   )
-                   AND EXISTS (
-                       SELECT 1
-                         FROM request_engine.recovery_code_sets AS code_set
-                        WHERE code_set.native_identity_id = identity.id
-                          AND code_set.status = 'active'
-                          AND EXISTS (
-                              SELECT 1
-                                FROM request_engine.recovery_codes AS code
-                               WHERE code.set_id = code_set.id
-                                 AND code.used_at IS NULL
-                          )
-                   )
-            )
-        $$;
-
-
-ALTER FUNCTION request_platform.native_identity_ready_for_platform_owner(p_identity_authority_id uuid, p_native_identity_id uuid) OWNER TO request_platform_control_definer;
-
---
--- Name: prepare_identity_recovery_issue(uuid, bigint, text, text); Type: FUNCTION; Schema: request_platform; Owner: request_platform_control_definer
---
-
-CREATE FUNCTION request_platform.prepare_identity_recovery_issue(p_case_id uuid, p_expected_revision bigint, p_idempotency_key_digest text, p_intent_digest text) RETURNS TABLE(replayed boolean, case_id uuid, target_native_identity_id uuid, status text, delivery_status text, revision bigint, issuance_generation integer, approval_expires_at timestamp with time zone, proof_expires_at timestamp with time zone, created_at timestamp with time zone, approved_at timestamp with time zone, issued_at timestamp with time zone, consumed_at timestamp with time zone, revoked_at timestamp with time zone)
+CREATE FUNCTION request_platform.apply_controller_policy_adoption(p_request_id uuid, p_expected_revision bigint, p_key_digest text, p_intent_digest text) RETURNS TABLE(fact_id uuid, request_id uuid, organization_id uuid, controller_principal_id uuid, source_policy_key text, target_policy_key text, authority_revision_before bigint, authority_revision_after bigint, added_capabilities text[], request_revision bigint, platform_approver_principal_id uuid, platform_authority_revision bigint, applied_at timestamp with time zone)
     LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+    SET search_path TO 'pg_catalog', 'request_engine', 'request_platform', 'pg_temp'
     AS $_$
         DECLARE
-            v_actor_id uuid;
-            v_actor_method text;
-            v_correlation_id uuid;
+            v_actor uuid;
+            v_actor_revision bigint;
+            v_actor_binding uuid;
+            v_actor_authority uuid;
+            v_actor_subject text;
+            v_root_authority uuid;
+            v_root_subject text;
+            v_org uuid;
+            v_root uuid;
+            v_binding uuid;
+            v_source text;
+            v_target jsonb;
+            v_before bigint;
+            v_after bigint;
+            v_added text[];
+            v_request record;
             v_replay record;
-            v_case record;
-            v_reserved integer;
+            v_root_native_identity_id uuid;
+            v_actor_native_identity_id uuid;
+            v_locked_authority_id uuid;
+            v_identity_status text;
+            v_actor_recovery_state text;
+            v_root_recovery_state text;
+            v_actor_recovery_epoch bigint;
+            v_root_recovery_epoch bigint;
+            v_posture_count integer;
         BEGIN
             PERFORM request_engine.acquire_identity_topology_share();
-            IF p_case_id IS NULL OR p_expected_revision IS NULL
-               OR p_expected_revision < 1
-               OR p_idempotency_key_digest IS NULL
-               OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
-               OR p_intent_digest IS NULL
-               OR p_intent_digest !~ '^[0-9a-f]{64}$' THEN
-                RAISE EXCEPTION 'Identity recovery issuance input is invalid'
-                    USING ERRCODE = '22023';
+            v_actor:=NULLIF(current_setting(
+                'request_engine.authenticated_principal_id',true),'')::uuid;
+            v_actor_revision:=NULLIF(current_setting(
+                'request_engine.authority_revision',true),'')::bigint;
+            IF v_actor IS NULL OR v_actor_revision IS NULL THEN
+                RAISE EXCEPTION 'Current platform HUMAN authority is required'
+                    USING ERRCODE='42501';
             END IF;
-
-            SELECT actor_id, actor_method, correlation_id
-              INTO v_actor_id, v_actor_method, v_correlation_id
-              FROM request_platform.assert_platform_identity_actor('platform.identity.recover');
-
-            SELECT fact.case_id, fact.intent_digest
-              INTO v_replay
-              FROM request_engine.platform_identity_recovery_facts AS fact
-             WHERE fact.actor_principal_id = v_actor_id
-               AND fact.action = 'issue'
-               AND fact.idempotency_key_digest = p_idempotency_key_digest;
-            IF FOUND THEN
-                IF v_replay.intent_digest <> p_intent_digest THEN
-                    RAISE EXCEPTION
-                        'Idempotency key was already used for another recovery issuance'
-                        USING ERRCODE = '23505';
+            SELECT p.authority_revision INTO v_actor_revision
+              FROM request_engine.principals p
+             WHERE p.id=v_actor AND p.principal_plane='platform'
+               AND p.principal_kind='human' AND p.active FOR SHARE;
+            IF NOT FOUND OR v_actor_revision IS DISTINCT FROM NULLIF(
+                current_setting('request_engine.authority_revision',true),'')::bigint
+               OR NOT EXISTS(
+                SELECT 1 FROM request_engine.principals p
+                JOIN request_engine.principal_authority_grants g ON g.principal_id=p.id
+               WHERE p.id=v_actor AND p.principal_plane='platform' AND p.principal_kind='human'
+                 AND p.active AND p.authority_revision=v_actor_revision
+                 AND g.principal_plane='platform' AND g.authority_plane='platform'
+                 AND g.capability_key='platform.organization.adopt_initial_controller_policy'
+                 AND g.status='active') THEN
+                RAISE EXCEPTION 'Current Platform Owner lacks policy-adoption authority'
+                    USING ERRCODE='42501';
+            END IF;
+            IF p_expected_revision IS NULL OR p_expected_revision<1
+               OR p_key_digest !~ '^[0-9a-f]{64}$' OR p_intent_digest !~ '^[0-9a-f]{64}$' THEN
+                RAISE EXCEPTION 'Invalid adoption application input' USING ERRCODE='22023';
+            END IF;
+            SELECT r.organization_id INTO v_org
+              FROM request_engine.controller_policy_adoption_requests r WHERE r.id=p_request_id;
+            IF NOT FOUND THEN RAISE EXCEPTION 'Adoption request unavailable'
+                USING ERRCODE='P0002'; END IF;
+            PERFORM set_config('request_engine.organization_id',v_org::text,true);
+            PERFORM request_engine.lock_tenant_staff_root();
+            PERFORM m.id FROM request_engine.staff_memberships m
+             WHERE m.organization_id=v_org AND m.status='active'
+             ORDER BY m.principal_id FOR UPDATE;
+            SELECT r.id,r.organization_id,r.controller_principal_id,r.controller_binding_id,
+                   r.source_policy_key,r.target_policy_key,r.expected_authority_revision,
+                   r.reason,r.status,r.revision,r.created_at,r.expires_at,
+                    r.controller_native_identity_id,r.controller_recovery_epoch
+              INTO v_request
+              FROM request_engine.controller_policy_adoption_requests r
+             WHERE r.id=p_request_id FOR UPDATE;
+            IF NOT FOUND THEN RAISE EXCEPTION 'Adoption request unavailable'
+                USING ERRCODE='P0002'; END IF;
+            IF v_org IS DISTINCT FROM v_request.organization_id THEN
+                RAISE EXCEPTION 'Adoption request scope changed' USING ERRCODE='40001';
+            END IF;
+            IF EXISTS(SELECT 1 FROM request_engine.controller_policy_adoption_facts f
+                WHERE f.request_id=p_request_id) THEN
+                SELECT f.id,f.request_id,f.organization_id,f.controller_principal_id,
+                       f.source_policy_key,f.target_policy_key,f.authority_revision_before,
+                       f.authority_revision_after,f.added_capabilities,
+                       f.idempotency_key_digest,f.intent_digest,
+                       f.platform_approver_principal_id,f.platform_authority_revision,f.applied_at
+                  INTO v_replay
+                  FROM request_engine.controller_policy_adoption_facts f
+                 WHERE f.request_id=p_request_id;
+                IF v_replay.platform_approver_principal_id<>v_actor
+                   OR v_replay.idempotency_key_digest<>p_key_digest
+                   OR v_replay.intent_digest<>p_intent_digest THEN
+                    RAISE EXCEPTION 'Adoption has already been applied' USING ERRCODE='23505';
                 END IF;
-                RETURN QUERY SELECT
-                    true,
-                    recovery_case.id,
-                    recovery_case.target_native_identity_id,
-                    recovery_case.status,
-                    recovery_case.delivery_status,
-                    recovery_case.revision,
-                    recovery_case.issuance_generation,
-                    recovery_case.approval_expires_at,
-                    recovery_case.proof_expires_at,
-                    recovery_case.created_at,
-                    recovery_case.approved_at,
-                    recovery_case.issued_at,
-                    recovery_case.consumed_at,
-                    recovery_case.revoked_at
-                  FROM request_engine.identity_recovery_cases AS recovery_case
-                 WHERE recovery_case.id = v_replay.case_id;
+                v_actor_binding:=NULLIF(current_setting(
+    'request_engine.identity_binding_id',true),'')::uuid;
+SELECT b.identity_authority_id,b.subject_id
+  INTO v_actor_authority,v_actor_subject
+  FROM request_engine.identity_bindings b
+ WHERE b.id=v_actor_binding AND b.principal_id=v_actor
+   AND b.principal_plane='platform' AND b.organization_id IS NULL
+   AND b.status='active' FOR SHARE;
+IF NOT FOUND THEN
+    RAISE EXCEPTION 'Bound active Platform identity is required'
+        USING ERRCODE='42501';
+END IF;
+IF v_actor_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    RAISE EXCEPTION 'Active native Platform identity is required'
+        USING ERRCODE='42501';
+END IF;
+v_actor_native_identity_id:=v_actor_subject::uuid;
+SELECT posture.identity_authority_id,posture.identity_status,posture.recovery_state
+  INTO v_locked_authority_id,v_identity_status,v_actor_recovery_state
+  FROM request_auth.lock_native_identity_recovery_postures(
+      ARRAY[v_actor_native_identity_id]) posture
+ WHERE posture.native_identity_id=v_actor_native_identity_id
+   AND posture.identity_status='active';
+IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM v_actor_authority
+   OR v_identity_status<>'active' OR v_actor_recovery_state<>'normal' THEN
+    RAISE EXCEPTION 'Recovery-restricted approver cannot replay adoption'
+        USING ERRCODE='42501';
+END IF;
+RETURN QUERY SELECT v_replay.id,v_replay.request_id,v_replay.organization_id,
+                    v_replay.controller_principal_id,v_replay.source_policy_key,
+                    v_replay.target_policy_key,v_replay.authority_revision_before,
+                    v_replay.authority_revision_after,v_replay.added_capabilities,
+                    v_request.revision,v_replay.platform_approver_principal_id,
+                    v_replay.platform_authority_revision,v_replay.applied_at;
                 RETURN;
             END IF;
-
-            SELECT * INTO v_case
-              FROM request_engine.identity_recovery_cases
-             WHERE id = p_case_id
-             FOR UPDATE;
+            IF v_request.status<>'pending' OR v_request.expires_at<=clock_timestamp()
+               OR v_request.revision<>p_expected_revision THEN
+                RAISE EXCEPTION 'Consent is expired, withdrawn, or stale' USING ERRCODE='40001';
+            END IF;
+            SELECT f.controller_principal_id,f.controller_binding_id,
+                   COALESCE((SELECT fact.target_policy_key
+                      FROM request_engine.controller_policy_adoption_facts fact
+                      WHERE fact.organization_id=v_org
+                      ORDER BY fact.applied_at DESC,fact.id DESC LIMIT 1),
+                      f.initial_controller_policy_key)
+              INTO v_root,v_binding,v_source
+              FROM request_engine.organization_root_provisioning_facts f
+             WHERE f.organization_id=v_org;
+            IF NOT FOUND OR v_root<>v_request.controller_principal_id
+               OR v_binding<>v_request.controller_binding_id
+               OR v_source<>v_request.source_policy_key
+               OR v_actor=v_root THEN
+                RAISE EXCEPTION 'Root consent, source policy or distinct HUMAN identity changed'
+                    USING ERRCODE='42501';
+            END IF;
+            v_actor_binding:=NULLIF(current_setting('request_engine.identity_binding_id',true),'')::uuid;
+            IF v_actor_binding IS NULL THEN
+                RAISE EXCEPTION 'Bound Platform identity is required' USING ERRCODE='42501';
+            END IF;
+            SELECT b.identity_authority_id,b.subject_id INTO v_root_authority,v_root_subject
+              FROM request_engine.identity_bindings b
+             WHERE b.id=v_binding AND b.organization_id=v_org AND b.principal_id=v_root
+               AND b.principal_plane='tenant' AND b.status='active' FOR SHARE;
             IF NOT FOUND THEN
-                RAISE EXCEPTION 'Identity recovery case does not exist'
-                    USING ERRCODE = 'P0002';
+                RAISE EXCEPTION 'Original controller is no longer active' USING ERRCODE='42501';
             END IF;
-            IF v_case.status <> 'approved' THEN
-                RAISE EXCEPTION 'Only an approved recovery case can be issued'
-                    USING ERRCODE = '55000';
+            SELECT b.identity_authority_id,b.subject_id INTO v_actor_authority,v_actor_subject
+              FROM request_engine.identity_bindings b
+             WHERE b.id=v_actor_binding AND b.principal_id=v_actor
+               AND b.principal_plane='platform'
+               AND b.organization_id IS NULL AND b.status='active' FOR SHARE;
+            IF NOT FOUND OR (v_actor_authority=v_root_authority
+                AND v_actor_subject=v_root_subject) THEN
+                RAISE EXCEPTION 'Application requires a distinct active native HUMAN identity'
+                    USING ERRCODE='42501';
             END IF;
-            IF v_case.revision <> p_expected_revision THEN
-                RAISE EXCEPTION 'Identity recovery case revision is stale'
-                    USING ERRCODE = '40001';
+            IF v_root_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+   OR v_actor_subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    RAISE EXCEPTION 'Bound native identity reference is invalid'
+        USING ERRCODE='42501';
+END IF;
+v_root_native_identity_id:=v_root_subject::uuid;
+v_actor_native_identity_id:=v_actor_subject::uuid;
+IF v_request.controller_native_identity_id IS DISTINCT FROM
+   v_root_native_identity_id THEN
+    RAISE EXCEPTION 'Controller native consent provenance changed'
+        USING ERRCODE='P0010';
+END IF;
+SELECT count(*)::integer INTO v_posture_count
+  FROM request_auth.lock_native_identity_recovery_postures(
+      ARRAY[v_root_native_identity_id,v_actor_native_identity_id]);
+IF v_posture_count<>2 THEN
+    RAISE EXCEPTION 'Active native consent and approver identities are required'
+        USING ERRCODE='42501';
+END IF;
+SELECT posture.identity_authority_id,posture.identity_status,
+       posture.recovery_state,posture.recovery_epoch
+  INTO v_locked_authority_id,v_identity_status,
+       v_root_recovery_state,v_root_recovery_epoch
+  FROM request_auth.lock_native_identity_recovery_postures(
+      ARRAY[v_root_native_identity_id,v_actor_native_identity_id]) posture
+ WHERE posture.native_identity_id=v_root_native_identity_id
+   AND posture.identity_status='active';
+IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM v_root_authority
+   OR v_identity_status<>'active' OR v_root_recovery_state<>'normal'
+   OR v_root_recovery_epoch IS DISTINCT FROM v_request.controller_recovery_epoch THEN
+    RAISE EXCEPTION 'Controller recovery invalidated consent' USING ERRCODE='P0010';
+END IF;
+SELECT posture.identity_authority_id,posture.identity_status,
+       posture.recovery_state,posture.recovery_epoch
+  INTO v_locked_authority_id,v_identity_status,
+       v_actor_recovery_state,v_actor_recovery_epoch
+  FROM request_auth.lock_native_identity_recovery_postures(
+      ARRAY[v_root_native_identity_id,v_actor_native_identity_id]) posture
+ WHERE posture.native_identity_id=v_actor_native_identity_id
+   AND posture.identity_status='active';
+IF NOT FOUND OR v_locked_authority_id IS DISTINCT FROM v_actor_authority
+   OR v_identity_status<>'active' OR v_actor_recovery_state<>'normal' THEN
+    RAISE EXCEPTION 'Recovery-restricted approver cannot apply adoption'
+        USING ERRCODE='42501';
+END IF;
+IF NOT EXISTS(SELECT 1 FROM request_engine.identity_bindings b
+                 JOIN request_engine.principals p ON p.id=b.principal_id
+                WHERE b.id=v_binding AND b.organization_id=v_org AND b.principal_id=v_root
+                  AND b.principal_plane='tenant' AND b.status='active'
+                  AND p.organization_id=v_org AND p.principal_plane='tenant'
+                  AND p.principal_kind='human' AND p.active) THEN
+                RAISE EXCEPTION 'Original controller is no longer active' USING ERRCODE='42501';
             END IF;
-            IF v_case.approval_expires_at IS NULL
-               OR v_case.approval_expires_at <= clock_timestamp() THEN
-                RAISE EXCEPTION 'Recovery approval has expired'
-                    USING ERRCODE = '55000';
+            SELECT p.authority_revision INTO v_before FROM request_engine.principals p
+             WHERE p.id=v_root AND p.organization_id=v_org FOR UPDATE;
+            IF v_before<>v_request.expected_authority_revision THEN
+                RAISE EXCEPTION 'Tenant controller authority changed after consent'
+                    USING ERRCODE='40001';
             END IF;
-
-            -- Reuse the reservation for this idempotency key; otherwise reserve
-            -- the next generation above every live reservation and the last
-            -- committed issuance. The FOR UPDATE case lock serializes allocation.
-            SELECT reservation.generation INTO v_reserved
-              FROM request_engine.identity_recovery_issuance_reservations AS reservation
-             WHERE reservation.case_id = p_case_id
-               AND reservation.idempotency_key_digest = p_idempotency_key_digest;
-            IF NOT FOUND THEN
-                SELECT COALESCE(max(reservation.generation), v_case.issuance_generation) + 1
-                  INTO v_reserved
-                  FROM request_engine.identity_recovery_issuance_reservations AS reservation
-                 WHERE reservation.case_id = p_case_id;
-                INSERT INTO request_engine.identity_recovery_issuance_reservations
+            SELECT grants INTO v_target FROM request_engine.initial_controller_policies
+             WHERE policy_key=v_request.target_policy_key;
+            IF NOT FOUND OR NOT (
+                (v_request.target_policy_key='tenant-controller-v6'
+                 AND v_request.source_policy_key IN
+                    ('tenant-controller-v1','tenant-controller-v2','tenant-controller-v3',
+                     'tenant-controller-v4','tenant-controller-v5'))
+                OR (v_request.target_policy_key='tenant-controller-v7'
+                    AND v_request.source_policy_key IN
+                    ('tenant-controller-v1','tenant-controller-v2','tenant-controller-v3',
+                     'tenant-controller-v4','tenant-controller-v5','tenant-controller-v6'))
+                OR (v_request.target_policy_key='tenant-controller-v8'
+                    AND v_request.source_policy_key IN
+                    ('tenant-controller-v1','tenant-controller-v2','tenant-controller-v3','tenant-controller-v4','tenant-controller-v5','tenant-controller-v6','tenant-controller-v7'))
+                OR (v_request.target_policy_key='tenant-controller-v9'
+                    AND v_request.source_policy_key IN
+                    ('tenant-controller-v1','tenant-controller-v2','tenant-controller-v3','tenant-controller-v4','tenant-controller-v5','tenant-controller-v6','tenant-controller-v7','tenant-controller-v8'))
+            ) THEN
+                RAISE EXCEPTION 'The requested policy transition is not approved'
+                    USING ERRCODE='22023';
+            END IF;
+            IF EXISTS(SELECT 1 FROM jsonb_to_recordset(v_target)
+                AS g(capability_key text,authority_plane text,delegable boolean)
+                JOIN request_engine.principal_authority_grants r
+                  ON r.organization_id=v_org AND r.principal_id=v_root
+                 AND r.capability_key=g.capability_key AND r.status='revoked'
+                WHERE NOT EXISTS(SELECT 1 FROM request_engine.principal_authority_grants a
+                    WHERE a.organization_id=v_org AND a.principal_id=v_root
+                      AND a.capability_key=g.capability_key AND a.status='active')) THEN
+                RAISE EXCEPTION 'Policy adoption cannot restore revoked tenant authority'
+                    USING ERRCODE='23514';
+            END IF;
+            SELECT COALESCE(array_agg(g.capability_key ORDER BY g.capability_key),ARRAY[]::text[])
+              INTO v_added FROM jsonb_to_recordset(v_target)
+                AS g(capability_key text,authority_plane text,delegable boolean)
+             WHERE NOT EXISTS(SELECT 1 FROM request_engine.principal_authority_grants a
+                 WHERE a.organization_id=v_org AND a.principal_id=v_root
+                   AND a.capability_key=g.capability_key AND a.status='active');
+            IF cardinality(v_added)=0 THEN
+                RAISE EXCEPTION 'No policy capabilities are missing' USING ERRCODE='55000';
+            END IF;
+            INSERT INTO request_engine.principal_authority_grants(

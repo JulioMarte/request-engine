@@ -251,6 +251,11 @@ def create_router(
         queues,
         capability="queue.list",
         methods=["GET"],
+        operation_id="queue_list",
+        tool_name="queue_list",
+        tool_audiences=("operator",),
+        summary="List service queues",
+        description=("List this business's service queues."),
         response_model=tuple[ServiceQueueView, ...],
     )
     add_capability_route(
@@ -268,6 +273,11 @@ def create_router(
         queue_status,
         capability="queue.status",
         methods=["GET"],
+        operation_id="queue_status",
+        tool_name="queue_status",
+        tool_audiences=("operator",),
+        summary="Get queue status",
+        description=("Read the current waiting status of one service queue."),
         response_model=QueueStatusView,
     )
     add_capability_route(

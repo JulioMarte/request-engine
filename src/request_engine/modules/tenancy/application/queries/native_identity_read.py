@@ -26,10 +26,11 @@ class NativeIdentityReadInvalid(NativeIdentityReadError):
 
 @dataclass(frozen=True, slots=True)
 class NativeIdentityView:
-    """Private native-identity projection; never carries a login handle or verifier."""
+    """Private native-identity account label projection; never carries a verifier."""
 
     native_identity_id: UUID
     identity_authority_id: UUID
+    login_handle: str
     status: str
     revision: int
     created_at: datetime

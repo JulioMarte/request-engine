@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from request_engine.entrypoints.http.admin_console.catalog import AdminOperation, AdminParameter
+from request_engine.entrypoints.http.admin_console.client import ControlResponse
 from request_engine.entrypoints.http.admin_console.execution import execute_operation
 
 
@@ -49,8 +50,9 @@ async def test_timeout_is_ambiguous_and_preserves_stable_intent_key() -> None:
     assert outcome.ok is False
     assert outcome.error_code == "outcome_unknown"
     assert outcome.idempotency_key == intent
-    assert "may have completed" in outcome.message.lower()
+    assert "se haya completado" in outcome.message.lower()
     assert "nothing was changed" not in outcome.message.lower()
+    assert "no se hizo ningún cambio" not in outcome.message.lower()
     assert "private-password-canary" not in outcome.payload_json + outcome.message
 
 
@@ -124,3 +126,21 @@ async def test_connect_error_does_not_claim_command_completed() -> None:
     )
     assert outcome.error_code == "control_unreachable"
     assert outcome.idempotency_key == "stable-intent-connect"
+
+
+@pytest.mark.asyncio
+async def test_recent_session_error_preserves_intent_and_offers_password_confirmation() -> None:
+    class RequiresConfirmation:
+        async def control_request(self, *args: object, **kwargs: object) -> ControlResponse:
+            return ControlResponse(403, {"error": {"code": "recent_authentication_required"}}, {})
+
+    outcome = await execute_operation(
+        RequiresConfirmation(),
+        _operation(),
+        bearer="same-current-session",
+        form={"_intent_id": "pending-intent"},
+    )
+    assert outcome.needs_step_up
+    assert outcome.idempotency_key == "pending-intent"
+    assert "contraseña o una llave de acceso" in outcome.message
+    assert not outcome.ok

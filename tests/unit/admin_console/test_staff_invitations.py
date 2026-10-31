@@ -46,6 +46,11 @@ class InvitationApi:
                             "email": "recipient@example.org",
                             "status": "pending",
                             "revision": 7,
+                            "generation": 1,
+                            "created_at": "2026-10-03T00:00:00Z",
+                            "membership_id": None,
+                            "principal_id": None,
+                            "binding_id": None,
                             "delivery_status": self.delivery_status,
                             "expires_at": "2026-10-04T00:00:00Z",
                         }
@@ -241,7 +246,7 @@ async def test_resend_forwards_exact_revision_and_stable_intent() -> None:
         )
     assert result.status_code == 303
     assert 'value="7"' in page.text
-    assert "unknown" in page.text and "email arrived" in page.text
+    assert "Resultado del envío desconocido" in page.text and "correo haya llegado" in page.text
     call = api.calls[-1]
     assert call[2]["json_body"] == {"expected_revision": 7, "provenance_reference": "owner:resend"}
     assert call[2]["extra_headers"] == {
@@ -260,8 +265,11 @@ async def test_failed_list_explains_failure_and_hides_create_and_mutations(statu
         page = await client.get(f"/tenants/{ORG}/staff-invitations")
     assert page.status_code == status
     assert 'role="alert"' in page.text
-    assert "Invitations unavailable. Check your session and permissions, then reload." in page.text
-    assert "Create invitation" not in page.text
+    assert (
+        "Las invitaciones no están disponibles. "
+        "Revise su sesión y sus permisos, y luego recargue." in page.text
+    )
+    assert "Crear invitación" not in page.text
     assert "recipient@example.org" not in page.text
     assert all(method != "POST" or path == "/auth/native/sessions" for method, path, _ in api.calls)
 
@@ -368,6 +376,8 @@ async def test_create_requires_csrf_before_any_owner_mutation() -> None:
         "email": "recipient@example.org",
         "provenance_reference": "test",
         "expires_in_hours": 72,
+        # The owner schema's explicit default channel; identical to the old behavior.
+        "delivery": "email",
     }
     assert calls[0][2]["extra_headers"]["idempotency-key"] == "create-once"
 
@@ -379,8 +389,8 @@ async def test_smtp_acceptance_never_claims_inbox_receipt_or_no_inflight_mail() 
     async with client_for(api) as client:
         await client.post("/login", data={"login_handle": "owner", "password": "pw"})
         page = await client.get(f"/tenants/{ORG}/staff-invitations")
-    assert "Accepted by mail server (inbox not confirmed)" in page.text
-    assert "email already being submitted may still arrive" in page.text
+    assert "no se confirmó que llegó a la bandeja" in page.text
+    assert "correo que ya se estaba enviando podría llegar" in page.text
 
 
 @pytest.mark.asyncio
@@ -412,7 +422,197 @@ async def test_existing_member_needs_access_review_not_another_invitation() -> N
             "/staff-invitations/accept", data={"csrf_token": csrf(page), "token": TOKEN}
         )
     assert response.status_code == 409
-    assert "existing membership and permissions" in response.json()["error"]
-    assert "another invitation will not restore access" in response.json()["error"]
+    assert "su membresía y sus permisos actuales" in response.json()["error"]
+    assert "otra invitación no le devolverá el acceso" in response.json()["error"]
     assert TOKEN not in response.text
     assert "must-never-be-echoed" not in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revision", [True, "7", 0, None])
+async def test_invitation_invalid_revision_never_offers_mutation(revision: object) -> None:
+    api = InvitationApi()
+    original = api.request
+
+    async def malformed(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        result = await original(method, path, **kwargs)
+        if path == "/v1/staff/invitations" and method == "GET":
+            payload = {**result.payload}
+            payload["items"] = [{**payload["items"][0], "revision": revision}]
+            return ControlResponse(200, payload, {})
+        return result
+
+    api.request = malformed  # type: ignore[method-assign]
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff-invitations")
+    assert page.status_code == 502
+    assert "Crear invitación" not in page.text
+    assert f"/{INVITATION}/resend" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_invitation_page_keeps_tenant_and_page_size_when_returning_to_first_page() -> None:
+    api = InvitationApi()
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff-invitations?after={INVITATION}&limit=2")
+    assert page.status_code == 200
+    assert f'href="/tenants/{ORG}/staff-invitations?limit=2"' in page.text
+    call = next(call for call in api.calls if call[:2] == ("GET", "/v1/staff/invitations"))
+    assert call[2]["params"] == {"limit": "2", "after": INVITATION}
+    assert call[2]["extra_headers"] == {"X-RE-Organization-ID": ORG}
+
+
+@pytest.mark.asyncio
+async def test_invitation_denied_read_has_recovery_links_and_no_empty_success_state() -> None:
+    api = InvitationApi()
+    api.list_status = 403
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff-invitations")
+    assert page.status_code == 403
+    assert "No se pudieron revisar las invitaciones" in page.text
+    assert "Volver a cargar invitaciones" in page.text
+    assert "Inicie sesión de nuevo" in page.text
+    assert "No hay invitaciones en esta página" not in page.text
+    assert "Crear invitación" not in page.text
+
+
+@pytest.mark.asyncio
+async def test_invitation_business_configuration_navigation_uses_validated_tenant_only() -> None:
+    api = InvitationApi()
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(
+            f"/tenants/{ORG}/staff-invitations?organization_id={INVITATION}"
+            f"&authority_party_id={INVITATION}",
+            headers={"X-RE-Organization-ID": INVITATION},
+        )
+    assert page.status_code == 200
+    assert f'href="/tenants/{ORG}/configuration"' in page.text
+    assert f'href="/tenants/{INVITATION}/configuration"' not in page.text
+    call = next(call for call in api.calls if call[:2] == ("GET", "/v1/staff/invitations"))
+    assert call[2]["params"] == {"limit": "50"}
+    assert call[2]["extra_headers"] == {"X-RE-Organization-ID": ORG}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"items": None, "next_after": None},
+        {"items": {}, "next_after": None},
+        {"items": [None], "next_after": None},
+        {"items": []},
+        {"items": [], "next_after": "invalid"},
+        {"items": [{"invitation_id": INVITATION, "revision": 7}] * 2, "next_after": None},
+    ],
+)
+async def test_invitation_malformed_collection_never_looks_empty_or_offers_create(
+    payload: dict[str, Any],
+) -> None:
+    api = InvitationApi()
+    original = api.request
+
+    async def malformed(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if method == "GET" and path == "/v1/staff/invitations":
+            api.calls.append((method, path, kwargs))
+            return ControlResponse(200, payload, {})
+        return await original(method, path, **kwargs)
+
+    api.request = malformed  # type: ignore[method-assign]
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        api.calls.clear()
+        page = await client.get(f"/tenants/{ORG}/staff-invitations?limit=1")
+    assert page.status_code == 502
+    assert "No hay invitaciones en esta página" not in page.text
+    assert "Crear invitación" not in page.text
+    assert 'name="email"' not in page.text
+    assert all(method == "GET" for method, _, _ in api.calls)
+
+
+@pytest.mark.asyncio
+async def test_invitation_valid_empty_collection_is_distinct_from_invalid_read() -> None:
+    api = InvitationApi()
+    original = api.request
+
+    async def empty(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        if method == "GET" and path == "/v1/staff/invitations":
+            return ControlResponse(200, {"items": [], "next_after": None}, {})
+        return await original(method, path, **kwargs)
+
+    api.request = empty  # type: ignore[method-assign]
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        page = await client.get(f"/tenants/{ORG}/staff-invitations")
+    assert page.status_code == 200
+    assert "No hay invitaciones en esta página" in page.text
+    assert "Crear invitación" in page.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    [
+        "partial",
+        "foreign_organization",
+        "missing_created",
+        "missing_nullable",
+        "invalid_generation",
+        "boolean_generation",
+        "string_generation",
+        "invalid_time",
+        "invalid_link",
+        "too_many_valid_rows",
+        "valid_private_extras",
+    ],
+)
+async def test_invitation_rows_require_complete_same_tenant_owner_projection(case: str) -> None:
+    api = InvitationApi()
+    original = api.request
+
+    async def altered(method: str, path: str, **kwargs: Any) -> ControlResponse:
+        result = await original(method, path, **kwargs)
+        if method != "GET" or path != "/v1/staff/invitations":
+            return result
+        payload = {**result.payload}
+        row = {**payload["items"][0]}
+        if case == "partial":
+            row = {"invitation_id": INVITATION, "revision": 7}
+        elif case == "foreign_organization":
+            row["organization_id"] = INVITATION
+        elif case == "missing_created":
+            del row["created_at"]
+        elif case == "missing_nullable":
+            del row["binding_id"]
+        elif case == "invalid_generation":
+            row["generation"] = 0
+        elif case == "boolean_generation":
+            row["generation"] = True
+        elif case == "string_generation":
+            row["generation"] = "1"
+        elif case == "invalid_time":
+            row["expires_at"] = "not-a-time"
+        elif case == "invalid_link":
+            row["membership_id"] = "invalid"
+        elif case == "valid_private_extras":
+            row["invitation_token"] = "private-unrecognized-field"
+            row["unrecognized_field"] = "private-unrecognized-field"
+        payload["items"] = [row, row] if case == "too_many_valid_rows" else [row]
+        return ControlResponse(200, payload, {})
+
+    api.request = altered  # type: ignore[method-assign]
+    async with client_for(api) as client:
+        await client.post("/login", data={"login_handle": "manager", "password": "pw"})
+        api.calls.clear()
+        page = await client.get(f"/tenants/{ORG}/staff-invitations?limit=1")
+    valid = case == "valid_private_extras"
+    assert page.status_code == (200 if valid else 502)
+    assert ("Crear invitación" in page.text) is valid
+    assert (f"/{INVITATION}/resend" in page.text) is valid
+    assert "private-unrecognized-field" not in page.text
+    assert "No hay invitaciones en esta página" not in page.text
+    assert all(method == "GET" for method, _, _ in api.calls)

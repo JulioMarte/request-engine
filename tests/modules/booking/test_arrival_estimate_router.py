@@ -48,6 +48,8 @@ def _app(actor: ActorContext, handler: _RecordingArrivalEstimateHandler) -> Fast
         reschedule_handler=unused,
         attendance_handler=unused,
         arrival_estimate_handler=handler,
+        note_handler=unused,
+        note_reader=unused,
         reservation_reader=unused,
         authority_reader=unused,
         actor_resolver=_FixedActorResolver(actor),

@@ -78,6 +78,10 @@ $authority = (
   docker exec $Container psql -U $DbSuperuser -d $Database -t -A `
     -c "SELECT built_in_native_authority_id FROM request_engine.platform_instance"
 ).Trim()
+$workloadAuthority = (
+  docker exec $Container psql -U $DbSuperuser -d $Database -t -A `
+    -c "SELECT built_in_workload_authority_id FROM request_engine.platform_instance"
+).Trim()
 if (-not $authority) {
   throw "no platform_instance found in $Database; run 'alembic upgrade head' first"
 }
@@ -144,6 +148,8 @@ if ($WithDelivery) { $runtimeEnvironment.REQUEST_ENGINE_OPENBAO_TOKEN = $deliver
 $consoleEnvironment = @{
   REQUEST_ENGINE_ADMIN_CONSOLE_CONTROL_API_BASE_URL = "http://127.0.0.1:$ControlPort"
   REQUEST_ENGINE_ADMIN_CONSOLE_RUNTIME_API_BASE_URL = "http://127.0.0.1:$RuntimePort"
+  REQUEST_ENGINE_ADMIN_CONSOLE_PUBLIC_RUNTIME_API_BASE_URL = "http://localhost:$RuntimePort"
+  REQUEST_ENGINE_ADMIN_CONSOLE_WORKLOAD_AUTHORITY_ID = $workloadAuthority
   REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_SECRET = $consoleSessionSecret
   REQUEST_ENGINE_ADMIN_CONSOLE_SESSION_STORE_DIRECTORY = $sessionDirectory
   REQUEST_ENGINE_ADMIN_CONSOLE_COOKIE_SECURE = 'false'

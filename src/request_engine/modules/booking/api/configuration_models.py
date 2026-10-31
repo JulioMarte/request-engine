@@ -93,4 +93,5 @@ class ResourceScheduleExceptionView(BaseModel):
     end_at: datetime
     exception_kind: Literal["available", "unavailable"]
     reason: str | None
+    active: bool
     resource_availability_revision: int

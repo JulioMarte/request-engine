@@ -2,6 +2,12 @@
 
 Status: Accepted (2026-09-14)
 
+Current authentication amendment: ADR 0017 accepts optional passkeys for claim,
+recent password confirmation for administration, and an explicit recovered-password
+completion path bound to the recovery session and epoch. Ordinary password
+reauthentication never removes recovery restrictions. Continuity, topology,
+secret delivery, consent and atomic recovery provenance remain binding.
+
 > **Partial supersession notice (2026-09-18):** ADR 0014 changes the initial
 > platform trust-root ceremony from CLI/DSN bootstrap to HTTP Instance claim and
 > makes native controller reachability authenticator-neutral (WebAuthn/passkey is

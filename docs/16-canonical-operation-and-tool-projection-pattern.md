@@ -472,7 +472,18 @@ The deterministic text parser remains optional compatibility unless a real consu
 
 ### Stage G — MCP adapter
 
-Only after the canonical catalog is reliable:
+Status: **implemented** by [ADR 0018](adr/0018-mcp-tool-gateway.md) as a stateless
+MCP Streamable HTTP endpoint on the tenant runtime,
+`POST /mcp/organizations/{organization_id}`. `tools/list` projects the caller's
+current `/v1/operation-catalog` entries that carry a tool name and the `operator`
+audience; `tools/call` re-resolves the tool in that current catalog and re-enters
+the same ASGI application with the caller's bearer, so authentication, tenant and
+agent policy, risk ceiling, budgets, idempotency and owner validation are the
+direct-HTTP ones. Input schemas are derived from canonical OpenAPI; output schemas
+are not advertised yet. Projected operations are listed in ADR 0018; adding
+`tool_name`/`tool_audiences` to another owner route is the only way to add a tool.
+
+Original stage requirements:
 
 - expose authorized tools through MCP `tools/list`;
 - map MCP `tools/call` to the same typed owner execution path;

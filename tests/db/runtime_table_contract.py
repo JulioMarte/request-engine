@@ -48,6 +48,11 @@ PRIVATE_GLOBAL_TABLES = {
     "shared_capacity_bindings",
     "shared_capacity_claim_links",
     "shared_capacity_identities",
+    # 0006 (ADR 0021): platform/account-plane facts, control-definer functions only.
+    "account_invitations",
+    "account_invitation_facts",
+    "account_entitlements",
+    "account_organization_creations",
 }
 
 # F2 taxonomy/discovery tables follow reviewed narrower shapes: taxonomy is
@@ -65,6 +70,8 @@ EXPECTED_TABLE_EXCEPTIONS = {
     "service_classifications": (False,) * 7,
     # F4 recomputes assignment availability, legitimately deleting stale rows.
     "resource_location_availability": (True, True, True, True, False, False, False),
+    # 0004: capability replacement deletes configuration link rows (audited).
+    "resource_capability_assignments": (True, True, True, True, False, False, False),
     # S0b2 (§9.3): the party identity revision ledger is append-only for the
     # app role; UPDATE/DELETE are denied by grants and by the 0025 guard.
     "party_identity_revisions": (True, True, False, False, False, False, False),
@@ -89,6 +96,8 @@ EXPECTED_TABLE_EXCEPTIONS = {
             "request_definition_versions",
             "reservation_commercial_commitment_context_terms",
             "reservation_commercial_commitments",
+            # 0002: append-only staff appointment notes (SELECT/INSERT only).
+            "reservation_notes",
         ),
         (True, True, False, False, False, False, False),
     ),

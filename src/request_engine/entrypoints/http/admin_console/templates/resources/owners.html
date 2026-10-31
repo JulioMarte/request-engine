@@ -1,25 +1,24 @@
 {% extends "base.html" %}
 {% import "partials/action_form.html" as action_form %}
-{% block title %}Platform owners &middot; Request Engine admin{% endblock %}
+{% block title %}Dueños de la plataforma · Request Engine{% endblock %}
 {% block content %}
-<section class="card">
-  <p><a href="/resources">&larr; Workspaces</a></p>
-  <h1>Platform owners</h1>
-  <div class="alert notice">{{ note }}</div>
-  <p class="muted small">Owner lifecycle actions take the <code>principal_id</code> returned by
-    invitation activation. Invitation actions take the <code>invitation_id</code>.</p>
-  <div id="result"></div>
+{% set invitation_states = {'issued': 'Emitida', 'pending': 'Pendiente', 'enrolled': 'Inscrita', 'consumed': 'Activada', 'activated': 'Activada', 'revoked': 'Revocada', 'expired': 'Vencida'} %}
+{% set binding_states = {'active': 'Activo', 'suspended': 'Suspendido', 'revoked': 'Revocado'} %}
+<p><a href="/resources">← Espacios de trabajo</a></p>
+<header class="page-heading"><div><p class="eyebrow">Plataforma / Autoridad</p><h1>Dueños de la plataforma</h1><p>Vea quién tiene autoridad sobre la plataforma y administre las invitaciones de dueños. Ser dueño no le da acceso a ningún negocio.</p></div></header>
+<nav class="chips" aria-label="Dueños e invitaciones"><a class="chip {% if not invitations %}active{% endif %}" href="/resources/owners" {% if not invitations %}aria-current="page"{% endif %}>Dueños</a><a class="chip {% if invitations %}active{% endif %}" href="/resources/owners/invitations" {% if invitations %}aria-current="page"{% endif %}>Invitaciones</a></nav>
+<section class="card"><h2>{{ 'Invitaciones de dueños' if invitations else 'Dueños actuales' }}</h2>
+{% if read_error %}<div class="alert error" role="alert">{{ read_error }}</div><p>No se muestran datos de dueños ni formularios de acción.</p><a class="button secondary" href="{{ request.url.path }}">Intentar de nuevo</a><a class="button secondary" href="/login">Iniciar sesión de nuevo</a>
+{% elif rows %}
+<div class="table-wrap"><table><thead><tr><th scope="col">{{ 'Invitación' if invitations else 'Dueño' }}</th><th scope="col">Estado</th><th scope="col">Revisión</th><th scope="col">{{ 'Vence' if invitations else 'Estado del vínculo' }}</th></tr></thead><tbody>
+{% for item in rows %}<tr>
+<td>{% if invitations %}<a href="/resources/owners/invitations/{{ item.invitation_id | urlencode }}"><code>{{ item.invitation_id }}</code></a>{% else %}<a href="/resources/owners/{{ item.principal_id | urlencode }}"><code>{{ item.principal_id }}</code></a>{% endif %}</td>
+<td>{% if invitations %}{{ invitation_states.get(item.status, item.status) }}{% if item.expired %} · vencida{% endif %}{% else %}{{ 'Activo' if item.active else 'Inactivo' }}{% endif %}</td>
+<td>{{ item.revision if invitations else item.authority_revision }}</td><td>{{ item.expires_at if invitations else (binding_states.get(item.binding_status, item.binding_status) if item.binding_status else '—') }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}<div class="empty-state"><h3>{{ 'No hay más resultados' if after else 'No hay dueños ni invitaciones' }}</h3><p>El servicio de dueños devolvió una página vacía.</p></div>{% endif %}
+{% if not read_error and (after or next_after) %}<nav aria-label="Páginas de resultados">{% if after %}<a href="{{ request.url.path }}?limit={{ page_limit }}">← Primera página</a>{% endif %}{% if next_after %}<a href="{{ request.url.path }}?after={{ next_after | urlencode }}&amp;limit={{ page_limit }}">Página siguiente →</a>{% endif %}</nav>{% endif %}
 </section>
-<section class="card">
-  <h2>Invitations</h2>
-  {{ action_form.render(forms['invite']) }}
-  {{ action_form.render(forms['revoke-invitation']) }}
-  {{ action_form.render(forms['activate-invitation']) }}
-</section>
-<section class="card">
-  <h2>Owner lifecycle</h2>
-  {{ action_form.render(forms['suspend']) }}
-  {{ action_form.render(forms['reactivate']) }}
-  {{ action_form.render(forms['revoke']) }}
-</section>
+{% if action_drift %}<p class="alert warning" role="alert">Las acciones sobre dueños no están disponibles. No se puede ejecutar ninguna hasta que la plataforma y la consola coincidan.</p>{% endif %}
+{% if forms %}<section class="card"><h2>Invitar a un dueño de la plataforma</h2><p>Crear una invitación no da autoridad todavía. La persona invitada debe inscribirse con la invitación antes de que usted la active. Mantenga en privado el código de invitación, que solo sirve una vez. La persona puede abrir la <a href="/owner-invitations/enroll">inscripción de dueños</a>, escribir el código en privado y luego configurar la <a href="/account/security">seguridad de su cuenta</a>.</p><div id="result"></div>{% for action in forms %}{{ action_form.render(action) }}{% endfor %}</section>{% endif %}
 {% endblock %}
