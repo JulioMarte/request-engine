@@ -13,6 +13,7 @@ GRANT EXECUTE ON FUNCTION request_platform.read_principal_authority(uuid) TO req
 GRANT EXECUTE ON FUNCTION request_platform.read_platform_provisioners(uuid,uuid,integer) TO request_e2e_read;
 GRANT EXECUTE ON FUNCTION request_platform.read_platform_owners(uuid,uuid,integer) TO request_e2e_read;
 GRANT EXECUTE ON FUNCTION request_platform.read_platform_owner_invitations(uuid,uuid,integer) TO request_e2e_read;
+GRANT EXECUTE ON FUNCTION request_platform.read_account_invitations(uuid,uuid,integer) TO request_e2e_read;
 GRANT EXECUTE ON FUNCTION request_platform.read_identity_recovery_cases(uuid,uuid,integer) TO request_e2e_read;
 GRANT EXECUTE ON FUNCTION request_platform.read_native_identities(uuid,uuid,integer) TO request_e2e_read;
 GRANT EXECUTE ON FUNCTION request_platform.read_native_identity_profiles(uuid,uuid,integer) TO request_e2e_read;

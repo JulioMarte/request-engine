@@ -116,6 +116,12 @@ def foreign_request(
         )
     if operation.name == "staff.history.list":
         return (operation.probe.path, {}, None, 403)
+    if operation.name == "staff.representations.list":
+        return (operation.probe.path, {}, None, 403)
+    if operation.name == "staff.representations.manage":
+        # Delegating Representations requires persisted manager authority in the
+        # caller's own tenant; injected claims never reach a foreign membership.
+        return (operation.probe.path, {}, operation.probe.body, 403)
     if operation.name == "staff.list":
         return ("/v1/staff/members", {}, None, 403)
     if operation.name == "staff.profile.update":
