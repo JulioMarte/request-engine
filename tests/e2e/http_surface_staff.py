@@ -35,6 +35,33 @@ STAFF_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         ),
     ),
     PublicHttpOperation(
+        "staff.representations.list",
+        "GET",
+        "/v1/staff/members/{membership_id}/representations",
+        "staff.read",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(f"/v1/staff/members/{PROBE_UUID}/representations"),
+    ),
+    PublicHttpOperation(
+        "staff.representations.manage",
+        "PUT",
+        "/v1/staff/members/{membership_id}/representations/{authority_party_id}",
+        "staff.manage_authority",
+        True,
+        True,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(
+            f"/v1/staff/members/{PROBE_UUID}/representations/{PROBE_UUID_2}",
+            body={
+                "expected_authority_revision": 1,
+                "desired_scopes": [],
+                "provenance_reference": "surface-probe",
+            },
+        ),
+    ),
+    PublicHttpOperation(
         "staff.invitation.create",
         "POST",
         "/v1/staff/invitations",

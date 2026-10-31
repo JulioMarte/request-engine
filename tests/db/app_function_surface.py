@@ -68,6 +68,12 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "request_cmd.write_staff_member_profile(p_membership uuid, p_expected bigint, "
         "p_name text, p_provenance text)"
     ),
+    # 0005: exact business-Party Representation delegation to staff (manager-gated).
+    (
+        "request_engine.replace_staff_representations(p_membership_id uuid, "
+        "p_authority_party_id uuid, p_expected_authority_revision bigint, "
+        "p_desired_scopes text[], p_provenance_reference text)"
+    ),
     # 0009: current manager gate and subject-proof-bound staff materialization.
     "request_cmd.assert_staff_invitation_manager()",
     "request_cmd.lock_staff_invitation_admin(p_id uuid)",

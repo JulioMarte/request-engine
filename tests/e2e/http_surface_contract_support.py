@@ -11,6 +11,8 @@ _OPERATION_ID_OVERRIDES = {
     "front_desk.serving_resources": "front_desk_serving_resources",
     "staff.profile.update": "staff_profile_update",
     "staff.history.list": "staff_history_list",
+    "staff.representations.list": "staff_representations_list",
+    "staff.representations.manage": "staff_manage_representations",
     "staff.invitation.create": "staff_invitation_create",
     "staff.invitation.list": "staff_invitation_list",
     "staff.invitation.get": "staff_invitation_get",
