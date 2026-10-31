@@ -119,6 +119,19 @@ services:
       # Passkeys are created in the browser at the console origin.
       REQUEST_ENGINE_WEBAUTHN_RP_ID: localhost
       REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS: http://localhost:${RE_DEV_CONSOLE_PORT:?},${RE_DEV_APP_ORIGINS:-http://localhost:5173,http://localhost:8788}
+      # Owner account invitations (ADR 0021) are emailed by the control plane at
+      # request time: enrollment page of the app (loopback dev origin) and the
+      # Mailpit capture inbox. Dev-only; production keeps outbound effects fenced.
+      REQUEST_ENGINE_ACCOUNT_INVITATION_ACCEPT_URL: ${RE_DEV_ACCOUNT_INVITATION_ACCEPT_URL:-http://localhost:5173/account-invitations}
+      REQUEST_ENGINE_OUTBOUND_FENCED: "false"
+      REQUEST_ENGINE_SMTP_HOST: mailpit
+      REQUEST_ENGINE_SMTP_PORT: "1025"
+      REQUEST_ENGINE_SMTP_SENDER: request-engine-dev@example.invalid
+      REQUEST_ENGINE_SMTP_STARTTLS: "false"
+      REQUEST_ENGINE_SMTP_SSL: "false"
+    depends_on:
+      mailpit:
+        condition: service_healthy
     command: [uvicorn, "request_engine.bootstrap.platform_server:create_app", --factory, --host, "0.0.0.0", --port, "8001"]
     ports: ["127.0.0.1:${RE_DEV_CONTROL_PORT:?}:8001"]
     healthcheck:
